@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle2, Clipboard, Copy, Mail, MapPin, Menu, PackageCheck, Phone, Search, Send, ShieldCheck, Truck, X } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clipboard, Copy, Download, Mail, MapPin, Menu, PackageCheck, Palette, Phone, Search, Send, ShieldCheck, Truck, X } from "lucide-react";
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { CollectionCenter } from "./components/CollectionCenter";
 import { company } from "./config/company";
 import { faqs } from "./data/faq";
 import { fleet } from "./data/fleet";
+import { brandColors, brandDeliverables, brandRules, typography } from "./data/brand";
 import { serviceAreas, suggestServiceAreas, findServiceArea, hubs, totalServiceAreas } from "./data/serviceAreas";
 import { services } from "./data/services";
 import { testimonials } from "./data/testimonials";
@@ -50,7 +51,7 @@ function Logo() {
 
 function Header() {
   const [open, setOpen] = useState(false);
-  const links = [["#/", "Início"], ["#/cidades", "Cidades"], ["#/frota", "Frota"], ["#/mercadorias", "Mercadorias"], ["#/duvidas", "Dúvidas"]];
+  const links = [["#/", "Início"], ["#/cidades", "Cidades"], ["#/frota", "Frota"], ["#/mercadorias", "Mercadorias"], ["#/marca", "Marca"], ["#/duvidas", "Dúvidas"]];
   return <header className="topbar"><Logo /><nav className={open ? "nav open" : "nav"}>{links.map(([href, label]) => <a onClick={() => setOpen(false)} href={href} key={href}>{label}</a>)}<a href={company.phoneHref}><Phone size={16} />{company.phone}</a><a className="btn primary" href="#/coleta"><Send size={16} />Solicitar coleta</a></nav><a className="whats-mini" href="#/coleta">WhatsApp</a><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu">{open ? <X /> : <Menu />}</button></header>;
 }
 
@@ -91,6 +92,10 @@ function CargoPage() {
     ["Nota fiscal", "As regras existentes citam operações com nota fiscal e limite de tabela. Confirme detalhes com o comercial."],
   ];
   return <><PageHero label="Mercadoria e embalagem" title="Prepare a carga com dados claros para agilizar a coleta.">Esta página reúne orientações operacionais seguras sem inventar regras comerciais. Para itens específicos, valor de NF, fragilidade ou restrição de transporte, confirme pelo WhatsApp.</PageHero><section className="section"><div className="cards">{cargoTips.map(([title, description]) => <article key={title}><PackageCheck /><h3>{title}</h3><p>{description}</p></article>)}</div></section><section className="section split"><div><h2>Checklist antes da coleta</h2><div className="checklist">{["Volumes contados e identificados", "Peso aproximado informado", "Endereço e bairro conferidos", "Destinatário ou referência de entrega informados", "Observações de acesso adicionadas", "Nota fiscal ou necessidade de confirmação comercial sinalizada"].map((item) => <p key={item}><CheckCircle2 />{item}</p>)}</div></div><div className="result-panel"><h3>Solicitar orientação</h3><p>Se a mercadoria exige cuidado especial, envie os detalhes para a equipe antes da coleta.</p><a className="btn primary" href={whatsappUrl("Olá! Gostaria de orientação sobre embalagem e transporte de uma mercadoria pela Mello Transportes.")} target="_blank">Falar sobre mercadoria</a></div></section><QuoteForm /></>;
+}
+
+function BrandPage() {
+  return <><PageHero label="Identidade visual" title="Kit comercial da Mello Transportes.">Um guia pratico para manter a marca consistente em site, WhatsApp, documentos, uniforme, frota, fachada e materiais comerciais.</PageHero><section className="section split"><div><p className="eyebrow"><Palette size={16} /> Logo principal</p><h2>Estrada, movimento e presenca regional.</h2><p>A marca combina o simbolo de rota com laranja de energia e preto de autoridade. No dia a dia, o uso deve reforcar confianca, agilidade, seguranca e organizacao.</p><div className="actions"><a className="btn primary" href="/Mello/logo-mello.png" download><Download size={16} />Baixar logo PNG</a><a className="btn ghost" href="/Mello/manual-marca-mello.pdf" target="_blank">Abrir manual PDF</a></div></div><div className="brand-logo-board"><img src="/Mello/logo-mello.png" alt="Logo Mello Transportes" /></div></section><section className="section"><h2>Paleta oficial</h2><div className="swatch-grid">{brandColors.map((color) => <article key={color.hex}><span style={{ background: color.hex }} /><h3>{color.name}</h3><b>{color.hex}</b><p>{color.role}</p></article>)}</div></section><section className="section split"><div><h2>Tipografia sugerida</h2><div className="info-list">{typography.map((item) => <span key={item.name}><b>{item.name}:</b> {item.value}<br />{item.note}</span>)}</div></div><div><h2>Regras rapidas</h2><div className="checklist">{brandRules.map((rule) => <p key={rule}><CheckCircle2 />{rule}</p>)}</div></div></section><section className="section"><h2>Entregas recomendadas</h2><div className="deliverable-table">{brandDeliverables.map(([item, use]) => <div key={item}><strong>{item}</strong><span>{use}</span></div>)}</div></section><section className="section"><h2>Aplicacoes comerciais</h2><div className="template-grid"><article><h3>Template de status</h3><p>Base para avisos de rotas, atendimento e horarios.</p><div className="template-card story"><b>MELLO</b><span>Coletas e entregas regionais</span><small>Fale com nosso WhatsApp comercial</small></div></article><article><h3>Cartao digital</h3><p>Contato rapido para salvar e compartilhar no WhatsApp.</p><div className="template-card"><b>{company.shortName}</b><span>{company.phone}</span><span>{company.whatsapp}</span><small>{company.email}</small></div></article><article><h3>Assinatura de e-mail</h3><p>Padrao simples para equipe comercial.</p><div className="template-card email-sign"><b>Equipe Mello Transportes</b><span>{company.phone} | {company.whatsapp}</span><small>{company.serviceRegion}</small></div></article></div></section></>;
 }
 
 function FleetAndRoutes() {
@@ -154,7 +159,7 @@ function FloatingWhatsApp() {
 
 function App() {
   const route = useRoute();
-  const content = route === "/frota" ? <FleetPage /> : route === "/cidades" ? <CitiesPage /> : route === "/mercadorias" ? <CargoPage /> : route === "/coleta" ? <CollectionCenter /> : route === "/duvidas" ? <FaqSection /> : <HomePage />;
+  const content = route === "/frota" ? <FleetPage /> : route === "/cidades" ? <CitiesPage /> : route === "/mercadorias" ? <CargoPage /> : route === "/marca" ? <BrandPage /> : route === "/coleta" ? <CollectionCenter /> : route === "/duvidas" ? <FaqSection /> : <HomePage />;
   return <><Header /><main>{content}</main><FloatingWhatsApp /><Footer /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "LocalBusiness", name: company.name, telephone: company.phone, email: company.email, address: company.address, areaServed: company.serviceRegion, url: company.pagesUrl, makesOffer: services.map((s) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: s.title, description: s.description } })) }) }} /></>;
 }
 

@@ -39,8 +39,28 @@ A confirmação da coleta é sempre humana, pela conversa no WhatsApp. O site n�
 - FAQ: `src/data/faq.ts`
 - Depoimentos reais: `src/data/testimonials.ts`
 - Mensagens, protocolos, histórico local e futura troca por API: `src/services/collectionService.ts`
+- Identidade visual, paleta e kit de marca: `src/data/brand.ts`
+- Manual editável de marca: `docs/manual-marca-mello.md`
+- Manual PDF publicado: `public/manual-marca-mello.pdf`
 
 Não adicione depoimentos, números de entregas, clientes ou anos de mercado sem confirmação comercial.
+
+## Identidade Visual
+
+A rota `#/marca` apresenta o kit comercial da Mello Transportes:
+
+- Logo principal.
+- Paleta oficial.
+- Tipografias sugeridas.
+- Regras rápidas de uso.
+- Entregas recomendadas para cliente.
+- Templates simples para status, cartão digital e assinatura.
+
+O PDF público fica disponível em:
+
+```text
+https://avilaops.github.io/Mello/manual-marca-mello.pdf
+```
 
 ## Limitações GitHub Pages
 

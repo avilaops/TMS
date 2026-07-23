@@ -203,6 +203,50 @@ main { padding-top: 82px; }
 .checklist { display: grid; gap: 10px; }
 .checklist p { display: flex; align-items: center; gap: 10px; font-weight: 800; }
 .checklist svg { color: #f28a00; flex: 0 0 auto; }
+.brand-logo-board {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #fff, #f3f4f6);
+  border: 1px solid #e1e4ea;
+  padding: 28px;
+}
+.brand-logo-board img { width: min(420px, 100%); height: auto; object-fit: contain; }
+.swatch-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.swatch-grid article {
+  background: #f8fafc;
+  border: 1px solid #e1e4ea;
+  border-radius: 10px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+.swatch-grid article > span { height: 74px; border-radius: 8px; border: 1px solid rgba(0,0,0,.08); }
+.swatch-grid b { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: #181818; }
+.deliverable-table { display: grid; border: 1px solid #e1e4ea; border-radius: 10px; overflow: hidden; }
+.deliverable-table div { display: grid; grid-template-columns: .9fr 1.1fr; gap: 14px; padding: 14px 16px; background: #fff; border-bottom: 1px solid #e1e4ea; }
+.deliverable-table div:nth-child(even) { background: #f8fafc; }
+.deliverable-table div:last-child { border-bottom: 0; }
+.template-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.template-grid article { background: #f8fafc; border: 1px solid #e1e4ea; border-radius: 10px; padding: 18px; }
+.template-card {
+  margin-top: 14px;
+  min-height: 190px;
+  display: grid;
+  align-content: end;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #181818 0 62%, #f28a00 62% 100%);
+  color: #fff;
+  overflow: hidden;
+}
+.template-card b { font-size: 26px; letter-spacing: 0; }
+.template-card span, .template-card small { color: #fff; }
+.template-card.story { aspect-ratio: 9 / 16; min-height: 360px; }
+.template-card.email-sign { min-height: 150px; background: #fff; color: #181818; border: 1px solid #e1e4ea; }
+.template-card.email-sign span, .template-card.email-sign small { color: #5A606B; }
 
 .field { display: grid; gap: 7px; }
 .field span { font-size: 13px; color: #2c3038; font-weight: 800; }
@@ -291,6 +335,8 @@ footer p { margin: 0; display: flex; gap: 8px; align-items: center; }
   .vehicle-card { grid-template-columns: 1fr; }
   .vehicle-art { min-height: 150px; }
   .city-columns { columns: 1; }
+  .swatch-grid, .template-grid { grid-template-columns: 1fr; }
+  .deliverable-table div { grid-template-columns: 1fr; gap: 4px; }
   .topbar { gap: 10px; }
   .logo strong { font-size: 17px; }
   .logo small { font-size: 9px; }
