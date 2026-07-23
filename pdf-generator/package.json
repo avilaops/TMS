@@ -1,0 +1,19 @@
+{
+  "name": "mello-frete-pdf",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gera o PDF de Tarifas e Regras Gerais de Frete da Mello Transportes Rio Preto",
+  "scripts": {
+    "generate": "tsx src/generate.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "puppeteer": "^23.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

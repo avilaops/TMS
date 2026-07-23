@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://avilaops.github.io/Mello/sitemap.xml

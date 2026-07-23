@@ -1,0 +1,72 @@
+========================================================================
+MELLO TRANSPORTES RIO PRETO
+Tabela de Tarifas e Regras Gerais de Frete
+========================================================================
+
+DADOS DA EMPRESA
+------------------------------------------------------------------------
+Razão Social / Nome Fantasia : Mello Transportes Rio Preto
+Endereço Sede                : Rua Bonsucesso, nº 695 - Quinta das
+                                Paineiras - São José do Rio Preto/SP
+Telefone Comercial           : (17) 3308-0878
+WhatsApp Comercial           : (17) 99714-9702
+E-mail Comercial             : comercial@mellotransportesriopreto.com.br
+Website Oficial              : www.mellotransportesriopreto.com.br
+Área de Cobertura            : São José do Rio Preto e mais de 130
+                                cidades da região (SP)
+
+REGRAS GERAIS DE FRETE
+------------------------------------------------------------------------
+(aplicam-se a todas as cidades listadas em tabela_frete_serilon.csv)
+
+UF atendida               : SP
+Frete Mínimo               : R$ 60,00
+Regra do Frete Mínimo      : Até 51 kg (sem cubagem)
+Frete Peso                 : R$ 0,85 / kg (aplicado acima de 51 kg)
+Fator de Cubagem           : 300 kg/m³
+                              (Altura x Largura x Comprimento x 300 =
+                              Peso Cubado)
+Limite de Valor de NF      : R$ 1.500,00
+Reentrega                  : 50% do frete original
+Devolução / Retorno        : 100% do frete original
+
+Observação: o frete peso é cobrado pelo maior valor entre peso físico
+e peso cubado. Reentrega cobrada a 50% do frete original; devolução
+cobrada a 100%. Tarifas válidas para Notas Fiscais de até R$ 1.500,00 —
+acima desse valor, consultar o setor comercial para cotação
+personalizada.
+
+PRAZOS PADRÃO DE ENTREGA
+------------------------------------------------------------------------
+Geral                      : Até 24h
+Exceções (marcadas na tabela) : Até 48h
+
+FROTA POR POLO REGIONAL
+------------------------------------------------------------------------
+Polo Regional              Veículo Utilizado           Características
+------------------------------------------------------------------------
+São José do Rio Preto      Caminhão VUC (Até 3,5m)     Veículo urbano de
+ (Matriz)                                               carga para
+                                                         coletas/entregas
+Araçatuba                  Fiat Strada                  Utilitário leve
+                                                         
+Barretos                   Fiat Strada                  Utilitário leve
+                                                         
+Catanduva                  Van de Carga                 Furgão 
+                                                       
+Lins                       Caminhão VUC (Até 3,5m)     Veículo urbano de
+                                                         carga
+Penápolis                  Caminhão VUC (Até 3,5m)     Veículo urbano de
+                                                         carga
+Ribeirão Preto              Caminhão VUC (Até 3,5m)     Veículo urbano de
+                                                         carga
+Santa Fé do Sul             Van de Carga                 Furgão
+
+São Carlos                  Fiat Strada                  Utilitário leve
+                                                         
+
+------------------------------------------------------------------------
+As colunas Cidade, Polo Regional, Prazo de Entrega e Veículo de Rota
+variam por cidade e estão detalhadas em tabela_frete_serilon.csv
+(138 cidades atendidas).
+========================================================================
