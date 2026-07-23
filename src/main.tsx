@@ -5,6 +5,7 @@ import { ArrowRight, CheckCircle2, Clipboard, Copy, Mail, MapPin, Menu, PackageC
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { CollectionCenter } from "./components/CollectionCenter";
 import { company } from "./config/company";
 import { faqs } from "./data/faq";
 import { fleet } from "./data/fleet";
@@ -50,7 +51,7 @@ function Logo() {
 function Header() {
   const [open, setOpen] = useState(false);
   const links = [["#/", "Início"], ["#/cidades", "Cidades"], ["#/frota", "Frota"], ["#/mercadorias", "Mercadorias"], ["#/duvidas", "Dúvidas"]];
-  return <header className="topbar"><Logo /><nav className={open ? "nav open" : "nav"}>{links.map(([href, label]) => <a onClick={() => setOpen(false)} href={href} key={href}>{label}</a>)}<a href={company.phoneHref}><Phone size={16} />{company.phone}</a><a className="btn primary" href={whatsappUrl("Olá! Gostaria de solicitar uma coleta pela Mello Transportes.")} target="_blank"><Send size={16} />Solicitar coleta</a></nav><a className="whats-mini" href={whatsappUrl("Olá! Gostaria de falar com a Mello Transportes.")} target="_blank">WhatsApp</a><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu">{open ? <X /> : <Menu />}</button></header>;
+  return <header className="topbar"><Logo /><nav className={open ? "nav open" : "nav"}>{links.map(([href, label]) => <a onClick={() => setOpen(false)} href={href} key={href}>{label}</a>)}<a href={company.phoneHref}><Phone size={16} />{company.phone}</a><a className="btn primary" href="#/coleta"><Send size={16} />Solicitar coleta</a></nav><a className="whats-mini" href="#/coleta">WhatsApp</a><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu">{open ? <X /> : <Menu />}</button></header>;
 }
 
 function Hero() {
@@ -144,10 +145,17 @@ function FinalCta() {
   return <section className="final-cta"><h2>Precisa de uma coleta ou quer confirmar sua rota?</h2><a className="btn primary" href="#/coleta">Solicitar coleta</a><a className="btn ghost" href={whatsappUrl("Olá! Gostaria de falar com a Mello Transportes.")} target="_blank">Falar no WhatsApp</a><a className="btn ghost" href="#/cidades">Consultar cidade</a></section>;
 }
 
+function FloatingWhatsApp() {
+  const [open, setOpen] = useState(false);
+  const hasDraft = Boolean(localStorage.getItem("mello-central-draft"));
+  const items = [[hasDraft ? "#/coleta" : "#/coleta", hasDraft ? "Continuar minha solicitação" : "Solicitar coleta"], ["#/coleta", "Pedir cotação"], ["#/cidades", "Consultar cidade"], ["#/coleta", "Acompanhar coleta"], ["#/coleta", "Enviar documentos"], [whatsappUrl("Olá! Gostaria de falar com o atendimento da Mello Transportes."), "Falar com atendente"]];
+  return <div className="floating-whatsapp"><button className="btn primary" onClick={() => setOpen(!open)}><Send size={16} />WhatsApp</button>{open && <div className="float-menu">{items.map(([href, label]) => <a key={label} href={href} target={href.startsWith("http") ? "_blank" : undefined}>{label}</a>)}</div>}</div>;
+}
+
 function App() {
   const route = useRoute();
-  const content = route === "/frota" ? <FleetPage /> : route === "/cidades" ? <CitiesPage /> : route === "/mercadorias" ? <CargoPage /> : route === "/coleta" ? <CollectionForm /> : route === "/duvidas" ? <FaqSection /> : <HomePage />;
-  return <><Header /><main>{content}</main><Footer /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "LocalBusiness", name: company.name, telephone: company.phone, email: company.email, address: company.address, areaServed: company.serviceRegion, url: company.pagesUrl, makesOffer: services.map((s) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: s.title, description: s.description } })) }) }} /></>;
+  const content = route === "/frota" ? <FleetPage /> : route === "/cidades" ? <CitiesPage /> : route === "/mercadorias" ? <CargoPage /> : route === "/coleta" ? <CollectionCenter /> : route === "/duvidas" ? <FaqSection /> : <HomePage />;
+  return <><Header /><main>{content}</main><FloatingWhatsApp /><Footer /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "LocalBusiness", name: company.name, telephone: company.phone, email: company.email, address: company.address, areaServed: company.serviceRegion, url: company.pagesUrl, makesOffer: services.map((s) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: s.title, description: s.description } })) }) }} /></>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(<React.StrictMode><App /></React.StrictMode>);
