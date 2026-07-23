@@ -2,6 +2,7 @@
 node_modules/
 dist/
 pdf-generator/node_modules/
+pdf-generator/output/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
