@@ -6,6 +6,7 @@ pdf-generator/output/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+actions-logs*
 .DS_Store
 *.log
 *.tsbuildinfo
