@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Clipboard, Copy, Mail, MapPin, Menu, Phone, Search, Send, ShieldCheck, Truck, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { company } from "./config/company";
@@ -13,6 +13,8 @@ import { services } from "./data/services";
 import { testimonials } from "./data/testimonials";
 import { cityCheckMessage, whatsappUrl } from "./lib/whatsapp";
 import "./index.css";
+
+const RouteMap = lazy(() => import("./components/RouteMap").then((module) => ({ default: module.RouteMap })));
 
 const collectionSchema = z.object({
   name: z.string().min(2, "Informe seu nome."),
@@ -56,7 +58,7 @@ function Hero() {
 }
 
 function RouteVisual() {
-  return <div className="route-card" aria-label="Representação visual das rotas"><svg viewBox="0 0 560 420" role="img"><defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M72 220 C160 80 312 130 474 72" /><path d="M72 220 C180 250 270 326 466 320" className="route-48" /><path d="M72 220 C210 190 330 214 470 190" /><circle cx="72" cy="220" r="14" className="origin" filter="url(#glow)" /><text x="38" y="255">Rio Preto</text>{[[190,118,"Araçatuba"],[292,190,"Catanduva"],[470,190,"Ribeirão"],[466,320,"São Carlos"],[474,72,"Santa Fé"]].map(([x,y,label]) => <g key={label}><circle cx={x} cy={y} r="9" /><text x={Number(x)-34} y={Number(y)+30}>{label}</text></g>)}</svg><div className="legend"><span><i className="blue" />Polo operacional</span><span><i />Rotas 24h</span><span><i className="orange" />Rotas 48h</span></div></div>;
+  return <div className="route-card map-card" aria-label="Mapa OpenStreetMap com polos e rotas regionais"><Suspense fallback={<div className="map-fallback">Carregando mapa regional...</div>}><RouteMap /></Suspense><div className="legend map-legend"><span><i className="blue" />Matriz operacional</span><span><i />Polo com rotas 24h</span><span><i className="orange" />Polo com rotas 48h</span></div></div>;
 }
 
 function CitySearch() {
