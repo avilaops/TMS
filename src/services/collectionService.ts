@@ -159,7 +159,7 @@ export function buildCollectionMessage(draft: CollectionDraft) {
       line("Endereço", [draft.destinationStreet, draft.destinationNumber, draft.destinationComplement, draft.destinationDistrict].filter(Boolean).join(", ")),
       line("Cidade/UF", [draft.destinationCity, draft.destinationState].filter(Boolean).join("/")),
       line("CEP", draft.destinationZip), line("Destinatário", draft.recipient), line("Telefone", draft.recipientPhone), line("Referência", draft.destinationReference), line("Observações de entrega", draft.deliveryNotes),
-      route ? line("Rota cadastrada", `${route.hub} · ${route.deadline} · ${route.vehicle}`) : line("Rota cadastrada", "A confirmar pela equipe"),
+      route ? line("Rota cadastrada", `${route.hub} · ${route.deadline}`) : line("Rota cadastrada", "A confirmar pela equipe"),
     ]),
     section("📦 *MERCADORIA*", [
       line("Tipo", draft.goodsType), line("Descrição", draft.goodsDescription), line("Volumes", draft.totalVolumes || totals.quantity || ""), line("Peso aproximado", draft.totalWeight || (totals.weight ? `${totals.weight} kg` : "")),
