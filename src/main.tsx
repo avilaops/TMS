@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle2, Clipboard, Copy, Mail, MapPin, Menu, Phone, Search, Send, ShieldCheck, Truck, X } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clipboard, Copy, Mail, MapPin, Menu, PackageCheck, Phone, Search, Send, ShieldCheck, Truck, X } from "lucide-react";
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -44,17 +44,17 @@ type CollectionForm = z.infer<typeof collectionSchema>;
 const defaultValues: CollectionForm = { name: "", companyName: "", phone: "", email: "", originCity: "", originAddress: "", district: "", date: "", period: "", destinationCity: "", destinationAddress: "", recipient: "", volumes: "", weight: "", goods: "", dimensions: "", helper: false, invoice: false, receipt: false, notes: "", consent: false };
 
 function Logo() {
-  return <a className="logo" href="#inicio" aria-label="Ir para o início"><Truck /><span><strong>Mello <b>Transportes</b></strong><small>{company.tagline}</small></span></a>;
+  return <a className="logo" href="#/" aria-label="Ir para o início"><Truck /><span><strong>Mello <b>Transportes</b></strong><small>{company.tagline}</small></span></a>;
 }
 
 function Header() {
   const [open, setOpen] = useState(false);
-  const links = [["#inicio", "Início"], ["#servicos", "Serviços"], ["#cidades", "Cidades atendidas"], ["#frota", "Frota"], ["#duvidas", "Dúvidas"]];
+  const links = [["#/", "Início"], ["#/cidades", "Cidades"], ["#/frota", "Frota"], ["#/mercadorias", "Mercadorias"], ["#/duvidas", "Dúvidas"]];
   return <header className="topbar"><Logo /><nav className={open ? "nav open" : "nav"}>{links.map(([href, label]) => <a onClick={() => setOpen(false)} href={href} key={href}>{label}</a>)}<a href={company.phoneHref}><Phone size={16} />{company.phone}</a><a className="btn primary" href={whatsappUrl("Olá! Gostaria de solicitar uma coleta pela Mello Transportes.")} target="_blank"><Send size={16} />Solicitar coleta</a></nav><a className="whats-mini" href={whatsappUrl("Olá! Gostaria de falar com a Mello Transportes.")} target="_blank">WhatsApp</a><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu">{open ? <X /> : <Menu />}</button></header>;
 }
 
 function Hero() {
-  return <section id="inicio" className="hero"><div className="hero-copy"><motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="eyebrow"><ShieldCheck size={16} /> Transporte regional em SP</motion.p><h1>Transporte regional com agilidade, segurança e compromisso.</h1><p>Coletas e entregas em Rio Preto e região, com atendimento próximo e rotas planejadas para sua empresa.</p><div className="actions"><a className="btn primary" href="#coleta">Solicitar coleta <ArrowRight size={16} /></a><a className="btn ghost" href="#cidades">Consultar cidade</a><a className="phone-link" href={company.phoneHref}><Phone size={16} />{company.phone}</a></div><div className="trust"><span>{totalServiceAreas} cidades cadastradas</span><span>Rotas Até 24h e Até 48h</span><span>Atendimento via WhatsApp</span></div></div><RouteVisual /></section>;
+  return <section id="inicio" className="hero"><div className="hero-copy"><motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="eyebrow"><ShieldCheck size={16} /> Transporte regional em SP</motion.p><h1>Transporte regional com agilidade, segurança e compromisso.</h1><p>Coletas e entregas em Rio Preto e região, com atendimento próximo e rotas planejadas para sua empresa.</p><div className="actions"><a className="btn primary" href="#/coleta">Solicitar coleta <ArrowRight size={16} /></a><a className="btn ghost" href="#/cidades">Consultar cidade</a><a className="phone-link" href={company.phoneHref}><Phone size={16} />{company.phone}</a></div><div className="trust"><span>{totalServiceAreas} cidades cadastradas</span><span>Rotas Até 24h e Até 48h</span><span>Atendimento via WhatsApp</span></div></div><RouteVisual /></section>;
 }
 
 function RouteVisual() {
@@ -69,12 +69,35 @@ function CitySearch() {
   return <section id="cidades" className="section split"><div><p className="eyebrow"><Search size={16} /> Consulta de cidade atendida</p><h2>Digite a cidade e veja a rota cadastrada.</h2><p className="muted">A busca ignora acentos e maiúsculas. Se a cidade não aparecer, o WhatsApp já leva uma mensagem para confirmação pela equipe.</p><label className="field"><span>Cidade</span><input value={query} onChange={(e) => setQuery(e.target.value)} list="city-options" placeholder="Ex: Sao Carlos, Birigui, Mirassol" /></label><datalist id="city-options">{suggestions.map((area) => <option key={area.city} value={area.city} />)}</datalist></div><div className="result-panel">{query.length < 2 ? <p>Comece digitando uma cidade.</p> : result ? <><CheckCircle2 className="ok" /><h3>{result.city} é atendida</h3><p><b>Prazo:</b> {result.deadline}</p><p><b>Polo:</b> {result.hub}</p><p><b>Veículo de rota:</b> {result.vehicle}</p><a className="btn primary" href={whatsappUrl(message)} target="_blank">Confirmar pelo WhatsApp</a></> : <><h3>Cidade não encontrada na relação pública</h3><p>Ainda não encontramos essa cidade na relação pública. Fale com nossa equipe para confirmarmos uma possibilidade de atendimento.</p><a className="btn primary" href={whatsappUrl(message)} target="_blank">Confirmar possibilidade</a></>}</div></section>;
 }
 
+function PageHero({ label, title, children }: { label: string; title: string; children: React.ReactNode }) {
+  return <section className="page-hero"><p className="eyebrow">{label}</p><h1>{title}</h1><p>{children}</p><div className="actions"><a className="btn primary" href="#/coleta">Solicitar coleta</a><a className="btn ghost" href={whatsappUrl("Olá! Gostaria de confirmar informações pelo site da Mello Transportes.")} target="_blank">Falar no WhatsApp</a></div></section>;
+}
+
+function FleetPage() {
+  return <><PageHero label="Frota e veículos" title="Veículos para rotas regionais, coletas e entregas.">A frota abaixo preserva os tipos confirmados nos arquivos do projeto. Capacidades específicas, peso aceito e disponibilidade operacional devem ser confirmados com a equipe comercial.</PageHero><section className="section"><div className="vehicle-grid">{fleet.map((vehicle) => { const cities = serviceAreas.filter((area) => vehicle.hubs.includes(area.hub)); return <article className="vehicle-card" key={vehicle.name}><div className="vehicle-art"><Truck /></div><div><p className="eyebrow">Veículo de rota</p><h2>{vehicle.name}</h2><p>{vehicle.description}</p><div className="info-list"><span>Polos: {vehicle.hubs.join(", ")}</span><span>Cidades vinculadas: {cities.length}</span><span>Prazos cadastrados: {Array.from(new Set(cities.map((area) => area.deadline))).join(" e ")}</span></div><a className="btn primary" href={whatsappUrl(`Olá! Gostaria de solicitar uma coleta com ${vehicle.name}. Pode confirmar disponibilidade?`)} target="_blank">Solicitar esse veículo</a></div></article>; })}</div></section><section className="section split"><div><h2>Como escolher o veículo</h2><p>Informe volumes, peso aproximado, tipo de mercadoria, origem, destino e data desejada. A equipe confirma o veículo adequado conforme rota, cubagem e operação do dia.</p></div><div className="result-panel"><h3>Dados que ajudam na confirmação</h3><p>Quantidade de volumes, dimensões, peso, endereço com bairro, necessidade de ajudante, nota fiscal e observações de acesso.</p></div></section></>;
+}
+
+function CitiesPage() {
+  const grouped = hubs.map((hub) => ({ hub, areas: serviceAreas.filter((area) => area.hub === hub) }));
+  return <><PageHero label="Cidades atendidas" title={`${totalServiceAreas} cidades cadastradas por polo regional.`}>Consulte por cidade, veja o prazo estimado e confira a lista completa por polo. A busca funciona com ou sem acentos.</PageHero><CitySearch /><section className="section"><h2>Lista completa por polo</h2><div className="city-columns">{grouped.map(({ hub, areas }) => <article key={hub}><h3>{hub}</h3><p>{areas.length} cidades</p><ul>{areas.map((area) => <li key={area.city}><span>{area.city}</span><small>{area.deadline} · {area.vehicle}</small></li>)}</ul></article>)}</div></section></>;
+}
+
+function CargoPage() {
+  const cargoTips = [
+    ["Identifique volumes", "Informe quantidade, peso aproximado e, quando possível, dimensões. Isso ajuda a validar cubagem e veículo."],
+    ["Proteja a mercadoria", "Use embalagem firme, fechamento seguro e proteção interna compatível com o item transportado."],
+    ["Informe restrições", "Avise se há fragilidade, necessidade de ajudante, comprovante, retorno ou condição especial no endereço."],
+    ["Nota fiscal", "As regras existentes citam operações com nota fiscal e limite de tabela. Confirme detalhes com o comercial."],
+  ];
+  return <><PageHero label="Mercadoria e embalagem" title="Prepare a carga com dados claros para agilizar a coleta.">Esta página reúne orientações operacionais seguras sem inventar regras comerciais. Para itens específicos, valor de NF, fragilidade ou restrição de transporte, confirme pelo WhatsApp.</PageHero><section className="section"><div className="cards">{cargoTips.map(([title, description]) => <article key={title}><PackageCheck /><h3>{title}</h3><p>{description}</p></article>)}</div></section><section className="section split"><div><h2>Checklist antes da coleta</h2><div className="checklist">{["Volumes contados e identificados", "Peso aproximado informado", "Endereço e bairro conferidos", "Destinatário ou referência de entrega informados", "Observações de acesso adicionadas", "Nota fiscal ou necessidade de confirmação comercial sinalizada"].map((item) => <p key={item}><CheckCircle2 />{item}</p>)}</div></div><div className="result-panel"><h3>Solicitar orientação</h3><p>Se a mercadoria exige cuidado especial, envie os detalhes para a equipe antes da coleta.</p><a className="btn primary" href={whatsappUrl("Olá! Gostaria de orientação sobre embalagem e transporte de uma mercadoria pela Mello Transportes.")} target="_blank">Falar sobre mercadoria</a></div></section><QuoteForm /></>;
+}
+
 function FleetAndRoutes() {
   return <><section className="section" id="rotas"><p className="eyebrow"><MapPin size={16} /> Rotas e polos</p><h2>Polos regionais com lista acessível e mapa leve.</h2><div className="hubs">{hubs.map((hub) => <article key={hub}><h3>{hub}</h3><p>{serviceAreas.filter((a) => a.hub === hub).length} cidades</p><small>{serviceAreas.filter((a) => a.hub === hub).slice(0, 5).map((a) => a.city).join(", ")}</small></article>)}</div></section><section className="section" id="frota"><p className="eyebrow"><Truck size={16} /> Frota</p><h2>Veículos por tipo de operação cadastrada.</h2><div className="cards">{fleet.map((item) => <article key={item.name}><Truck /><h3>{item.name}</h3><p>{item.description}</p><small>{item.hubs.join(", ")}</small><a href={whatsappUrl(`Olá! Gostaria de solicitar atendimento com ${item.name}.`)}>Solicitar esse tipo de veículo</a></article>)}</div></section></>;
 }
 
 function Services() {
-  return <section id="servicos" className="section"><p className="eyebrow"><Clipboard size={16} /> Serviços</p><h2>Soluções comerciais baseadas nos dados disponíveis.</h2><div className="cards">{services.map((s) => <article key={s.title}><h3>{s.title}</h3><p>{s.description}</p><small>{s.benefit}</small><a href="#coleta">Solicitar agora</a></article>)}</div></section>;
+  return <section id="servicos" className="section"><p className="eyebrow"><Clipboard size={16} /> Serviços</p><h2>Soluções comerciais baseadas nos dados disponíveis.</h2><div className="cards">{services.map((s) => <article key={s.title}><h3>{s.title}</h3><p>{s.description}</p><small>{s.benefit}</small><a href="#/coleta">Solicitar agora</a></article>)}</div></section>;
 }
 
 function CollectionForm() {
@@ -103,8 +126,28 @@ function Footer() {
   return <footer><Logo /><p>{company.serviceRegion}</p><p><Phone size={16} /> {company.phone} · {company.whatsapp}</p><p><Mail size={16} /> {company.email}</p><p>{company.address}</p><small>© {new Date().getFullYear()} {company.shortName}. Política de privacidade: os dados preenchidos são usados apenas para montar a mensagem enviada pelo usuário no WhatsApp.</small></footer>;
 }
 
+function useRoute() {
+  const [route, setRoute] = useState(window.location.hash.replace("#", "") || "/");
+  useEffect(() => { const update = () => setRoute(window.location.hash.replace("#", "") || "/"); window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update); }, []);
+  return route;
+}
+
+function HomePage() {
+  return <><Hero /><Services /><CitySearch /><FleetAndRoutes /><QuoteForm /><CollectionForm /><section className="section timeline"><h2>Como funciona</h2>{["Informe a coleta.", "A equipe confirma a disponibilidade.", "A mercadoria é coletada.", "A entrega segue pela rota programada.", "O cliente recebe a confirmação."].map((item) => <p key={item}><CheckCircle2 />{item}</p>)}</section>{testimonials.length > 0 && <section className="section"><h2>Depoimentos</h2></section>}<FaqSection /><FinalCta /></>;
+}
+
+function FaqSection() {
+  return <section id="duvidas" className="section"><h2>Dúvidas frequentes</h2><div className="faq">{faqs.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div></section>;
+}
+
+function FinalCta() {
+  return <section className="final-cta"><h2>Precisa de uma coleta ou quer confirmar sua rota?</h2><a className="btn primary" href="#/coleta">Solicitar coleta</a><a className="btn ghost" href={whatsappUrl("Olá! Gostaria de falar com a Mello Transportes.")} target="_blank">Falar no WhatsApp</a><a className="btn ghost" href="#/cidades">Consultar cidade</a></section>;
+}
+
 function App() {
-  return <><Header /><main><Hero /><Services /><CitySearch /><FleetAndRoutes /><QuoteForm /><CollectionForm /><section className="section timeline"><h2>Como funciona</h2>{["Informe a coleta.", "A equipe confirma a disponibilidade.", "A mercadoria é coletada.", "A entrega segue pela rota programada.", "O cliente recebe a confirmação."].map((item) => <p key={item}><CheckCircle2 />{item}</p>)}</section>{testimonials.length > 0 && <section className="section"><h2>Depoimentos</h2></section>}<section id="duvidas" className="section"><h2>Dúvidas frequentes</h2><div className="faq">{faqs.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div></section><section className="final-cta"><h2>Precisa de uma coleta ou quer confirmar sua rota?</h2><a className="btn primary" href="#coleta">Solicitar coleta</a><a className="btn ghost" href={whatsappUrl("Olá! Gostaria de falar com a Mello Transportes.")} target="_blank">Falar no WhatsApp</a><a className="btn ghost" href="#cidades">Consultar cidade</a></section></main><Footer /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "LocalBusiness", name: company.name, telephone: company.phone, email: company.email, address: company.address, areaServed: company.serviceRegion, url: company.pagesUrl, makesOffer: services.map((s) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: s.title, description: s.description } })) }) }} /></>;
+  const route = useRoute();
+  const content = route === "/frota" ? <FleetPage /> : route === "/cidades" ? <CitiesPage /> : route === "/mercadorias" ? <CargoPage /> : route === "/coleta" ? <CollectionForm /> : route === "/duvidas" ? <FaqSection /> : <HomePage />;
+  return <><Header /><main>{content}</main><Footer /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "LocalBusiness", name: company.name, telephone: company.phone, email: company.email, address: company.address, areaServed: company.serviceRegion, url: company.pagesUrl, makesOffer: services.map((s) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: s.title, description: s.description } })) }) }} /></>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(<React.StrictMode><App /></React.StrictMode>);
