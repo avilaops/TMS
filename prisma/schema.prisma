@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  OPERATION
+  DRIVER
+  CLIENT
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(CLIENT)
+  clientId  String?  // Empresa que este usuário representa (obrigatório na prática quando role = CLIENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  driver    Driver?
+  client    Client?  @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+}
+
+model Client {
+  id              String   @id @default(uuid())
+  companyName     String   // Razão social
+  tradeName       String?  // Nome fantasia
+  cnpj            String   @unique
+  ie              String?
+  contactName     String?
+  email           String?
+  phone           String?
+  address         String?
+  paymentCondition String?
+  creditLimit     Float?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  collections     Collection[]
+  users           User[]
+  transactions    FinancialTransaction[]
+}
+
+model Driver {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  cpf       String   @unique
+  cnh       String
+  cnhExpiry DateTime
+  category  String
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  user      User      @relation(fields: [userId], references: [id])
+  vehicles  Vehicle[]
+  manifests Manifest[]
+  collections Collection[]
+  deliveries  Delivery[]
+}
+
+model Vehicle {
+  id           String   @id @default(uuid())
+  plate        String   @unique
+  model        String
+  type         String
+  capacity     Float?
+  maxWeight    Float?
+  year         Int?
+  driverId     String?
+  status       String   @default("AVAILABLE") // AVAILABLE, ON_ROUTE, MAINTENANCE
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  driver       Driver?  @relation(fields: [driverId], references: [id])
+  manifests    Manifest[]
+  maintenances Maintenance[]
+}
+
+model Collection {
+  id          String   @id @default(uuid())
+  clientId    String
+  sender      String
+  receiver    String
+  origin      String
+  destination String
+  volumes     Int
+  weight      Float
+  invoiceKey  String?
+  invoiceValue Float?
+  driverId    String?
+  manifestId  String?
+  status      String   @default("PENDING") // PENDING, CONFIRMED, COLLECTED, ROUTE, DELIVERED
+  receiverName String?
+  
+  // CT-e
+  cteKey      String?  @unique
+  cteNumber   Int?
+  cteStatus   String?  @default("PENDING") // PENDING, ISSUED, CANCELLED
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  client      Client   @relation(fields: [clientId], references: [id])
+  driver      Driver?  @relation(fields: [driverId], references: [id])
+  manifest    Manifest? @relation(fields: [manifestId], references: [id])
+}
+
+model Delivery {
+  id          String   @id @default(uuid())
+  manifestId  String?
+  driverId    String?
+  receiverName String?
+  receiverDoc  String?
+  status      String   @default("PENDING") // PENDING, DELIVERED, RETURNED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  manifest    Manifest? @relation(fields: [manifestId], references: [id])
+  driver      Driver?   @relation(fields: [driverId], references: [id])
+  proof       ProofOfDelivery?
+}
+
+model Manifest {
+  id          String   @id @default(uuid())
+  driverId    String
+  vehicleId   String
+  status      String   @default("ASSEMBLING") // ASSEMBLING, ROUTE, FINISHED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  driver      Driver    @relation(fields: [driverId], references: [id])
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
+  deliveries  Delivery[]
+  collections Collection[]
+}
+
+model FinancialTransaction {
+  id          String   @id @default(uuid())
+  type        String   // INCOME, EXPENSE
+  amount      Float
+  description String
+  dueDate     DateTime?
+  status      String   @default("PENDING") // PENDING, PAID
+  clientId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  client      Client?  @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+}
+
+model Maintenance {
+  id          String   @id @default(uuid())
+  vehicleId   String
+  description String
+  cost        Float
+  date        DateTime
+  status      String   @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+}
+
+model ProofOfDelivery {
+  id              String   @id @default(uuid())
+  deliveryId      String   @unique
+  photoBase64     String?  @db.Text
+  signatureBase64 String?  @db.Text
+  receiverName    String
+  receiverDoc     String
+  latitude        Float?
+  longitude       Float?
+  status          String   @default("SUBMITTED") // SUBMITTED, APPROVED, REJECTED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  delivery        Delivery @relation(fields: [deliveryId], references: [id])
+}
+
+model QuoteLead {
+  id              String   @id @default(uuid())
+  companyName     String
+  email           String
+  phone           String
+  origin          String
+  destination     String
+  volumes         Int
+  weight          Float
+  estimatedValue  Float?
+  status          String   @default("NEW") // NEW, CONTACTED, CONVERTED, LOST
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

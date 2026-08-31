@@ -1,16 +1,34 @@
-.env
+# dependencias
 node_modules/
-dist/
 pdf-generator/node_modules/
+
+# build
+.next/
+dist/
+out/
 pdf-generator/output/
 *.tsbuildinfo
+
+# ambiente
+.env
+.env.local
+.env*.local
+
+# sobras da versao Vite, ja preservadas no historico do git
+vite_backup/
 vite.config.js
 vite.config.d.ts
+
+# ferramentas de agente instaladas localmente
+.agents/
+.windsurf/
+
+# scratch e artefatos locais
+scratch.js
 actions-logs*
 tmp/
 call_*.png
-.DS_Store
 *.log
-*.tsbuildinfo
-vite.config.js
-vite.config.d.ts
+.DS_Store
+
+/src/generated/prisma

@@ -82,16 +82,25 @@ npm run typecheck
 npm run build
 ```
 
-## Deploy GitHub Pages
+## Deploy (Hetzner)
 
-O Vite está configurado com `base: "/Mello/"`.
+O site roda em container no Hetzner `178.105.82.48` (`/opt/mello`), atrás do Caddy,
+em `127.0.0.1:3060`. A imagem é buildada **localmente** (o servidor não tem RAM nem
+disco para `next build`) e enviada com `docker save | docker load`:
 
-O workflow `.github/workflows/deploy.yml` executa em push para `main` e por `workflow_dispatch`, usando Node.js 20, `npm ci`, lint, typecheck, build e `actions/deploy-pages`.
-
-URL esperada:
-
-```text
-https://avilaops.github.io/Mello/
+```bash
+docker build --platform linux/amd64 -t mello-app:latest .
+docker save mello-app:latest | gzip -1 | ssh -i ~/.ssh/hetzner_avilaops root@178.105.82.48 'gunzip | docker load'
+ssh -i ~/.ssh/hetzner_avilaops root@178.105.82.48 'cd /opt/mello && docker compose up -d app'
 ```
 
-No GitHub, habilite Pages para publicar via GitHub Actions em `Settings > Pages`.
+- Banco: container `mello-db` (Postgres 16, volume `mello-pgdata`), exposto só em
+  `127.0.0.1:5436` para `prisma db push` via túnel SSH
+  (`ssh -L 5436:127.0.0.1:5436 ...` e `npx prisma db push --url postgresql://mello:<senha>@127.0.0.1:5436/mello`).
+- Variáveis em `/opt/mello/.env` - ver `.env.production.example`.
+- DNS: `mello.avilaops.com` → A `178.105.82.48` (DNS-only). O domínio do cliente fica
+  na Redehost (e-mail é Redehost, MX/SPF intocados): `www` CNAME `mello.avilaops.com`
+  e apex A `178.105.82.48`.
+- Caddy: `mello.avilaops.com` e `mellotransportesriopreto.com.br` → 3060; `www`
+  redireciona 301 para o apex. Quando o DNS do cliente virar, trocar `NEXTAUTH_URL`
+  para `https://mellotransportesriopreto.com.br` e rodar `docker compose up -d app`.

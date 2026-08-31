@@ -1,4 +1,4 @@
-# Gerador de PDF — Regras de Frete (Mello Transportes Rio Preto)
+# Gerador de PDF: Regras de Frete (Mello Transportes Rio Preto)
 
 Gera um PDF com a tabela de tarifas, regras gerais de frete, frota por polo e a
 lista completa de cidades atendidas (lida direto de `tabela_frete_serilon.csv`).
@@ -14,9 +14,9 @@ O PDF é salvo em `output/Mello-Transportes-Regras-de-Frete.pdf`.
 
 ## Estrutura
 
-- `src/data.ts` — dados da empresa, regras de frete e leitura/agrupamento do CSV de cidades.
-- `src/template.ts` — monta o HTML/CSS do documento.
-- `src/generate.ts` — abre o HTML com Puppeteer e exporta o PDF (A4, com rodapé numerado).
+- `src/data.ts` - dados da empresa, regras de frete e leitura/agrupamento do CSV de cidades.
+- `src/template.ts` - monta o HTML/CSS do documento.
+- `src/generate.ts` - abre o HTML com Puppeteer e exporta o PDF (A4, com rodapé numerado).
 
 ## Atualizando o conteúdo
 

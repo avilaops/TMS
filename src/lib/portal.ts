@@ -1,0 +1,34 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+
+/**
+ * Resolve a empresa do usuário logado no portal do cliente.
+ *
+ * Toda consulta do portal precisa passar por aqui e filtrar pelo `clientId`
+ * devolvido — é o que impede um cliente de enxergar dados de outro.
+ */
+export async function requirePortalClient(): Promise<
+  { clientId: string; error: null } | { clientId: null; error: NextResponse }
+> {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user || session.user.role !== "CLIENT") {
+    return {
+      clientId: null,
+      error: NextResponse.json({ error: "Não autorizado" }, { status: 401 }),
+    };
+  }
+
+  if (!session.user.clientId) {
+    return {
+      clientId: null,
+      error: NextResponse.json(
+        { error: "Usuário não está vinculado a uma empresa. Fale com a Mello." },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return { clientId: session.user.clientId, error: null };
+}

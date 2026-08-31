@@ -1,0 +1,30 @@
+# Produção no Hetzner: /opt/mello (imagem buildada localmente e carregada com docker load).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mello-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mello
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: mello
+    volumes:
+      - mello-pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5436:5432" # só loopback: prisma db push / seed via túnel SSH
+
+  app:
+    image: mello-app:latest
+    build: .
+    container_name: mello-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://mello:${DB_PASSWORD}@db:5432/mello?schema=public"
+    ports:
+      - "127.0.0.1:3060:3000" # Caddy -> mello.avilaops.com / mellotransportesriopreto.com.br
+    depends_on:
+      - db
+
+volumes:
+  mello-pgdata:

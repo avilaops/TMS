@@ -76,7 +76,7 @@ export function CollectionCenter() {
     }));
   }
 
-  function finishCollection() {
+  async function finishCollection() {
     if (!draft.requesterName || !draft.requesterPhone || !draft.originCity || !draft.destinationCity || !draft.goodsType || !draft.reviewed || !draft.aware || !draft.consent) {
       setSentHint("Revise os campos obrigatórios e as confirmações antes de abrir o WhatsApp.");
       return;
@@ -87,6 +87,26 @@ export function CollectionCenter() {
     if (draft.saveProfile) collectionService.saveProfile(finalDraft);
     collectionService.saveDraft(finalDraft);
     collectionService.saveHistory(item);
+    
+    try {
+      await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyName: draft.requesterName,
+          email: draft.requesterName + "@mello.example.com", // Fallback if no email
+          phone: draft.requesterPhone,
+          origin: draft.originCity,
+          destination: draft.destinationCity,
+          volumes: draft.totalVolumes || "1",
+          weight: "100", // Fallback
+          message: built.message
+        })
+      });
+    } catch (e) {
+      console.error("Failed to send lead to CRM", e);
+    }
+
     setDraft(finalDraft);
     setMessage(built.message);
     setHistory(collectionService.getHistory());
