@@ -39,11 +39,28 @@ A confirmação da coleta é sempre humana, pela conversa no WhatsApp. O site n�
 - FAQ: `src/data/faq.ts`
 - Depoimentos reais: `src/data/testimonials.ts`
 - Mensagens, protocolos, histórico local e futura troca por API: `src/services/collectionService.ts`
+- Matérias do blog: `src/content/blog.ts`
 - Identidade visual, paleta e kit de marca: `src/data/brand.ts`
 - Manual editável de marca: `docs/manual-marca-mello.md`
 - Manual PDF publicado: `public/manual-marca-mello.pdf`
 
 Não adicione depoimentos, números de entregas, clientes ou anos de mercado sem confirmação comercial.
+
+## Blog
+
+As matérias ficam em `src/content/blog.ts`, como blocos tipados. Para publicar
+uma matéria nova, acrescente um objeto em `posts` com `slug`, `title`,
+`description`, `excerpt`, `category`, `publishedAt`, `readingMinutes` e `body`.
+
+O resto se ajusta sozinho: a matéria entra no índice `/blog`, ganha a página
+`/blog/<slug>` pré-renderizada, entra no `sitemap.xml` gerado pela aplicação e
+recebe os dados estruturados de `Article`.
+
+Blocos aceitos no `body`: `p`, `h2`, `h3`, `ul`, `ol`, `note` e `table`. Dentro
+dos textos, `**assim**` vira negrito.
+
+Não publique número de entregas, nome de cliente ou tempo de mercado sem
+confirmação comercial.
 
 ## Identidade Visual
 
