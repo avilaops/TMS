@@ -52,7 +52,7 @@ function Logo() {
 
 function Header() {
   const [open, setOpen] = useState(false);
-  const links = [["#/", "Início"], ["#/cidades", "Cidades"], ["#/frota", "Frota"], ["#/mercadorias", "Mercadorias"], ["#/marca", "Marca"], ["#/duvidas", "Dúvidas"]];
+  const links = [["#/", "Início"], ["#/cidades", "Cidades"], ["#/frota", "Frota"], ["#/mercadorias", "Mercadorias"], ["/blog", "Blog"], ["#/marca", "Marca"], ["#/duvidas", "Dúvidas"]];
   return <header className="topbar"><Logo /><nav className={open ? "nav open" : "nav"}>{links.map(([href, label]) => <a onClick={() => setOpen(false)} href={href} key={href}>{label}</a>)}<a href={company.phoneHref}><Phone size={16} />{company.phone}</a><a className="btn primary" href="#/coleta"><Send size={16} />Solicitar coleta</a></nav><a className="whats-mini" href="#/coleta">WhatsApp</a><button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Abrir menu">{open ? <X /> : <Menu />}</button></header>;
 }
 
