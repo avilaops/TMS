@@ -160,3 +160,37 @@ npx tsx prisma/sincronizar-artigos.ts --aplicar   # grava
 Matéria com o mesmo slug é atualizada, nunca duplicada. Matéria que sumiu do
 arquivo não é apagada, só reportada: ela pode ter post publicado apontando para
 ela, e apagar levaria o histórico junto.
+
+## Blog automático (n8n)
+
+O fluxo `Mello - Blog automático (escreve, revisa, entrega para colar)`
+(`WR18HLwdT9NDuPFd`) roda toda quinta às 08:00 e entrega matéria pronta para
+revisão. Ele **não publica nada**: a matéria mora neste repositório, e publicar
+é colar o bloco em `src/content/blog.ts` e commitar.
+
+O caminho, em ordem:
+
+1. Lê a pauta na data table `mello_blog_pauta` (`HKHTICCIOB3v5Oqu`).
+2. Descarta tema já escrito, lendo `mello_blog_temas_feitos` (`ugifbPq6Bv0ivIvm`).
+   As 5 matérias que já estão no site também entram na lista de bloqueio.
+3. Escreve com a OpenAI, um tema por vez, no máximo 3 por rodada.
+4. Um segundo agente revisa contra 8 critérios e dá nota de 0 a 100.
+5. Nota abaixo de 85 ganha **uma** reescrita com o parecer em mãos.
+6. Monta o bloco TypeScript e manda por e-mail, pronto para colar.
+
+Três decisões que valem saber:
+
+- **O slug vem da pauta, nunca da IA.** Ele é a URL e a chave contra matéria
+  duplicada, então não pode ser inventado a cada rodada.
+- **Travessão reprova sozinho**, e é conferido por regex depois da IA. O
+  revisor também passa a mão, e travessão é marca de texto gerado.
+- **A IA devolve `Block[]` tipado**, não markdown. O que não couber nos tipos
+  aceitos (`p`, `h2`, `h3`, `ul`, `ol`, `note`, `table`) é descartado antes de
+  virar código, para o bloco sempre compilar.
+
+Para acrescentar um tema, insira uma linha em `mello_blog_pauta` com `slug`,
+`titulo`, `categoria` (uma das quatro do blog), `angulo` e `ativo`.
+
+O filtro de `ativo` é feito no Code, não no nó Data Table: lá a coluna booleana
+era comparada com a string `"true"` e nunca casava, então a fila saía vazia e a
+rodada terminava sem escrever nada, sem erro nenhum.
