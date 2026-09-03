@@ -161,7 +161,7 @@ Matéria com o mesmo slug é atualizada, nunca duplicada. Matéria que sumiu do
 arquivo não é apagada, só reportada: ela pode ter post publicado apontando para
 ela, e apagar levaria o histórico junto.
 
-## Blog automático (n8n)
+## Blog e Instagram automáticos (n8n)
 
 O fluxo `Mello - Blog automático (escreve, revisa, entrega para colar)`
 (`WR18HLwdT9NDuPFd`) roda toda quinta às 08:00 e entrega matéria pronta para
@@ -211,6 +211,17 @@ Três decisões que valem saber:
   aceitos (`p`, `h2`, `h3`, `ul`, `ol`, `note`, `table`) é descartado antes de
   virar código, para o bloco sempre compilar.
 
+### O post do Instagram
+
+A mesma foto vira a arte do feed, em 1080x1350. Ela sobe ao Google Drive como
+link público (o Todoist não hospeda imagem) e abre uma tarefa com a legenda e as
+hashtags prontas para copiar. Postar continua manual: você abre a tarefa, salva
+a imagem e publica.
+
+**A ordem da arte importa:** recorta primeiro, assina depois. Assinar e então
+cortar parte a barra ao meio, sobra "SPORTES" e a logo some. Cada formato recebe
+a assinatura inteira, com medidas próprias.
+
 Para acrescentar um tema, insira uma linha em `mello_blog_pauta` com `slug`,
 `titulo`, `categoria` (uma das quatro do blog), `angulo` e `ativo`.
 
@@ -229,12 +240,20 @@ parar no nó quando a tabela está vazia, que é o estado em que ela nasce.
 O filtro de `ativo` também saiu do nó Data Table para o Code: lá a coluna
 booleana era comparada com a string `"true"` e nunca casava.
 
-**Binário se perde de três formas, e todas dão o mesmo sintoma: e-mail sem
-anexo.** (1) Code node não repassa binário: tem que devolver `{ json, binary }`.
-(2) Ler o binário de outro nó pelo nome (`$("Nó").item.binary`) **apaga** o que o
-item já carregava; o certo é `$input.item.binary`. (3) A lista de anexos do
-e-mail tem que ser montada a partir do que existe de fato, porque nome fixo
-derruba o envio quando vem menos capa do que o esperado.
+**Binário se perde de várias formas, e todas dão o mesmo sintoma: e-mail sem
+anexo ou arte sem marca.**
+
+1. Code node não repassa binário: tem que devolver `{ json, binary }`.
+2. Ler o binário de outro nó pelo nome **apaga** o que o item já carregava. Use
+   `$input.item.binary` quando quiser preservar o que veio.
+3. Mas leia pelo nome quando o predecessor trocou o item: depois do Todoist, o
+   item que chega é a tarefa criada, não a matéria.
+4. Subir ao Drive o binário do nó errado publica a arte **sem** assinatura: a
+   marca é desenhada e descartada em seguida, sem erro nenhum.
+5. O nó de compartilhar do Drive devolve o id da **permissão**, não do arquivo.
+   O id do arquivo vem do nó de upload.
+6. A lista de anexos do e-mail tem que ser montada a partir do que existe de
+   fato, porque nome fixo derruba o envio.
 
 Os três sintomas eram o mesmo: rodada terminando **em sucesso**, em menos de um
 segundo, sem escrever nada e sem erro nenhum. Por isso o Code agora emite um
