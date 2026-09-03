@@ -29,7 +29,22 @@ export type Post = {
   publishedAt: string;
   readingMinutes: number;
   body: Block[];
+  /**
+   * Capa da matéria, gerada pelo fluxo do n8n na identidade da marca e
+   * publicada em /blog-capas/<slug>.png. Matéria sem capa continua válida: o
+   * índice e a página caem no layout tipográfico de antes.
+   */
+  coverImage?: string;
+  coverImageAlt?: string;
 };
+
+/** Capa de uma matéria, ou a imagem padrão do site quando ela não tem. */
+export function coverOf(post: Post): { url: string; alt: string } {
+  return {
+    url: post.coverImage ?? "/preview-whatsapp-v1.png",
+    alt: post.coverImageAlt ?? `Mello Transportes: ${post.title}`,
+  };
+}
 
 export const posts: Post[] = [
   {

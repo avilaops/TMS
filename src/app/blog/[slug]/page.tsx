@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { PostBody } from "@/components/site/PostBody";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { company } from "@/config/company";
-import { getPost, posts, sortedPosts } from "@/content/blog";
+import { coverOf, getPost, posts, sortedPosts } from "@/content/blog";
 import "../../landing.css";
 import "../blog.css";
 
@@ -25,6 +26,8 @@ export async function generateMetadata({
     return { title: "Matéria não encontrada" };
   }
 
+  const capa = coverOf(post);
+
   return {
     title: post.title,
     description: post.description,
@@ -35,6 +38,13 @@ export async function generateMetadata({
       title: post.title,
       description: post.description,
       publishedTime: post.publishedAt,
+      images: [{ url: capa.url, width: 1200, height: 630, alt: capa.alt }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: post.title,
+      description: post.description,
+      images: [capa.url],
     },
   };
 }
@@ -74,6 +84,16 @@ export default async function PostPage({ params }: PageProps) {
           </div>
           <h1>{post.title}</h1>
           <p className="post-lead">{post.excerpt}</p>
+          {post.coverImage && (
+            <Image
+              className="post-cover"
+              src={post.coverImage}
+              alt={post.coverImageAlt ?? post.title}
+              width={1200}
+              height={630}
+              priority
+            />
+          )}
           <hr className="post-rule" />
           <PostBody blocks={post.body} />
         </article>
@@ -127,6 +147,7 @@ export default async function PostPage({ params }: PageProps) {
             "@type": "Article",
             headline: post.title,
             description: post.description,
+            image: `${siteUrl}${coverOf(post).url}`,
             datePublished: post.publishedAt,
             dateModified: post.publishedAt,
             inLanguage: "pt-BR",

@@ -178,6 +178,22 @@ O caminho, em ordem:
 5. Nota abaixo de 85 ganha **uma** reescrita com o parecer em mãos.
 6. Monta o bloco TypeScript e manda por e-mail, pronto para colar.
 
+### A capa da matéria
+
+A capa é uma **foto gerada por IA**, não um card com texto. Um agente escreve o
+prompt a partir do tema (o que uma câmera veria: caixas, paletes, doca, baú) e o
+`gpt-image-2` gera a foto. O prompt proíbe texto, letra, logotipo e rosto
+identificável: texto dentro de imagem gerada sai errado e não há como corrigir
+depois.
+
+A imagem chega **anexada no e-mail**, com o nome do arquivo pronto. Para
+publicar: salve o PNG em `public/blog-capas/` com o nome que ele já tem e cole o
+bloco, que já vem com `coverImage` e `coverImageAlt`.
+
+Matéria sem capa continua válida: o índice e a página caem no layout tipográfico
+e o OpenGraph usa a imagem padrão do site. Quando a geração falha, o e-mail diz o
+motivo em vez de omitir.
+
 Três decisões que valem saber:
 
 - **O slug vem da pauta, nunca da IA.** Ele é a URL e a chave contra matéria
@@ -205,6 +221,10 @@ parar no nó quando a tabela está vazia, que é o estado em que ela nasce.
 
 O filtro de `ativo` também saiu do nó Data Table para o Code: lá a coluna
 booleana era comparada com a string `"true"` e nunca casava.
+
+**Code node não repassa binário sozinho.** O e-mail saía sem a capa anexada
+porque o Code que reescreve o bloco devolvia só `json`, e a imagem morria ali. É
+preciso devolver `{ json, binary }` explicitamente.
 
 Os três sintomas eram o mesmo: rodada terminando **em sucesso**, em menos de um
 segundo, sem escrever nada e sem erro nenhum. Por isso o Code agora emite um

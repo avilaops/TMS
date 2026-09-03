@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, BookOpen } from "lucide-react";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
@@ -48,6 +49,16 @@ export default function BlogIndexPage() {
         <div className="post-grid">
           {sortedPosts.map((post) => (
             <article className="post-card" key={post.slug}>
+              {post.coverImage && (
+                <Link className="post-card-cover" href={`/blog/${post.slug}`}>
+                  <Image
+                    src={post.coverImage}
+                    alt={post.coverImageAlt ?? post.title}
+                    width={1200}
+                    height={630}
+                  />
+                </Link>
+              )}
               <div className="post-meta">
                 <span className="post-tag">{post.category}</span>
                 <time dateTime={post.publishedAt}>

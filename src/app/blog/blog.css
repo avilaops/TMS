@@ -258,3 +258,30 @@
     font-size: 18px;
   }
 }
+
+/* Capa da matéria. A mesma arte serve o blog e o feed do Instagram: o que muda
+   é o corte, gerado em dois formatos pelo fluxo do n8n. Matéria sem capa
+   continua no layout tipográfico, então nada quebra por falta de imagem. */
+.post-card-cover {
+  display: block;
+  margin: -24px -24px 4px;
+  border-radius: 14px 14px 0 0;
+  overflow: hidden;
+  line-height: 0;
+}
+.post-card-cover img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1200 / 630;
+  object-fit: cover;
+}
+.post-cover {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1200 / 630;
+  object-fit: cover;
+  border: 1px solid #e1e4ea;
+  border-radius: 14px;
+  margin: 20px 0 4px;
+}
