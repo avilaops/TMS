@@ -186,6 +186,13 @@ prompt a partir do tema (o que uma câmera veria: caixas, paletes, doca, baú) e
 identificável: texto dentro de imagem gerada sai errado e não há como corrigir
 depois.
 
+Sobre a foto entra a **assinatura da marca**, seguindo `brandRules`: fio
+laranja, barra escura de contraste (a regra proíbe aplicar a marca sobre foto
+poluída sem faixa) e a logo na **versão branca**, que é a indicada para fundo
+escuro. A logo branca é um asset do site (`/logo-mello-branca.png`), gerada uma
+vez: o `logo-mello.png` é RGB sem canal alpha e, aplicado direto, aparece dentro
+de um quadrado branco.
+
 A imagem chega **anexada no e-mail**, com o nome do arquivo pronto. Para
 publicar: salve o PNG em `public/blog-capas/` com o nome que ele já tem e cole o
 bloco, que já vem com `coverImage` e `coverImageAlt`.
@@ -222,9 +229,12 @@ parar no nó quando a tabela está vazia, que é o estado em que ela nasce.
 O filtro de `ativo` também saiu do nó Data Table para o Code: lá a coluna
 booleana era comparada com a string `"true"` e nunca casava.
 
-**Code node não repassa binário sozinho.** O e-mail saía sem a capa anexada
-porque o Code que reescreve o bloco devolvia só `json`, e a imagem morria ali. É
-preciso devolver `{ json, binary }` explicitamente.
+**Binário se perde de três formas, e todas dão o mesmo sintoma: e-mail sem
+anexo.** (1) Code node não repassa binário: tem que devolver `{ json, binary }`.
+(2) Ler o binário de outro nó pelo nome (`$("Nó").item.binary`) **apaga** o que o
+item já carregava; o certo é `$input.item.binary`. (3) A lista de anexos do
+e-mail tem que ser montada a partir do que existe de fato, porque nome fixo
+derruba o envio quando vem menos capa do que o esperado.
 
 Os três sintomas eram o mesmo: rodada terminando **em sucesso**, em menos de um
 segundo, sem escrever nada e sem erro nenhum. Por isso o Code agora emite um
