@@ -4,13 +4,13 @@ const currency = new Intl.NumberFormat("pt-BR", {
 });
 
 export function formatCurrency(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
   return currency.format(value);
 }
 
 /** Para instantes reais (createdAt, updatedAt): converte para o fuso do usuário. */
 export function formatDate(value: string | Date | null | undefined) {
-  if (!value) return "—";
+  if (!value) return "-";
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
@@ -22,7 +22,7 @@ export function formatDate(value: string | Date | null | undefined) {
  * dado em si, e não um instante, a leitura tem que ser feita em UTC.
  */
 export function formatCalendarDate(value: string | Date | null | undefined) {
-  if (!value) return "—";
+  if (!value) return "-";
   return new Date(value).toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
@@ -40,7 +40,7 @@ export function daysUntil(value: string | Date) {
 }
 
 export function formatWeight(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
   return `${value.toLocaleString("pt-BR")} kg`;
 }
 

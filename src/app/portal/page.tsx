@@ -69,7 +69,7 @@ export default function PortalHomePage() {
               <card.icon className="w-5 h-5 text-orange-500" />
             </div>
             <p className="text-3xl font-outfit font-bold text-gray-900">
-              {loading ? "—" : card.value}
+              {loading ? "-" : card.value}
             </p>
           </div>
         ))}

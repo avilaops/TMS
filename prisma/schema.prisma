@@ -214,3 +214,114 @@ model QuoteLead {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+// ---------------------------------------------------------------------------
+// Conteúdo e distribuição
+//
+// A matéria do blog continua sendo escrita em src/content/blog.ts, que é quem
+// gera a página, o sitemap e os dados estruturados. O banco não duplica o texto:
+// ele registra que a matéria existe (Article) e guarda o que interessa depois de
+// publicada, que é para onde ela foi (SocialPost) e quanto rendeu (ContentMetric).
+//
+// O mesmo SocialPost serve blog, Instagram, Google Meu Negócio e o resto: o que
+// muda entre eles é o canal e o formato do texto, não o ciclo de vida. Por isso
+// há uma tabela só, com canal como campo, em vez de uma tabela por rede.
+// ---------------------------------------------------------------------------
+
+enum Channel {
+  BLOG
+  INSTAGRAM
+  GOOGLE_BUSINESS
+  FACEBOOK
+  LINKEDIN
+  WHATSAPP_STATUS
+}
+
+enum PostStatus {
+  DRAFT     // escrito, ninguém aprovou
+  APPROVED  // liberado pelo comercial, esperando a hora
+  SCHEDULED // tem data marcada
+  PUBLISHED // saiu
+  FAILED    // tentou sair e a API recusou
+  CANCELED  // desistiu-se antes de publicar
+}
+
+model Article {
+  id          String   @id @default(uuid())
+  slug        String   @unique // o mesmo slug de src/content/blog.ts
+  title       String
+  description String
+  category    String
+  publishedAt DateTime
+  // Espelho do que está no arquivo, para o painel mostrar sem ler o bundle.
+  // A página do site nunca lê daqui: quem manda é o blog.ts.
+  syncedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  posts       SocialPost[]
+  metrics     ContentMetric[]
+
+  @@index([publishedAt])
+}
+
+model SocialPost {
+  id          String     @id @default(uuid())
+  channel     Channel
+  status      PostStatus @default(DRAFT)
+
+  // O texto que vai para a rede. Cada canal tem o seu, porque a legenda do
+  // Instagram não é o resumo do Google Meu Negócio.
+  body        String     @db.Text
+  imageUrl    String?
+  linkUrl     String?    // para onde o post aponta: a matéria, a cotação, o site
+
+  articleId   String?    // post que divulga uma matéria; nulo quando é post avulso
+  scheduledFor DateTime? // quando deve sair
+  publishedAt DateTime?  // quando saiu de fato
+
+  // Devolvido pela API da rede no momento em que o post sai. Guardado para
+  // conseguir achar o post de volta e para não republicar o mesmo duas vezes.
+  externalId  String?
+  externalUrl String?
+
+  // Preenchido só quando status = FAILED. Erro sem texto vira falha invisível,
+  // e falha invisível é a que ninguém conserta.
+  failureReason String?  @db.Text
+  attempts    Int        @default(0)
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  article     Article?   @relation(fields: [articleId], references: [id])
+
+  // O mesmo post não sai duas vezes no mesmo canal, nem quando o fluxo do n8n
+  // repete a chamada.
+  @@unique([channel, externalId])
+  @@index([status, scheduledFor])
+  @@index([articleId])
+}
+
+model ContentMetric {
+  id          String   @id @default(uuid())
+  articleId   String
+  measuredOn  DateTime @db.Date // a data da medição, não o instante
+
+  // Search Console, últimos 28 dias na data da medição.
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  position    Float?
+  ctr         Float?
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  article     Article  @relation(fields: [articleId], references: [id])
+
+  // Uma medição por matéria por dia: rodar o fluxo duas vezes na mesma terça
+  // não pode dobrar o número.
+  @@unique([articleId, measuredOn])
+  @@index([measuredOn])
+}

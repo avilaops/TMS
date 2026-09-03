@@ -121,3 +121,42 @@ ssh -i ~/.ssh/hetzner_avilaops root@178.105.82.48 'cd /opt/mello && docker compo
 - Caddy: `mello.avilaops.com` e `mellotransportesriopreto.com.br` → 3060; `www`
   redireciona 301 para o apex. Quando o DNS do cliente virar, trocar `NEXTAUTH_URL`
   para `https://mellotransportesriopreto.com.br` e rodar `docker compose up -d app`.
+
+## Conteúdo e distribuição (banco)
+
+O texto da matéria continua em `src/content/blog.ts`, que é quem gera a página,
+o sitemap e os dados estruturados. O banco não guarda o texto: guarda o que
+acontece **depois** de publicada.
+
+Três tabelas:
+
+- `Article` - espelho das matérias do arquivo (slug, título, categoria, data).
+  Serve para um post apontar para a matéria e para a medição ter onde pendurar
+  o número. A página do site nunca lê daqui.
+- `SocialPost` - um post por canal (`BLOG`, `INSTAGRAM`, `GOOGLE_BUSINESS`,
+  `FACEBOOK`, `LINKEDIN`, `WHATSAPP_STATUS`), com texto próprio, arte, link,
+  agendamento, o id devolvido pela rede e o motivo da falha quando dá errado.
+  Uma tabela só, com canal como campo, porque o ciclo de vida é o mesmo em
+  todos: rascunho, aprovado, agendado, publicado.
+- `ContentMetric` - impressões, cliques, posição e CTR por matéria e por dia de
+  medição, no formato que o Search Console devolve.
+
+Duas restrições valem citar, porque foram testadas e são o que impede erro
+silencioso:
+
+- `SocialPost` é único por (canal, id externo): o fluxo repetir a chamada não
+  publica o mesmo post duas vezes. Post ainda sem id externo (rascunho) pode
+  repetir à vontade.
+- `ContentMetric` é único por (matéria, data): rodar a medição duas vezes na
+  mesma terça não dobra o número.
+
+Para espelhar as matérias do arquivo no banco:
+
+```bash
+npx tsx prisma/sincronizar-artigos.ts             # ensaio, não grava
+npx tsx prisma/sincronizar-artigos.ts --aplicar   # grava
+```
+
+Matéria com o mesmo slug é atualizada, nunca duplicada. Matéria que sumiu do
+arquivo não é apagada, só reportada: ela pode ter post publicado apontando para
+ela, e apagar levaria o histórico junto.
