@@ -191,6 +191,23 @@ Três decisões que valem saber:
 Para acrescentar um tema, insira uma linha em `mello_blog_pauta` com `slug`,
 `titulo`, `categoria` (uma das quatro do blog), `angulo` e `ativo`.
 
-O filtro de `ativo` é feito no Code, não no nó Data Table: lá a coluna booleana
-era comparada com a string `"true"` e nunca casava, então a fila saía vazia e a
-rodada terminava sem escrever nada, sem erro nenhum.
+### Duas armadilhas que custaram caro
+
+**O Code lê os dois nós pelo nome, nunca por `$input`.** O predecessor imediato
+do Code é `Ler temas ja escritos`. Com a tabela vazia e `alwaysOutputData`
+ligado, esse nó devolvia um único item `{}`, e era ele que chegava no `$input`:
+a pauta inteira ficava de fora e a fila saía vazia com a pauta cheia.
+
+**A ordem da cadeia importa:** temas primeiro, pauta depois. Tentar ler os temas
+num ramo paralelo saído do gatilho quebra com `Node hasn't been executed`,
+porque o Code roda antes do ramo. E tirar o `alwaysOutputData` faz a cadeia
+parar no nó quando a tabela está vazia, que é o estado em que ela nasce.
+
+O filtro de `ativo` também saiu do nó Data Table para o Code: lá a coluna
+booleana era comparada com a string `"true"` e nunca casava.
+
+Os três sintomas eram o mesmo: rodada terminando **em sucesso**, em menos de um
+segundo, sem escrever nada e sem erro nenhum. Por isso o Code agora emite um
+item de diagnóstico quando a fila fica vazia, dizendo quantas linhas entraram e
+por que cada tema saiu, e esse texto vai no e-mail. Falha silenciosa é a que
+ninguém conserta.
