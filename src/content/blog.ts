@@ -382,6 +382,88 @@ export const posts: Post[] = [
       },
     ],
   },
+  {
+    slug: "redespacho-como-funciona",
+    coverImage: "/blog-capas/redespacho-como-funciona.png",
+    coverImageAlt:
+      "Caminhão em doca com porta aberta, caixas e paletes ao redor, pessoa com prancheta ao fundo.",
+    title: "Redespacho: Entenda o Impacto no Frete e no Prazo",
+    description:
+      "Descubra como o redespacho afeta o custo e o tempo de entrega quando a carga necessita de um segundo transportador.",
+    excerpt:
+      "Saiba como o redespacho interfere no valor e prazo do frete e entenda os motivos para essa prática ser necessária em algumas entregas.",
+    category: "Cotação",
+    publishedAt: "2026-09-04",
+    readingMinutes: 5,
+    body: [
+      {
+        type: "p",
+        text: "O redespacho é uma prática comum no setor de transporte, mas muitos clientes ainda têm dúvidas sobre como ele funciona e por que influencia o custo e o prazo do frete. Neste artigo, vamos esclarecer essas questões.",
+      },
+      {
+        type: "h2",
+        text: "O que é redespacho?",
+      },
+      {
+        type: "p",
+        text: "Redespacho ocorre quando uma carga precisa ser transferida para um segundo transportador para chegar ao destino final. Isso geralmente acontece quando a transportadora original não cobre a área de entrega final.",
+      },
+      {
+        type: "h2",
+        text: "Por que o redespacho é necessário?",
+      },
+      {
+        type: "p",
+        text: "Existem vários motivos para o redespacho ser necessário: a limitação geográfica da transportadora inicial, otimização de rotas ou a necessidade de veículos especiais que a frota original não possui.",
+      },
+      {
+        type: "h3",
+        text: "Impacto no custo do frete",
+      },
+      {
+        type: "ul",
+        items: [
+          "Custo adicional: Envolve o pagamento de dois transportadores.",
+          "Manuseio extra: A carga precisa ser transferida, o que pode aumentar os custos.",
+          "Distância maior: Algumas vezes, o redespacho aumenta a rota original.",
+        ],
+      },
+      {
+        type: "h3",
+        text: "Impacto no prazo de entrega",
+      },
+      {
+        type: "p",
+        text: "O redespacho pode adicionar tempo extra ao prazo de entrega, pois envolve mais etapas no processo de transporte. No entanto, em muitos casos, o prazo continua dentro de um período esperado, dependendo da distância e disponibilidade do segundo transportador.",
+      },
+      {
+        type: "table",
+        head: ["Fator", "Impacto no Custo", "Impacto no Prazo"],
+        rows: [
+          ["Custo adicional", "Alto", "Baixo"],
+          ["Manuseio extra", "Médio", "Médio"],
+          ["Distância maior", "Variável", "Alto"],
+        ],
+      },
+      {
+        type: "h2",
+        text: "Como minimizar o impacto do redespacho?",
+      },
+      {
+        type: "p",
+        text: "Para minimizar os impactos do redespacho, é essencial planejar a logística com antecedência e escolher transportadoras com boas conexões e parcerias. Isso pode ajudar a reduzir custos e prazos.",
+      },
+      {
+        type: "note",
+        title: "Dica importante",
+        text: "Sempre consulte com sua transportadora sobre a possibilidade de redespacho na sua rota para evitar surpresas.",
+      },
+      {
+        type: "p",
+        text: "Se você ainda tem dúvidas sobre como o redespacho pode afetar suas entregas, entre em contato com nosso time comercial. Estamos à disposição para ajudar e oferecer as melhores soluções para suas necessidades de transporte.",
+      },
+    ],
+  },
 ];
 
 export function getPost(slug: string): Post | undefined {
