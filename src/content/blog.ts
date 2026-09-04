@@ -382,6 +382,91 @@ export const posts: Post[] = [
       },
     ],
   },
+  {
+    slug: "redespacho-como-funciona",
+    coverImage: "/blog-capas/redespacho-como-funciona.png",
+    coverImageAlt:
+      "Caminhão na doca, paletes e trabalhador com prancheta ao lado, indicando operação de redespacho.",
+    title: "Redespacho: Entenda o Impacto no Frete e Prazos",
+    description:
+      "Saiba como o redespacho, uso de um segundo transportador, influencia custo e prazo de sua carga. Entenda como funciona na prática.",
+    excerpt:
+      "O redespacho é necessário quando um segundo transportador é usado para completar a entrega. Isso pode alterar custos e prazos. Descubra como funciona.",
+    category: "Cotação",
+    publishedAt: "2026-09-04",
+    readingMinutes: 5,
+    body: [
+      {
+        type: "p",
+        text: "Redespacho é um termo usado quando uma carga precisa ser transferida para um segundo transportador para chegar ao destino final. Este processo pode influenciar tanto o custo quanto o prazo de entrega da sua mercadoria.",
+      },
+      {
+        type: "h2",
+        text: "Como Funciona o Redespacho",
+      },
+      {
+        type: "p",
+        text: "Quando uma transportadora não consegue completar a entrega com seus próprios veículos, ela pode passar a carga para outra empresa. Isso é comum em rotas mais longas ou em áreas onde a transportadora original não atua frequentemente.",
+      },
+      {
+        type: "h2",
+        text: "Impacto no Valor do Frete",
+      },
+      {
+        type: "p",
+        text: "O redespacho pode aumentar o custo do frete porque envolve mais de uma empresa no transporte. Cada transportadora tem seus próprios custos operacionais, que são repassados ao cliente. Por exemplo, se a primeira transportadora cobra R$ 1,50 por km e a segunda R$ 2,00, o custo total será maior do que se apenas uma empresa fizesse o trajeto.",
+      },
+      {
+        type: "table",
+        head: ["Fator", "Impacto no Custo"],
+        rows: [
+          ["Distância da rota", "Pode aumentar"],
+          ["Número de transportadoras", "Cada uma adiciona custo"],
+          ["Complexidade logística", "Pode incluir taxas adicionais"],
+        ],
+      },
+      {
+        type: "h2",
+        text: "Influência nos Prazos de Entrega",
+      },
+      {
+        type: "p",
+        text: "Os prazos de entrega também podem ser afetados. A necessidade de transferir a carga para um segundo transportador pode estender o tempo necessário para completar a entrega. Considere que uma entrega direta pode levar 24 horas, enquanto com redespacho, o prazo pode se estender para 48 horas.",
+      },
+      {
+        type: "ul",
+        items: [
+          "Até 24h: Possível em rotas curtas e diretas",
+          "Até 48h: Mais comum quando envolve redespacho",
+        ],
+      },
+      {
+        type: "h3",
+        text: "Quando o Redespacho é Necessário",
+      },
+      {
+        type: "p",
+        text: "O redespacho é geralmente necessário quando o destino está fora da área de cobertura da transportadora original ou quando a carga precisa ser entregue rapidamente em locais distantes. Por exemplo, se a carga precisa chegar a uma cidade remota onde a transportadora não possui filial, o redespacho é a solução.",
+      },
+      {
+        type: "note",
+        title: "Dica Importante",
+        text: "Sempre discuta as opções de redespacho com sua transportadora para entender como isso afetará seu frete.",
+      },
+      {
+        type: "h3",
+        text: "Como Planejar para o Redespacho",
+      },
+      {
+        type: "p",
+        text: "Planejar adequadamente pode ajudar a minimizar custos e garantir que sua carga chegue dentro do prazo esperado. Converse com sua transportadora sobre possíveis rotas e opções de redespacho. Avalie diferentes cenários e, se possível, obtenha cotações para as rotas alternativas.",
+      },
+      {
+        type: "p",
+        text: "Se você precisar de mais informações sobre como o redespacho pode afetar sua operação, entre em contato com nosso time comercial. Estamos aqui para ajudar a encontrar a melhor solução para suas necessidades de transporte.",
+      },
+    ],
+  },
 ];
 
 export function getPost(slug: string): Post | undefined {
