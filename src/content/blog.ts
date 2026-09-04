@@ -382,6 +382,60 @@ export const posts: Post[] = [
       },
     ],
   },
+  {
+    slug: "redespacho-como-funciona",
+    title: "Redespacho de carga quando e por que altera frete e prazo",
+    description:
+      "Entenda o que é redespacho em que situações ele é necessário e como a troca de transportador impacta o valor do frete e o prazo de entrega sem termos técnicos",
+    excerpt:
+      "Redespacho acontece quando a carga precisa mudar de transportador para chegar ao destino final Essa troca gera custos adicionais e pode alterar o prazo exigindo atenção ao planejar a operação",
+    category: "Cotação",
+    publishedAt: "2026-09-04",
+    readingMinutes: 5,
+    body: [
+      {
+        type: "p",
+        text: "Quando você despacha uma carga o objetivo é que ela chegue ao cliente final no menor tempo e com o menor custo possível",
+      },
+      {
+        type: "h2",
+        text: "O que é redespacho",
+      },
+      {
+        type: "p",
+        text: "Redespacho é a transferência da responsabilidade de transporte para outro veículo ou transportador antes que a mercadoria atinja o destino final",
+      },
+      {
+        type: "h2",
+        text: "Situações que exigem redespacho",
+      },
+      {
+        type: "ul",
+        items: [
+          "Destino fora da área de cobertura da frota inicial",
+          "Necessidade de usar veículo com capacidade diferente",
+          "Rota que exige passagem por cidades não atendidas",
+          "Imprevistos como manutenção ou restrição de circulação",
+        ],
+      },
+      {
+        type: "p",
+        text: "Cada troca gera custos adicionais pois envolve nova negociação preparação de documentos e tempo de carregamento",
+      },
+      {
+        type: "h3",
+        text: "Por que o valor do frete muda",
+      },
+      {
+        type: "p",
+        text: "Suponha que o frete base seja mil reais se o redespacho acrescentar dez por cento o novo valor será mil e cem reais",
+      },
+      {
+        type: "p",
+        text: "Planejar o redespacho com antecedência permite controlar custos e manter o prazo de entrega dentro do esperado",
+      },
+    ],
+  },
 ];
 
 export function getPost(slug: string): Post | undefined {
