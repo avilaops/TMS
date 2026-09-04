@@ -382,6 +382,81 @@ export const posts: Post[] = [
       },
     ],
   },
+  {
+    slug: "redespacho-como-funciona",
+    title: "Redespacho: Entenda o Impacto no Frete e no Prazo",
+    description:
+      "Saiba como o redespacho pode alterar o custo e o prazo do frete, e o que isso significa para o envio de sua carga.",
+    excerpt:
+      "O redespacho acontece quando um segundo transportador é necessário para completar a entrega. Entenda como isso afeta o custo e o prazo do frete.",
+    category: "Cotação",
+    publishedAt: "2026-09-04",
+    readingMinutes: 5,
+    body: [
+      {
+        type: "p",
+        text: "Quando você envia uma carga, o objetivo é sempre que ela chegue ao destino final da maneira mais rápida e econômica possível. No entanto, algumas vezes, um único transportador não consegue cobrir todo o trajeto. É aí que entra o redespacho.",
+      },
+      {
+        type: "h2",
+        text: "O que é Redespacho?",
+      },
+      {
+        type: "p",
+        text: "Redespacho é o processo de transferir a carga de um transportador para outro para que ela chegue ao destino final. Isso geralmente acontece quando o destino está fora da rota usual do transportador inicial ou quando a entrega exige um veículo especializado.",
+      },
+      {
+        type: "h2",
+        text: "Por que o Redespacho Impacta no Valor do Frete?",
+      },
+      {
+        type: "p",
+        text: "O redespacho adiciona custos ao frete por diversas razões. Primeiro, envolve a coordenação entre dois transportadores. Segundo, pode exigir veículos diferentes, como uma van de carga ou um caminhão de pequeno porte. Cada veículo tem capacidades e custos operacionais distintos.",
+      },
+      {
+        type: "ul",
+        items: [
+          "Necessidade de coordenação entre transportadores",
+          "Uso de diferentes tipos de veículos",
+          "Custos adicionais de logística",
+        ],
+      },
+      {
+        type: "h2",
+        text: "Como o Redespacho Afeta o Prazo de Entrega?",
+      },
+      {
+        type: "p",
+        text: "O redespacho pode estender o prazo de entrega. Quando uma carga é redespachada, ela precisa ser transferida entre transportadores, o que pode levar de um a dois dias adicionais, dependendo da complexidade da operação.",
+      },
+      {
+        type: "note",
+        title: "Importante",
+        text: "Planeje com antecedência se sua carga requer redespacho para evitar atrasos inesperados.",
+      },
+      {
+        type: "h2",
+        text: "Quando o Redespacho é Necessário?",
+      },
+      {
+        type: "p",
+        text: "O redespacho é necessário em situações como entregas em áreas rurais distantes ou quando a carga precisa de um veículo especializado que o transportador inicial não possui. Nesses casos, é crucial garantir que todos os transportadores envolvidos estejam bem coordenados.",
+      },
+      {
+        type: "table",
+        head: ["Situação", "Necessidade de Redespacho"],
+        rows: [
+          ["Entrega em área remota", "Sim"],
+          ["Veículo especializado necessário", "Sim"],
+          ["Rota direta disponível", "Não"],
+        ],
+      },
+      {
+        type: "p",
+        text: "Se sua carga precisa de redespacho, planeje a melhor logística possível para garantir que sua entrega seja feita de forma eficiente e segura.",
+      },
+    ],
+  },
 ];
 
 export function getPost(slug: string): Post | undefined {
