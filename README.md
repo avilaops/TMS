@@ -218,6 +218,10 @@ link público (o Todoist não hospeda imagem) e abre uma tarefa com a legenda e 
 hashtags prontas para copiar. Postar continua manual: você abre a tarefa, salva
 a imagem e publica.
 
+As artes ficam na pasta **"Mello Transportes - artes do blog"** do Drive
+(`1qDk0KYqPDrsj_xiit-XUZ1f6t7i_1v3m`), nunca na raiz: uma arte por semana suja a
+raiz rápido.
+
 **A ordem da arte importa:** recorta primeiro, assina depois. Assinar e então
 cortar parte a barra ao meio, sobra "SPORTES" e a logo some. Cada formato recebe
 a assinatura inteira, com medidas próprias.
