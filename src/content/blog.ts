@@ -367,6 +367,103 @@ export const posts: Post[] = [
       },
     ],
   },
+  {
+    slug: "redespacho-como-funciona",
+    coverImage: "/blog-capas/redespacho-como-funciona.png",
+    coverImageAlt:
+      "Empilhadeira movendo palete entre caminhões em doca de carga, trabalhador verifica prancheta.",
+    title: "Redespacho: Entenda o Impacto no Frete e Prazo",
+    description:
+      "Descubra como o redespacho pode afetar o valor e o prazo do frete ao envolver um segundo transportador no trajeto da sua carga.",
+    excerpt:
+      "Saiba como o redespacho impacta o frete: quando é necessário um segundo transportador, o que isso significa para o custo e o prazo de entrega.",
+    category: "Cotação",
+    publishedAt: "2026-09-04",
+    readingMinutes: 5,
+    body: [
+      {
+        type: "p",
+        text: "Quando você precisa enviar uma carga, é crucial compreender o processo de transporte, especialmente quando envolve redespacho. Embora o termo possa parecer complexo, ele representa um conceito direto que influencia significativamente o valor do frete e o prazo de entrega.",
+      },
+      {
+        type: "h2",
+        text: "O que é Redespacho?",
+      },
+      {
+        type: "p",
+        text: "Redespacho ocorre quando é necessário um segundo transportador para completar a entrega de uma carga. Isso geralmente se dá quando o destino final está fora da área de cobertura da transportadora inicial.",
+      },
+      {
+        type: "h2",
+        text: "Por Que o Redespacho Muda o Valor do Frete?",
+      },
+      {
+        type: "p",
+        text: "O redespacho pode aumentar o custo do frete por vários motivos. Ele demanda coordenação entre duas empresas, o que pode gerar taxas adicionais. Também há custos associados à transferência de carga entre veículos e as despesas operacionais do segundo transportador.",
+      },
+      {
+        type: "h2",
+        text: "Impacto no Prazo de Entrega",
+      },
+      {
+        type: "p",
+        text: "O prazo de entrega pode ser afetado devido ao tempo necessário para coordenar e realizar o redespacho. Isso geralmente resulta em um prazo de entrega mais longo, como passar de um dia útil para dois.",
+      },
+      {
+        type: "h3",
+        text: "Quando o Redespacho é Necessário?",
+      },
+      {
+        type: "ul",
+        items: [
+          "Destino final fora da área de cobertura",
+          "Necessidade de veículos especializados",
+          "Rotas otimizadas para eficiência",
+        ],
+      },
+      {
+        type: "h2",
+        text: "Como Planejar o Frete com Redespacho",
+      },
+      {
+        type: "p",
+        text: "Planejar adequadamente pode minimizar os impactos do redespacho. Aqui estão algumas dicas para ajudar:",
+      },
+      {
+        type: "ol",
+        items: [
+          "Verifique a área de cobertura da transportadora.",
+          "Considere o tempo extra necessário para o redespacho.",
+          "Converse com o transportador sobre opções de rota.",
+        ],
+      },
+      {
+        type: "h2",
+        text: "Cálculo do Frete com Redespacho",
+      },
+      {
+        type: "p",
+        text: "É importante entender como o frete é calculado quando envolve redespacho. Aqui estão alguns fatores considerados:",
+      },
+      {
+        type: "table",
+        head: ["Fator", "Descrição"],
+        rows: [
+          ["Distância", "A distância total percorrida, incluindo redespacho."],
+          ["Tipo de Carga", "Se a carga requer cuidados especiais ou veículos específicos."],
+          ["Urgência", "Prazo desejado para entrega, que pode influenciar o custo."],
+        ],
+      },
+      {
+        type: "h2",
+        text: "Conclusão",
+      },
+      {
+        type: "p",
+        text: "Compreender o redespacho é essencial para tomar decisões informadas sobre seus envios. Planejar com antecedência e considerar os fatores que influenciam o custo e o prazo do frete pode evitar surpresas e garantir que sua carga chegue ao destino de forma eficiente.",
+      },
+    ],
+  },
 ];
 
 export function getPost(slug: string): Post | undefined {
