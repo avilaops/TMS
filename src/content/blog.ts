@@ -367,6 +367,99 @@ export const posts: Post[] = [
       },
     ],
   },
+  {
+    slug: "redespacho-como-funciona",
+    coverImage: "/blog-capas/redespacho-como-funciona.png",
+    coverImageAlt:
+      "Galpão de logística com paletes, caixas e caminhão em doca, equipe organizando remessas, luz natural entrando.",
+    title: "Redespacho: O que é e Quando Ele Entra na Conta do Frete",
+    description:
+      "Entenda o conceito de redespacho e como ele pode impactar o custo e o prazo das suas entregas, com exemplos práticos e cálculos que você pode conferir.",
+    excerpt:
+      "O redespacho é uma prática comum no transporte de cargas que pode influenciar significativamente o custo e o prazo de entrega. Aprenda a calcular esses impactos.",
+    category: "Cotação",
+    publishedAt: "2026-09-04",
+    readingMinutes: 6,
+    body: [
+      {
+        type: "p",
+        text: "No transporte de cargas, nem sempre uma única transportadora pode cobrir todo o trajeto necessário. Quando isso acontece, recorre-se ao redespacho, que envolve a transferência da carga para um segundo transportador.",
+      },
+      {
+        type: "h2",
+        text: "Definição de Redespacho",
+      },
+      {
+        type: "p",
+        text: "Redespacho é o processo pelo qual uma transportadora inicial transfere a carga para outra, que concluirá a entrega até o destino final. Isso é frequente quando o destino está além da área de cobertura da primeira transportadora.",
+      },
+      {
+        type: "h2",
+        text: "Como o Redespacho Afeta o Custo?",
+      },
+      {
+        type: "p",
+        text: "O redespacho pode elevar o custo do frete, pois envolve múltiplas transportadoras. Cada uma cobra por seus serviços e pela utilização de seus recursos. Vamos entender como isso se reflete nos custos.",
+      },
+      {
+        type: "h3",
+        text: "Componentes do Custo",
+      },
+      {
+        type: "ul",
+        items: [
+          "A **distância adicional** percorrida pelo segundo transportador",
+          "**Taxas de manuseio** e transferência de carga",
+          "Possíveis **encargos administrativos** e de coordenação",
+        ],
+      },
+      {
+        type: "h3",
+        text: "Exemplo de Cálculo",
+      },
+      {
+        type: "p",
+        text: "Considere um frete que custa R$ 1.000,00 para uma entrega direta. Com redespacho, o custo adicional pode incluir R$ 200,00 pela distância extra e R$ 100,00 em taxas administrativas, totalizando R$ 1.300,00.",
+      },
+      {
+        type: "h2",
+        text: "Impacto nos Prazos de Entrega",
+      },
+      {
+        type: "p",
+        text: "Além do custo, o redespacho pode influenciar o prazo de entrega. A carga precisa ser transferida entre transportadoras, o que pode resultar em prazos mais longos.",
+      },
+      {
+        type: "table",
+        head: ["Tipo de Frete", "Prazo Estimado"],
+        rows: [
+          ["Entrega Direta", "Até 24 horas"],
+          ["Com Redespacho", "Até 48 horas"],
+        ],
+      },
+      {
+        type: "h3",
+        text: "Situações que Exigem Redespacho",
+      },
+      {
+        type: "p",
+        text: "O redespacho é comum para entregas em locais remotos ou fora da cobertura da transportadora inicial. Ele garante que a carga chegue ao destino final de maneira eficiente.",
+      },
+      {
+        type: "note",
+        title: "Nota Importante",
+        text: "Considere sempre discutir com sua transportadora sobre a necessidade de redespacho e como isso pode afetar seu orçamento e cronograma de entrega.",
+      },
+      {
+        type: "h2",
+        text: "Conclusão",
+      },
+      {
+        type: "p",
+        text: "O redespacho é uma ferramenta valiosa no transporte de cargas, mas é importante entender seus impactos no custo e no prazo para tomar decisões informadas. Para mais informações ou para planejar suas necessidades de transporte, entre em contato com nossa equipe comercial.",
+      },
+    ],
+  },
 ];
 
 export function getPost(slug: string): Post | undefined {
