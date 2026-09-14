@@ -12,7 +12,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: avilaops/infra-observabilidade/.github/workflows/container.yml@5fc768f4ebf631bdcd614b3e87a148dc08dd278f
+    uses: avilaops/infra/.github/workflows/container.yml@5fc768f4ebf631bdcd614b3e87a148dc08dd278f
     with:
       context: .
       dockerfile: Dockerfile
@@ -24,7 +24,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: avilaops/infra-observabilidade/.github/workflows/deploy-ssh.yml@5fc768f4ebf631bdcd614b3e87a148dc08dd278f
+    uses: avilaops/infra/.github/workflows/deploy-ssh.yml@5fc768f4ebf631bdcd614b3e87a148dc08dd278f
     with:
       application: mellotransportesriopreto.com.br
       image: ${{ needs.image.outputs.image }}
