@@ -18,3 +18,7 @@ actions-logs*
 *.tsbuildinfo
 vite.config.*
 scratch.js
+
+**/.env*
+**/node_modules
+**/.next
