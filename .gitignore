@@ -11,8 +11,8 @@ pdf-generator/output/
 
 # ambiente
 .env
-.env.local
-.env*.local
+.env.*
+!.env.example
 
 # sobras da versao Vite, ja preservadas no historico do git
 vite_backup/
