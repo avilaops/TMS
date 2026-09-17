@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, Loader2, Package, MapPin, Truck } from "lucide-react";
+import { Plus, Search, Loader2, Package, MapPin, Truck, Copy, Check } from "lucide-react";
 
 interface Cliente {
   id: string;
@@ -24,8 +24,47 @@ interface Coleta {
   weight: number;
   status: string;
   invoiceValue: number | null;
+  trackingCode: string | null;
   client: Cliente;
   driver?: Motorista | null;
+}
+
+/**
+ * Codigo de rastreio na listagem: e por aqui que o operador le e repassa o
+ * numero ao cliente. Sem isto, o rastreio publico exigiria um dado que ninguem
+ * na operacao conseguiria informar.
+ */
+function TrackingCodeCell({ code }: { code: string | null }) {
+  const [copiado, setCopiado] = useState(false);
+
+  if (!code) {
+    return <span className="text-gray-400 text-xs italic">Sem código</span>;
+  }
+
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1500);
+    } catch {
+      // Area de transferencia bloqueada (http, permissao): o numero segue
+      // visivel na tela para o operador ler ou selecionar.
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={copiar}
+      title="Copiar código de rastreio"
+      className="group flex items-center space-x-1.5 font-mono text-sm text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+    >
+      <span>{code}</span>
+      {copiado
+        ? <Check className="w-3.5 h-3.5 text-green-600" />
+        : <Copy className="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-600" />}
+    </button>
+  );
 }
 
 export default function ColetasPage() {
@@ -154,6 +193,7 @@ export default function ColetasPage() {
               <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 text-sm font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
                   <th className="px-6 py-4">Cliente / Rota</th>
+                  <th className="px-6 py-4">Cód. rastreio</th>
                   <th className="px-6 py-4">Volumes / Peso</th>
                   <th className="px-6 py-4">Valor NF</th>
                   <th className="px-6 py-4">Motorista</th>
@@ -180,6 +220,9 @@ export default function ColetasPage() {
                           </div>
                         </div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <TrackingCodeCell code={coleta.trackingCode} />
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
                       <div>{coleta.volumes} vols</div>
