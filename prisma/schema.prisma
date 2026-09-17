@@ -106,6 +106,12 @@ model Collection {
   manifestId  String?
   status      String   @default("PENDING") // PENDING, CONFIRMED, COLLECTED, ROUTE, DELIVERED
   receiverName String?
+
+  // Codigo publico de rastreio: 10 digitos sorteados com CSPRNG (src/lib/tracking.ts).
+  // E o segundo fator do rastreio publico, junto do CNPJ do cliente. Opcional no
+  // schema porque as coletas criadas antes desta mudanca recebem o codigo por
+  // backfill; toda coleta nova ja nasce com ele.
+  trackingCode String?  @unique
   
   // CT-e
   cteKey      String?  @unique
