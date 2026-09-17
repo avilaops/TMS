@@ -33,7 +33,7 @@ main { padding-top: 82px; }
 }
 .logo { display: flex; align-items: center; gap: 12px; min-width: max-content; }
 .logo svg { color: #f8b400; width: 38px; height: 38px; }
-.logo img { width: 44px; height: 44px; object-fit: contain; border-radius: 9px; background: #fff; }
+.logo img { flex: none; width: 44px; height: 44px; object-fit: contain; border-radius: 9px; background: #fff; }
 .logo strong { display: block; text-transform: uppercase; font-size: 21px; line-height: 1; }
 .logo b { color: #f28a00; }
 .logo small { display: block; color: #616775; text-transform: uppercase; letter-spacing: 2px; font-size: 11px; margin-top: 4px; }
@@ -344,6 +344,25 @@ footer p { margin: 0; display: flex; gap: 8px; align-items: center; }
   .section { margin: 18px 12px; }
   .final-cta { margin: 18px 12px; }
   .legend { position: static; margin-top: 10px; }
+}
+
+/*
+ * Telas estreitas (iPhone SE a Pixel 7).
+ *
+ * O `min-width: max-content` do `.logo` mantinha o cabecalho com 460px fixos.
+ * Como o `.topbar` e flex e o `body` corta o excedente na horizontal, nada
+ * parecia quebrado: o botao do menu simplesmente ficava fora da tela, e com ele
+ * sumia a navegacao inteira no celular. Aqui o logotipo volta a ser
+ * compressivel e a assinatura da marca sai, para caber logo + WhatsApp + menu.
+ */
+@media (max-width: 600px) {
+  .topbar { gap: 8px; padding-inline: 12px; }
+  .logo { min-width: 0; flex: 1 1 auto; overflow: hidden; gap: 8px; }
+  .logo strong { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .logo small { display: none; }
+  .logo img { width: 38px; height: 38px; }
+  .whats-mini { flex: none; margin-left: 0; padding: 0 12px; }
+  .icon-btn { flex: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
