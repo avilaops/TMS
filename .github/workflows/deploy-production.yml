@@ -8,6 +8,39 @@ on:
 permissions:
   contents: read
 jobs:
+  # Testes do rastreio publico exigem Postgres: a rota faz o cruzamento
+  # CNPJ + codigo no banco, e e exatamente isso que precisa ser provado.
+  # Sem este job, `npm test` nunca rodaria fora da maquina de quem escreveu.
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mello
+          POSTGRES_PASSWORD: mello
+          POSTGRES_DB: mello_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://mello:mello@127.0.0.1:5432/mello_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate --schema=prisma/schema.prisma
+      - run: npx prisma db push --schema=prisma/schema.prisma
+      - run: npm run typecheck
+      - run: npm test
+
   image:
     permissions:
       contents: read
