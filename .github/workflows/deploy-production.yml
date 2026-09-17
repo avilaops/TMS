@@ -41,7 +41,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  # `image` depende de `checks` para que teste vermelho barre a publicacao da
+  # imagem e, por tabela, o deploy: `deploy` precisa de `image`. Sem isto o job
+  # de teste seria decorativo — o deploy sairia igual com a suite quebrada.
   image:
+    needs: checks
     permissions:
       contents: read
       packages: write
