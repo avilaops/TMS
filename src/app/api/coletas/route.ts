@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { withTrackingCode } from '@/lib/tracking';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -39,20 +40,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const newCollection = await prisma.collection.create({
-      data: {
-        clientId: data.clientId,
-        sender: data.sender,
-        receiver: data.receiver,
-        origin: data.origin,
-        destination: data.destination,
-        volumes: parseInt(data.volumes),
-        weight: parseFloat(data.weight),
-        invoiceKey: data.invoiceKey || null,
-        invoiceValue: data.invoiceValue ? parseFloat(data.invoiceValue) : null,
-        driverId: data.driverId || null,
-      }
-    });
+    // Toda coleta nasce com codigo: e ele, com o CNPJ, que abre o rastreio
+    // publico. Uma coleta sem codigo simplesmente nao seria rastreavel.
+    const newCollection = await withTrackingCode((trackingCode) =>
+      prisma.collection.create({
+        data: {
+          clientId: data.clientId,
+          sender: data.sender,
+          receiver: data.receiver,
+          origin: data.origin,
+          destination: data.destination,
+          volumes: parseInt(data.volumes),
+          weight: parseFloat(data.weight),
+          invoiceKey: data.invoiceKey || null,
+          invoiceValue: data.invoiceValue ? parseFloat(data.invoiceValue) : null,
+          driverId: data.driverId || null,
+          trackingCode,
+        }
+      })
+    );
 
     return NextResponse.json(newCollection, { status: 201 });
   } catch (error) {

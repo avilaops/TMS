@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePortalClient } from '@/lib/portal';
+import { withTrackingCode } from '@/lib/tracking';
 
 const COLLECTION_FIELDS = {
   id: true,
@@ -13,6 +14,7 @@ const COLLECTION_FIELDS = {
   invoiceValue: true,
   status: true,
   createdAt: true,
+  trackingCode: true,
 } as const;
 
 export async function GET() {
@@ -64,20 +66,23 @@ export async function POST(req: Request) {
       }
     }
 
-    const collection = await prisma.collection.create({
-      data: {
-        clientId,
-        sender: String(sender),
-        receiver: String(receiver),
-        origin: String(origin),
-        destination: String(destination),
-        volumes: volumesNumber,
-        weight: weightNumber,
-        invoiceValue: invoiceValueNumber,
-        status: 'PENDING',
-      },
-      select: COLLECTION_FIELDS,
-    });
+    const collection = await withTrackingCode((trackingCode) =>
+      prisma.collection.create({
+        data: {
+          clientId,
+          sender: String(sender),
+          receiver: String(receiver),
+          origin: String(origin),
+          destination: String(destination),
+          volumes: volumesNumber,
+          weight: weightNumber,
+          invoiceValue: invoiceValueNumber,
+          status: 'PENDING',
+          trackingCode,
+        },
+        select: COLLECTION_FIELDS,
+      })
+    );
 
     return NextResponse.json({ success: true, collection }, { status: 201 });
   } catch (error) {
