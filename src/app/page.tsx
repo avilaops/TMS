@@ -157,7 +157,7 @@ function QuoteForm() {
 }
 
 function Footer() {
-  return <footer><Logo /><p>{company.serviceRegion}</p><p><Phone size={16} /> {company.phone} · {company.whatsapp}</p><p><Mail size={16} /> {company.email}</p><p>{company.address}</p><small>© {new Date().getFullYear()} {company.shortName}. Política de privacidade: os dados preenchidos são usados apenas para montar a mensagem enviada pelo usuário no WhatsApp.</small></footer>;
+  return <footer><Logo /><p>{company.serviceRegion}</p><p><Phone size={16} /> {company.phone} · {company.whatsapp}</p><p><Mail size={16} /> {company.email}</p><p>{company.address}</p><small>© {new Date().getFullYear()} {company.shortName}. Política de privacidade: os dados preenchidos montam a mensagem enviada pelo WhatsApp e ficam registrados no sistema comercial da Mello Transportes para o atendimento da solicitação.</small></footer>;
 }
 
 function useRoute() {
