@@ -7,12 +7,16 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   # Testes do rastreio publico exigem Postgres: a rota faz o cruzamento
   # CNPJ + codigo no banco, e e exatamente isso que precisa ser provado.
   # Sem este job, `npm test` nunca rodaria fora da maquina de quem escreveu.
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16-alpine
@@ -30,8 +34,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://mello:mello@127.0.0.1:5432/mello_test?schema=public
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -49,7 +53,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: avilaops/infra/.github/workflows/container.yml@5fc768f4ebf631bdcd614b3e87a148dc08dd278f
+    uses: avilaops/infra/.github/workflows/container.yml@5e560f44062c8e025ddcfd86197e5394b562deae
     with:
       context: .
       dockerfile: Dockerfile
@@ -61,7 +65,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: avilaops/infra/.github/workflows/deploy-ssh.yml@5fc768f4ebf631bdcd614b3e87a148dc08dd278f
+    uses: avilaops/infra/.github/workflows/deploy-ssh.yml@5e560f44062c8e025ddcfd86197e5394b562deae
     with:
       application: mellotransportesriopreto.com.br
       image: ${{ needs.image.outputs.image }}
