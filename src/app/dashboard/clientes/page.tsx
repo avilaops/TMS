@@ -32,6 +32,21 @@ const FORM_VAZIO = {
   creditLimit: "",
 };
 
+type Form = typeof FORM_VAZIO;
+
+const toForm = (cliente: Cliente): Form => ({
+  cnpj: cliente.cnpj,
+  companyName: cliente.companyName,
+  tradeName: cliente.tradeName ?? "",
+  ie: cliente.ie ?? "",
+  contactName: cliente.contactName ?? "",
+  email: cliente.email ?? "",
+  phone: cliente.phone ?? "",
+  address: cliente.address ?? "",
+  paymentCondition: cliente.paymentCondition ?? "",
+  creditLimit: cliente.creditLimit == null ? "" : String(cliente.creditLimit),
+});
+
 const INPUT =
   "w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
 const LABEL = "text-sm font-medium text-gray-700 dark:text-gray-300";
@@ -75,18 +90,7 @@ export default function ClientesPage() {
 
   const openEdit = (cliente: Cliente) => {
     setEditingId(cliente.id);
-    setFormData({
-      cnpj: cliente.cnpj,
-      companyName: cliente.companyName,
-      tradeName: cliente.tradeName ?? "",
-      ie: cliente.ie ?? "",
-      contactName: cliente.contactName ?? "",
-      email: cliente.email ?? "",
-      phone: cliente.phone ?? "",
-      address: cliente.address ?? "",
-      paymentCondition: cliente.paymentCondition ?? "",
-      creditLimit: cliente.creditLimit == null ? "" : String(cliente.creditLimit),
-    });
+    setFormData(toForm(cliente));
     setIsModalOpen(true);
   };
 
@@ -125,6 +129,25 @@ export default function ClientesPage() {
       return;
     }
 
+    // Na edição vai só o que mudou: cadastro antigo com CNPJ ou e-mail fora do
+    // padrão continua editável nos outros campos.
+    let corpo: Partial<Form> = formData;
+    if (editingId) {
+      const atual = clientes.find((c) => c.id === editingId);
+      const original = atual ? toForm(atual) : null;
+      if (original) {
+        corpo = Object.fromEntries(
+          (Object.keys(formData) as (keyof Form)[])
+            .filter((campo) => formData[campo] !== original[campo])
+            .map((campo) => [campo, formData[campo]]),
+        );
+        if (Object.keys(corpo).length === 0) {
+          setIsModalOpen(false);
+          return;
+        }
+      }
+    }
+
     setIsSaving(true);
     try {
       const res = await fetch(editingId ? `/api/clientes/${editingId}` : '/api/clientes', {
@@ -132,7 +155,7 @@ export default function ClientesPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(corpo),
       });
 
       if (res.ok) {

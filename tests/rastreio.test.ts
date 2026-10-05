@@ -31,6 +31,9 @@ suite("GET /api/rastreio", () => {
   const CODIGO_A = "9184726350";
   const CODIGO_ZEROS = "0000000123";
   const CODIGO_B = "5544332211";
+  const EMAIL_MOTORISTA = "carlos@exemplo.br";
+  const CPF_MOTORISTA = "39812345678";
+  const PLACA = "FKZ2C34";
 
   async function consultar(params: Record<string, string>) {
     const query = new URLSearchParams(params);
@@ -70,7 +73,7 @@ suite("GET /api/rastreio", () => {
     const usuario = await prisma.user.create({
       data: {
         name: "Carlos Ferreira",
-        email: "carlos@exemplo.br",
+        email: EMAIL_MOTORISTA,
         password: "$2b$10$hashfalsoparateste000000000000000000000000000000000",
         role: "DRIVER",
       },
@@ -79,7 +82,7 @@ suite("GET /api/rastreio", () => {
     const motorista = await prisma.driver.create({
       data: {
         userId: usuario.id,
-        cpf: "39812345678",
+        cpf: CPF_MOTORISTA,
         cnh: "04455566677",
         cnhExpiry: new Date("2029-04-01"),
         category: "D",
@@ -87,7 +90,7 @@ suite("GET /api/rastreio", () => {
     });
 
     const veiculo = await prisma.vehicle.create({
-      data: { plate: "FKZ2C34", model: "VUC", type: "VUC", driverId: motorista.id },
+      data: { plate: PLACA, model: "VUC", type: "VUC", driverId: motorista.id },
     });
 
     const manifesto = await prisma.manifest.create({
@@ -143,7 +146,14 @@ suite("GET /api/rastreio", () => {
 
   beforeEach(() => resetRateLimit());
 
+  // Apaga só o que esta suite criou, na ordem das dependências.
   afterAll(async () => {
+    await prisma.collection.deleteMany({ where: { trackingCode: { in: [CODIGO_A, CODIGO_ZEROS, CODIGO_B] } } });
+    await prisma.manifest.deleteMany({ where: { vehicle: { plate: PLACA } } });
+    await prisma.vehicle.deleteMany({ where: { plate: PLACA } });
+    await prisma.driver.deleteMany({ where: { cpf: CPF_MOTORISTA } });
+    await prisma.user.deleteMany({ where: { email: EMAIL_MOTORISTA } });
+    await prisma.client.deleteMany({ where: { cnpj: { in: [CNPJ_A, CNPJ_B] } } });
     await prisma.$disconnect();
   });
 

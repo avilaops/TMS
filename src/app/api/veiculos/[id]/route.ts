@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
-import { VEHICLE_PUBLIC_INCLUDE, updateVehicleSchema } from '@/lib/cadastros';
+import { INACTIVE_DRIVER_MESSAGE, VEHICLE_PUBLIC_INCLUDE, updateVehicleSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,7 +17,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     const data = parsed.data;
 
-    const target = await prisma.vehicle.findUnique({ where: { id }, select: { id: true } });
+    const target = await prisma.vehicle.findUnique({ where: { id }, select: { id: true, driverId: true } });
     if (!target) {
       return NextResponse.json({ error: 'Veículo não encontrado.' }, { status: 404 });
     }
@@ -25,10 +25,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (data.defaultDriverId) {
       const driver = await prisma.driver.findUnique({
         where: { id: data.defaultDriverId },
-        select: { id: true }
+        select: { id: true, active: true }
       });
       if (!driver) {
         return NextResponse.json({ error: 'Motorista padrão não encontrado.' }, { status: 400 });
+      }
+      // Quem já era o motorista do veículo continua valendo depois de desativado:
+      // a tela reenvia o mesmo id ao editar os outros campos.
+      if (!driver.active && driver.id !== target.driverId) {
+        return NextResponse.json({ error: INACTIVE_DRIVER_MESSAGE }, { status: 400 });
       }
     }
 

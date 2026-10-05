@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
-import { VEHICLE_PUBLIC_INCLUDE, createVehicleSchema, isUniqueViolation } from '@/lib/cadastros';
+import { INACTIVE_DRIVER_MESSAGE, VEHICLE_PUBLIC_INCLUDE, createVehicleSchema, isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 
 const DUPLICATE_MESSAGE = 'Já existe um veículo com esta placa.';
@@ -46,10 +46,13 @@ export async function POST(req: Request) {
     if (data.defaultDriverId) {
       const driver = await prisma.driver.findUnique({
         where: { id: data.defaultDriverId },
-        select: { id: true }
+        select: { id: true, active: true }
       });
       if (!driver) {
         return NextResponse.json({ error: 'Motorista padrão não encontrado.' }, { status: 400 });
+      }
+      if (!driver.active) {
+        return NextResponse.json({ error: INACTIVE_DRIVER_MESSAGE }, { status: 400 });
       }
     }
 

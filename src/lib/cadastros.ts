@@ -192,6 +192,8 @@ const plate = z
 const vehicleModel = z.string("Informe o modelo.").trim().min(1, "Informe o modelo.").max(120, "Modelo muito longo.");
 const vehicleType = z.string("Informe o tipo.").trim().min(1, "Informe o tipo.").max(40, "Tipo muito longo.");
 
+export const INACTIVE_DRIVER_MESSAGE = "Motorista inativo não pode ser o motorista padrão.";
+
 const YEAR_MIN = 1950;
 
 const vehicleYear = z.preprocess(

@@ -5,6 +5,7 @@ import { Plus, Loader2, Truck } from "lucide-react";
 
 interface Motorista {
   id: string;
+  active: boolean;
   user: { name: string };
 }
 
@@ -27,6 +28,14 @@ const STATUS = [
   { value: "AVAILABLE", label: "Disponível" },
   { value: "ON_ROUTE", label: "Em rota" },
   { value: "MAINTENANCE", label: "Manutenção" },
+];
+
+const TIPOS = [
+  { value: "VAN", label: "Van/Utilitário" },
+  { value: "VUC", label: "VUC" },
+  { value: "TOCO", label: "Caminhão Toco" },
+  { value: "TRUCK", label: "Caminhão Truck" },
+  { value: "CARRETA", label: "Carreta" },
 ];
 
 const FORM_VAZIO = {
@@ -75,6 +84,12 @@ export default function VeiculosPage() {
       setIsLoading(false);
     }
   };
+
+  // Veículo em edição: o tipo e o motorista que ele já tem continuam no seletor,
+  // mesmo que o tipo tenha saído da lista ou o motorista tenha sido desativado.
+  const emEdicao = editingId ? veiculos.find((v) => v.id === editingId) : undefined;
+  const tipoAntigo = emEdicao && !TIPOS.some((t) => t.value === emEdicao.type) ? emEdicao.type : null;
+  const motoristasDoSeletor = motoristas.filter((m) => m.active || m.id === emEdicao?.driverId);
 
   const openCreate = () => {
     setEditingId(null);
@@ -283,11 +298,10 @@ export default function VeiculosPage() {
                     onChange={(e) => setFormData({...formData, type: e.target.value})}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                   >
-                    <option value="VAN">Van/Utilitário</option>
-                    <option value="VUC">VUC</option>
-                    <option value="TOCO">Caminhão Toco</option>
-                    <option value="TRUCK">Caminhão Truck</option>
-                    <option value="CARRETA">Carreta</option>
+                    {tipoAntigo && <option value={tipoAntigo}>{tipoAntigo}</option>}
+                    {TIPOS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -330,8 +344,8 @@ export default function VeiculosPage() {
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                 >
                   <option value="">Selecione um motorista...</option>
-                  {motoristas.map(m => (
-                    <option key={m.id} value={m.id}>{m.user?.name}</option>
+                  {motoristasDoSeletor.map(m => (
+                    <option key={m.id} value={m.id}>{m.user?.name}{m.active ? "" : " (inativo)"}</option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500">Isso vinculará este veículo automaticamente a este motorista.</p>

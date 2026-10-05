@@ -24,8 +24,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Nome, e-mail e senha ficam no User; o resto, no Driver. Uma transação só:
     // ou muda tudo, ou não muda nada.
     const motorista = await prisma.$transaction(async (tx) => {
-      const target = await tx.driver.findUnique({ where: { id }, select: { id: true, userId: true } });
+      const target = await tx.driver.findUnique({
+        where: { id },
+        select: { id: true, userId: true, user: { select: { role: true } } }
+      });
       if (!target) throw new Refusal('Motorista não encontrado.', 404);
+      // Cadastro antigo pode ligar o motorista a um usuário de outro perfil:
+      // por aqui ninguém troca o e-mail nem a senha de uma conta que não é de motorista.
+      if (target.user.role !== 'DRIVER') {
+        throw new Refusal('O usuário deste motorista não tem perfil de motorista.', 409);
+      }
 
       if (data.email !== undefined) {
         // E-mails antigos podem ter maiúsculas; a comparação ignora a caixa.

@@ -30,6 +30,8 @@ const CNPJ_OUTRO = "99888777000409";
 const CPF_MASCARADO = "999.888.777-33";
 const CPF_TESTE = "99988877733";
 const CPF_OUTRO = "99988877722";
+const CPF_PERFIL = "99988877711";
+const CPF_INATIVO = "99988877700";
 const PLACA_DIGITADA = "abc-1d23";
 const PLACA_TESTE = "ABC1D23";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
@@ -74,7 +76,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
 
   // Na ordem das dependências: veículo → motorista → usuário → cliente.
   async function limpar() {
-    const cpfs = [CPF_TESTE, CPF_OUTRO];
+    const cpfs = [CPF_TESTE, CPF_OUTRO, CPF_PERFIL, CPF_INATIVO];
     await prisma.vehicle.deleteMany({ where: { plate: PLACA_TESTE } });
     await prisma.driver.deleteMany({ where: { cpf: { in: cpfs } } });
     await prisma.user.deleteMany({ where: { email: { startsWith: PREFIXO, mode: "insensitive" } } });
@@ -366,6 +368,27 @@ suite("cadastros de clientes, motoristas e veículos", () => {
       const proprio = await motorista.PATCH(req("PATCH", { email: email("motorista"), active: true }), ctx(motoristaId));
       expect(proprio.status).toBe(200);
     });
+
+    it("PATCH: motorista ligado a usuário de outro perfil → 409 e a conta fica como estava", async () => {
+      // Só dado antigo chega a este estado: o cadastro sempre cria o usuário como DRIVER.
+      const usuario = await prisma.user.create({
+        data: { name: "Operador Antigo", email: email("perfil-errado"), password: HASH_FALSO, role: "OPERATION" },
+      });
+      const antigo = await prisma.driver.create({
+        data: { userId: usuario.id, cpf: CPF_PERFIL, cnh: "55555555555", cnhExpiry: new Date("2031-06-30"), category: "B" },
+      });
+
+      const res = await motorista.PATCH(
+        req("PATCH", { email: email("tomada"), password: "senha-nova-456", cnh: "00000000000" }),
+        ctx(antigo.id),
+      );
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toMatch(/perfil de motorista/);
+
+      const gravado = await prisma.driver.findUniqueOrThrow({ where: { id: antigo.id }, include: { user: true } });
+      expect(gravado.cnh).toBe("55555555555");
+      expect(gravado.user).toMatchObject({ email: email("perfil-errado"), password: HASH_FALSO, role: "OPERATION" });
+    });
   });
 
   describe("veículos", () => {
@@ -481,6 +504,42 @@ suite("cadastros de clientes, motoristas e veículos", () => {
 
       const gravado = await prisma.vehicle.findUniqueOrThrow({ where: { id: veiculoId } });
       expect(gravado.driverId).toBeNull();
+    });
+
+    it("motorista inativo não entra como motorista padrão: POST e PATCH → 400", async () => {
+      const usuario = await prisma.user.create({
+        data: { name: "Motorista Inativo", email: email("inativo"), password: HASH_FALSO, role: "DRIVER" },
+      });
+      const inativo = await prisma.driver.create({
+        data: {
+          userId: usuario.id,
+          cpf: CPF_INATIVO,
+          cnh: "66666666666",
+          cnhExpiry: new Date("2031-06-30"),
+          category: "C",
+          active: false,
+        },
+      });
+
+      const criado = await veiculos.POST(
+        req("POST", { plate: "TCD0A01", model: "Modelo", type: "VAN", defaultDriverId: inativo.id }),
+      );
+      expect(criado.status).toBe(400);
+      expect((await criado.json()).error).toMatch(/inativo/i);
+      expect(await prisma.vehicle.count({ where: { plate: "TCD0A01" } })).toBe(0);
+
+      const editado = await veiculo.PATCH(req("PATCH", { model: "Não grava", defaultDriverId: inativo.id }), ctx(veiculoId));
+      expect(editado.status).toBe(400);
+      expect((await editado.json()).error).toMatch(/inativo/i);
+      const gravado = await prisma.vehicle.findUniqueOrThrow({ where: { id: veiculoId } });
+      expect(gravado).toMatchObject({ model: "Accelo 1016", driverId: null });
+
+      // Quem já era o motorista do veículo e foi desativado depois não trava a edição.
+      await prisma.vehicle.update({ where: { id: veiculoId }, data: { driverId: inativo.id } });
+      const mantido = await veiculo.PATCH(req("PATCH", { model: "Accelo 1017", defaultDriverId: inativo.id }), ctx(veiculoId));
+      expect(mantido.status).toBe(200);
+      const depois = await prisma.vehicle.findUniqueOrThrow({ where: { id: veiculoId } });
+      expect(depois).toMatchObject({ model: "Accelo 1017", driverId: inativo.id });
     });
   });
 });
