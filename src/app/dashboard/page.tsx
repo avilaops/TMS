@@ -1,56 +1,59 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Users, Truck, Package, Activity, DollarSign, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Users, Truck, Package, Activity, DollarSign, Loader2, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { loadStats, showFinance, type PainelState } from "./painel";
 
 export default function DashboardPage() {
-  // `receita` só vem da API para o perfil ADMIN.
-  const [stats, setStats] = useState<{
-    coletas: number;
-    manifestos: number;
-    clientes: number;
-    veiculos: number;
-    receita?: number;
-  }>({
-    coletas: 0,
-    manifestos: 0,
-    clientes: 0,
-    veiculos: 0,
-  });
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: session } = useSession();
+  const [state, setState] = useState<PainelState>({ status: "loading" });
 
-  useEffect(() => {
-    fetch('/api/dashboard')
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          console.error("Dashboard API error:", data.error);
-        } else {
-          setStats(data);
-        }
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error("Dashboard fetch error:", err);
-        setIsLoading(false);
-      });
+  const fetchStats = useCallback(async () => {
+    setState({ status: "loading" });
+    const result = await loadStats(() => fetch('/api/dashboard'));
+    if (result.status === "error") console.error("Dashboard API error");
+    setState(result);
   }, []);
 
-  const showFinance = stats.receita !== undefined;
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const isLoading = state.status === "loading";
+  const failed = state.status === "error";
+  const stats = state.status === "ready" ? state.stats : undefined;
+  const finance = showFinance(state, session?.user?.role);
+
+  // Com erro, o valor vira "—": zero pareceria um número de verdade.
+  const value = (v: number | string) => (failed ? "—" : v);
+  const trend = (label: string) => (failed ? "Indisponível" : label);
 
   const statCards = [
-    ...(showFinance
-      ? [{ title: "Receita", value: `R$ ${(stats.receita || 0).toFixed(2)}`, icon: DollarSign, trend: "+15%", trendUp: true, color: "green" }]
+    ...(finance
+      ? [{ title: "Receita", value: value(`R$ ${(stats?.receita || 0).toFixed(2)}`), icon: DollarSign, trend: trend("+15%"), trendUp: !failed, color: "green" }]
       : []),
-    { title: "Coletas", value: stats.coletas || 0, icon: Package, trend: "Ativas", trendUp: true, color: "blue" },
-    { title: "Viagens (MDF-e)", value: stats.manifestos || 0, icon: Truck, trend: "Em Rota", trendUp: true, color: "purple" },
-    { title: "Clientes", value: stats.clientes || 0, icon: Users, trend: "Registrados", trendUp: true, color: "indigo" },
+    { title: "Coletas", value: value(stats?.coletas || 0), icon: Package, trend: trend("Ativas"), trendUp: !failed, color: "blue" },
+    { title: "Viagens (MDF-e)", value: value(stats?.manifestos || 0), icon: Truck, trend: trend("Em Rota"), trendUp: !failed, color: "purple" },
+    { title: "Clientes", value: value(stats?.clientes || 0), icon: Users, trend: trend("Registrados"), trendUp: !failed, color: "indigo" },
   ];
 
   return (
     <div className="space-y-6">
+      {failed && (
+        <div role="alert" className="flex items-center justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+          <span className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 shrink-0" />
+            Não foi possível carregar os indicadores.
+          </span>
+          <button onClick={fetchStats} className="font-medium underline underline-offset-2 hover:no-underline">
+            Tentar de novo
+          </button>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((stat, i) => (
@@ -126,7 +129,7 @@ export default function DashboardPage() {
                 </div>
               </Link>
 
-              {showFinance && (
+              {finance && (
                 <Link href="/dashboard/financeiro" className="w-full flex items-center justify-between p-3 rounded-2xl border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-green-50 dark:bg-green-900/20 rounded-xl flex items-center justify-center">

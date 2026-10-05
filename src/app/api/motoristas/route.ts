@@ -47,25 +47,28 @@ export async function POST(req: Request) {
     // em Usuários → Redefinir senha.
     const password = await bcrypt.hash(randomBytes(32).toString('base64url'), BCRYPT_ROUNDS);
 
-    // Since a Driver requires a User, let's create a User first
-    const newUser = await prisma.user.create({
-      data: {
-        name: data.name,
-        email: `${data.cpf}@motorista.mello.com`, // mock email
-        password,
-        role: 'DRIVER'
-      }
-    });
+    // O Driver exige um User. Os dois nascem na mesma transação: se o Driver
+    // falhar, o User não fica órfão ocupando o e-mail do CPF.
+    const newDriver = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          name: data.name,
+          email: `${data.cpf}@motorista.mello.com`, // mock email
+          password,
+          role: 'DRIVER'
+        }
+      });
 
-    const newDriver = await prisma.driver.create({
-      data: {
-        userId: newUser.id,
-        cpf: data.cpf,
-        cnh: data.cnh || 'PENDENTE',
-        cnhExpiry: new Date(new Date().setFullYear(new Date().getFullYear() + 5)), // mock +5 years
-        category: data.category || 'B',
-        phone: data.phone,
-      }
+      return tx.driver.create({
+        data: {
+          userId: newUser.id,
+          cpf: data.cpf,
+          cnh: data.cnh || 'PENDENTE',
+          cnhExpiry: new Date(new Date().setFullYear(new Date().getFullYear() + 5)), // mock +5 years
+          category: data.category || 'B',
+          phone: data.phone,
+        }
+      });
     });
 
     return NextResponse.json(newDriver, { status: 201 });

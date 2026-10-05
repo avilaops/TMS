@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, ArrowUpRight, ArrowDownRight, Loader2, DollarSign, Wallet, ShieldAlert } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownRight, Loader2, DollarSign, Wallet, ShieldAlert, LogIn } from "lucide-react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { isAccessDenied, loadTransactions } from "./carregar";
+import { deniedReason, loadTransactions, type DeniedReason } from "./carregar";
 
 export default function FinanceiroPage() {
   const [activeTab, setActiveTab] = useState<'RECEIVABLE' | 'PAYABLE'>('RECEIVABLE');
@@ -12,7 +13,7 @@ export default function FinanceiroPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [denied, setDenied] = useState(false);
+  const [denied, setDenied] = useState<DeniedReason | null>(null);
 
   const [formData, setFormData] = useState({
     type: 'INCOME',
@@ -31,7 +32,7 @@ export default function FinanceiroPage() {
     try {
       const result = await loadTransactions(() => fetch('/api/financeiro'));
       if (result.denied) {
-        setDenied(true);
+        setDenied(result.denied);
       } else {
         setTransactions(result.transactions);
       }
@@ -57,9 +58,9 @@ export default function FinanceiroPage() {
         setIsModalOpen(false);
         setFormData({ type: 'INCOME', amount: '', description: '', dueDate: '', status: 'PENDING' });
         fetchData();
-      } else if (isAccessDenied(res.status)) {
+      } else if (deniedReason(res.status)) {
         setIsModalOpen(false);
-        setDenied(true);
+        setDenied(deniedReason(res.status));
       } else {
         alert("Erro ao salvar transação.");
       }
@@ -79,7 +80,29 @@ export default function FinanceiroPage() {
 
   const currentList = activeTab === 'RECEIVABLE' ? incomes : expenses;
 
-  if (denied) {
+  if (denied === "login") {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LogIn className="w-5 h-5 text-amber-600" />
+            Sessão expirada
+          </CardTitle>
+          <CardDescription>
+            Sua sessão terminou. Entre novamente para ver o financeiro.
+          </CardDescription>
+          <Link
+            href="/login"
+            className="mt-2 inline-flex w-fit items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          >
+            Entrar novamente
+          </Link>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  if (denied === "forbidden") {
     return (
       <Card>
         <CardHeader>

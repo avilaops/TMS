@@ -1,13 +1,19 @@
 // Carga da tela do financeiro, fora do componente para poder ser testada sem
 // navegador (tests/seguranca-usuarios.test.ts).
 
-export type LoadResult =
-  | { denied: true }
-  | { denied: false; transactions: unknown[] };
+// `login`: a sessão caiu (401). `forbidden`: o perfil não tem acesso (403).
+export type DeniedReason = "login" | "forbidden";
 
-// 401 (sessão caiu) e 403 (perfil sem acesso) viram o mesmo aviso na tela.
-export function isAccessDenied(status: number): boolean {
-  return status === 401 || status === 403;
+export type LoadResult =
+  | { denied: DeniedReason }
+  | { denied: null; transactions: unknown[] };
+
+// São avisos diferentes na tela: quem perdeu a sessão resolve entrando de novo;
+// quem não é Administrador, não.
+export function deniedReason(status: number): DeniedReason | null {
+  if (status === 401) return "login";
+  if (status === 403) return "forbidden";
+  return null;
 }
 
 /**
@@ -17,7 +23,8 @@ export function isAccessDenied(status: number): boolean {
  */
 export async function loadTransactions(request: () => Promise<Response>): Promise<LoadResult> {
   const res = await request();
-  if (isAccessDenied(res.status)) return { denied: true };
-  if (!res.ok) return { denied: false, transactions: [] };
-  return { denied: false, transactions: await res.json() };
+  const denied = deniedReason(res.status);
+  if (denied) return { denied };
+  if (!res.ok) return { denied: null, transactions: [] };
+  return { denied: null, transactions: await res.json() };
 }

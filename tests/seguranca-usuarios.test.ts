@@ -28,6 +28,7 @@ const PREFIXO = "teste-seguranca-";
 const CNPJ_TESTE = "99888777000247";
 const CPF_EXISTENTE = "99988877766";
 const CPF_NOVO = "99988877755";
+const CPF_FALHA = "99988877744";
 const PLACA_TESTE = "TSG0T35";
 const DESCRICAO_RECEITA = "teste-seguranca-receita";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
@@ -46,6 +47,7 @@ suite("segurança de usuários e motoristas", () => {
   let veiculos: typeof import("../src/app/api/veiculos/route");
   let usuario: typeof import("../src/app/api/usuarios/[id]/route");
   let tela: typeof import("../src/app/dashboard/financeiro/carregar");
+  let painel: typeof import("../src/app/dashboard/painel");
 
   const ids = {} as Record<Perfil, string>;
   let senhaHash: string;
@@ -67,7 +69,7 @@ suite("segurança de usuários e motoristas", () => {
   const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
   async function limpar() {
-    const cpfs = [CPF_EXISTENTE, CPF_NOVO];
+    const cpfs = [CPF_EXISTENTE, CPF_NOVO, CPF_FALHA];
     await prisma.collection.deleteMany({ where: { client: { cnpj: CNPJ_TESTE } } });
     await prisma.manifest.deleteMany({ where: { driver: { cpf: { in: cpfs } } } });
     await prisma.vehicle.deleteMany({ where: { plate: PLACA_TESTE } });
@@ -109,6 +111,7 @@ suite("segurança de usuários e motoristas", () => {
     veiculos = await import("../src/app/api/veiculos/route");
     usuario = await import("../src/app/api/usuarios/[id]/route");
     tela = await import("../src/app/dashboard/financeiro/carregar");
+    painel = await import("../src/app/dashboard/painel");
 
     await limpar();
 
@@ -236,6 +239,26 @@ suite("segurança de usuários e motoristas", () => {
       const depois = await prisma.user.findUniqueOrThrow({ where: { id: gravado.id } });
       expect(await bcrypt.compare(SENHA, depois.password)).toBe(true);
     });
+
+    it("falha ao criar o Driver não deixa User órfão", async () => {
+      entrarComo("OPERATION");
+      const email = `${CPF_FALHA}@motorista.mello.com`;
+      const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      // `phone` é texto no banco: o número passa pelo User (que não tem o
+      // campo) e só é recusado na criação do Driver.
+      const res = await motoristas.POST(req("POST", { cpf: CPF_FALHA, name: "Motorista Falho", phone: 17999990000 }));
+      erro.mockRestore();
+
+      expect(res.status).toBe(500);
+      expect(await prisma.driver.findUnique({ where: { cpf: CPF_FALHA } })).toBeNull();
+      expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
+
+      // Sem sobra, o mesmo CPF é cadastrado na tentativa seguinte.
+      const depois = await motoristas.POST(req("POST", { cpf: CPF_FALHA, name: "Motorista Falho", phone: "17999990000" }));
+      expect(depois.status).toBe(201);
+      expect(await prisma.user.count({ where: { email } })).toBe(1);
+    });
   });
 
   describe("receita no painel", () => {
@@ -259,29 +282,59 @@ suite("segurança de usuários e motoristas", () => {
       const corpo = await (await dashboard.GET()).json();
       expect(corpo.receita).toBeGreaterThanOrEqual(1234.5);
     });
+
+    it("tela: a resposta da API decide quem vê o cartão Receita", async () => {
+      entrarComo("ADMIN");
+      const admin = await painel.loadStats(() => dashboard.GET());
+      expect(admin.status).toBe("ready");
+      expect(painel.showFinance(admin, "ADMIN")).toBe(true);
+
+      // Perfil da sessão desatualizado (rebaixado depois do login): vale a API.
+      entrarComo("OPERATION");
+      const operacao = await painel.loadStats(() => dashboard.GET());
+      expect(operacao.status).toBe("ready");
+      expect(painel.showFinance(operacao, "ADMIN")).toBe(false);
+    });
+
+    it.each([
+      ["resposta 500", async () => new Response("{}", { status: 500 })],
+      ["sessão caída (401)", async () => { sessao.mockResolvedValue(null); return dashboard.GET(); }],
+      ["rede fora", async () => { throw new TypeError("fetch failed"); }],
+    ] as const)("tela: com %s o ADMIN vê o cartão em estado de erro, não some", async (_caso, chamada) => {
+      const estado = await painel.loadStats(chamada);
+      expect(estado).toEqual({ status: "error" });
+      expect(painel.showFinance(estado, "ADMIN")).toBe(true);
+      expect(painel.showFinance(estado, "OPERATION")).toBe(false);
+      expect(painel.showFinance(estado, undefined)).toBe(false);
+    });
+
+    it("tela: enquanto carrega, o ADMIN já vê o cartão", () => {
+      expect(painel.showFinance({ status: "loading" }, "ADMIN")).toBe(true);
+      expect(painel.showFinance({ status: "loading" }, "OPERATION")).toBe(false);
+    });
   });
 
   describe("tela do financeiro", () => {
-    it("OPERATION → aviso de acesso negado, não lista vazia", async () => {
+    it("OPERATION → aviso de acesso restrito, não lista vazia", async () => {
       entrarComo("OPERATION");
-      expect(await tela.loadTransactions(() => financeiro.GET())).toEqual({ denied: true });
+      expect(await tela.loadTransactions(() => financeiro.GET())).toEqual({ denied: "forbidden" });
     });
 
-    it("sem sessão → acesso negado", async () => {
+    it("sem sessão → pede novo login, não diz que o perfil é restrito", async () => {
       sessao.mockResolvedValue(null);
-      expect(await tela.loadTransactions(() => financeiro.GET())).toEqual({ denied: true });
+      expect(await tela.loadTransactions(() => financeiro.GET())).toEqual({ denied: "login" });
     });
 
     it("ADMIN → lançamentos", async () => {
       entrarComo("ADMIN");
       const resultado = await tela.loadTransactions(() => financeiro.GET());
-      expect(resultado.denied).toBe(false);
+      expect(resultado.denied).toBeNull();
       expect(JSON.stringify(resultado)).toContain(DESCRICAO_RECEITA);
     });
 
     it("erro do servidor não vira acesso negado", async () => {
       const resultado = await tela.loadTransactions(async () => new Response("{}", { status: 500 }));
-      expect(resultado).toEqual({ denied: false, transactions: [] });
+      expect(resultado).toEqual({ denied: null, transactions: [] });
     });
   });
 
