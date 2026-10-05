@@ -220,44 +220,61 @@ suite("segurança de usuários e motoristas", () => {
   });
 
   describe("POST /api/motoristas", () => {
-    it("grava senha aleatória em bcrypt, sem devolvê-la", async () => {
-      entrarComo("OPERATION");
-      const res = await motoristas.POST(req("POST", { cpf: CPF_NOVO, name: "Motorista Novo" }));
-      expect(res.status).toBe(201);
-      const corpo = await res.json();
-      expect(temChaveDeSenha(corpo)).toBe(false);
+    // O cadastro define o acesso: e-mail e senha vêm no formulário.
+    const corpo = (cpf: string, email: string) => ({
+      name: "Motorista Novo",
+      cpf,
+      email,
+      password: SENHA,
+      cnh: "12345678900",
+      category: "C",
+      cnhExpiry: "2031-06-30",
+    });
 
-      const gravado = await prisma.user.findUniqueOrThrow({ where: { email: `${CPF_NOVO}@motorista.mello.com` } });
+    it("grava em bcrypt a senha informada, sem devolvê-la", async () => {
+      entrarComo("OPERATION");
+      const email = `${PREFIXO}motorista-novo@exemplo.br`;
+      const res = await motoristas.POST(req("POST", corpo(CPF_NOVO, email)));
+      expect(res.status).toBe(201);
+      const resposta = await res.json();
+      expect(temChaveDeSenha(resposta)).toBe(false);
+
+      const gravado = await prisma.user.findUniqueOrThrow({ where: { email } });
       expect(gravado.role).toBe("DRIVER");
       expect(gravado.password).toMatch(/^\$2[aby]\$12\$.{53}$/);
+      expect(await bcrypt.compare(SENHA, gravado.password)).toBe(true);
       expect(await bcrypt.compare("password123", gravado.password)).toBe(false);
-      expect(JSON.stringify(corpo)).not.toContain(gravado.password);
+      expect(JSON.stringify(resposta)).not.toContain(gravado.password);
+      expect(JSON.stringify(resposta)).not.toContain(SENHA);
 
-      // Um ADMIN define a senha em Usuários, e só então o motorista entra.
+      // Um ADMIN ainda redefine a senha em Usuários.
       entrarComo("ADMIN");
-      expect((await usuario.PATCH(req("PATCH", { password: SENHA }), ctx(gravado.id))).status).toBe(200);
+      expect((await usuario.PATCH(req("PATCH", { password: "outra-senha-456" }), ctx(gravado.id))).status).toBe(200);
       const depois = await prisma.user.findUniqueOrThrow({ where: { id: gravado.id } });
-      expect(await bcrypt.compare(SENHA, depois.password)).toBe(true);
+      expect(await bcrypt.compare("outra-senha-456", depois.password)).toBe(true);
     });
 
     it("falha ao criar o Driver não deixa User órfão", async () => {
       entrarComo("OPERATION");
-      const email = `${CPF_FALHA}@motorista.mello.com`;
-      const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+      const emails = [`${PREFIXO}mesmo-cpf-a@exemplo.br`, `${PREFIXO}mesmo-cpf-b@exemplo.br`];
 
-      // `phone` é texto no banco: o número passa pelo User (que não tem o
-      // campo) e só é recusado na criação do Driver.
-      const res = await motoristas.POST(req("POST", { cpf: CPF_FALHA, name: "Motorista Falho", phone: 17999990000 }));
-      erro.mockRestore();
+      // Dois cadastros simultâneos do mesmo CPF com e-mails diferentes: os dois
+      // passam pela conferência de duplicado (nenhum gravou ainda) e criam o
+      // User; o índice único do CPF recusa o segundo Driver. Sem a transação,
+      // o User do perdedor ficaria no banco.
+      const respostas = await Promise.all(emails.map((email) => motoristas.POST(req("POST", corpo(CPF_FALHA, email)))));
 
-      expect(res.status).toBe(500);
-      expect(await prisma.driver.findUnique({ where: { cpf: CPF_FALHA } })).toBeNull();
-      expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
+      expect(respostas.map((res) => res.status).sort()).toEqual([201, 409]);
+      expect(await prisma.driver.count({ where: { cpf: CPF_FALHA } })).toBe(1);
+      expect(await prisma.user.count({ where: { email: { in: emails } } })).toBe(1);
 
-      // Sem sobra, o mesmo CPF é cadastrado na tentativa seguinte.
-      const depois = await motoristas.POST(req("POST", { cpf: CPF_FALHA, name: "Motorista Falho", phone: "17999990000" }));
+      // O e-mail do perdedor continua livre para um cadastro novo.
+      const vencedor = await prisma.user.findFirstOrThrow({ where: { email: { in: emails } } });
+      const livre = emails.find((email) => email !== vencedor.email)!;
+      await prisma.driver.deleteMany({ where: { cpf: CPF_FALHA } });
+      await prisma.user.delete({ where: { id: vencedor.id } });
+      const depois = await motoristas.POST(req("POST", corpo(CPF_FALHA, livre)));
       expect(depois.status).toBe(201);
-      expect(await prisma.user.count({ where: { email } })).toBe(1);
     });
   });
 

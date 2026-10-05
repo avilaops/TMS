@@ -1,13 +1,19 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
+import { CLIENT_PUBLIC_SELECT, createClientSchema, isUniqueViolation } from '@/lib/cadastros';
+import { firstIssue } from '@/lib/usuarios';
+
+const DUPLICATE_MESSAGE = 'Já existe um cliente cadastrado com este CNPJ/CPF.';
 
 export async function GET() {
   const { error } = await requireStaff();
   if (error) return error;
 
   try {
+    // Ativos e inativos: a tela mostra o selo e é por ela que se reativa.
     const clientes = await prisma.client.findMany({
+      select: CLIENT_PUBLIC_SELECT,
       orderBy: { createdAt: 'desc' }
     });
     return NextResponse.json(clientes);
@@ -22,35 +28,47 @@ export async function POST(req: Request) {
   if (error) return error;
 
   try {
-    const data = await req.json();
-    
-    // Validate required fields
-    if (!data.cnpj || !data.companyName) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    const parsed = createClientSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
+    const data = parsed.data;
 
-    // Check for duplicate CNPJ
+    // `data.cnpj` já vem só com dígitos: com ou sem máscara é o mesmo cliente.
     const existingClient = await prisma.client.findUnique({
-      where: { cnpj: data.cnpj }
+      where: { cnpj: data.cnpj },
+      select: { id: true }
     });
 
     if (existingClient) {
-      return NextResponse.json({ error: 'Já existe um cliente cadastrado com este CNPJ/CPF.' }, { status: 409 });
+      return NextResponse.json({ error: DUPLICATE_MESSAGE }, { status: 409 });
     }
 
-    // Create client
-    const newClient = await prisma.client.create({
-      data: {
-        cnpj: data.cnpj,
-        companyName: data.companyName,
-        tradeName: data.tradeName,
-        email: data.email,
-        phone: data.phone,
-        address: data.address,
-      }
-    });
+    try {
+      const newClient = await prisma.client.create({
+        data: {
+          cnpj: data.cnpj,
+          companyName: data.companyName,
+          tradeName: data.tradeName,
+          ie: data.ie,
+          contactName: data.contactName,
+          email: data.email,
+          phone: data.phone,
+          address: data.address,
+          paymentCondition: data.paymentCondition,
+          creditLimit: data.creditLimit,
+        },
+        select: CLIENT_PUBLIC_SELECT,
+      });
 
-    return NextResponse.json(newClient, { status: 201 });
+      return NextResponse.json(newClient, { status: 201 });
+    } catch (err) {
+      // Duas criações simultâneas com o mesmo CNPJ: a segunda bate no índice único.
+      if (isUniqueViolation(err)) {
+        return NextResponse.json({ error: DUPLICATE_MESSAGE }, { status: 409 });
+      }
+      throw err;
+    }
   } catch (error) {
     console.error('Error creating client:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

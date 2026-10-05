@@ -16,25 +16,40 @@ interface Veiculo {
   // Nomes conforme o retorno de GET /api/veiculos (modelo Vehicle do Prisma).
   // O formulário usa capacityKg/defaultDriverId, que a API traduz na escrita.
   capacity: number | null;
+  maxWeight: number | null;
   year: number | null;
+  driverId: string | null;
+  status: string;
   driver?: { user: { name: string } } | null;
 }
 
+const STATUS = [
+  { value: "AVAILABLE", label: "Disponível" },
+  { value: "ON_ROUTE", label: "Em rota" },
+  { value: "MAINTENANCE", label: "Manutenção" },
+];
+
+const FORM_VAZIO = {
+  plate: "",
+  model: "",
+  type: "VAN",
+  capacityKg: "",
+  maxWeight: "",
+  year: "",
+  defaultDriverId: "",
+};
+
 export default function VeiculosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // `null` = cadastro novo; com id, o modal edita aquele veículo.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [motoristas, setMotoristas] = useState<Motorista[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  const [formData, setFormData] = useState({
-    plate: "",
-    model: "",
-    type: "VAN",
-    capacityKg: "",
-    year: "",
-    defaultDriverId: "",
-  });
+  const [formData, setFormData] = useState(FORM_VAZIO);
 
   useEffect(() => {
     fetchData();
@@ -61,6 +76,48 @@ export default function VeiculosPage() {
     }
   };
 
+  const openCreate = () => {
+    setEditingId(null);
+    setFormData(FORM_VAZIO);
+    setIsModalOpen(true);
+  };
+
+  const openEdit = (veiculo: Veiculo) => {
+    setEditingId(veiculo.id);
+    setFormData({
+      plate: veiculo.plate,
+      model: veiculo.model,
+      type: veiculo.type,
+      capacityKg: veiculo.capacity == null ? "" : String(veiculo.capacity),
+      maxWeight: veiculo.maxWeight == null ? "" : String(veiculo.maxWeight),
+      year: veiculo.year == null ? "" : String(veiculo.year),
+      defaultDriverId: veiculo.driverId ?? "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleStatusChange = async (veiculo: Veiculo, status: string) => {
+    setChangingStatusId(veiculo.id);
+    try {
+      const res = await fetch(`/api/veiculos/${veiculo.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+
+      if (res.ok) {
+        fetchData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || "Erro ao alterar o status.");
+      }
+    } catch {
+      alert("Erro ao alterar o status.");
+    } finally {
+      setChangingStatusId(null);
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.plate || !formData.model) {
       alert("Placa e Modelo são obrigatórios.");
@@ -69,21 +126,23 @@ export default function VeiculosPage() {
     
     setIsSaving(true);
     try {
-      const res = await fetch('/api/veiculos', {
-        method: 'POST',
+      // Na edição a placa não muda: é a chave do veículo.
+      const { plate, ...resto } = formData;
+      const res = await fetch(editingId ? `/api/veiculos/${editingId}` : '/api/veiculos', {
+        method: editingId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(editingId ? resto : { ...resto, plate }),
       });
       
       if (res.ok) {
         setIsModalOpen(false);
-        setFormData({ plate: "", model: "", type: "VAN", capacityKg: "", year: "", defaultDriverId: "" });
+        setFormData(FORM_VAZIO);
         fetchData();
       } else {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         alert(errData.error || "Erro ao salvar veículo.");
       }
-    } catch (error) {
+    } catch {
       alert("Erro ao salvar veículo.");
     } finally {
       setIsSaving(false);
@@ -98,7 +157,7 @@ export default function VeiculosPage() {
           <p className="text-gray-500 text-sm mt-1">Gerencie a frota de veículos</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={openCreate}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
         >
           <Plus className="w-4 h-4" />
@@ -125,6 +184,7 @@ export default function VeiculosPage() {
                   <th className="px-6 py-4">Tipo</th>
                   <th className="px-6 py-4">Capacidade (KG)</th>
                   <th className="px-6 py-4">Motorista Padrão</th>
+                  <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
@@ -145,7 +205,27 @@ export default function VeiculosPage() {
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{veiculo.type}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{veiculo.capacity || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{veiculo.driver?.user?.name || '-'}</td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4">
+                      <select
+                        aria-label={`Status do veículo ${veiculo.plate}`}
+                        value={veiculo.status}
+                        disabled={changingStatusId === veiculo.id}
+                        onChange={(e) => handleStatusChange(veiculo, e.target.value)}
+                        className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      >
+                        {/* Status antigo fora da lista aparece para ser corrigido. */}
+                        {!STATUS.some((s) => s.value === veiculo.status) && (
+                          <option value={veiculo.status}>{veiculo.status}</option>
+                        )}
+                        {STATUS.map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap space-x-4">
+                      <button onClick={() => openEdit(veiculo)} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Editar
+                      </button>
                       <a href={`/dashboard/veiculos/${veiculo.id}/manutencao`} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
                         Ver Histórico
                       </a>
@@ -162,7 +242,9 @@ export default function VeiculosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800">
             <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">Cadastrar Veículo</h2>
+              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">
+                {editingId ? "Editar Veículo" : "Cadastrar Veículo"}
+              </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 ✕
               </button>
@@ -177,7 +259,8 @@ export default function VeiculosPage() {
                     value={formData.plate}
                     onChange={(e) => setFormData({...formData, plate: e.target.value})}
                     placeholder="ABC-1234"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white uppercase"
+                    disabled={Boolean(editingId)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white uppercase disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -192,7 +275,7 @@ export default function VeiculosPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Tipo</label>
                   <select 
@@ -214,6 +297,16 @@ export default function VeiculosPage() {
                     value={formData.capacityKg}
                     onChange={(e) => setFormData({...formData, capacityKg: e.target.value})}
                     placeholder="Ex: 5000"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Peso Máximo (KG)</label>
+                  <input
+                    type="number"
+                    value={formData.maxWeight}
+                    onChange={(e) => setFormData({...formData, maxWeight: e.target.value})}
+                    placeholder="Ex: 8000"
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                   />
                 </div>

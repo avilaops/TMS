@@ -36,6 +36,7 @@ type Handler = (req: Request) => Promise<Response>;
 suite("permissões das rotas internas", () => {
   let prisma: typeof import("../src/lib/prisma").default;
   let clientes: typeof import("../src/app/api/clientes/route");
+  let clientePorId: typeof import("../src/app/api/clientes/[id]/route");
   let coletas: typeof import("../src/app/api/coletas/route");
   let dashboard: typeof import("../src/app/api/dashboard/route");
   let financeiro: typeof import("../src/app/api/financeiro/route");
@@ -43,7 +44,9 @@ suite("permissões das rotas internas", () => {
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
   let motoristas: typeof import("../src/app/api/motoristas/route");
+  let motoristaPorId: typeof import("../src/app/api/motoristas/[id]/route");
   let veiculos: typeof import("../src/app/api/veiculos/route");
+  let veiculoPorId: typeof import("../src/app/api/veiculos/[id]/route");
   let manutencao: typeof import("../src/app/api/veiculos/[id]/manutencao/route");
   let pendentes: typeof import("../src/app/api/dashboard/coletas/pendentes/route");
   let coletaStatus: typeof import("../src/app/api/dashboard/coletas/[id]/status/route");
@@ -93,6 +96,7 @@ suite("permissões das rotas internas", () => {
   beforeAll(async () => {
     prisma = (await import("../src/lib/prisma")).default;
     clientes = await import("../src/app/api/clientes/route");
+    clientePorId = await import("../src/app/api/clientes/[id]/route");
     coletas = await import("../src/app/api/coletas/route");
     dashboard = await import("../src/app/api/dashboard/route");
     financeiro = await import("../src/app/api/financeiro/route");
@@ -100,7 +104,9 @@ suite("permissões das rotas internas", () => {
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
     manifestos = await import("../src/app/api/manifestos/route");
     motoristas = await import("../src/app/api/motoristas/route");
+    motoristaPorId = await import("../src/app/api/motoristas/[id]/route");
     veiculos = await import("../src/app/api/veiculos/route");
+    veiculoPorId = await import("../src/app/api/veiculos/[id]/route");
     manutencao = await import("../src/app/api/veiculos/[id]/manutencao/route");
     pendentes = await import("../src/app/api/dashboard/coletas/pendentes/route");
     coletaStatus = await import("../src/app/api/dashboard/coletas/[id]/status/route");
@@ -126,6 +132,7 @@ suite("permissões das rotas internas", () => {
     rotasStaff = [
       ["GET /api/clientes", () => clientes.GET()],
       ["POST /api/clientes", () => clientes.POST(req("POST", { cnpj: "1", companyName: "x" }))],
+      ["PATCH /api/clientes/[id]", () => clientePorId.PATCH(req("PATCH", { companyName: "Invasor LTDA" }), ctx(clienteId))],
       ["GET /api/coletas", () => coletas.GET()],
       ["POST /api/coletas", () => coletas.POST(req("POST", {}))],
       ["GET /api/dashboard", () => dashboard.GET()],
@@ -135,8 +142,10 @@ suite("permissões das rotas internas", () => {
       ["POST /api/manifestos", () => manifestos.POST(req("POST", {}))],
       ["GET /api/motoristas", () => motoristas.GET()],
       ["POST /api/motoristas", () => motoristas.POST(req("POST", { cpf: "1", name: "x" }))],
+      ["PATCH /api/motoristas/[id]", () => motoristaPorId.PATCH(req("PATCH", { active: false }), ctx(semId))],
       ["GET /api/veiculos", () => veiculos.GET()],
       ["POST /api/veiculos", () => veiculos.POST(req("POST", { plate: "X", model: "x", type: "VAN" }))],
+      ["PATCH /api/veiculos/[id]", () => veiculoPorId.PATCH(req("PATCH", { status: "MAINTENANCE" }), ctx(semId))],
       ["GET /api/veiculos/[id]/manutencao", () => manutencao.GET(req(), ctx(semId))],
       ["POST /api/veiculos/[id]/manutencao", () => manutencao.POST(req("POST", {}), ctx(semId))],
       ["GET /api/dashboard/coletas/pendentes", () => pendentes.GET(req())],

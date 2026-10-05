@@ -142,7 +142,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 
 ### Fase 1: Núcleo Operacional (Obrigatório Inicial)
 - [x] Login, usuários e permissões.
-- [ ] Cadastros de clientes, motoristas e veículos.
+- [x] Cadastros de clientes, motoristas e veículos.
 - [ ] Gestão de coletas e entregas.
 - [ ] Status, manifestos e rastreamento.
 - [ ] Aplicativo do motorista (PWA).

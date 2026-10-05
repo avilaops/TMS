@@ -8,28 +8,45 @@ interface Cliente {
   id: string;
   cnpj: string;
   companyName: string;
-  tradeName: string;
-  email: string;
-  phone: string;
-  address: string;
+  tradeName: string | null;
+  ie: string | null;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  paymentCondition: string | null;
+  creditLimit: number | null;
+  active: boolean;
 }
+
+const FORM_VAZIO = {
+  cnpj: "",
+  companyName: "",
+  tradeName: "",
+  ie: "",
+  contactName: "",
+  email: "",
+  phone: "",
+  address: "",
+  paymentCondition: "",
+  creditLimit: "",
+};
+
+const INPUT =
+  "w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
+const LABEL = "text-sm font-medium text-gray-700 dark:text-gray-300";
 
 export default function ClientesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [cnpjBusca, setCnpjBusca] = useState("");
+  // `null` = cadastro novo; com id, o modal edita aquele cliente.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  const [formData, setFormData] = useState({
-    cnpj: "",
-    companyName: "",
-    tradeName: "",
-    email: "",
-    phone: "",
-    address: "",
-  });
+
+  const [formData, setFormData] = useState(FORM_VAZIO);
 
   useEffect(() => {
     fetchClientes();
@@ -50,24 +67,52 @@ export default function ClientesPage() {
     }
   };
 
+  const openCreate = () => {
+    setEditingId(null);
+    setFormData(FORM_VAZIO);
+    setIsModalOpen(true);
+  };
+
+  const openEdit = (cliente: Cliente) => {
+    setEditingId(cliente.id);
+    setFormData({
+      cnpj: cliente.cnpj,
+      companyName: cliente.companyName,
+      tradeName: cliente.tradeName ?? "",
+      ie: cliente.ie ?? "",
+      contactName: cliente.contactName ?? "",
+      email: cliente.email ?? "",
+      phone: cliente.phone ?? "",
+      address: cliente.address ?? "",
+      paymentCondition: cliente.paymentCondition ?? "",
+      creditLimit: cliente.creditLimit == null ? "" : String(cliente.creditLimit),
+    });
+    setIsModalOpen(true);
+  };
+
   const handleCnpjSearch = async () => {
-    if (cnpjBusca.length < 14) return;
+    const digitos = formData.cnpj.replace(/\D/g, "");
+    if (digitos.length !== 14) {
+      alert("Informe os 14 dígitos do CNPJ para buscar.");
+      return;
+    }
     setLoadingCnpj(true);
     try {
-      const data = await getCompanyByCnpj(cnpjBusca);
+      const data = await getCompanyByCnpj(digitos);
       if (data) {
-        setFormData({
+        setFormData((atual) => ({
+          ...atual,
           cnpj: data.cnpj,
           companyName: data.razao_social,
           tradeName: data.nome_fantasia || "",
           email: data.email || "",
           phone: data.ddd_telefone_1 || "",
           address: `${data.logradouro}, ${data.numero} - ${data.bairro}, ${data.municipio} - ${data.uf}`,
-        });
+        }));
       } else {
         alert("CNPJ não encontrado");
       }
-    } catch (err) {
+    } catch {
       alert("Erro ao buscar CNPJ");
     } finally {
       setLoadingCnpj(false);
@@ -79,37 +124,53 @@ export default function ClientesPage() {
       alert("CNPJ e Razão Social são obrigatórios.");
       return;
     }
-    
+
     setIsSaving(true);
     try {
-      const res = await fetch('/api/clientes', {
-        method: 'POST',
+      const res = await fetch(editingId ? `/api/clientes/${editingId}` : '/api/clientes', {
+        method: editingId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          cnpj: formData.cnpj,
-          companyName: formData.companyName,
-          tradeName: formData.tradeName,
-          email: formData.email,
-          phone: formData.phone,
-          address: formData.address,
-        }),
+        body: JSON.stringify(formData),
       });
-      
+
       if (res.ok) {
         setIsModalOpen(false);
-        setFormData({ cnpj: "", companyName: "", tradeName: "", email: "", phone: "", address: "" });
-        setCnpjBusca("");
+        setFormData(FORM_VAZIO);
         fetchClientes();
       } else {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         alert(errData.error || "Erro ao salvar cliente.");
       }
-    } catch (error) {
+    } catch {
       alert("Erro ao salvar cliente.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (cliente: Cliente) => {
+    if (cliente.active && !confirm(`Desativar ${cliente.tradeName || cliente.companyName}?`)) return;
+
+    setTogglingId(cliente.id);
+    try {
+      const res = await fetch(`/api/clientes/${cliente.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !cliente.active }),
+      });
+
+      if (res.ok) {
+        fetchClientes();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || "Erro ao alterar cliente.");
+      }
+    } catch {
+      alert("Erro ao alterar cliente.");
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -120,8 +181,8 @@ export default function ClientesPage() {
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Clientes</h1>
           <p className="text-gray-500 text-sm mt-1">Gerencie a carteira de clientes</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
+        <button
+          onClick={openCreate}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
         >
           <Plus className="w-4 h-4" />
@@ -148,6 +209,8 @@ export default function ClientesPage() {
                   <th className="px-6 py-4">CNPJ</th>
                   <th className="px-6 py-4">Email</th>
                   <th className="px-6 py-4">Telefone</th>
+                  <th className="px-6 py-4">Situação</th>
+                  <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -167,6 +230,29 @@ export default function ClientesPage() {
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.cnpj}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.email || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.phone || '-'}</td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                          cliente.active
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                        }`}
+                      >
+                        {cliente.active ? "Ativo" : "Inativo"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap space-x-4">
+                      <button onClick={() => openEdit(cliente)} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleToggleActive(cliente)}
+                        disabled={togglingId === cliente.id}
+                        className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm font-medium disabled:opacity-50"
+                      >
+                        {cliente.active ? "Desativar" : "Reativar"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -177,28 +263,30 @@ export default function ClientesPage() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800">
             <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">Cadastrar Cliente</h2>
+              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">
+                {editingId ? "Editar Cliente" : "Cadastrar Cliente"}
+              </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 ✕
               </button>
             </div>
-            
-            <div className="p-6 space-y-4">
+
+            <div className="p-6 space-y-4 overflow-y-auto">
               <div className="flex space-x-2">
                 <div className="flex-1 space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">CNPJ</label>
+                  <label className={LABEL}>CNPJ / CPF</label>
                   <input
                     type="text"
-                    value={cnpjBusca}
-                    onChange={(e) => setCnpjBusca(e.target.value)}
-                    placeholder="Somente números"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    value={formData.cnpj}
+                    onChange={(e) => setFormData({...formData, cnpj: e.target.value})}
+                    placeholder="00.000.000/0000-00"
+                    className={INPUT}
                   />
                 </div>
                 <div className="flex items-end">
-                  <button 
+                  <button
                     onClick={handleCnpjSearch}
                     disabled={loadingCnpj}
                     className="h-[46px] px-6 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors flex items-center justify-center"
@@ -210,45 +298,106 @@ export default function ClientesPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Razão Social</label>
+                  <label className={LABEL}>Razão Social</label>
                   <input
                     type="text"
                     value={formData.companyName}
                     onChange={(e) => setFormData({...formData, companyName: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    className={INPUT}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Nome Fantasia</label>
+                  <label className={LABEL}>Nome Fantasia</label>
                   <input
                     type="text"
                     value={formData.tradeName}
                     onChange={(e) => setFormData({...formData, tradeName: e.target.value})}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    className={INPUT}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={LABEL}>Inscrição Estadual</label>
+                  <input
+                    type="text"
+                    value={formData.ie}
+                    onChange={(e) => setFormData({...formData, ie: e.target.value})}
+                    className={INPUT}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={LABEL}>Contato</label>
+                  <input
+                    type="text"
+                    value={formData.contactName}
+                    onChange={(e) => setFormData({...formData, contactName: e.target.value})}
+                    placeholder="Nome de quem atende"
+                    className={INPUT}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={LABEL}>E-mail</label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    className={INPUT}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={LABEL}>Telefone</label>
+                  <input
+                    type="text"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    className={INPUT}
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endereço Completo</label>
+                <label className={LABEL}>Endereço Completo</label>
                 <input
                   type="text"
                   value={formData.address}
                   onChange={(e) => setFormData({...formData, address: e.target.value})}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                  className={INPUT}
                 />
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className={LABEL}>Condição de Pagamento</label>
+                  <input
+                    type="text"
+                    value={formData.paymentCondition}
+                    onChange={(e) => setFormData({...formData, paymentCondition: e.target.value})}
+                    placeholder="Ex: 28 dias, boleto"
+                    className={INPUT}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={LABEL}>Limite de Crédito (R$)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.creditLimit}
+                    onChange={(e) => setFormData({...formData, creditLimit: e.target.value})}
+                    className={INPUT}
+                  />
+                </div>
+              </div>
+
             </div>
-            
+
             <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="px-6 py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 onClick={handleSave}
                 disabled={isSaving}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center space-x-2"
