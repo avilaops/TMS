@@ -34,6 +34,8 @@ const CPF_PERFIL = "99988877711";
 const CPF_INATIVO = "99988877700";
 const PLACA_DIGITADA = "abc-1d23";
 const PLACA_TESTE = "ABC1D23";
+// Só aparece em pedidos que a API precisa recusar; entra na limpeza caso um deles passe.
+const PLACA_RECUSADA = "TCD0A01";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
 const SENHA = "senha-de-teste-123";
 const SEM_ID = "00000000-0000-0000-0000-000000000000";
@@ -77,7 +79,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
   // Na ordem das dependências: veículo → motorista → usuário → cliente.
   async function limpar() {
     const cpfs = [CPF_TESTE, CPF_OUTRO, CPF_PERFIL, CPF_INATIVO];
-    await prisma.vehicle.deleteMany({ where: { plate: PLACA_TESTE } });
+    await prisma.vehicle.deleteMany({ where: { plate: { in: [PLACA_TESTE, PLACA_RECUSADA] } } });
     await prisma.driver.deleteMany({ where: { cpf: { in: cpfs } } });
     await prisma.user.deleteMany({ where: { email: { startsWith: PREFIXO, mode: "insensitive" } } });
     await prisma.client.deleteMany({ where: { cnpj: { in: [CNPJ_TESTE, CNPJ_OUTRO, CNPJ_MASCARADO] } } });
@@ -389,6 +391,30 @@ suite("cadastros de clientes, motoristas e veículos", () => {
       expect(gravado.cnh).toBe("55555555555");
       expect(gravado.user).toMatchObject({ email: email("perfil-errado"), password: HASH_FALSO, role: "OPERATION" });
     });
+
+    it("PATCH: usuário de outro perfil só aceita a desativação sozinha", async () => {
+      const antigo = await prisma.driver.findUniqueOrThrow({ where: { cpf: CPF_PERFIL } });
+
+      // Desativar junto com outro campo, ou reativar, continua recusado.
+      for (const corpo of [{ active: false, cnh: "00000000000" }, { active: false, phone: "" }, { active: true }]) {
+        const recusado = await motorista.PATCH(req("PATCH", corpo), ctx(antigo.id));
+        expect(recusado.status, JSON.stringify(corpo)).toBe(409);
+      }
+      expect(await prisma.driver.findUniqueOrThrow({ where: { id: antigo.id } })).toMatchObject({
+        active: true,
+        cnh: "55555555555",
+      });
+
+      const res = await motorista.PATCH(req("PATCH", { active: false }), ctx(antigo.id));
+      expect(res.status).toBe(200);
+      const corpo = await res.json();
+      expect(corpo.active).toBe(false);
+      expect(temChaveDeSenha(corpo)).toBe(false);
+
+      const gravado = await prisma.driver.findUniqueOrThrow({ where: { id: antigo.id }, include: { user: true } });
+      expect(gravado).toMatchObject({ active: false, cnh: "55555555555" });
+      expect(gravado.user).toMatchObject({ email: email("perfil-errado"), password: HASH_FALSO, role: "OPERATION" });
+    });
   });
 
   describe("veículos", () => {
@@ -438,7 +464,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
     });
 
     it("dados inválidos → 400", async () => {
-      const base = { plate: "TCD0A01", model: "Modelo", type: "VAN" };
+      const base = { plate: PLACA_RECUSADA, model: "Modelo", type: "VAN" };
       const casos: [string, Record<string, unknown>][] = [
         ["motorista inexistente", { ...base, defaultDriverId: SEM_ID }],
         ["placa fora do padrão", { ...base, plate: "AB-12345" }],
@@ -454,7 +480,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
         const res = await veiculos.POST(req("POST", corpo));
         expect(res.status, nome).toBe(400);
       }
-      expect(await prisma.vehicle.count({ where: { plate: "TCD0A01" } })).toBe(0);
+      expect(await prisma.vehicle.count({ where: { plate: PLACA_RECUSADA } })).toBe(0);
     });
 
     it("PATCH troca o status e os dados; a placa não muda", async () => {
@@ -522,11 +548,11 @@ suite("cadastros de clientes, motoristas e veículos", () => {
       });
 
       const criado = await veiculos.POST(
-        req("POST", { plate: "TCD0A01", model: "Modelo", type: "VAN", defaultDriverId: inativo.id }),
+        req("POST", { plate: PLACA_RECUSADA, model: "Modelo", type: "VAN", defaultDriverId: inativo.id }),
       );
       expect(criado.status).toBe(400);
       expect((await criado.json()).error).toMatch(/inativo/i);
-      expect(await prisma.vehicle.count({ where: { plate: "TCD0A01" } })).toBe(0);
+      expect(await prisma.vehicle.count({ where: { plate: PLACA_RECUSADA } })).toBe(0);
 
       const editado = await veiculo.PATCH(req("PATCH", { model: "Não grava", defaultDriverId: inativo.id }), ctx(veiculoId));
       expect(editado.status).toBe(400);

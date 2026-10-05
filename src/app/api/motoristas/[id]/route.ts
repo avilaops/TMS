@@ -31,7 +31,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (!target) throw new Refusal('Motorista não encontrado.', 404);
       // Cadastro antigo pode ligar o motorista a um usuário de outro perfil:
       // por aqui ninguém troca o e-mail nem a senha de uma conta que não é de motorista.
-      if (target.user.role !== 'DRIVER') {
+      // Desativar continua valendo: só mexe no Driver e é o que tira o acesso.
+      const changed = Object.keys(data).filter((key) => data[key as keyof typeof data] !== undefined);
+      const onlyDeactivating = data.active === false && changed.length === 1;
+      if (target.user.role !== 'DRIVER' && !onlyDeactivating) {
         throw new Refusal('O usuário deste motorista não tem perfil de motorista.', 409);
       }
 

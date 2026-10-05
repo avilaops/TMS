@@ -89,6 +89,8 @@ export default function VeiculosPage() {
   // mesmo que o tipo tenha saído da lista ou o motorista tenha sido desativado.
   const emEdicao = editingId ? veiculos.find((v) => v.id === editingId) : undefined;
   const tipoAntigo = emEdicao && !TIPOS.some((t) => t.value === emEdicao.type) ? emEdicao.type : null;
+  // Cadastro antigo pode ter o tipo gravado em branco, que a API não aceita de volta.
+  const tipoEmBranco = tipoAntigo !== null && tipoAntigo.trim() === "";
   const motoristasDoSeletor = motoristas.filter((m) => m.active || m.id === emEdicao?.driverId);
 
   const openCreate = () => {
@@ -143,10 +145,13 @@ export default function VeiculosPage() {
     try {
       // Na edição a placa não muda: é a chave do veículo.
       const { plate, ...resto } = formData;
+      // Tipo em branco que ninguém trocou não vai no PATCH: o servidor mantém o que está gravado.
+      const { type, ...semTipo } = resto;
+      const edicao = tipoEmBranco && type === emEdicao?.type ? semTipo : resto;
       const res = await fetch(editingId ? `/api/veiculos/${editingId}` : '/api/veiculos', {
         method: editingId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingId ? resto : { ...resto, plate }),
+        body: JSON.stringify(editingId ? edicao : { ...resto, plate }),
       });
       
       if (res.ok) {
@@ -298,7 +303,9 @@ export default function VeiculosPage() {
                     onChange={(e) => setFormData({...formData, type: e.target.value})}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                   >
-                    {tipoAntigo && <option value={tipoAntigo}>{tipoAntigo}</option>}
+                    {tipoAntigo !== null && (
+                      <option value={tipoAntigo}>{tipoEmBranco ? "Sem tipo definido" : tipoAntigo}</option>
+                    )}
                     {TIPOS.map((t) => (
                       <option key={t.value} value={t.value}>{t.label}</option>
                     ))}

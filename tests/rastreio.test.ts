@@ -41,18 +41,24 @@ suite("GET /api/rastreio", () => {
     return { status: response.status, body: await response.json() };
   }
 
+  // Apaga só o que esta suite cria, na ordem das dependências:
+  // Collection referencia Manifest, Driver e Client.
+  async function limpar() {
+    await prisma.collection.deleteMany({ where: { trackingCode: { in: [CODIGO_A, CODIGO_ZEROS, CODIGO_B] } } });
+    await prisma.manifest.deleteMany({ where: { vehicle: { plate: PLACA } } });
+    await prisma.vehicle.deleteMany({ where: { plate: PLACA } });
+    await prisma.driver.deleteMany({ where: { cpf: CPF_MOTORISTA } });
+    await prisma.user.deleteMany({ where: { email: EMAIL_MOTORISTA } });
+    await prisma.client.deleteMany({ where: { cnpj: { in: [CNPJ_A, CNPJ_B] } } });
+  }
+
   beforeAll(async () => {
     prisma = (await import("../src/lib/prisma")).default;
     GET = (await import("../src/app/api/rastreio/route")).GET;
     resetRateLimit = (await import("../src/lib/rate-limit")).resetRateLimit;
 
-    // Ordem importa: Collection referencia Manifest, Driver e Client.
-    await prisma.collection.deleteMany({});
-    await prisma.manifest.deleteMany({});
-    await prisma.vehicle.deleteMany({});
-    await prisma.driver.deleteMany({});
-    await prisma.client.deleteMany({});
-    await prisma.user.deleteMany({});
+    // Sobra de uma execução interrompida, e nada além disso: o banco pode ter outros dados.
+    await limpar();
 
     const clienteA = await prisma.client.create({
       data: {
@@ -146,14 +152,8 @@ suite("GET /api/rastreio", () => {
 
   beforeEach(() => resetRateLimit());
 
-  // Apaga só o que esta suite criou, na ordem das dependências.
   afterAll(async () => {
-    await prisma.collection.deleteMany({ where: { trackingCode: { in: [CODIGO_A, CODIGO_ZEROS, CODIGO_B] } } });
-    await prisma.manifest.deleteMany({ where: { vehicle: { plate: PLACA } } });
-    await prisma.vehicle.deleteMany({ where: { plate: PLACA } });
-    await prisma.driver.deleteMany({ where: { cpf: CPF_MOTORISTA } });
-    await prisma.user.deleteMany({ where: { email: EMAIL_MOTORISTA } });
-    await prisma.client.deleteMany({ where: { cnpj: { in: [CNPJ_A, CNPJ_B] } } });
+    await limpar();
     await prisma.$disconnect();
   });
 
