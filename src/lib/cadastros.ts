@@ -40,9 +40,10 @@ const INVALID_BODY = "Dados inválidos.";
 const NOTHING_TO_CHANGE = "Informe ao menos um campo para alterar.";
 
 // Texto opcional: vazio vira `null` (apaga o campo); ausente não mexe.
-const optionalText = (max: number, tooLong: string) =>
+// `wrongType` é a mensagem para quem manda número, lista ou objeto no lugar.
+const optionalText = (max: number, tooLong: string, wrongType = INVALID_BODY) =>
   z
-    .string(INVALID_BODY)
+    .string(wrongType)
     .trim()
     .max(max, tooLong)
     .transform((value) => (value === "" ? null : value))
@@ -144,7 +145,7 @@ const cnhExpiry = z
   .transform((value) => new Date(value))
   .pipe(z.date(CNH_EXPIRY_MESSAGE));
 
-const driverPhone = optionalText(30, "Telefone muito longo.");
+const driverPhone = optionalText(30, "Telefone muito longo.", "O telefone precisa ser um texto.");
 
 export const createDriverSchema = z.object(
   {

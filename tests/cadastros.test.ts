@@ -266,6 +266,32 @@ suite("cadastros de clientes, motoristas e veículos", () => {
       expect(await prisma.user.count({ where: { email: email("invalido") } })).toBe(0);
     });
 
+    it("campo com o tipo errado → 400 com a mensagem do campo, não 500", async () => {
+      const base = corpoMotorista({ cpf: CPF_OUTRO, email: email("tipo-errado") });
+      const casos: [string, Record<string, unknown>, RegExp][] = [
+        ["telefone numérico", { ...base, phone: 11999990000 }, /telefone/i],
+        ["telefone em lista", { ...base, phone: ["11999990000"] }, /telefone/i],
+        ["nome numérico", { ...base, name: 123 }, /nome/i],
+        ["CPF numérico", { ...base, cpf: 12345678901 }, /CPF/],
+        ["e-mail em objeto", { ...base, email: { a: 1 } }, /e-mail/i],
+        ["senha numérica", { ...base, password: 12345678 }, /senha/i],
+        ["CNH numérica", { ...base, cnh: 12345678900 }, /CNH/],
+        ["categoria numérica", { ...base, category: 1 }, /categoria/i],
+        ["validade numérica", { ...base, cnhExpiry: 20310630 }, /validade/i],
+      ];
+      for (const [nome, corpo, mensagem] of casos) {
+        const res = await motoristas.POST(req("POST", corpo));
+        expect(res.status, nome).toBe(400);
+        expect((await res.json()).error, nome).toMatch(mensagem);
+      }
+      // Corpo que nem objeto é.
+      for (const corpo of [null, "texto", 42, []]) {
+        expect((await motoristas.POST(req("POST", corpo))).status, JSON.stringify(corpo)).toBe(400);
+      }
+      expect(await prisma.driver.count({ where: { cpf: CPF_OUTRO } })).toBe(0);
+      expect(await prisma.user.count({ where: { email: email("tipo-errado") } })).toBe(0);
+    });
+
     it("GET não contém a chave password em nenhum nível", async () => {
       const res = await motoristas.GET();
       expect(res.status).toBe(200);

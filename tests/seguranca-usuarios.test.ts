@@ -313,16 +313,33 @@ suite("segurança de usuários e motoristas", () => {
       expect(painel.showFinance(operacao, "ADMIN")).toBe(false);
     });
 
+    const redeFora = new TypeError("fetch failed");
+
+    // `cause` é o que a tela registra no console: o status HTTP ou a exceção.
     it.each([
-      ["resposta 500", async () => new Response("{}", { status: 500 })],
-      ["sessão caída (401)", async () => { sessao.mockResolvedValue(null); return dashboard.GET(); }],
-      ["rede fora", async () => { throw new TypeError("fetch failed"); }],
-    ] as const)("tela: com %s o ADMIN vê o cartão em estado de erro, não some", async (_caso, chamada) => {
+      ["resposta 500", async () => new Response("{}", { status: 500 }), { status: "error", cause: "HTTP 500" }],
+      ["perfil sem acesso (403)", async () => new Response("{}", { status: 403 }), { status: "error", cause: "HTTP 403" }],
+      ["sessão caída (401)", async () => { sessao.mockResolvedValue(null); return dashboard.GET(); }, { status: "expired", cause: "HTTP 401" }],
+      ["rede fora", async () => { throw redeFora; }, { status: "error", cause: redeFora }],
+    ] as const)("tela: com %s o ADMIN vê o cartão em estado de erro, não some", async (_caso, chamada, esperado) => {
       const estado = await painel.loadStats(chamada);
-      expect(estado).toEqual({ status: "error" });
+      expect(estado).toEqual(esperado);
       expect(painel.showFinance(estado, "ADMIN")).toBe(true);
       expect(painel.showFinance(estado, "OPERATION")).toBe(false);
       expect(painel.showFinance(estado, undefined)).toBe(false);
+    });
+
+    it("tela: sessão caída pede novo login, não \"Tentar de novo\"", async () => {
+      sessao.mockResolvedValue(null);
+      const res = await dashboard.GET();
+      expect(res.status).toBe(401);
+      expect((await painel.loadStats(async () => res)).status).toBe("expired");
+
+      // Só o 401 é sessão caída: os demais erros seguem com "Tentar de novo".
+      for (const status of [400, 403, 404, 500, 503]) {
+        const estado = await painel.loadStats(async () => new Response("{}", { status }));
+        expect(estado, `HTTP ${status}`).toEqual({ status: "error", cause: `HTTP ${status}` });
+      }
     });
 
     it("tela: enquanto carrega, o ADMIN já vê o cartão", () => {
