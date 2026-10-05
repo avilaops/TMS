@@ -6,12 +6,18 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState({
+  // `receita` só vem da API para o perfil ADMIN.
+  const [stats, setStats] = useState<{
+    coletas: number;
+    manifestos: number;
+    clientes: number;
+    veiculos: number;
+    receita?: number;
+  }>({
     coletas: 0,
     manifestos: 0,
     clientes: 0,
     veiculos: 0,
-    receita: 0
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -32,8 +38,12 @@ export default function DashboardPage() {
       });
   }, []);
 
+  const showFinance = stats.receita !== undefined;
+
   const statCards = [
-    { title: "Receita", value: `R$ ${(stats.receita || 0).toFixed(2)}`, icon: DollarSign, trend: "+15%", trendUp: true, color: "green" },
+    ...(showFinance
+      ? [{ title: "Receita", value: `R$ ${(stats.receita || 0).toFixed(2)}`, icon: DollarSign, trend: "+15%", trendUp: true, color: "green" }]
+      : []),
     { title: "Coletas", value: stats.coletas || 0, icon: Package, trend: "Ativas", trendUp: true, color: "blue" },
     { title: "Viagens (MDF-e)", value: stats.manifestos || 0, icon: Truck, trend: "Em Rota", trendUp: true, color: "purple" },
     { title: "Clientes", value: stats.clientes || 0, icon: Users, trend: "Registrados", trendUp: true, color: "indigo" },
@@ -116,17 +126,19 @@ export default function DashboardPage() {
                 </div>
               </Link>
 
-              <Link href="/dashboard/financeiro" className="w-full flex items-center justify-between p-3 rounded-2xl border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-green-50 dark:bg-green-900/20 rounded-xl flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
+              {showFinance && (
+                <Link href="/dashboard/financeiro" className="w-full flex items-center justify-between p-3 rounded-2xl border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-green-50 dark:bg-green-900/20 rounded-xl flex items-center justify-center">
+                      <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <span className="font-medium text-sm text-gray-700 dark:text-gray-300">Novo Lançamento</span>
                   </div>
-                  <span className="font-medium text-sm text-gray-700 dark:text-gray-300">Novo Lançamento</span>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center group-hover:bg-green-100 dark:group-hover:bg-green-900/50 transition-colors">
-                  <span className="text-gray-400 group-hover:text-green-600 dark:group-hover:text-green-400">→</span>
-                </div>
-              </Link>
+                  <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center group-hover:bg-green-100 dark:group-hover:bg-green-900/50 transition-colors">
+                    <span className="text-gray-400 group-hover:text-green-600 dark:group-hover:text-green-400">→</span>
+                  </div>
+                </Link>
+              )}
             </div>
           </div>
         </div>

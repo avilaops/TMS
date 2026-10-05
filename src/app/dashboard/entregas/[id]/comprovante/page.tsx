@@ -13,7 +13,7 @@ export default async function ComprovantePage({ params }: { params: Promise<{ id
       manifest: {
         include: {
           driver: {
-            include: { user: true }
+            include: { user: { select: { name: true } } }
           },
           vehicle: true
         }

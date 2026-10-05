@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
+import { DRIVER_USER_SELECT } from '@/lib/usuarios';
 
 export async function GET() {
   const { error } = await requireStaff();
@@ -9,7 +10,7 @@ export async function GET() {
   try {
     const manifestos = await prisma.manifest.findMany({
       include: {
-        driver: { include: { user: true } },
+        driver: { include: { user: { select: DRIVER_USER_SELECT } } },
         vehicle: true,
         collections: true,
       },

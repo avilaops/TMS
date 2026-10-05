@@ -13,6 +13,14 @@ export const USER_PUBLIC_SELECT = {
   createdAt: true,
 } as const;
 
+// O que as rotas operacionais devolvem do usuário de um motorista. Usar isto no
+// lugar de `include: { user: true }`, que mandaria o hash da senha junto.
+export const DRIVER_USER_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+} as const;
+
 export const DRIVER_ROLE_MESSAGE =
   "Motorista é criado pelo cadastro de motoristas (Motoristas → Novo), que gera o usuário junto do registro de motorista.";
 

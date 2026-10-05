@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
+import { BCRYPT_ROUNDS, DRIVER_USER_SELECT } from '@/lib/usuarios';
 
 export async function GET() {
   const { error } = await requireStaff();
@@ -9,7 +12,7 @@ export async function GET() {
   try {
     const motoristas = await prisma.driver.findMany({
       include: {
-        user: true
+        user: { select: DRIVER_USER_SELECT }
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -39,12 +42,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Já existe um motorista com este CPF.' }, { status: 409 });
     }
 
+    // O motorista nasce com uma senha aleatória que ninguém conhece: ela não é
+    // devolvida nem registrada em log. Para ele entrar, um ADMIN define a senha
+    // em Usuários → Redefinir senha.
+    const password = await bcrypt.hash(randomBytes(32).toString('base64url'), BCRYPT_ROUNDS);
+
     // Since a Driver requires a User, let's create a User first
     const newUser = await prisma.user.create({
       data: {
         name: data.name,
         email: `${data.cpf}@motorista.mello.com`, // mock email
-        password: 'password123', // should be hashed in real world
+        password,
         role: 'DRIVER'
       }
     });

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
+import { DRIVER_USER_SELECT } from '@/lib/usuarios';
 import { withTrackingCode } from '@/lib/tracking';
 
 export async function GET() {
@@ -11,7 +12,7 @@ export async function GET() {
     const coletas = await prisma.collection.findMany({
       include: {
         client: true,
-        driver: { include: { user: true } }
+        driver: { include: { user: { select: DRIVER_USER_SELECT } } }
       },
       orderBy: { createdAt: 'desc' }
     });

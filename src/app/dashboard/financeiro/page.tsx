@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, ArrowUpRight, ArrowDownRight, Loader2, DollarSign, Wallet } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownRight, Loader2, DollarSign, Wallet, ShieldAlert } from "lucide-react";
 import { motion } from "framer-motion";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { isAccessDenied, loadTransactions } from "./carregar";
 
 export default function FinanceiroPage() {
   const [activeTab, setActiveTab] = useState<'RECEIVABLE' | 'PAYABLE'>('RECEIVABLE');
@@ -10,6 +12,7 @@ export default function FinanceiroPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [denied, setDenied] = useState(false);
 
   const [formData, setFormData] = useState({
     type: 'INCOME',
@@ -26,9 +29,11 @@ export default function FinanceiroPage() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/financeiro');
-      if (res.ok) {
-        setTransactions(await res.json());
+      const result = await loadTransactions(() => fetch('/api/financeiro'));
+      if (result.denied) {
+        setDenied(true);
+      } else {
+        setTransactions(result.transactions);
       }
     } catch (error) {
       console.error("Erro ao buscar transações", error);
@@ -52,6 +57,9 @@ export default function FinanceiroPage() {
         setIsModalOpen(false);
         setFormData({ type: 'INCOME', amount: '', description: '', dueDate: '', status: 'PENDING' });
         fetchData();
+      } else if (isAccessDenied(res.status)) {
+        setIsModalOpen(false);
+        setDenied(true);
       } else {
         alert("Erro ao salvar transação.");
       }
@@ -70,6 +78,22 @@ export default function FinanceiroPage() {
   const balance = totalIncome - totalExpense;
 
   const currentList = activeTab === 'RECEIVABLE' ? incomes : expenses;
+
+  if (denied) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-red-600" />
+            Acesso negado
+          </CardTitle>
+          <CardDescription>
+            O financeiro é restrito ao perfil Administrador.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
