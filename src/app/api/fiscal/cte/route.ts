@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 
 function generateCteKey() {
@@ -17,11 +16,8 @@ function generateCteKey() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  
-  if (!session || (session.user.role !== 'ADMIN' && session.user.role !== 'OPERATION')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { error } = await requireStaff();
+  if (error) return error;
 
   try {
     const { collectionId } = await req.json();

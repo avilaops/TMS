@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { requireStaff } from "@/lib/staff";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || (session.user.role !== "ADMIN" && session.user.role !== "OPERATION")) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
+    const { error } = await requireStaff();
+    if (error) return error;
 
     const leads = await prisma.quoteLead.findMany({
       orderBy: { createdAt: "desc" },

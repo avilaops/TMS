@@ -17,27 +17,33 @@ import {
   Route,
   FileText,
   DollarSign,
-  UserPlus
+  UserPlus,
+  UserCog
 } from "lucide-react";
 import { motion } from "framer-motion";
 
-const sidebarLinks = [
+// `roles` restringe o link a esses perfis. É só o menu: quem decide o acesso é
+// a API (`requireStaff`), que devolve 403 para o perfil errado.
+const sidebarLinks: { href: string; icon: typeof Truck; label: string; roles?: string[] }[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Visão Geral" },
   { href: "/dashboard/crm", icon: UserPlus, label: "CRM" },
   { href: "/dashboard/clientes", icon: Users, label: "Clientes" },
   { href: "/dashboard/coletas", icon: Package, label: "Minutas" },
   { href: "/dashboard/manifestos", icon: Route, label: "Manifestos" },
   { href: "/dashboard/fiscal/cte", icon: FileText, label: "Emissão CT-e" },
-  { href: "/dashboard/financeiro", icon: DollarSign, label: "Financeiro" },
+  { href: "/dashboard/financeiro", icon: DollarSign, label: "Financeiro", roles: ["ADMIN"] },
   { href: "/dashboard/motoristas", icon: CarFront, label: "Motoristas" },
   { href: "/dashboard/veiculos", icon: Truck, label: "Veículos" },
   { href: "/dashboard/mensagens", icon: Bell, label: "Mensageria" },
+  { href: "/dashboard/usuarios", icon: UserCog, label: "Usuários", roles: ["ADMIN"] },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const role = session?.user?.role;
+  const visibleLinks = sidebarLinks.filter((link) => !link.roles || (role && link.roles.includes(role)));
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col md:flex-row">
@@ -70,7 +76,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-          {sidebarLinks.map((link) => {
+          {visibleLinks.map((link) => {
             const isActive = pathname === link.href;
             return (
               <Link
