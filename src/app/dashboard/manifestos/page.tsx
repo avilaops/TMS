@@ -1,91 +1,59 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, Search, Loader2, Route, Truck, Package, MapPin, User, ArrowRight } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { Plus, Loader2, Route, Truck, Package, MapPin, User, ArrowRight, AlertTriangle, LogIn } from "lucide-react";
+import { COLLECTION_STATUS, MANIFEST_STATUS, statusBadge } from "@/lib/format";
+import { canEmbark } from "@/lib/manifestos";
+import { loadManifestos, type Manifesto, type ManifestosState, type Minuta } from "./carregar";
 
-interface Cliente {
-  tradeName: string;
-  companyName: string;
-}
-
-interface Minuta {
-  id: string;
-  sender: string;
-  receiver: string;
-  origin: string;
-  destination: string;
-  volumes: number;
-  weight: number;
-  client: Cliente;
-  status: string;
-  manifestId?: string | null;
-}
-
-interface Motorista {
-  id: string;
-  user: { name: string };
-  cpf: string;
-}
-
-interface Veiculo {
-  id: string;
-  plate: string;
-  model: string;
-  type: string;
-}
-
-interface Manifesto {
-  id: string;
-  status: string;
-  createdAt: string;
-  driver: Motorista;
-  vehicle: Veiculo;
-  collections: Minuta[];
+// A mensagem que o servidor devolveu; `fallback` quando a resposta não é JSON.
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  const body = await res.json().catch(() => null);
+  return typeof body?.error === "string" ? body.error : fallback;
 }
 
 export default function ManifestosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [manifestos, setManifestos] = useState<Manifesto[]>([]);
-  const [minutas, setMinutas] = useState<Minuta[]>([]);
-  const [motoristas, setMotoristas] = useState<Motorista[]>([]);
-  const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  
+  const [state, setState] = useState<ManifestosState>({ status: "loading" });
+  // Id do manifesto ou da carga com ação em andamento, para travar o botão.
+  const [busyId, setBusyId] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     driverId: "",
     vehicleId: "",
     collectionIds: [] as string[],
   });
 
-  useEffect(() => {
-    fetchData();
+  const show = useCallback((result: ManifestosState) => {
+    if (result.status === "error" || result.status === "expired") console.error("Manifestos API error:", result.cause);
+    setState(result);
   }, []);
 
-  const fetchData = async () => {
-    setIsLoading(true);
-    try {
-      const [manRes, minRes, motRes, veicRes] = await Promise.all([
-        fetch('/api/manifestos'),
-        fetch('/api/coletas'),
-        fetch('/api/motoristas'),
-        fetch('/api/veiculos')
-      ]);
-      
-      if (manRes.ok) setManifestos(await manRes.json());
-      if (motRes.ok) setMotoristas(await motRes.json());
-      if (veicRes.ok) setVeiculos(await veicRes.json());
-      if (minRes.ok) {
-        const allMinutas = await minRes.json();
-        // Filtra minutas que ainda NÃO estão em um manifesto
-        setMinutas(allMinutas.filter((m: Minuta) => !m.manifestId));
-      }
-    } catch (error) {
-      console.error("Failed to fetch data", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const fetchData = useCallback(async () => {
+    setState({ status: "loading" });
+    show(await loadManifestos((url) => fetch(url)));
+  }, [show]);
+
+  // O estado inicial já é "loading": o efeito só dispara a carga.
+  useEffect(() => {
+    let active = true;
+    loadManifestos((url) => fetch(url)).then((result) => {
+      if (active) show(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [show]);
+
+  const isLoading = state.status === "loading";
+  const ready = state.status === "ready";
+  const manifestos = ready ? state.manifestos : [];
+  // Carga livre é só a que o servidor aceitaria: coletada e fora de manifesto.
+  const minutas = ready ? state.coletas.filter(canEmbark) : [];
+  const motoristas = ready ? state.motoristas.filter((m) => m.active) : [];
+  const veiculos = ready ? state.veiculos : [];
 
   const toggleMinuta = (id: string) => {
     setFormData(prev => ({
@@ -115,13 +83,49 @@ export default function ManifestosPage() {
         setFormData({ driverId: "", vehicleId: "", collectionIds: [] });
         fetchData();
       } else {
-        const errData = await res.json();
-        alert(errData.error || "Erro ao criar manifesto.");
+        alert(await errorMessage(res, "Erro ao criar manifesto."));
       }
-    } catch (error) {
+    } catch {
       alert("Erro ao criar manifesto.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleRemove = async (manifesto: Manifesto, carga: Minuta) => {
+    const nome = carga.client?.tradeName || carga.client?.companyName || "esta carga";
+    if (!confirm(`Retirar a carga de ${nome} desta viagem? Ela volta para "Coletado" e fica livre para outra viagem.`)) return;
+
+    setBusyId(carga.id);
+    try {
+      const res = await fetch(`/api/manifestos/${manifesto.id}/coletas/${carga.id}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchData();
+      } else {
+        alert(await errorMessage(res, "Erro ao retirar a carga."));
+      }
+    } catch {
+      alert("Erro ao retirar a carga.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleFinish = async (manifesto: Manifesto) => {
+    if (!confirm("Finalizar esta viagem? Ela sai da lista do motorista e não pode ser reaberta.")) return;
+
+    setBusyId(manifesto.id);
+    try {
+      const res = await fetch(`/api/manifestos/${manifesto.id}/finalizar`, { method: "POST" });
+      if (res.ok) {
+        await fetchData();
+      } else {
+        alert(await errorMessage(res, "Erro ao finalizar a viagem."));
+      }
+    } catch {
+      alert("Erro ao finalizar a viagem.");
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -134,7 +138,8 @@ export default function ManifestosPage() {
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
+          disabled={!ready}
+          className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
         >
           <Plus className="w-4 h-4" />
           <span>Montar Viagem</span>
@@ -146,6 +151,26 @@ export default function ManifestosPage() {
           <div className="flex items-center justify-center h-[400px]">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
+        ) : state.status === "expired" ? (
+          <div role="alert" className="flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
+            <span className="flex items-center gap-2">
+              <LogIn className="w-5 h-5 shrink-0" />
+              Sessão expirada. Entre novamente para ver os manifestos.
+            </span>
+            <Link href="/login" className="font-medium underline underline-offset-2 hover:no-underline">
+              Entrar novamente
+            </Link>
+          </div>
+        ) : state.status === "error" ? (
+          <div role="alert" className="flex items-center justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+            <span className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              Não foi possível carregar os manifestos.
+            </span>
+            <button onClick={fetchData} className="font-medium underline underline-offset-2 hover:no-underline">
+              Tentar de novo
+            </button>
+          </div>
         ) : manifestos.length === 0 ? (
           <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl flex flex-col items-center justify-center h-[400px] text-center shadow-sm">
             <Route className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
@@ -153,7 +178,11 @@ export default function ManifestosPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {manifestos.map(manifesto => (
+            {manifestos.map(manifesto => {
+              const selo = statusBadge(MANIFEST_STATUS, manifesto.status);
+              const emRota = manifesto.status === "ROUTE";
+              const pendentes = manifesto.collections?.filter(col => col.status === "ROUTE").length || 0;
+              return (
               <div key={manifesto.id} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                 
@@ -163,8 +192,8 @@ export default function ManifestosPage() {
                       MDF-e #{manifesto.id.substring(0,6).toUpperCase()}
                     </span>
                   </div>
-                  <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
-                    Em Rota
+                  <span className={`px-2.5 py-1 text-xs font-medium rounded-full border ${selo.className}`}>
+                    {selo.label}
                   </span>
                 </div>
 
@@ -189,20 +218,60 @@ export default function ManifestosPage() {
                   </h4>
                   
                   <div className="space-y-3 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                    {manifesto.collections?.map(col => (
+                    {manifesto.collections?.map(col => {
+                      const seloCarga = statusBadge(COLLECTION_STATUS, col.status);
+                      return (
                       <div key={col.id} className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm">
-                        <p className="font-medium text-gray-900 dark:text-white truncate">{col.client?.tradeName || col.client?.companyName}</p>
-                        <div className="flex items-center text-xs text-gray-500 mt-1 space-x-1">
-                          <span>{col.origin.split('-')[0]}</span>
-                          <ArrowRight className="w-3 h-3" />
-                          <span>{col.destination.split('-')[0]}</span>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-medium text-gray-900 dark:text-white truncate">{col.client?.tradeName || col.client?.companyName}</p>
+                          <span className={`shrink-0 px-2 py-0.5 text-[11px] font-medium rounded-full border ${seloCarga.className}`}>
+                            {seloCarga.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <div className="flex items-center text-xs text-gray-500 space-x-1">
+                            <span>{col.origin.split('-')[0]}</span>
+                            <ArrowRight className="w-3 h-3" />
+                            <span>{col.destination.split('-')[0]}</span>
+                          </div>
+                          {emRota && col.status === "ROUTE" && (
+                            <button
+                              onClick={() => handleRemove(manifesto, col)}
+                              disabled={busyId !== null}
+                              className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {busyId === col.id ? "Retirando..." : "Retirar"}
+                            </button>
+                          )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
+
+                {emRota && (
+                  <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4 flex items-center justify-between gap-3">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {pendentes === 0
+                        ? "Nenhuma carga em rota"
+                        : pendentes === 1
+                          ? "1 carga ainda em rota"
+                          : `${pendentes} cargas ainda em rota`}
+                    </span>
+                    <button
+                      onClick={() => handleFinish(manifesto)}
+                      disabled={pendentes > 0 || busyId !== null}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-xl transition-all flex items-center space-x-2"
+                    >
+                      {busyId === manifesto.id && <Loader2 className="w-4 h-4 animate-spin" />}
+                      <span>Finalizar viagem</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -248,7 +317,9 @@ export default function ManifestosPage() {
                       >
                         <option value="">Selecione um veículo...</option>
                         {veiculos.map(v => (
-                          <option key={v.id} value={v.id}>{v.plate} ({v.type})</option>
+                          <option key={v.id} value={v.id} disabled={v.status === "MAINTENANCE"}>
+                            {v.plate} ({v.type}){v.status === "MAINTENANCE" ? " - em manutenção" : ""}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -268,12 +339,12 @@ export default function ManifestosPage() {
 
               {/* Direita: Seleção de Minutas */}
               <div className="lg:col-span-2 flex flex-col h-full">
-                <h3 className="font-medium text-gray-900 dark:text-white mb-3">2. Selecione as Minutas (Cargas Livres)</h3>
+                <h3 className="font-medium text-gray-900 dark:text-white mb-3">2. Selecione as Minutas (Cargas Coletadas)</h3>
                 
                 {minutas.length === 0 ? (
                   <div className="flex-1 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl flex flex-col items-center justify-center text-center p-6">
                     <Package className="w-10 h-10 text-gray-300 mb-2" />
-                    <p className="text-gray-500 font-medium">Não há minutas pendentes para embarque.</p>
+                    <p className="text-gray-500 font-medium">Não há carga livre para embarque. Só carga coletada entra na viagem: registre a coleta antes de montar.</p>
                   </div>
                 ) : (
                   <div className="flex-1 overflow-y-auto space-y-3 pr-2">

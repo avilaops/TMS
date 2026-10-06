@@ -44,6 +44,8 @@ suite("permissões das rotas internas", () => {
   let fiscal: typeof import("../src/app/api/fiscal/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
+  let manifestoFinalizar: typeof import("../src/app/api/manifestos/[id]/finalizar/route");
+  let manifestoCarga: typeof import("../src/app/api/manifestos/[id]/coletas/[coletaId]/route");
   let motoristas: typeof import("../src/app/api/motoristas/route");
   let motoristaPorId: typeof import("../src/app/api/motoristas/[id]/route");
   let veiculos: typeof import("../src/app/api/veiculos/route");
@@ -105,6 +107,8 @@ suite("permissões das rotas internas", () => {
     fiscal = await import("../src/app/api/fiscal/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
     manifestos = await import("../src/app/api/manifestos/route");
+    manifestoFinalizar = await import("../src/app/api/manifestos/[id]/finalizar/route");
+    manifestoCarga = await import("../src/app/api/manifestos/[id]/coletas/[coletaId]/route");
     motoristas = await import("../src/app/api/motoristas/route");
     motoristaPorId = await import("../src/app/api/motoristas/[id]/route");
     veiculos = await import("../src/app/api/veiculos/route");
@@ -144,6 +148,11 @@ suite("permissões das rotas internas", () => {
       ["POST /api/fiscal/cte", () => fiscalCte.POST(req("POST", {}))],
       ["GET /api/manifestos", () => manifestos.GET()],
       ["POST /api/manifestos", () => manifestos.POST(req("POST", {}))],
+      ["POST /api/manifestos/[id]/finalizar", () => manifestoFinalizar.POST(req("POST"), ctx(semId))],
+      [
+        "DELETE /api/manifestos/[id]/coletas/[coletaId]",
+        () => manifestoCarga.DELETE(req("DELETE"), { params: Promise.resolve({ id: semId, coletaId: semId }) }),
+      ],
       ["GET /api/motoristas", () => motoristas.GET()],
       ["POST /api/motoristas", () => motoristas.POST(req("POST", { cpf: "1", name: "x" }))],
       ["PATCH /api/motoristas/[id]", () => motoristaPorId.PATCH(req("PATCH", { active: false }), ctx(semId))],
