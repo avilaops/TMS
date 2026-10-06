@@ -113,6 +113,8 @@ export default function ColetasPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   // Id da coleta em edição; `null` quando o modal está criando uma nova.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // O formulário como o modal de edição abriu: é contra ele que se vê o que mudou.
+  const [editOriginal, setEditOriginal] = useState<ReturnType<typeof toEditForm> | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -150,12 +152,15 @@ export default function ColetasPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingId(null);
+    setEditOriginal(null);
     setFormData(EMPTY_FORM);
   };
 
   const openEdit = (coleta: Coleta) => {
+    const original = toEditForm(coleta);
     setEditingId(coleta.id);
-    setFormData({ clientId: coleta.client?.id ?? "", ...toEditForm(coleta) });
+    setEditOriginal(original);
+    setFormData({ clientId: coleta.client?.id ?? "", ...original });
     setIsModalOpen(true);
   };
 
@@ -172,14 +177,11 @@ export default function ColetasPage() {
     // Na edição vai só o que mudou: coleta antiga com chave de NF fora do
     // padrão continua editável nos outros campos.
     let changes: Partial<typeof editable> = editable;
-    if (editingId) {
-      const current = coletas.find((c) => c.id === editingId);
-      if (current) {
-        changes = changedFields(toEditForm(current), editable);
-        if (Object.keys(changes).length === 0) {
-          closeModal();
-          return;
-        }
+    if (editingId && editOriginal) {
+      changes = changedFields(editOriginal, editable);
+      if (Object.keys(changes).length === 0) {
+        closeModal();
+        return;
       }
     }
 
