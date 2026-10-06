@@ -285,3 +285,5 @@
   border-radius: 14px;
   margin: 20px 0 4px;
 }
+
+.blog-image-note { margin: 0 clamp(18px, 5vw, 72px) 18px; color: #555d6b; font-size: 12px; }

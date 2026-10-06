@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { publicServices, publicFleet, publicHubs } from "@/data/publicCatalog";
 import { sortedPosts } from "@/content/blog";
 
 /**
@@ -23,5 +24,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }));
 
-  return [...fixedPages, ...postPages];
+  const sections = ["servicos", "frota", "cidades", "mercadorias", "duvidas", "marca", "coleta"].map((path) => ({ url: `${SITE_URL}/${path}`, changeFrequency: "monthly" as const, priority: 0.7 }));
+  const details = [ ...publicServices.map(({ slug }) => `servicos/${slug}`), ...publicFleet.map(({ slug }) => `frota/${slug}`), ...publicHubs.map(({ slug }) => `cidades/${slug}`) ].map((path) => ({ url: `${SITE_URL}/${path}`, changeFrequency: "monthly" as const, priority: 0.6 }));
+  return [...fixedPages, ...sections, ...details, ...postPages];
 }

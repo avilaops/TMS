@@ -58,7 +58,7 @@ export const metadata: Metadata = {
       "Coletas e entregas em Rio Preto e região, com atendimento próximo e rotas planejadas para sua empresa.",
     images: [
       {
-        url: "/preview-whatsapp-v1.png",
+        url: "/preview-whatsapp-v2.png",
         width: 1200,
         height: 630,
         alt: "Mello Transportes | transporte regional em São Paulo",
@@ -70,12 +70,12 @@ export const metadata: Metadata = {
     title: "Mello Transportes | Rio Preto e região",
     description:
       "Coletas e entregas em Rio Preto e região, com atendimento próximo e rotas planejadas para sua empresa.",
-    images: ["/preview-whatsapp-v1.png"],
+    images: ["/preview-whatsapp-v2.png"],
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: "#f28a00",
 };
 
 export default function RootLayout({

@@ -33,7 +33,7 @@ export default function BlogIndexPage() {
   return (
     <>
       <SiteHeader />
-      <main>
+      <main id="main-content">
         <section className="blog-hero">
           <p className="eyebrow">
             <BookOpen size={16} /> Blog
@@ -46,6 +46,7 @@ export default function BlogIndexPage() {
           </p>
         </section>
 
+        <p className="blog-image-note">Imagens ilustrativas geradas para os conteúdos.</p>
         <div className="post-grid">
           {sortedPosts.map((post) => (
             <article className="post-card" key={post.slug}>
@@ -84,12 +85,12 @@ export default function BlogIndexPage() {
             formulário do site organiza os dados e envia tudo de uma vez.
           </p>
           <div className="actions">
-            <a className="btn primary" href="/#/coleta">
+            <Link className="btn primary" href="/coleta">
               Solicitar coleta <ArrowRight size={16} />
-            </a>
-            <a className="btn ghost" href="/#/cidades">
+            </Link>
+            <Link className="btn ghost" href="/cidades">
               Consultar cidade
-            </a>
+            </Link>
           </div>
         </section>
       </main>
