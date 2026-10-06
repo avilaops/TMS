@@ -4,9 +4,16 @@ import { z } from "zod";
 // e o que a rota de criação aceita. Este arquivo também é importado pela tela,
 // então não pode puxar nada que só exista no servidor.
 
-export const MANIFEST_STATUSES = ["ASSEMBLING", "ROUTE", "FINISHED"] as const;
+// Em montagem → Em rota → Finalizada. Cancelar só antes da saída: depois dela
+// a carga já está na rua e a viagem se finaliza, não se cancela.
+export const MANIFEST_STATUSES = ["ASSEMBLING", "ROUTE", "FINISHED", "CANCELLED"] as const;
 
 export type ManifestStatus = (typeof MANIFEST_STATUSES)[number];
+
+/** Motorista, veículo e cargas só mudam enquanto a viagem está em montagem. */
+export function isManifestEditable(manifest: { status: string }): boolean {
+  return manifest.status === "ASSEMBLING";
+}
 
 /** Status em que a carga pode entrar numa viagem: só depois de coletada. */
 export const EMBARKABLE_STATUSES = ["COLLECTED"] as const;
@@ -40,6 +47,33 @@ export const createManifestSchema = z.object(
   },
   INVALID_BODY,
 );
+
+// Status não entra aqui: quem troca o status são as rotas próprias (liberar,
+// finalizar, cancelar). O schema descarta qualquer chave fora desta lista.
+// Retirar carga é o DELETE de /api/manifestos/[id]/coletas/[coletaId].
+export const updateManifestSchema = z
+  .object(
+    {
+      driverId: id(DRIVER_MESSAGE, "Motorista inválido.").optional(),
+      vehicleId: id(VEHICLE_MESSAGE, "Veículo inválido.").optional(),
+      addCollectionIds: z
+        .array(id(COLLECTION_ID_MESSAGE, COLLECTION_ID_MESSAGE), COLLECTION_ID_MESSAGE)
+        .max(MAX_MANIFEST_COLLECTIONS, TOO_MANY_MESSAGE)
+        .refine((ids) => new Set(ids).size === ids.length, REPEATED_MESSAGE)
+        .optional(),
+    },
+    INVALID_BODY,
+  )
+  .refine(
+    (data) => data.driverId !== undefined || data.vehicleId !== undefined || (data.addCollectionIds?.length ?? 0) > 0,
+    { message: "Informe motorista, veículo ou carga para alterar." },
+  );
+
+export const MANIFEST_NOT_FOUND_MESSAGE = "Manifesto não encontrado.";
+export const NOT_ASSEMBLING_MESSAGE = "Só viagem em montagem pode ser alterada.";
+export const EMPTY_MANIFEST_MESSAGE = "Não dá para liberar uma viagem sem carga.";
+export const VEHICLE_BUSY_MESSAGE = "Este veículo já está em rota em outra viagem: finalize a anterior antes de liberar esta.";
+export const DRIVER_BUSY_MESSAGE = "Este motorista já está em rota em outra viagem: finalize a anterior antes de liberar esta.";
 
 export const VEHICLE_NOT_FOUND_MESSAGE = "Veículo não encontrado.";
 export const VEHICLE_IN_MAINTENANCE_MESSAGE = "Este veículo está em manutenção e não pode sair em viagem.";

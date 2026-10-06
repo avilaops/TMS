@@ -49,6 +49,16 @@ export async function POST(
     }
 
     const manifest = await prisma.manifest.findUnique({ where: { id: manifestId } });
+
+    // Solta o veículo que a saída ocupou. Em manutenção ele fica como está, e
+    // só é solto se nenhuma outra viagem em rota o estiver usando.
+    if (manifest) {
+      await prisma.vehicle.updateMany({
+        where: { id: manifest.vehicleId, status: 'ON_ROUTE', manifests: { none: { status: 'ROUTE' } } },
+        data: { status: 'AVAILABLE' },
+      });
+    }
+
     return NextResponse.json({ success: true, manifest });
   } catch (error) {
     console.error('Erro ao finalizar manifesto:', error);

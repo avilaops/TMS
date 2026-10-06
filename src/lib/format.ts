@@ -59,6 +59,7 @@ export const MANIFEST_STATUS: Record<string, { label: string; className: string 
   ASSEMBLING: { label: "Em montagem", className: "bg-amber-50 text-amber-700 border-amber-200" },
   ROUTE: { label: "Em rota", className: "bg-violet-50 text-violet-700 border-violet-200" },
   FINISHED: { label: "Finalizada", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  CANCELLED: { label: "Cancelada", className: "bg-gray-100 text-gray-600 border-gray-200" },
 };
 
 export const INVOICE_STATUS: Record<string, { label: string; className: string }> = {

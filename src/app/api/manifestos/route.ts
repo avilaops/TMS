@@ -87,8 +87,10 @@ export async function POST(req: Request) {
     }
 
     const newManifest = await prisma.$transaction(async (tx) => {
+      // Nasce em montagem: as cargas ficam reservadas, ainda coletadas. Quem as
+      // põe em rota é a liberação da saída (/api/manifestos/[id]/liberar).
       const manifest = await tx.manifest.create({
-        data: { driverId, vehicleId, status: 'ROUTE' }
+        data: { driverId, vehicleId, status: 'ASSEMBLING' }
       });
 
       // A conferência vale aqui: de duas montagens simultâneas com a mesma
@@ -99,7 +101,7 @@ export async function POST(req: Request) {
           status: { in: [...EMBARKABLE_STATUSES] },
           manifestId: null,
         },
-        data: { manifestId: manifest.id, status: 'ROUTE' }
+        data: { manifestId: manifest.id }
       });
       if (count !== collectionIds.length) {
         throw new CannotEmbark(collectionIds.length - count);
