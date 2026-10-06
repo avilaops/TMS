@@ -4,6 +4,7 @@ import {
   COLLECTION_STATUSES,
   OPERATOR_TRANSITIONS,
   canTransition,
+  changedFields,
   isEditable,
 } from "../src/lib/coletas";
 import { COLLECTION_STATUS } from "../src/lib/format";
@@ -72,6 +73,18 @@ describe("transições de status da coleta", () => {
     for (const status of ["ROUTE", "DELIVERED", "CANCELLED", "REJECTED"]) {
       expect(isEditable({ status, manifestId: null }), status).toBe(false);
     }
+  });
+
+  it("a edição manda só os campos que mudaram", () => {
+    const original = { sender: "A", volumes: "3", invoiceKey: "NF-ANTIGA", driverId: "" };
+
+    expect(changedFields(original, { ...original, volumes: "4" })).toEqual({ volumes: "4" });
+    // Campo apagado vai como "" (a rota grava `null`); o que não mudou fica de fora.
+    expect(changedFields(original, { ...original, invoiceKey: "", driverId: "m1" })).toEqual({
+      invoiceKey: "",
+      driverId: "m1",
+    });
+    expect(changedFields(original, { ...original })).toEqual({});
   });
 
   it("todo status tem rótulo em português", () => {
@@ -255,6 +268,14 @@ suite("coletas e entregas pelo painel", () => {
         ["volumes: abc", corpo({ volumes: "abc" }), /volumes/i],
         ["volumes: 0", corpo({ volumes: 0 }), /volumes/i],
         ["volumes: 1,5", corpo({ volumes: "1,5" }), /volumes/i],
+        ["volumes acima do int4", corpo({ volumes: "2147483648" }), /volumes/i],
+        ["volumes: 99999999999 (número)", corpo({ volumes: 99999999999 }), /volumes/i],
+        ["volumes: 0x10", corpo({ volumes: "0x10" }), /volumes/i],
+        ["volumes: 1e3", corpo({ volumes: "1e3" }), /volumes/i],
+        ["weight: 0x10", corpo({ weight: "0x10" }), /peso/i],
+        ["weight: 1e3", corpo({ weight: "1e3" }), /peso/i],
+        ["invoiceValue: 1e3", corpo({ invoiceValue: "1e3" }), /valor da NF/i],
+        ["invoiceValue: 0x10", corpo({ invoiceValue: "0x10" }), /valor da NF/i],
         ["weight: 0", corpo({ weight: 0 }), /peso/i],
         ["weight negativo", corpo({ weight: "-3" }), /peso/i],
         ["weight em branco", corpo({ weight: "" }), /peso/i],
@@ -432,6 +453,10 @@ suite("coletas e entregas pelo painel", () => {
       const casos: [string, Record<string, unknown>][] = [
         ["volumes: abc", { volumes: "abc" }],
         ["volumes em branco", { volumes: "" }],
+        ["volumes acima do int4", { volumes: "2147483648" }],
+        ["volumes: 0x10", { volumes: "0x10" }],
+        ["weight: 1e3", { weight: "1e3" }],
+        ["invoiceValue: 1e3", { invoiceValue: "1e3" }],
         ["weight: 0", { weight: 0 }],
         ["origem em branco", { origin: "" }],
         ["invoiceKey curta", { invoiceKey: "123" }],
@@ -445,6 +470,54 @@ suite("coletas e entregas pelo painel", () => {
       }
 
       expect(await ler(alvo.id)).toMatchObject({ volumes: 1, weight: 1, origin: "Origem - SP", driverId: null });
+    });
+
+    it("volumes no teto do int4 é aceito", async () => {
+      const alvo = await montar({ status: "CONFIRMED" });
+
+      const res = await coleta.PATCH(req("PATCH", { volumes: "2147483647" }), ctx(alvo.id));
+      expect(res.status).toBe(200);
+      expect((await ler(alvo.id)).volumes).toBe(2147483647);
+    });
+
+    it("coleta antiga com chave de NF fora do padrão: PATCH parcial altera os outros campos", async () => {
+      const CHAVE_ANTIGA = "NF 1234/2019";
+      const alvo = await montar({ status: "CONFIRMED", invoiceKey: CHAVE_ANTIGA, invoiceValue: 10 });
+
+      // O que a tela manda quando o operador só troca os volumes e o destino.
+      const formulario = {
+        sender: alvo.sender,
+        receiver: alvo.receiver,
+        origin: alvo.origin,
+        destination: alvo.destination,
+        volumes: "1",
+        weight: "1",
+        invoiceKey: CHAVE_ANTIGA,
+        invoiceValue: "10",
+        driverId: "",
+      };
+      const parcial = changedFields(formulario, { ...formulario, volumes: "5", destination: "Bauru - SP" });
+      expect(parcial).toEqual({ volumes: "5", destination: "Bauru - SP" });
+
+      const res = await coleta.PATCH(req("PATCH", parcial), ctx(alvo.id));
+      expect(res.status).toBe(200);
+      expect(await ler(alvo.id)).toMatchObject({
+        volumes: 5,
+        destination: "Bauru - SP",
+        invoiceKey: CHAVE_ANTIGA,
+        invoiceValue: 10,
+        weight: 1,
+      });
+
+      // Reenviar a chave antiga continua 400: é o formulário inteiro que travava a edição.
+      const inteiro = await coleta.PATCH(req("PATCH", { ...formulario, volumes: "6" }), ctx(alvo.id));
+      expect(inteiro.status).toBe(400);
+      expect((await inteiro.json()).error).toMatch(/44 dígitos/);
+      expect((await ler(alvo.id)).volumes).toBe(5);
+
+      // Corrigir ou apagar a chave segue valendo.
+      expect((await coleta.PATCH(req("PATCH", { invoiceKey: "" }), ctx(alvo.id))).status).toBe(200);
+      expect((await ler(alvo.id)).invoiceKey).toBeNull();
     });
 
     it("motorista que já estava na coleta e ficou inativo não trava a edição", async () => {

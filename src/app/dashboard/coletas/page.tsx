@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Plus, Search, Loader2, Package, MapPin, Truck, Copy, Check, Pencil, Inbox } from "lucide-react";
-import { COLLECTION_STATUSES, allowedTransitions, isEditable, type CollectionStatus } from "@/lib/coletas";
+import { COLLECTION_STATUSES, allowedTransitions, changedFields, isEditable, type CollectionStatus } from "@/lib/coletas";
 import { COLLECTION_STATUS, statusBadge } from "@/lib/format";
 
 interface Cliente {
@@ -87,6 +87,19 @@ const EMPTY_FORM = {
   driverId: "",
 };
 
+// A coleta como o formulário de edição a mostra, sem o cliente (que não muda).
+const toEditForm = (coleta: Coleta) => ({
+  sender: coleta.sender,
+  receiver: coleta.receiver,
+  origin: coleta.origin,
+  destination: coleta.destination,
+  volumes: String(coleta.volumes),
+  weight: String(coleta.weight),
+  invoiceKey: coleta.invoiceKey ?? "",
+  invoiceValue: coleta.invoiceValue === null ? "" : String(coleta.invoiceValue),
+  driverId: coleta.driver?.id ?? "",
+});
+
 // Como cada troca de status aparece na linha. As que não têm volta pedem confirmação.
 const STATUS_ACTIONS: Partial<Record<CollectionStatus, { label: string; confirm?: string; className: string }>> = {
   CONFIRMED: { label: "Confirmar", className: "text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20" },
@@ -142,18 +155,7 @@ export default function ColetasPage() {
 
   const openEdit = (coleta: Coleta) => {
     setEditingId(coleta.id);
-    setFormData({
-      clientId: coleta.client?.id ?? "",
-      sender: coleta.sender,
-      receiver: coleta.receiver,
-      origin: coleta.origin,
-      destination: coleta.destination,
-      volumes: String(coleta.volumes),
-      weight: String(coleta.weight),
-      invoiceKey: coleta.invoiceKey ?? "",
-      invoiceValue: coleta.invoiceValue === null ? "" : String(coleta.invoiceValue),
-      driverId: coleta.driver?.id ?? "",
-    });
+    setFormData({ clientId: coleta.client?.id ?? "", ...toEditForm(coleta) });
     setIsModalOpen(true);
   };
 
@@ -167,13 +169,27 @@ export default function ColetasPage() {
     // O cliente não muda na edição: a rota nem aceita o campo.
     const { clientId, ...editable } = formData;
 
+    // Na edição vai só o que mudou: coleta antiga com chave de NF fora do
+    // padrão continua editável nos outros campos.
+    let changes: Partial<typeof editable> = editable;
+    if (editingId) {
+      const current = coletas.find((c) => c.id === editingId);
+      if (current) {
+        changes = changedFields(toEditForm(current), editable);
+        if (Object.keys(changes).length === 0) {
+          closeModal();
+          return;
+        }
+      }
+    }
+
     setIsSaving(true);
     try {
       const res = editingId
         ? await fetch(`/api/coletas/${editingId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(editable),
+            body: JSON.stringify(changes),
           })
         : await fetch('/api/coletas', {
             method: 'POST',

@@ -61,11 +61,16 @@ const NOTHING_TO_CHANGE = "Informe ao menos um campo para alterar.";
 export const INACTIVE_CLIENT_MESSAGE = "Cliente não encontrado ou inativo.";
 export const INACTIVE_DRIVER_MESSAGE = "Motorista não encontrado ou inativo.";
 
-// O formulário manda número como texto ("12,5", "" quando em branco).
+// O formulário manda número como texto ("12,5", "" quando em branco). Só
+// dígitos com uma vírgula ou ponto decimal: `Number()` sozinho leria "0x10"
+// como 16 e "1e3" como 1000.
+const FORM_NUMBER = /^\d+([.,]\d+)?$/;
+
 const fromFormNumber = (value: unknown) => {
   if (typeof value !== "string") return value;
-  const text = value.trim().replace(",", ".");
-  return text === "" ? null : Number(text);
+  const text = value.trim();
+  if (text === "") return null;
+  return FORM_NUMBER.test(text) ? Number(text.replace(",", ".")) : NaN;
 };
 
 const text = (required: string, tooLong: string) => z.string(required).trim().min(1, required).max(200, tooLong);
@@ -81,7 +86,14 @@ const INVOICE_VALUE_MESSAGE = "O valor da NF precisa ser um número maior ou igu
 const INVOICE_KEY_MESSAGE = "A chave da NF precisa ter 44 dígitos.";
 const DRIVER_MESSAGE = "Motorista inválido.";
 
-const volumesNumber = z.number(VOLUMES_MESSAGE).int(VOLUMES_MESSAGE).min(1, VOLUMES_MESSAGE);
+// A coluna é int4: acima do teto o banco recusaria com erro em vez de 400.
+const MAX_VOLUMES = 2147483647;
+
+const volumesNumber = z
+  .number(VOLUMES_MESSAGE)
+  .int(VOLUMES_MESSAGE)
+  .min(1, VOLUMES_MESSAGE)
+  .max(MAX_VOLUMES, VOLUMES_MESSAGE);
 const weightNumber = z.number(WEIGHT_MESSAGE).gt(0, WEIGHT_MESSAGE);
 
 // Vazio vira `null` (apaga o campo); ausente não mexe.
@@ -140,6 +152,17 @@ export const updateCollectionSchema = z
     INVALID_BODY,
   )
   .refine((data) => Object.values(data).some((value) => value !== undefined), { message: NOTHING_TO_CHANGE });
+
+/**
+ * Campos do formulário de edição que diferem do que está gravado. A tela manda
+ * só estes no PATCH: coleta antiga com chave de NF fora do padrão continua
+ * editável nos outros campos.
+ */
+export function changedFields<T extends Record<string, unknown>>(original: T, current: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(current).filter(([field, value]) => value !== original[field]),
+  ) as Partial<T>;
+}
 
 const RECEIVER_NAME_MESSAGE = "Informe o nome de quem recebeu (2 a 120 caracteres).";
 
