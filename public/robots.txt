@@ -1,10 +1,2 @@
 User-agent: *
-Allow: /
-
-Disallow: /dashboard
-Disallow: /portal
-Disallow: /driver
-Disallow: /login
-Disallow: /api
-
-Sitemap: https://mellotransportesriopreto.com.br/sitemap.xml
+Disallow: /

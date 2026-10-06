@@ -1,23 +1,27 @@
-# Mello Transportes Rio Preto
+# TMS
 
-Site institucional e sistema de gestão da **Mello Transportes Rio Preto**, transportadora de cargas fracionadas com sede em São José do Rio Preto/SP e atendimento em mais de 130 cidades da região.
+Sistema de gestão de transportes para operação terrestre, de carga fracionada e dedicada: coletas, manifestos, motoristas, veículos, financeiro, fiscal/CT-e, app do motorista e portal do cliente.
 
-- Site: https://mellotransportesriopreto.com.br
-- Espelho técnico: https://mello.avilaops.com
-- Roadmap do sistema: [ROADMAP.md](ROADMAP.md)
+Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chamava `Mello`) e ainda roda a operação dela. Em 06/10/2026 o site institucional saiu daqui para [avilaops/mellotransportesriopreto.com.br](https://github.com/avilaops/mellotransportesriopreto.com.br); o que ficou é só o sistema.
+
+- Roadmap: [ROADMAP.md](ROADMAP.md)
 
 ## O que tem aqui
 
-Uma aplicação Next.js só, com quatro públicos:
-
 | Área | Rota | Quem acessa | O que faz |
 | --- | --- | --- | --- |
-| Site público | `/`, `/cotacao`, `/blog`, `/rastreio` | Qualquer pessoa | Landing, cidades atendidas, frota, cotação e coleta pelo WhatsApp, blog, rastreio |
-| Mello Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e manutenção, financeiro, fiscal/CT-e, mensagens |
-| Mello Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline |
-| Mello Cliente | `/portal` | `CLIENT` | Coletas, faturas e minutas da própria empresa |
+| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e manutenção, financeiro, fiscal/CT-e, mensagens, usuários |
+| Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline |
+| Cliente | `/portal` | `CLIENT` | Coletas, faturas e minutas da própria empresa |
+| API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
 
-O controle de acesso por perfil fica em [src/proxy.ts](src/proxy.ts). Perfis são estritos: um `ADMIN` não entra em `/driver` nem em `/portal`, porque não tem motorista nem empresa vinculados.
+Não há página pública: a raiz `/` leva quem já entrou para a própria área e todo o resto para `/login`.
+
+O controle de acesso por perfil fica em [src/proxy.ts](src/proxy.ts) e é conferido de novo no servidor em cada rota interna. Perfis são estritos: um `ADMIN` não entra em `/driver` nem em `/portal`, porque não tem motorista nem empresa vinculados.
+
+### Quem consome a API pública
+
+O site do transportador não chama o TMS do navegador: o servidor do site repassa as três rotas acima (rewrite), então não há CORS. O limite de tentativas do rastreio usa o `x-forwarded-for`, que precisa chegar até aqui com o IP do visitante.
 
 ## Stack
 
@@ -25,14 +29,14 @@ O controle de acesso por perfil fica em [src/proxy.ts](src/proxy.ts). Perfis sã
 - **Tailwind CSS 4** e componentes shadcn/Base UI
 - **Prisma 7** com `@prisma/adapter-pg` e **PostgreSQL 16**
 - **NextAuth 4** com login por e-mail e senha (bcrypt) e sessão JWT
-- **Leaflet** para mapas, **Zod** e **React Hook Form** para formulários
+- **Vitest** contra Postgres real
 - Docker, GitHub Actions (GHCR) e Caddy no Hetzner
 
 > Esta versão do Next.js tem mudanças de API em relação a versões anteriores (por exemplo, `middleware.ts` virou `proxy.ts`). Antes de mexer, consulte `node_modules/next/dist/docs/`.
 
 ## Rodando localmente
 
-Requisitos: Node 22+ e um Postgres acessível.
+Requisitos: Node 22+ e um Postgres acessível. Tudo aqui precisa do banco.
 
 ```bash
 npm install
@@ -42,8 +46,6 @@ npx prisma db push            # cria as tabelas
 ADMIN_EMAIL=voce@exemplo.com ADMIN_PASSWORD=troque npx tsx prisma/seed.ts
 npm run dev
 ```
-
-O site público abre sem banco. Login, painel, portal, motorista e as rotas `/api` precisam do Postgres.
 
 Para subir só o banco com Docker:
 
@@ -60,6 +62,7 @@ DB_PASSWORD=mello docker compose up -d db   # expõe em 127.0.0.1:5436
 | `npm start` | Sobe o build |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Vitest; exige `DATABASE_URL` apontando para um Postgres de teste |
 
 ### Variáveis de ambiente
 
@@ -68,88 +71,32 @@ Todas estão documentadas em [.env.example](.env.example). As essenciais:
 | Variável | Uso |
 | --- | --- |
 | `DATABASE_URL` | Conexão Postgres |
-| `NEXTAUTH_URL` | URL pública do site |
+| `NEXTAUTH_URL` | URL pública do sistema |
 | `NEXTAUTH_SECRET` | Assinatura do JWT de sessão |
-| `NEXT_PUBLIC_GTM_ID` | Google Tag Manager (opcional) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed do administrador |
 
 ## Estrutura
 
 ```text
 src/
-  app/            rotas (site, dashboard, driver, portal, blog, api)
-  components/     UI, site, motorista, analytics
-  config/         dados da empresa (company.ts)
-  content/        matérias do blog (blog.ts)
-  data/           cidades, frota, serviços, FAQ, marca
-  lib/            auth, prisma, formatação, WhatsApp, Brasil API, fila offline
-  services/       mensagens e protocolos da central de coletas
-prisma/           schema, seed e sincronização de artigos
-public/           ícones, manifestos PWA, service worker, capas do blog
-pdf-generator/    gera o PDF de regras de frete e cidades atendidas
-docs/             manual de marca (texto)
-Criativos/        artes e vídeos de anúncio
+  app/            rotas (dashboard, driver, portal, login, api)
+  components/     UI, motorista, provedores
+  data/           cidades atendidas (mapa do motorista)
+  lib/            auth, prisma, permissões, cadastros, coletas, rastreio, fila offline
+prisma/           schema, seed e migrações pontuais
+tests/            suíte Vitest contra Postgres
+public/           ícones, manifesto do PWA do motorista, service worker
 ```
 
-## Como atualizar o conteúdo
+## O que ainda é da Mello aqui dentro
 
-| O quê | Onde |
-| --- | --- |
-| Telefone, WhatsApp, e-mail, endereço | [src/config/company.ts](src/config/company.ts) |
-| Cidades, polos, prazos e veículos por rota | [src/data/serviceAreas.csv](src/data/serviceAreas.csv) |
-| Frota | [src/data/fleet.ts](src/data/fleet.ts) |
-| Serviços | [src/data/services.ts](src/data/services.ts) |
-| FAQ | [src/data/faq.ts](src/data/faq.ts) |
-| Depoimentos | [src/data/testimonials.ts](src/data/testimonials.ts) |
-| Mensagens e protocolos de coleta | [src/services/collectionService.ts](src/services/collectionService.ts) |
-| Identidade visual e paleta | [src/data/brand.ts](src/data/brand.ts) |
-| Manual de marca | [docs/manual-marca-mello.txt](docs/manual-marca-mello.txt) e [public/manual-marca-mello.pdf](public/manual-marca-mello.pdf) |
-| Tabela de fretes | `TABELA FRETES 2026 A ABRIL 2027.xlsx` e [tabela_frete_serilon.csv](tabela_frete_serilon.csv) |
+A separação tirou o site, não a marca. Para virar produto de mercado ainda falta decidir:
 
-**Não publique** depoimentos, número de entregas, nomes de clientes ou tempo de mercado sem confirmação comercial.
-
-### Dados de contato
-
-- Telefone: (17) 3308-0878
-- WhatsApp: (17) 99714-9702
-- E-mail: comercial@mellotransportesriopreto.com.br
-- Endereço: Rua Bonsucesso, 695, Quinta das Paineiras, São José do Rio Preto/SP
-
-## Blog
-
-As matérias ficam em [src/content/blog.ts](src/content/blog.ts) como blocos tipados. Para publicar, acrescente um objeto em `posts` com `slug`, `title`, `description`, `excerpt`, `category`, `publishedAt`, `readingMinutes` e `body` (opcionalmente `coverImage` e `coverImageAlt`).
-
-A matéria entra sozinha no índice `/blog`, ganha a página `/blog/<slug>` pré-renderizada, aparece no `sitemap.xml` e recebe os dados estruturados de `Article`.
-
-Blocos aceitos no `body`: `p`, `h2`, `h3`, `ul`, `ol`, `note` e `table`. Dentro dos textos, `**assim**` vira negrito. As capas vão em [public/blog-capas/](public/blog-capas/README.md).
-
-### Conteúdo e distribuição no banco
-
-O texto continua no arquivo; o banco guarda o que acontece depois da publicação:
-
-- `Article`: espelho das matérias (slug, título, categoria, data). A página nunca lê daqui.
-- `SocialPost`: um post por canal (`BLOG`, `INSTAGRAM`, `GOOGLE_BUSINESS`, `FACEBOOK`, `LINKEDIN`, `WHATSAPP_STATUS`). Único por (canal, id externo), então repetir a chamada não publica duas vezes.
-- `ContentMetric`: impressões, cliques, posição e CTR por matéria e dia. Único por (matéria, data).
-
-```bash
-npx tsx prisma/sincronizar-artigos.ts             # ensaio, não grava
-npx tsx prisma/sincronizar-artigos.ts --aplicar   # grava
-```
-
-Matéria com o mesmo slug é atualizada. Matéria removida do arquivo só é reportada, nunca apagada, para não levar o histórico de posts junto.
-
-### Automação no n8n
-
-O fluxo `Mello - Blog automático` (`WR18HLwdT9NDuPFd`) roda toda quinta às 08:00 e **não publica nada**: entrega por e-mail a matéria pronta para colar em `blog.ts`.
-
-1. Lê a pauta em `mello_blog_pauta` e descarta temas já escritos (`mello_blog_temas_feitos`).
-2. Escreve com a OpenAI, no máximo 3 temas por rodada.
-3. Um revisor dá nota de 0 a 100; abaixo de 85 há uma reescrita.
-4. Gera a capa (foto por IA, sem texto nem logotipo) e aplica a assinatura da marca com a logo branca.
-5. Monta o bloco TypeScript e envia por e-mail com a capa anexa.
-6. Recorta a arte do Instagram (1080x1350), sobe na pasta "Mello Transportes - artes do blog" do Drive e abre uma tarefa no Todoist com legenda e hashtags.
-
-Regras que evitam erro silencioso: o slug vem da pauta, nunca da IA; travessão reprova o texto; a IA devolve `Block[]` tipado; o nome da arte é determinístico e a versão anterior é substituída; quando a fila fica vazia, o e-mail traz o diagnóstico em vez de sair em branco.
+- **Nomes e ícones:** telas, manifesto do PWA e mensagens dizem "Mello".
+- **Cidades atendidas:** [src/data/serviceAreas.csv](src/data/serviceAreas.csv) é a malha da Mello, usada no mapa do motorista. Existe uma cópia no repositório do site.
+- **Tabelas `Article`, `SocialPost` e `ContentMetric`:** guardam a distribuição do blog da Mello. Continuam no schema para não mexer em dado; o script que as alimentava (`prisma/sincronizar-artigos.ts`) saiu junto com as matérias.
+- **Material comercial:** `TABELA FRETES 2026 A ABRIL 2027.xlsx`, `tabela_frete_serilon*.csv`, `regras_frete_serilon.txt`, `Cidades.pdf` e [pdf-generator/](pdf-generator/README.md) são da operação da Mello e ficaram aqui porque o repositório do site é público.
+- **Um banco, um transportador:** não há separação por empresa (multi-tenant).
 
 ## Deploy
 
@@ -157,8 +104,10 @@ Regras que evitam erro silencioso: o slug vem da pauta, nunca da IA; travessão 
 
 [.github/workflows/deploy-production.yml](.github/workflows/deploy-production.yml) usa os workflows reutilizáveis de `avilaops/infra`:
 
-- Todo push e PR em `main` builda a imagem Docker. Fora de PR, ela é publicada no GHCR.
+- Todo push e PR em `main` roda typecheck e testes; se passarem, builda a imagem Docker. Fora de PR, ela é publicada no GHCR.
 - O deploy por SSH só roda quando a variável `DEPLOY_ENABLED` do repositório for `true`, com os segredos `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` e `DEPLOY_KNOWN_HOSTS`.
+
+Hoje a aplicação publicada se chama `mellotransportesriopreto.com.br`, de quando site e sistema eram um container só. Antes de publicar esta versão sem o site, o domínio da Mello precisa estar apontando para o container do site; senão a home pública vira tela de login.
 
 ### Manual (Hetzner)
 
@@ -172,17 +121,6 @@ ssh root@<servidor> 'cd /opt/mello && docker compose up -d app'
 
 - **Banco:** container `mello-db` (Postgres 16, volume `mello-pgdata`), exposto só em `127.0.0.1:5436`. Para `prisma db push`, abra um túnel SSH para essa porta.
 - **Variáveis:** `/opt/mello/.env`, a partir de [.env.example](.env.example).
-- **Caddy:** `mello.avilaops.com` e `mellotransportesriopreto.com.br` apontam para a porta 3060; `www` redireciona 301 para o apex.
-- **DNS:** o domínio do cliente fica na Redehost, com e-mail (MX/SPF) intocado. Ao virar o DNS, ajuste `NEXTAUTH_URL` para `https://mellotransportesriopreto.com.br` e rode `docker compose up -d app`.
-- **SEO:** as URLs do site antigo (`/empresa`, `/servicos`, `/faca-um-orcamento` etc.) redirecionam com 301 em [next.config.ts](next.config.ts).
-
-## Gerador de PDF de fretes
-
-Projeto separado em [pdf-generator/](pdf-generator/README.md) que gera o PDF com tarifas, regras de frete, frota e cidades atendidas a partir de `tabela_frete_serilon.csv`.
-
-```bash
-cd pdf-generator && npm install && npm run generate
-```
 
 ---
 
