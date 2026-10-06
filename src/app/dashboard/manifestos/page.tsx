@@ -214,7 +214,7 @@ export default function ManifestosPage() {
                 <div className="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
                   <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center">
                     <Package className="w-4 h-4 mr-1.5" /> 
-                    {manifesto.collections?.length || 0} Entregas na Rota
+                    {manifesto.collections?.length === 1 ? "1 Entrega na Rota" : `${manifesto.collections?.length || 0} Entregas na Rota`}
                   </h4>
                   
                   <div className="space-y-3 max-h-40 overflow-y-auto pr-2 custom-scrollbar">

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { DRIVER_USER_SELECT, firstIssue } from '@/lib/usuarios';
@@ -17,6 +18,40 @@ class CannotEmbark extends Error {
   constructor(readonly count: number) {
     super('Carga não pode embarcar.');
   }
+}
+
+/** Desfaz a transação quando motorista ou veículo deixou de servir depois da primeira conferência. */
+class Refused extends Error {
+  constructor(readonly response: NextResponse) {
+    super('Motorista ou veículo não pode sair em viagem.');
+  }
+}
+
+/** Resposta de recusa se o motorista não está ativo ou o veículo não pode sair; `null` se os dois servem. */
+async function driverOrVehicleRefusal(
+  db: Pick<Prisma.TransactionClient, 'driver' | 'vehicle'>,
+  driverId: string,
+  vehicleId: string
+): Promise<NextResponse | null> {
+  const driver = await db.driver.findFirst({
+    where: { id: driverId, active: true },
+    select: { id: true }
+  });
+  if (!driver) {
+    return NextResponse.json({ error: INACTIVE_DRIVER_MESSAGE }, { status: 400 });
+  }
+
+  const vehicle = await db.vehicle.findUnique({
+    where: { id: vehicleId },
+    select: { status: true }
+  });
+  if (!vehicle) {
+    return NextResponse.json({ error: VEHICLE_NOT_FOUND_MESSAGE }, { status: 400 });
+  }
+  if (vehicle.status === 'MAINTENANCE') {
+    return NextResponse.json({ error: VEHICLE_IN_MAINTENANCE_MESSAGE }, { status: 409 });
+  }
+  return null;
 }
 
 export async function GET() {
@@ -53,24 +88,8 @@ export async function POST(req: Request) {
     }
     const { driverId, vehicleId, collectionIds } = parsed.data;
 
-    const driver = await prisma.driver.findFirst({
-      where: { id: driverId, active: true },
-      select: { id: true }
-    });
-    if (!driver) {
-      return NextResponse.json({ error: INACTIVE_DRIVER_MESSAGE }, { status: 400 });
-    }
-
-    const vehicle = await prisma.vehicle.findUnique({
-      where: { id: vehicleId },
-      select: { status: true }
-    });
-    if (!vehicle) {
-      return NextResponse.json({ error: VEHICLE_NOT_FOUND_MESSAGE }, { status: 400 });
-    }
-    if (vehicle.status === 'MAINTENANCE') {
-      return NextResponse.json({ error: VEHICLE_IN_MAINTENANCE_MESSAGE }, { status: 409 });
-    }
+    const refused = await driverOrVehicleRefusal(prisma, driverId, vehicleId);
+    if (refused) return refused;
 
     // Id que não existe conta como carga que não embarca: o manifesto não pode
     // nascer com menos cargas do que o operador marcou.
@@ -87,6 +106,14 @@ export async function POST(req: Request) {
     }
 
     const newManifest = await prisma.$transaction(async (tx) => {
+      // Segura veículo e motorista, sempre nesta ordem, e confere de novo: quem
+      // desativa o motorista ou põe o veículo em manutenção durante a montagem
+      // espera esta transação, ou chega antes e a montagem é recusada aqui.
+      await tx.$queryRaw`SELECT id FROM "Vehicle" WHERE id = ${vehicleId} FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM "Driver" WHERE id = ${driverId} FOR SHARE`;
+      const changed = await driverOrVehicleRefusal(tx, driverId, vehicleId);
+      if (changed) throw new Refused(changed);
+
       const manifest = await tx.manifest.create({
         data: { driverId, vehicleId, status: 'ROUTE' }
       });
@@ -110,6 +137,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(newManifest, { status: 201 });
   } catch (error) {
+    if (error instanceof Refused) return error.response;
     if (error instanceof CannotEmbark) {
       return NextResponse.json({ error: cannotEmbarkMessage(error.count) }, { status: 409 });
     }

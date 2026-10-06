@@ -365,6 +365,45 @@ suite("manifestos pelo painel", () => {
       expect(await ler(alvo.id)).toMatchObject({ status: "COLLECTED", manifestId: null });
     });
 
+    // A troca fica aberta numa transação à parte enquanto a montagem corre: a
+    // primeira conferência ainda lê o valor antigo, e só a conferência de dentro
+    // da transação da montagem, que espera a troca gravar, pode recusar.
+    it.each([
+      ["veículo posto em manutenção", 409, /manutenção/],
+      ["motorista desativado", 400, /Motorista não encontrado ou inativo/],
+    ] as const)("%s durante a montagem → recusa sem gravar", async (caso, status, mensagem) => {
+      const alvo = await montar();
+      const antes = await contarManifestos();
+      const noVeiculo = caso.startsWith("veículo");
+
+      let resposta!: Promise<Response>;
+      try {
+        await prisma.$transaction(async (tx) => {
+          if (noVeiculo) await tx.vehicle.update({ where: { id: veiculoId }, data: { status: "MAINTENANCE" } });
+          else await tx.driver.update({ where: { id: motoristaId }, data: { active: false } });
+
+          resposta = criar([alvo.id]);
+          await new Promise((pronto) => setTimeout(pronto, 500));
+        });
+
+        const res = await resposta;
+        expect(res.status).toBe(status);
+        expect((await res.json()).error).toMatch(mensagem);
+        expect(await contarManifestos()).toBe(antes);
+        expect(await ler(alvo.id)).toMatchObject({ status: "COLLECTED", manifestId: null });
+      } finally {
+        await resposta?.catch(() => undefined);
+        await prisma.vehicle.update({ where: { id: veiculoId }, data: { status: "AVAILABLE" } });
+        await prisma.driver.update({ where: { id: motoristaId }, data: { active: true } });
+      }
+    });
+
+    it("motorista e veículo que continuam servindo não travam duas montagens simultâneas", async () => {
+      const [a, b] = await Promise.all([montar(), montar()]);
+      const respostas = await Promise.all([criar([a.id]), criar([b.id])]);
+      expect(respostas.map((res) => res.status)).toEqual([201, 201]);
+    });
+
     it.each(["PENDING", "CONFIRMED", "ROUTE", "DELIVERED", "CANCELLED", "REJECTED"])(
       "carga %s não embarca → 409, sem gravar",
       async (status) => {
