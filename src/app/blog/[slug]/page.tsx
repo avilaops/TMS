@@ -70,7 +70,7 @@ export default async function PostPage({ params }: PageProps) {
   return (
     <>
       <SiteHeader />
-      <main>
+      <main id="main-content">
         <article className="post-page">
           <Link className="post-back" href="/blog">
             <ArrowLeft size={16} /> Todas as matérias
@@ -85,14 +85,14 @@ export default async function PostPage({ params }: PageProps) {
           <h1>{post.title}</h1>
           <p className="post-lead">{post.excerpt}</p>
           {post.coverImage && (
-            <Image
+            <figure><Image
               className="post-cover"
               src={post.coverImage}
               alt={post.coverImageAlt ?? post.title}
               width={1200}
               height={630}
               priority
-            />
+            /><figcaption className="blog-image-note">Imagem ilustrativa gerada para este conteúdo.</figcaption></figure>
           )}
           <hr className="post-rule" />
           <PostBody blocks={post.body} />
@@ -106,9 +106,9 @@ export default async function PostPage({ params }: PageProps) {
             fechar o pedido.
           </p>
           <div className="actions">
-            <a className="btn primary" href="/#/coleta">
+            <Link className="btn primary" href="/coleta">
               Solicitar coleta <ArrowRight size={16} />
-            </a>
+            </Link>
             <a className="btn ghost" href={company.phoneHref}>
               {company.phone}
             </a>

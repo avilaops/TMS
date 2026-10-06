@@ -8,4 +8,7 @@ já tem, cole o bloco em `src/content/blog.ts` e commite. O bloco já vem com
 `coverImage` e `coverImageAlt` preenchidos.
 
 Matéria sem capa continua funcionando: o índice e a página caem no layout
-tipográfico e o OpenGraph usa `/preview-whatsapp-v1.png`.
+tipográfico e o OpenGraph usa `/preview-whatsapp-v2.png`.
+
+
+Em 19/09/2026, foram incluídas capas ilustrativas geradas por IA: preparo-carga.webp, conferencia-entrega.webp e frota-regional.webp. Elas não retratam a equipe ou instalações reais da Mello.

@@ -10,5 +10,5 @@ export const company = {
   website: "www.mellotransportesriopreto.com.br",
   address: "Rua Bonsucesso, nº 695 - Quinta das Paineiras - São José do Rio Preto/SP",
   serviceRegion: "São José do Rio Preto e mais de 130 cidades da região (SP)",
-  pagesUrl: "https://avilaops.github.io/Mello/",
+  pagesUrl: "https://mellotransportesriopreto.com.br/",
 };

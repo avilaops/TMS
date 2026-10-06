@@ -12,14 +12,14 @@ import type { NextConfig } from "next";
  */
 const legacyRedirects = [
   { source: "/empresa", destination: "/#inicio" },
-  { source: "/servicos", destination: "/#servicos" },
-  { source: "/nossa-frota", destination: "/#frota" },
-  { source: "/cidades-atendidas", destination: "/#cidades" },
+  
+  { source: "/nossa-frota", destination: "/frota" },
+  { source: "/cidades-atendidas", destination: "/cidades" },
   { source: "/faca-um-orcamento", destination: "/cotacao" },
-  { source: "/contato", destination: "/#coleta" },
-  { source: "/entregas-express", destination: "/#servicos" },
+  { source: "/contato", destination: "/coleta" },
+  { source: "/entregas-express", destination: "/servicos" },
   // Paginas de servico do CMS antigo: /13/servico/motofrete e afins.
-  { source: "/:id/servico/:slug", destination: "/#servicos" },
+  { source: "/:id/servico/:slug", destination: "/servicos" },
   // Painel administrativo do CMS antigo, que deixa de existir na migracao.
   { source: "/painel", destination: "/login" },
   { source: "/painel/:path*", destination: "/login" },

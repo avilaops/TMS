@@ -44,8 +44,8 @@ export default function QuotePage() {
       });
 
       setSuccess(true);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao enviar solicitação.");
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export default function QuotePage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-6">
+      <div className="min-h-[65vh] bg-gray-50 flex flex-col justify-center items-center p-6">
         <div className="bg-white rounded-2xl shadow-xl p-10 max-w-lg w-full text-center">
           <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
             <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -66,7 +66,7 @@ export default function QuotePage() {
           </p>
           <button
             onClick={() => router.push("/")}
-            className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition"
+            className="w-full bg-[#f28a00] text-gray-950 font-bold py-4 rounded-xl hover:bg-orange-700 transition"
           >
             Voltar para o Início
           </button>
@@ -78,9 +78,9 @@ export default function QuotePage() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
-        <div className="bg-blue-600 px-8 py-10 text-center">
-          <h1 className="text-3xl font-black text-white mb-2">Solicitar Cotação de Frete</h1>
-          <p className="text-blue-100">Preencha os dados da carga e receba nossa proposta comercial.</p>
+        <div className="bg-[#f28a00] px-8 py-10 text-center">
+          <h1 className="text-3xl font-black text-gray-950 mb-2">Solicitar Cotação de Frete</h1>
+          <p className="text-gray-800">Preencha os dados da carga e receba nossa proposta comercial.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
@@ -90,35 +90,29 @@ export default function QuotePage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="quote-fields">
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Nome da Empresa</label>
-              <input
-                type="text"
-                name="companyName"
+              <label htmlFor="companyName" className="block text-sm font-semibold text-gray-700 mb-2">Nome da Empresa</label>
+              <input id="companyName" type="text" name="companyName"
                 required
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
                 placeholder="Razão Social ou Nome Fantasia"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">E-mail Corporativo</label>
-              <input
-                type="email"
-                name="email"
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">E-mail Corporativo</label>
+              <input id="email" type="email" name="email"
                 required
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
                 placeholder="seu@email.com"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Telefone / WhatsApp</label>
-              <input
-                type="text"
-                name="phone"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+              <label htmlFor="phone" className="block text-sm font-semibold text-gray-700 mb-2">Telefone / WhatsApp</label>
+              <input id="phone" type="text" name="phone"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
                 placeholder="(00) 00000-0000"
               />
             </div>
@@ -128,48 +122,40 @@ export default function QuotePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Cidade de Origem</label>
-              <input
-                type="text"
-                name="origin"
+              <label htmlFor="origin" className="block text-sm font-semibold text-gray-700 mb-2">Cidade de Origem</label>
+              <input id="origin" type="text" name="origin"
                 required
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
                 placeholder="Ex: São Paulo, SP"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Cidade de Destino</label>
-              <input
-                type="text"
-                name="destination"
+              <label htmlFor="destination" className="block text-sm font-semibold text-gray-700 mb-2">Cidade de Destino</label>
+              <input id="destination" type="text" name="destination"
                 required
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
                 placeholder="Ex: Rio de Janeiro, RJ"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Quantidade de Volumes</label>
-              <input
-                type="number"
-                name="volumes"
+              <label htmlFor="volumes" className="block text-sm font-semibold text-gray-700 mb-2">Quantidade de Volumes</label>
+              <input id="volumes" type="number" name="volumes"
                 min="1"
                 required
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
                 placeholder="Ex: 50"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Peso Estimado (kg)</label>
-              <input
-                type="number"
-                name="weight"
+              <label htmlFor="weight" className="block text-sm font-semibold text-gray-700 mb-2">Peso Estimado (kg)</label>
+              <input id="weight" type="number" name="weight"
                 min="0.1"
                 step="0.1"
                 required
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
                 placeholder="Ex: 120.5"
               />
             </div>
@@ -178,7 +164,7 @@ export default function QuotePage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed mt-8"
+            className="w-full bg-[#f28a00] text-gray-950 font-bold py-4 rounded-xl hover:bg-orange-700 transition disabled:opacity-50 disabled:cursor-not-allowed mt-8"
           >
             {loading ? "Enviando..." : "Solicitar Cotação"}
           </button>
