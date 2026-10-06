@@ -32,6 +32,8 @@ interface Coleta {
   invoiceKey: string | null;
   invoiceValue: number | null;
   trackingCode: string | null;
+  // Comprovante registrado pelo motorista na baixa; nulo na baixa feita pelo painel.
+  proof?: { id: string; status: string } | null;
   client: Cliente;
   driver?: Motorista | null;
 }
@@ -412,6 +414,14 @@ export default function ColetasPage() {
                             </button>
                           );
                         })}
+                        {coleta.proof && (
+                          <Link
+                            href={`/dashboard/entregas/${coleta.id}/comprovante`}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
+                          >
+                            Comprovante
+                          </Link>
+                        )}
                         {isEditable(coleta) && (
                           <button
                             type="button"

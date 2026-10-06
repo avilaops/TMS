@@ -53,6 +53,9 @@ export function isEditable(collection: { status: string; manifestId: string | nu
 export const COLLECTION_INCLUDE = {
   client: true,
   driver: { include: { user: { select: DRIVER_USER_SELECT } } },
+  // Só o que a lista precisa para saber se há comprovante: foto e assinatura
+  // pesam megabytes e ficam para a tela do comprovante.
+  proof: { select: { id: true, status: true } },
 } as const;
 
 const INVALID_BODY = "Dados inválidos.";

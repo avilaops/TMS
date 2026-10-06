@@ -1,7 +1,28 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireDriver } from '@/lib/driver';
+import { firstIssue } from '@/lib/usuarios';
+import {
+  DELIVERED_BY_PANEL_MESSAGE,
+  DELIVERY_NOT_FOUND_MESSAGE,
+  NOT_IN_ROUTE_MESSAGE,
+  baixaSchema,
+} from '@/lib/entregas';
 
+/**
+ * Baixa de entrega pelo motorista, com o comprovante.
+ *
+ * A entrega é a própria carga: o `[id]` é o da coleta. Duas propriedades
+ * sustentam esta rota:
+ *
+ * 1. Só a carga em rota numa viagem liberada deste motorista recebe baixa. Sem
+ *    isso qualquer motorista logado daria baixa na entrega de outro, e o
+ *    comprovante é documento de valor legal.
+ *
+ * 2. Repetir a mesma baixa responde 200. O aplicativo guarda a baixa numa fila
+ *    quando a rede cai e reenvia depois; se a primeira tentativa chegou e só a
+ *    resposta se perdeu, o reenvio não pode virar erro nem um segundo comprovante.
+ */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -10,80 +31,66 @@ export async function POST(
   if (error) return error;
 
   try {
-    const deliveryId = (await params).id;
+    const collectionId = (await params).id;
 
-    // A entrega precisa ser deste motorista — direto ou pelo manifesto dele.
-    // Sem esta checagem, qualquer usuário logado dava baixa em qualquer entrega,
-    // e o comprovante é documento de valor legal.
-    const delivery = await prisma.delivery.findFirst({
-      where: {
-        id: deliveryId,
-        OR: [{ driverId }, { manifest: { driverId } }],
-      },
-      select: { id: true, status: true },
+    const parsed = baixaSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
+    }
+    const { receiverName, receiverDoc, photoBase64, signatureBase64, latitude, longitude } = parsed.data;
+
+    // Viagem finalizada também entra na busca: é onde a carga está quando o
+    // reenvio de uma baixa já registrada chega depois do retorno.
+    const find = () =>
+      prisma.collection.findFirst({
+        where: { id: collectionId, manifest: { driverId, status: { in: ['ROUTE', 'FINISHED'] } } },
+        select: { status: true, manifest: { select: { status: true } }, proof: { select: { id: true } } },
+      });
+
+    const alreadyDone = (proofId: string) =>
+      NextResponse.json({ success: true, alreadyDelivered: true, collectionId, proofId });
+
+    const current = await find();
+    if (!current) {
+      return NextResponse.json({ error: DELIVERY_NOT_FOUND_MESSAGE }, { status: 404 });
+    }
+    if (current.status === 'DELIVERED') {
+      return current.proof
+        ? alreadyDone(current.proof.id)
+        : NextResponse.json({ error: DELIVERED_BY_PANEL_MESSAGE }, { status: 409 });
+    }
+    if (current.status !== 'ROUTE' || current.manifest?.status !== 'ROUTE') {
+      return NextResponse.json({ error: NOT_IN_ROUTE_MESSAGE }, { status: 409 });
+    }
+
+    const proofId = await prisma.$transaction(async (tx) => {
+      // Grava só se a carga ainda estiver em rota nesta viagem: de duas baixas
+      // simultâneas, ou de baixa e retirada ao mesmo tempo, uma encontra zero linhas.
+      const { count } = await tx.collection.updateMany({
+        where: { id: collectionId, status: 'ROUTE', manifest: { driverId, status: 'ROUTE' } },
+        data: { status: 'DELIVERED', receiverName },
+      });
+      if (count === 0) return null;
+
+      const proof = await tx.proofOfDelivery.create({
+        data: { collectionId, receiverName, receiverDoc, photoBase64, signatureBase64, latitude, longitude },
+        select: { id: true },
+      });
+      return proof.id;
     });
 
-    if (!delivery) {
+    if (proofId === null) {
+      // Perdeu a corrida. Se quem ganhou foi a mesma baixa, está feito.
+      const after = await find();
+      if (after?.status === 'DELIVERED' && after.proof) return alreadyDone(after.proof.id);
       return NextResponse.json(
-        { error: 'Entrega não encontrada na sua viagem.' },
-        { status: 404 }
+        { error: after ? NOT_IN_ROUTE_MESSAGE : DELIVERY_NOT_FOUND_MESSAGE },
+        { status: after ? 409 : 404 }
       );
     }
 
-    const body = await req.json();
-    const {
-      receiverName,
-      receiverDoc,
-      photoBase64,
-      signatureBase64,
-      latitude,
-      longitude,
-    } = body;
-
-    if (!receiverName || !receiverDoc) {
-      return NextResponse.json(
-        { error: 'Nome e documento do recebedor são obrigatórios' },
-        { status: 400 }
-      );
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
-      const updatedDelivery = await tx.delivery.update({
-        where: { id: deliveryId },
-        data: {
-          status: 'DELIVERED',
-          receiverName,
-          receiverDoc,
-        },
-      });
-
-      const proof = await tx.proofOfDelivery.upsert({
-        where: { deliveryId },
-        update: {
-          receiverName,
-          receiverDoc,
-          photoBase64,
-          signatureBase64,
-          latitude,
-          longitude,
-          status: 'SUBMITTED',
-        },
-        create: {
-          deliveryId,
-          receiverName,
-          receiverDoc,
-          photoBase64,
-          signatureBase64,
-          latitude,
-          longitude,
-          status: 'SUBMITTED',
-        },
-      });
-
-      return { updatedDelivery, proof };
-    });
-
-    return NextResponse.json({ success: true, result });
+    // A resposta não devolve foto nem assinatura: o aparelho acabou de enviá-las.
+    return NextResponse.json({ success: true, collectionId, proofId });
   } catch (error) {
     console.error('Erro na baixa de entrega:', error);
     return NextResponse.json(

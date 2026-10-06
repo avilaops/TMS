@@ -69,7 +69,6 @@ model Driver {
   vehicles  Vehicle[]
   manifests Manifest[]
   collections Collection[]
-  deliveries  Delivery[]
 }
 
 model Vehicle {
@@ -125,21 +124,6 @@ model Collection {
   client      Client   @relation(fields: [clientId], references: [id])
   driver      Driver?  @relation(fields: [driverId], references: [id])
   manifest    Manifest? @relation(fields: [manifestId], references: [id])
-}
-
-model Delivery {
-  id          String   @id @default(uuid())
-  manifestId  String?
-  driverId    String?
-  receiverName String?
-  receiverDoc  String?
-  status      String   @default("PENDING") // PENDING, DELIVERED, RETURNED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  manifest    Manifest? @relation(fields: [manifestId], references: [id])
-  driver      Driver?   @relation(fields: [driverId], references: [id])
   proof       ProofOfDelivery?
 }
 
@@ -154,7 +138,6 @@ model Manifest {
   // Relations
   driver      Driver    @relation(fields: [driverId], references: [id])
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
-  deliveries  Delivery[]
   collections Collection[]
 }
 
@@ -189,9 +172,11 @@ model Maintenance {
   vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
 }
 
+// Comprovante da entrega de uma carga, registrado pelo motorista na baixa.
+// A entrega e a propria carga (Collection): nao ha registro de entrega a parte.
 model ProofOfDelivery {
   id              String   @id @default(uuid())
-  deliveryId      String   @unique
+  collectionId    String   @unique
   photoBase64     String?  @db.Text
   signatureBase64 String?  @db.Text
   receiverName    String
@@ -203,7 +188,7 @@ model ProofOfDelivery {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  delivery        Delivery @relation(fields: [deliveryId], references: [id])
+  collection      Collection @relation(fields: [collectionId], references: [id])
 }
 
 model QuoteLead {
