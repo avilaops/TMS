@@ -1,0 +1,26 @@
+# Desenvolvimento: so o Postgres, na mesma versao do servidor de producao.
+#   docker compose -f docker-compose.dev.yml up -d
+#   DATABASE_URL="postgresql://tms:tms@127.0.0.1:5436/tms?schema=public"
+name: tms-dev
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: tms-dev-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tms
+      POSTGRES_PASSWORD: tms
+      POSTGRES_DB: tms
+    volumes:
+      - tms-dev-pgdata:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tms"]
+      interval: 10s
+      retries: 5
+
+volumes:
+  tms-dev-pgdata:
+    name: tms-dev-pgdata
