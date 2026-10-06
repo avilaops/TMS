@@ -39,6 +39,7 @@ suite("permissões das rotas internas", () => {
   let clientePorId: typeof import("../src/app/api/clientes/[id]/route");
   let coletas: typeof import("../src/app/api/coletas/route");
   let coletaPorId: typeof import("../src/app/api/coletas/[id]/route");
+  let coletaHistorico: typeof import("../src/app/api/coletas/[id]/historico/route");
   let dashboard: typeof import("../src/app/api/dashboard/route");
   let financeiro: typeof import("../src/app/api/financeiro/route");
   let fiscal: typeof import("../src/app/api/fiscal/route");
@@ -102,6 +103,7 @@ suite("permissões das rotas internas", () => {
     clientePorId = await import("../src/app/api/clientes/[id]/route");
     coletas = await import("../src/app/api/coletas/route");
     coletaPorId = await import("../src/app/api/coletas/[id]/route");
+    coletaHistorico = await import("../src/app/api/coletas/[id]/historico/route");
     dashboard = await import("../src/app/api/dashboard/route");
     financeiro = await import("../src/app/api/financeiro/route");
     fiscal = await import("../src/app/api/fiscal/route");
@@ -143,6 +145,7 @@ suite("permissões das rotas internas", () => {
       ["POST /api/coletas", () => coletas.POST(req("POST", {}))],
       ["GET /api/coletas/[id]", () => coletaPorId.GET(req(), ctx(semId))],
       ["PATCH /api/coletas/[id]", () => coletaPorId.PATCH(req("PATCH", { volumes: 1 }), ctx(semId))],
+      ["GET /api/coletas/[id]/historico", () => coletaHistorico.GET(req(), ctx(semId))],
       ["GET /api/dashboard", () => dashboard.GET()],
       ["POST /api/fiscal", () => fiscal.POST(req("POST", {}))],
       ["POST /api/fiscal/cte", () => fiscalCte.POST(req("POST", {}))],

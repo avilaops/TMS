@@ -27,7 +27,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -74,6 +74,8 @@ export async function POST(req: Request) {
           // `PENDING` fica para o pedido que vem do portal do cliente.
           status: 'CONFIRMED',
           trackingCode,
+          // Primeira linha do histórico, gravada junto da coleta.
+          statusHistory: { create: { fromStatus: null, toStatus: 'CONFIRMED', userId: user.id } },
         },
         include: COLLECTION_INCLUDE,
       })

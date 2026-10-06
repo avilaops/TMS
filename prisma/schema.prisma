@@ -26,6 +26,7 @@ model User {
   // Relations
   driver    Driver?
   client    Client?  @relation(fields: [clientId], references: [id])
+  statusChanges CollectionStatusHistory[]
 
   @@index([clientId])
 }
@@ -125,6 +126,26 @@ model Collection {
   client      Client   @relation(fields: [clientId], references: [id])
   driver      Driver?  @relation(fields: [driverId], references: [id])
   manifest    Manifest? @relation(fields: [manifestId], references: [id])
+  statusHistory CollectionStatusHistory[]
+}
+
+// Uma linha por status que a coleta assumiu, com quando e quem. `fromStatus`
+// e nulo na criacao. Quem grava e `recordStatusChanges` (src/lib/historico.ts)
+// ou a criacao aninhada da propria coleta; coleta anterior a esta tabela fica
+// sem historico, porque nao ha de onde tirar a data real de cada troca.
+model CollectionStatusHistory {
+  id           String   @id @default(uuid())
+  collectionId String
+  fromStatus   String?
+  toStatus     String
+  userId       String?  // nulo quando a troca nao tem pessoa, ou o usuario foi apagado
+  createdAt    DateTime @default(now())
+
+  // Relations
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([collectionId, createdAt])
 }
 
 model Delivery {

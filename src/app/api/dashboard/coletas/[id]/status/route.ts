@@ -4,6 +4,7 @@ import { requireStaff } from '@/lib/staff';
 import { canTransition, statusChangeSchema } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
 import { COLLECTION_STATUS, statusBadge } from '@/lib/format';
+import { recordStatusChanges } from '@/lib/historico';
 
 const NOT_FOUND = 'Coleta não encontrada.';
 const IN_MANIFEST = 'Esta coleta está em um manifesto: retire a carga do manifesto antes de cancelar.';
@@ -16,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireStaff();
+    const { user, error } = await requireStaff();
     if (error) return error;
 
     const collectionId = (await params).id;
@@ -48,19 +49,28 @@ export async function POST(
     }
 
     // Grava só se a coleta ainda estiver no status lido acima: de duas chamadas
-    // simultâneas, uma encontra zero linhas e recebe 409.
-    const { count } = await prisma.collection.updateMany({
-      where: {
-        id: collectionId,
-        status: current.status,
-        ...(cancelling ? { manifestId: null } : {}),
-      },
-      data: {
-        status,
-        ...(status === 'DELIVERED' ? { receiverName } : {}),
-      },
+    // simultâneas, uma encontra zero linhas e recebe 409. A linha do histórico
+    // vai na mesma transação: ou ficam as duas gravações, ou nenhuma.
+    const changed = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.collection.updateMany({
+        where: {
+          id: collectionId,
+          status: current.status,
+          ...(cancelling ? { manifestId: null } : {}),
+        },
+        data: {
+          status,
+          ...(status === 'DELIVERED' ? { receiverName } : {}),
+        },
+      });
+      if (count === 0) return false;
+
+      await recordStatusChanges(tx, [
+        { collectionId, fromStatus: current.status, toStatus: status, userId: user.id },
+      ]);
+      return true;
     });
-    if (count === 0) {
+    if (!changed) {
       return NextResponse.json({ error: CHANGED_MEANWHILE }, { status: 409 });
     }
 

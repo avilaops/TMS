@@ -36,7 +36,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { clientId, error } = await requirePortalClient();
+  const { clientId, userId, error } = await requirePortalClient();
   if (error) return error;
 
   try {
@@ -79,6 +79,8 @@ export async function POST(req: Request) {
           invoiceValue: invoiceValueNumber,
           status: 'PENDING',
           trackingCode,
+          // Primeira linha do histórico, gravada junto da coleta.
+          statusHistory: { create: { fromStatus: null, toStatus: 'PENDING', userId } },
         },
         select: COLLECTION_FIELDS,
       })
