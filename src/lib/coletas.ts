@@ -63,8 +63,9 @@ export const INACTIVE_DRIVER_MESSAGE = "Motorista não encontrado ou inativo.";
 
 // O formulário manda número como texto ("12,5", "" quando em branco). Só
 // dígitos com uma vírgula ou ponto decimal: `Number()` sozinho leria "0x10"
-// como 16 e "1e3" como 1000.
-const FORM_NUMBER = /^\d+([.,]\d+)?$/;
+// como 16 e "1e3" como 1000. O campo `type="number"` entrega ".5" e "5."
+// quando o operador digita sem o zero, então um dos lados pode faltar.
+const FORM_NUMBER = /^(\d+([.,]\d*)?|[.,]\d+)$/;
 
 const fromFormNumber = (value: unknown) => {
   if (typeof value !== "string") return value;

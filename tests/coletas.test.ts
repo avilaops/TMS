@@ -6,6 +6,7 @@ import {
   canTransition,
   changedFields,
   isEditable,
+  updateCollectionSchema,
 } from "../src/lib/coletas";
 import { COLLECTION_STATUS } from "../src/lib/format";
 
@@ -85,6 +86,37 @@ describe("transições de status da coleta", () => {
       driverId: "m1",
     });
     expect(changedFields(original, { ...original })).toEqual({});
+  });
+
+  it("número do formulário aceita decimal sem o zero de um dos lados", () => {
+    const aceitos: Array<[string, number]> = [
+      [".5", 0.5],
+      ["5.", 5],
+      [",5", 0.5],
+      ["5,", 5],
+      ["0.5", 0.5],
+      ["5", 5],
+    ];
+    for (const [texto, esperado] of aceitos) {
+      for (const campo of ["weight", "invoiceValue"]) {
+        const lido = updateCollectionSchema.safeParse({ [campo]: texto });
+        expect(lido.success, `${campo}: "${texto}"`).toBe(true);
+        expect(lido.data, `${campo}: "${texto}"`).toEqual({ [campo]: esperado });
+      }
+    }
+    // Em volumes "5." e "5," são o inteiro 5; ".5" segue recusado por não ser inteiro.
+    expect(updateCollectionSchema.safeParse({ volumes: "5." }).data).toEqual({ volumes: 5 });
+    expect(updateCollectionSchema.safeParse({ volumes: "5," }).data).toEqual({ volumes: 5 });
+    expect(updateCollectionSchema.safeParse({ volumes: ".5" }).success).toBe(false);
+
+    for (const texto of ["", "  ", ".", ",", "1.2.3", "1,2,3", "1.,5", "abc", "-5", "-.5", "+5", "0x10", "1e3"]) {
+      expect(updateCollectionSchema.safeParse({ weight: texto }).success, `weight: "${texto}"`).toBe(false);
+    }
+    // Vazio no valor da NF apaga o campo; o resto é recusado como no peso.
+    expect(updateCollectionSchema.safeParse({ invoiceValue: "" }).data).toEqual({ invoiceValue: null });
+    for (const texto of [".", ",", "1.2.3", "abc", "-5"]) {
+      expect(updateCollectionSchema.safeParse({ invoiceValue: texto }).success, `invoiceValue: "${texto}"`).toBe(false);
+    }
   });
 
   it("todo status tem rótulo em português", () => {
