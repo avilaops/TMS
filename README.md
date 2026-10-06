@@ -4,6 +4,8 @@ Sistema de gestão de transportes para operação terrestre, de carga fracionada
 
 Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chamava `Mello`) e ainda roda a operação dela. Em 06/10/2026 o site institucional saiu daqui para [avilaops/mellotransportesriopreto.com.br](https://github.com/avilaops/mellotransportesriopreto.com.br); o que ficou é só o sistema.
 
+- Endereço: https://tms.avilaops.com
+- Site da Mello (consome a API pública): https://mellotransportesriopreto.com.br
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 
 ## O que tem aqui
@@ -71,7 +73,7 @@ Todas estão documentadas em [.env.example](.env.example). As essenciais:
 | Variável | Uso |
 | --- | --- |
 | `DATABASE_URL` | Conexão Postgres |
-| `NEXTAUTH_URL` | URL pública do sistema |
+| `NEXTAUTH_URL` | URL pública do sistema (`https://tms.avilaops.com` em produção) |
 | `NEXTAUTH_SECRET` | Assinatura do JWT de sessão |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed do administrador |
 

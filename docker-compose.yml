@@ -22,7 +22,7 @@ services:
     environment:
       DATABASE_URL: "postgresql://mello:${DB_PASSWORD}@db:5432/mello?schema=public"
     ports:
-      - "127.0.0.1:3060:3000" # Caddy -> mello.avilaops.com / mellotransportesriopreto.com.br
+      - "127.0.0.1:3060:3000" # Caddy -> tms.avilaops.com
     depends_on:
       - db
 
