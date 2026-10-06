@@ -54,7 +54,10 @@ export default function PendentesPage() {
         loadColetas();
         router.refresh();
       } else {
-        alert('Erro ao atualizar coleta');
+        const data = await res.json().catch(() => null);
+        alert(data?.error || 'Erro ao atualizar coleta');
+        // A lista pode estar velha (outro operador já decidiu este pedido).
+        loadColetas();
       }
     } catch (err) {
       console.error(err);

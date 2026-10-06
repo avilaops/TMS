@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
-import { DRIVER_USER_SELECT } from '@/lib/usuarios';
+import {
+  COLLECTION_INCLUDE,
+  INACTIVE_CLIENT_MESSAGE,
+  INACTIVE_DRIVER_MESSAGE,
+  createCollectionSchema,
+} from '@/lib/coletas';
+import { firstIssue } from '@/lib/usuarios';
 import { withTrackingCode } from '@/lib/tracking';
 
 export async function GET() {
@@ -10,10 +16,7 @@ export async function GET() {
 
   try {
     const coletas = await prisma.collection.findMany({
-      include: {
-        client: true,
-        driver: { include: { user: { select: DRIVER_USER_SELECT } } }
-      },
+      include: COLLECTION_INCLUDE,
       orderBy: { createdAt: 'desc' }
     });
     return NextResponse.json(coletas);
@@ -28,10 +31,28 @@ export async function POST(req: Request) {
   if (error) return error;
 
   try {
-    const data = await req.json();
-    
-    if (!data.clientId || !data.sender || !data.receiver || !data.origin || !data.destination || !data.volumes || !data.weight) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    const parsed = createCollectionSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
+    }
+    const data = parsed.data;
+
+    const client = await prisma.client.findFirst({
+      where: { id: data.clientId, active: true },
+      select: { id: true }
+    });
+    if (!client) {
+      return NextResponse.json({ error: INACTIVE_CLIENT_MESSAGE }, { status: 400 });
+    }
+
+    if (data.driverId) {
+      const driver = await prisma.driver.findFirst({
+        where: { id: data.driverId, active: true },
+        select: { id: true }
+      });
+      if (!driver) {
+        return NextResponse.json({ error: INACTIVE_DRIVER_MESSAGE }, { status: 400 });
+      }
     }
 
     // Toda coleta nasce com codigo: e ele, com o CNPJ, que abre o rastreio
@@ -44,13 +65,17 @@ export async function POST(req: Request) {
           receiver: data.receiver,
           origin: data.origin,
           destination: data.destination,
-          volumes: parseInt(data.volumes),
-          weight: parseFloat(data.weight),
-          invoiceKey: data.invoiceKey || null,
-          invoiceValue: data.invoiceValue ? parseFloat(data.invoiceValue) : null,
-          driverId: data.driverId || null,
+          volumes: data.volumes,
+          weight: data.weight,
+          invoiceKey: data.invoiceKey ?? null,
+          invoiceValue: data.invoiceValue ?? null,
+          driverId: data.driverId ?? null,
+          // Quem cria pelo painel é o operador que aprovaria: nasce confirmada.
+          // `PENDING` fica para o pedido que vem do portal do cliente.
+          status: 'CONFIRMED',
           trackingCode,
-        }
+        },
+        include: COLLECTION_INCLUDE,
       })
     );
 

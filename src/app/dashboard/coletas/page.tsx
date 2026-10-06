@@ -1,16 +1,21 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, Loader2, Package, MapPin, Truck, Copy, Check } from "lucide-react";
+import Link from "next/link";
+import { Plus, Search, Loader2, Package, MapPin, Truck, Copy, Check, Pencil, Inbox } from "lucide-react";
+import { COLLECTION_STATUSES, allowedTransitions, isEditable, type CollectionStatus } from "@/lib/coletas";
+import { COLLECTION_STATUS, statusBadge } from "@/lib/format";
 
 interface Cliente {
   id: string;
   tradeName: string;
   companyName: string;
+  active?: boolean;
 }
 
 interface Motorista {
   id: string;
+  active?: boolean;
   user: { name: string };
 }
 
@@ -23,6 +28,8 @@ interface Coleta {
   volumes: number;
   weight: number;
   status: string;
+  manifestId: string | null;
+  invoiceKey: string | null;
   invoiceValue: number | null;
   trackingCode: string | null;
   client: Cliente;
@@ -67,26 +74,42 @@ function TrackingCodeCell({ code }: { code: string | null }) {
   );
 }
 
+const EMPTY_FORM = {
+  clientId: "",
+  sender: "",
+  receiver: "",
+  origin: "",
+  destination: "",
+  volumes: "",
+  weight: "",
+  invoiceKey: "",
+  invoiceValue: "",
+  driverId: "",
+};
+
+// Como cada troca de status aparece na linha. As que não têm volta pedem confirmação.
+const STATUS_ACTIONS: Partial<Record<CollectionStatus, { label: string; confirm?: string; className: string }>> = {
+  CONFIRMED: { label: "Confirmar", className: "text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20" },
+  COLLECTED: { label: "Marcar coletada", className: "text-indigo-700 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/20" },
+  DELIVERED: { label: "Dar baixa", className: "text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20" },
+  REJECTED: { label: "Recusar", confirm: "Recusar esta solicitação de coleta?", className: "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20" },
+  CANCELLED: { label: "Cancelar", confirm: "Cancelar esta coleta?", className: "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20" },
+};
+
 export default function ColetasPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Id da coleta em edição; `null` quando o modal está criando uma nova.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [coletas, setColetas] = useState<Coleta[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [motoristas, setMotoristas] = useState<Motorista[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  const [formData, setFormData] = useState({
-    clientId: "",
-    sender: "",
-    receiver: "",
-    origin: "",
-    destination: "",
-    volumes: "",
-    weight: "",
-    invoiceKey: "",
-    invoiceValue: "",
-    driverId: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
   useEffect(() => {
     fetchData();
@@ -111,55 +134,120 @@ export default function ColetasPage() {
     }
   };
 
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingId(null);
+    setFormData(EMPTY_FORM);
+  };
+
+  const openEdit = (coleta: Coleta) => {
+    setEditingId(coleta.id);
+    setFormData({
+      clientId: coleta.client?.id ?? "",
+      sender: coleta.sender,
+      receiver: coleta.receiver,
+      origin: coleta.origin,
+      destination: coleta.destination,
+      volumes: String(coleta.volumes),
+      weight: String(coleta.weight),
+      invoiceKey: coleta.invoiceKey ?? "",
+      invoiceValue: coleta.invoiceValue === null ? "" : String(coleta.invoiceValue),
+      driverId: coleta.driver?.id ?? "",
+    });
+    setIsModalOpen(true);
+  };
+
   const handleSave = async () => {
     if (!formData.clientId || !formData.sender || !formData.receiver || !formData.origin || !formData.destination) {
       alert("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
-    
+
+    const fallback = editingId ? "Erro ao salvar minuta." : "Erro ao criar minuta.";
+    // O cliente não muda na edição: a rota nem aceita o campo.
+    const { clientId, ...editable } = formData;
+
     setIsSaving(true);
     try {
-      const res = await fetch('/api/coletas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-      
+      const res = editingId
+        ? await fetch(`/api/coletas/${editingId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(editable),
+          })
+        : await fetch('/api/coletas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientId, ...editable }),
+          });
+
       if (res.ok) {
-        setIsModalOpen(false);
-        setFormData({ 
-          clientId: "", sender: "", receiver: "", origin: "", destination: "", 
-          volumes: "", weight: "", invoiceKey: "", invoiceValue: "", driverId: "" 
-        });
+        closeModal();
         fetchData();
       } else {
-        const errData = await res.json();
-        alert(errData.error || "Erro ao criar minuta.");
+        const errData = await res.json().catch(() => null);
+        alert(errData?.error || fallback);
+        // 409: a coleta mudou por baixo (entrou em manifesto, foi entregue).
+        if (res.status === 409) fetchData();
       }
-    } catch (error) {
-      alert("Erro ao criar minuta.");
+    } catch {
+      alert(fallback);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'PENDING': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
-      case 'CONFIRMED': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
-      case 'COLLECTED': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
+  const changeStatus = async (coleta: Coleta, status: CollectionStatus) => {
+    const action = STATUS_ACTIONS[status];
+    let receiverName: string | undefined;
+
+    if (status === "DELIVERED") {
+      // O nome de quem recebeu é a confirmação da baixa: sem ele, nada é enviado.
+      const answer = window.prompt("Dar baixa na entrega. Nome de quem recebeu:");
+      if (answer === null) return;
+      receiverName = answer.trim();
+      if (receiverName.length < 2) {
+        alert("Informe o nome de quem recebeu.");
+        return;
+      }
+    } else if (action?.confirm && !window.confirm(action.confirm)) {
+      return;
+    }
+
+    setBusyId(coleta.id);
+    try {
+      const res = await fetch(`/api/dashboard/coletas/${coleta.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, receiverName }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        alert(errData?.error || "Erro ao atualizar a coleta.");
+      }
+      // Recarrega também quando falha: a recusa costuma ser lista desatualizada.
+      await fetchData();
+    } catch {
+      alert("Erro ao atualizar a coleta.");
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch(status) {
-      case 'PENDING': return 'Pendente';
-      case 'CONFIRMED': return 'Confirmada';
-      case 'COLLECTED': return 'Coletada';
-      default: return status;
-    }
-  };
+  const pendingCount = coletas.filter(c => c.status === 'PENDING').length;
+
+  const term = search.trim().toLowerCase();
+  const visibleColetas = coletas.filter(c => {
+    if (statusFilter && c.status !== statusFilter) return false;
+    if (!term) return true;
+    return [c.client?.tradeName, c.client?.companyName, c.origin, c.destination, c.trackingCode]
+      .some(value => value?.toLowerCase().includes(term));
+  });
+
+  // Cadastro inativo não entra em coleta nova; o que já está na coleta em
+  // edição continua na lista para o formulário não trocar o valor sozinho.
+  const clientOptions = clientes.filter(c => c.active !== false || c.id === formData.clientId);
+  const driverOptions = motoristas.filter(m => m.active !== false || m.id === formData.driverId);
 
   return (
     <div className="space-y-6">
@@ -168,13 +256,50 @@ export default function ColetasPage() {
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Minutas (Coletas)</h1>
           <p className="text-gray-500 text-sm mt-1">Gestão de emissões não-fiscais e ordens de coleta</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
+        <div className="flex items-center space-x-3">
+          <Link
+            href="/dashboard/coletas/pendentes"
+            className="px-4 py-2.5 rounded-xl flex items-center space-x-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
+          >
+            <Inbox className="w-4 h-4" />
+            <span>Solicitações pendentes</span>
+            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${pendingCount > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}>
+              {pendingCount}
+            </span>
+          </Link>
+          <button 
+            onClick={() => { setEditingId(null); setFormData(EMPTY_FORM); setIsModalOpen(true); }}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nova Minuta</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por cliente, origem, destino ou código de rastreio"
+            aria-label="Buscar coletas"
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Filtrar por status"
+          className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
         >
-          <Plus className="w-4 h-4" />
-          <span>Nova Minuta</span>
-        </button>
+          <option value="">Todos os status</option>
+          {COLLECTION_STATUSES.map(status => (
+            <option key={status} value={status}>{statusBadge(COLLECTION_STATUS, status).label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
@@ -187,6 +312,11 @@ export default function ColetasPage() {
             <Package className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
             <h3 className="text-gray-500 dark:text-gray-400 font-medium">Nenhuma minuta registrada</h3>
           </div>
+        ) : visibleColetas.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-[400px] text-center">
+            <Search className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+            <h3 className="text-gray-500 dark:text-gray-400 font-medium">Nenhuma minuta com este filtro</h3>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -198,10 +328,11 @@ export default function ColetasPage() {
                   <th className="px-6 py-4">Valor NF</th>
                   <th className="px-6 py-4">Motorista</th>
                   <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {coletas.map(coleta => (
+                {visibleColetas.map(coleta => (
                   <tr key={coleta.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-start space-x-3">
@@ -242,9 +373,39 @@ export default function ColetasPage() {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(coleta.status)}`}>
-                        {getStatusText(coleta.status)}
+                      <span className={`px-2.5 py-1 text-xs font-medium rounded-full border whitespace-nowrap ${statusBadge(COLLECTION_STATUS, coleta.status).className}`}>
+                        {statusBadge(COLLECTION_STATUS, coleta.status).label}
                       </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {allowedTransitions(coleta.status).map(status => {
+                          const action = STATUS_ACTIONS[status];
+                          if (!action) return null;
+                          return (
+                            <button
+                              key={status}
+                              type="button"
+                              disabled={busyId === coleta.id}
+                              onClick={() => changeStatus(coleta, status)}
+                              className={`px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition-colors disabled:opacity-50 ${action.className}`}
+                            >
+                              {action.label}
+                            </button>
+                          );
+                        })}
+                        {isEditable(coleta) && (
+                          <button
+                            type="button"
+                            disabled={busyId === coleta.id}
+                            onClick={() => openEdit(coleta)}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg flex items-center space-x-1 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Editar</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -258,8 +419,8 @@ export default function ColetasPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-100 dark:border-gray-800">
             <div className="sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
-              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">Emitir Nova Minuta</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">{editingId ? "Editar Minuta" : "Emitir Nova Minuta"}</h2>
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 ✕
               </button>
             </div>
@@ -271,13 +432,17 @@ export default function ColetasPage() {
                 <select 
                   value={formData.clientId}
                   onChange={(e) => setFormData({...formData, clientId: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                  disabled={editingId !== null}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800"
                 >
                   <option value="">Selecione um cliente...</option>
-                  {clientes.map(c => (
+                  {clientOptions.map(c => (
                     <option key={c.id} value={c.id}>{c.tradeName || c.companyName}</option>
                   ))}
                 </select>
+                {editingId && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">O cliente não pode ser trocado depois de a minuta ser emitida.</p>
+                )}
               </div>
 
               {/* Remetente & Destinatário */}
@@ -389,8 +554,8 @@ export default function ColetasPage() {
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                 >
                   <option value="">Deixar pendente / Sem motorista...</option>
-                  {motoristas.map(m => (
-                    <option key={m.id} value={m.id}>{m.user?.name}</option>
+                  {driverOptions.map(m => (
+                    <option key={m.id} value={m.id}>{m.user?.name}{m.active === false ? " (inativo)" : ""}</option>
                   ))}
                 </select>
               </div>
@@ -399,7 +564,7 @@ export default function ColetasPage() {
             
             <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3 sticky bottom-0">
               <button 
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeModal}
                 className="px-6 py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"
               >
                 Cancelar

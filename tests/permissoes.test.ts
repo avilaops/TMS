@@ -38,6 +38,7 @@ suite("permissões das rotas internas", () => {
   let clientes: typeof import("../src/app/api/clientes/route");
   let clientePorId: typeof import("../src/app/api/clientes/[id]/route");
   let coletas: typeof import("../src/app/api/coletas/route");
+  let coletaPorId: typeof import("../src/app/api/coletas/[id]/route");
   let dashboard: typeof import("../src/app/api/dashboard/route");
   let financeiro: typeof import("../src/app/api/financeiro/route");
   let fiscal: typeof import("../src/app/api/fiscal/route");
@@ -98,6 +99,7 @@ suite("permissões das rotas internas", () => {
     clientes = await import("../src/app/api/clientes/route");
     clientePorId = await import("../src/app/api/clientes/[id]/route");
     coletas = await import("../src/app/api/coletas/route");
+    coletaPorId = await import("../src/app/api/coletas/[id]/route");
     dashboard = await import("../src/app/api/dashboard/route");
     financeiro = await import("../src/app/api/financeiro/route");
     fiscal = await import("../src/app/api/fiscal/route");
@@ -135,6 +137,8 @@ suite("permissões das rotas internas", () => {
       ["PATCH /api/clientes/[id]", () => clientePorId.PATCH(req("PATCH", { companyName: "Invasor LTDA" }), ctx(clienteId))],
       ["GET /api/coletas", () => coletas.GET()],
       ["POST /api/coletas", () => coletas.POST(req("POST", {}))],
+      ["GET /api/coletas/[id]", () => coletaPorId.GET(req(), ctx(semId))],
+      ["PATCH /api/coletas/[id]", () => coletaPorId.PATCH(req("PATCH", { volumes: 1 }), ctx(semId))],
       ["GET /api/dashboard", () => dashboard.GET()],
       ["POST /api/fiscal", () => fiscal.POST(req("POST", {}))],
       ["POST /api/fiscal/cte", () => fiscalCte.POST(req("POST", {}))],
