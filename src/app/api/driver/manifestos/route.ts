@@ -9,7 +9,9 @@ export async function GET() {
 
   try {
     const manifestos = await prisma.manifest.findMany({
-      where: { driverId, status: { not: 'FINISHED' } },
+      // Só a viagem liberada: em montagem ela ainda pode mudar de carga, de
+      // veículo e até de motorista.
+      where: { driverId, status: 'ROUTE' },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,

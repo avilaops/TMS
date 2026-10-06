@@ -55,6 +55,14 @@ export const COLLECTION_STATUS: Record<string, { label: string; className: strin
   REJECTED: { label: "Recusada", className: "bg-red-50 text-red-700 border-red-200" },
 };
 
+/** Status do manifesto (a viagem) no painel. */
+export const MANIFEST_STATUS: Record<string, { label: string; className: string }> = {
+  ASSEMBLING: { label: "Em montagem", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  ROUTE: { label: "Em rota", className: "bg-violet-50 text-violet-700 border-violet-200" },
+  FINISHED: { label: "Encerrada", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  CANCELLED: { label: "Cancelada", className: "bg-gray-100 text-gray-600 border-gray-200" },
+};
+
 export const INVOICE_STATUS: Record<string, { label: string; className: string }> = {
   PENDING: { label: "Em aberto", className: "bg-amber-50 text-amber-700 border-amber-200" },
   PAID: { label: "Pago", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },

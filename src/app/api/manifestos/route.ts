@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
-import { DRIVER_USER_SELECT } from '@/lib/usuarios';
+import { firstIssue } from '@/lib/usuarios';
+import { MANIFEST_INCLUDE, createManifestSchema } from '@/lib/manifestos';
+import { ManifestError, loadCollections, requireActiveDriver, requireUsableVehicle } from '@/lib/manifestos-db';
 
 export async function GET() {
   const { error } = await requireStaff();
@@ -9,11 +11,7 @@ export async function GET() {
 
   try {
     const manifestos = await prisma.manifest.findMany({
-      include: {
-        driver: { include: { user: { select: DRIVER_USER_SELECT } } },
-        vehicle: true,
-        collections: true,
-      },
+      include: MANIFEST_INCLUDE,
       orderBy: { createdAt: 'desc' }
     });
     return NextResponse.json(manifestos);
@@ -23,36 +21,33 @@ export async function GET() {
   }
 }
 
+// O manifesto nasce em montagem, com as cargas reservadas mas ainda no
+// depósito. Quem as põe em rota é a liberação da saída (rota de status).
 export async function POST(req: Request) {
   const { error } = await requireStaff();
   if (error) return error;
 
   try {
-    const data = await req.json();
-    
-    if (!data.driverId || !data.vehicleId || !data.collectionIds || !data.collectionIds.length) {
-      return NextResponse.json({ error: 'Motorista, Veículo e pelo menos 1 Minuta são obrigatórios.' }, { status: 400 });
+    const parsed = createManifestSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
+    const { driverId, vehicleId, collectionIds } = parsed.data;
 
-    const newManifest = await prisma.$transaction(async (tx) => {
-      const manifest = await tx.manifest.create({
-        data: {
-          driverId: data.driverId,
-          vehicleId: data.vehicleId,
-          status: 'ROUTE',
-        }
-      });
-
-      await tx.collection.updateMany({
-        where: { id: { in: data.collectionIds } },
-        data: { manifestId: manifest.id, status: 'ROUTE' }
-      });
-
-      return manifest;
+    const manifestId = await prisma.$transaction(async (tx) => {
+      await requireActiveDriver(tx, driverId);
+      await requireUsableVehicle(tx, vehicleId);
+      const manifest = await tx.manifest.create({ data: { driverId, vehicleId, status: 'ASSEMBLING' } });
+      await loadCollections(tx, manifest.id, collectionIds);
+      return manifest.id;
     });
 
-    return NextResponse.json(newManifest, { status: 201 });
+    const created = await prisma.manifest.findUnique({ where: { id: manifestId }, include: MANIFEST_INCLUDE });
+    return NextResponse.json(created, { status: 201 });
   } catch (error) {
+    if (error instanceof ManifestError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error creating manifest:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
