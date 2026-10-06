@@ -1,5 +1,5 @@
-# Mello Transportes — Next 16 (standalone) + Prisma/Postgres.
-# Build: docker build --platform linux/amd64 -t mello-app:latest .
+# TMS — Next 16 (standalone) + Prisma/Postgres.
+# A imagem de producao e construida e publicada no GHCR pelo GitHub Actions.
 FROM node:22-alpine AS base
 RUN apk add --no-cache openssl libc6-compat
 
@@ -18,10 +18,13 @@ RUN npm run build
 
 FROM base AS runner
 WORKDIR /app
+# Commit da imagem, devolvido por /api/health para conferir o que esta no ar.
+ARG GIT_SHA=dev
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    GIT_SHA=$GIT_SHA
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

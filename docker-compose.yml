@@ -1,30 +1,41 @@
-# Produção no Hetzner: /opt/mello (imagem buildada localmente e carregada com docker load).
+# Producao do TMS (tms.avilaops.com), em /opt/tms-avilaops-com no servidor
+# applications. Segue a Norma de Plataforma (avilaops/infra, NORMA-PLATAFORMA.md):
+# todo nome sai do dominio e nenhuma porta e publicada no host.
+#
+# Sobe so a aplicacao. O banco e o PostgreSQL compartilhado do servidor (banco e
+# role `tms_avilaops_com`), alcancado por host.docker.internal e coberto pelo
+# backup diario de la. Para desenvolvimento, use docker-compose.dev.yml.
+name: tms-avilaops-com
+
 services:
-  db:
-    image: postgres:16-alpine
-    container_name: mello-db
+  web:
+    # O deploy troca esta linha pela imagem do commit, por digest
+    # (/var/lib/avilaops/deploy/tms.avilaops.com/image.yml).
+    image: ghcr.io/avilaops/tms:latest
+    container_name: tms-avilaops-com-web
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: mello
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: mello
-    volumes:
-      - mello-pgdata:/var/lib/postgresql/data
-    ports:
-      - "127.0.0.1:5436:5432" # só loopback: prisma db push / seed via túnel SSH
+    env_file: [.env]
+    expose: ["3000"]
+    networks:
+      edge:
+        # IP fixo enquanto o Caddy roda no host e nao resolve nome de container.
+        # Quando ele for para a rede edge, o proxy vira tms-avilaops-com-web:3000.
+        ipv4_address: 172.31.0.11
+    # O Postgres do host escuta no gateway da bridge padrao (172.17.0.1).
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    labels:
+      avilaops.domain: tms.avilaops.com
+      avilaops.stack: tms
+      avilaops.tier: web
+      avilaops.backup: "false"
+      avilaops.owner: nicolas
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
-  app:
-    image: mello-app:latest
-    build: .
-    container_name: mello-app
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DATABASE_URL: "postgresql://mello:${DB_PASSWORD}@db:5432/mello?schema=public"
-    ports:
-      - "127.0.0.1:3060:3000" # Caddy -> tms.avilaops.com
-    depends_on:
-      - db
-
-volumes:
-  mello-pgdata:
+networks:
+  edge:
+    external: true

@@ -29,7 +29,7 @@ O site do transportador não chama o TMS do navegador: o servidor do site repass
 
 - **Next.js 16** (App Router, `output: "standalone"`), **React 19**, **TypeScript**
 - **Tailwind CSS 4** e componentes shadcn/Base UI
-- **Prisma 7** com `@prisma/adapter-pg` e **PostgreSQL 16**
+- **Prisma 7** com `@prisma/adapter-pg` e **PostgreSQL 18**
 - **NextAuth 4** com login por e-mail e senha (bcrypt) e sessão JWT
 - **Vitest** contra Postgres real
 - Docker, GitHub Actions (GHCR) e Caddy no Hetzner
@@ -52,7 +52,7 @@ npm run dev
 Para subir só o banco com Docker:
 
 ```bash
-DB_PASSWORD=mello docker compose up -d db   # expõe em 127.0.0.1:5436
+docker compose -f docker-compose.dev.yml up -d   # expõe em 127.0.0.1:5436 (usuário, senha e banco: tms)
 ```
 
 ### Comandos
@@ -102,27 +102,40 @@ A separação tirou o site, não a marca. Para virar produto de mercado ainda fa
 
 ## Deploy
 
+O sistema roda no servidor `applications`, em `/opt/tms-avilaops-com`, atrás do Caddy, e segue a Norma de Plataforma da Ávila Ops (`avilaops/infra`, `NORMA-PLATAFORMA.md`): todo nome sai do domínio e nenhuma porta é publicada no host.
+
+| Recurso | Nome |
+| --- | --- |
+| Diretório | `/opt/tms-avilaops-com` |
+| Projeto compose | `tms-avilaops-com` |
+| Container | `tms-avilaops-com-web` (rede `edge`, `172.31.0.11:3000`) |
+| Banco e role | `tms_avilaops_com`, no PostgreSQL compartilhado do servidor |
+| Imagem | `ghcr.io/avilaops/tms`, por digest |
+| Saúde | `GET /api/health` (consulta o banco e devolve o commit em execução) |
+
+O banco não é um container deste projeto: é o PostgreSQL do próprio servidor, o mesmo dos outros sistemas, coberto pelo backup diário de lá. O container o alcança por `host.docker.internal`.
+
 ### Automático (GitHub Actions)
 
-[.github/workflows/deploy-production.yml](.github/workflows/deploy-production.yml) usa os workflows reutilizáveis de `avilaops/infra`:
+[.github/workflows/deploy-production.yml](.github/workflows/deploy-production.yml):
 
-- Todo push e PR em `main` roda typecheck e testes; se passarem, builda a imagem Docker. Fora de PR, ela é publicada no GHCR.
-- O deploy por SSH só roda quando a variável `DEPLOY_ENABLED` do repositório for `true`, com os segredos `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` e `DEPLOY_KNOWN_HOSTS`.
+- Todo push e PR em `main` roda typecheck e testes contra um Postgres real; se passarem, a imagem Docker é construída. Fora de PR, ela é publicada no GHCR.
+- O deploy por SSH só roda na `main`, com a variável `DEPLOY_ENABLED` do repositório em `true` e os segredos `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` e `DEPLOY_KNOWN_HOSTS`. A chave só tem permissão para publicar a aplicação `tms.avilaops.com`.
+- No servidor, o deploy baixa a imagem pelo digest, troca o container e confere `/api/health`; se a versão nova não responder, volta para a anterior.
 
-Hoje a aplicação publicada se chama `mellotransportesriopreto.com.br`, de quando site e sistema eram um container só. Antes de publicar esta versão sem o site, o domínio da Mello precisa estar apontando para o container do site; senão a home pública vira tela de login.
+Os jobs de imagem e deploy são cópia dos de `avilaops/infra` porque este repositório é público e aquele é privado: o GitHub não deixa repositório público chamar workflow reutilizável de repositório privado.
 
-### Manual (Hetzner)
+### Banco em produção
 
-O app roda em `/opt/mello` atrás do Caddy, em `127.0.0.1:3060`. O servidor não tem memória para `next build`, então a imagem é gerada localmente:
+Não há migrações versionadas: o schema é aplicado com `prisma db push`, da sua máquina, por túnel SSH. O deploy **não** faz isso sozinho, então mudança de schema precisa ser aplicada antes de o código que depende dela chegar à `main`.
 
 ```bash
-docker build --platform linux/amd64 -t mello-app:latest .
-docker save mello-app:latest | gzip -1 | ssh root@<servidor> 'gunzip | docker load'
-ssh root@<servidor> 'cd /opt/mello && docker compose up -d app'
+ssh -N -L 5433:127.0.0.1:5432 applications &
+DATABASE_URL="postgresql://tms_avilaops_com:<senha>@127.0.0.1:5433/tms_avilaops_com?schema=public" npx prisma db push
 ```
 
-- **Banco:** container `mello-db` (Postgres 16, volume `mello-pgdata`), exposto só em `127.0.0.1:5436`. Para `prisma db push`, abra um túnel SSH para essa porta.
-- **Variáveis:** `/opt/mello/.env`, a partir de [.env.example](.env.example).
+- **Variáveis:** `/opt/tms-avilaops-com/.env` (modo 600), a partir de [.env.example](.env.example).
+- **Voltar versão:** republicar o commit anterior pela `main`. Não há cópia de código nem de build guardada no servidor.
 
 ---
 
