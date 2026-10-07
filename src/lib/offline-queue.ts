@@ -17,6 +17,7 @@ const DB_VERSION = 1;
 const STORE = "pending-baixas";
 
 export type PendingBaixa = {
+  /** Id da coleta: uma baixa por carga, a mais recente substitui a anterior. */
   id: string;
   deliveryId: string;
   payload: Record<string, unknown>;
@@ -56,9 +57,16 @@ function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequ
   );
 }
 
+/** O que fazer com o item da fila conforme a resposta do servidor. */
+export function classifyBaixaResponse(status: number): "sent" | "rejected" | "retry" {
+  if (status >= 200 && status < 300) return "sent";
+  if (status >= 400 && status < 500) return "rejected";
+  return "retry";
+}
+
 export function enqueue(deliveryId: string, payload: Record<string, unknown>) {
   const item: PendingBaixa = {
-    id: `${deliveryId}-${Date.now()}`,
+    id: deliveryId,
     deliveryId,
     payload,
     createdAt: Date.now(),
@@ -91,13 +99,15 @@ export async function flushQueue(): Promise<FlushResult> {
         body: JSON.stringify(item.payload),
       });
 
-      if (response.ok) {
+      const outcome = classifyBaixaResponse(response.status);
+
+      if (outcome === "sent") {
         await removeItem(item.id);
         result.sent += 1;
         continue;
       }
 
-      if (response.status >= 400 && response.status < 500) {
+      if (outcome === "rejected") {
         const body = await response.json().catch(() => null);
         await removeItem(item.id);
         result.rejected.push({

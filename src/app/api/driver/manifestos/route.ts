@@ -27,14 +27,12 @@ export async function GET() {
             volumes: true,
             weight: true,
             status: true,
-          },
-        },
-        deliveries: {
-          select: {
-            id: true,
             receiverName: true,
-            status: true,
+            // Só o nome de quem embarcou: limite de crédito e contato do
+            // cliente não vão para o aparelho do motorista.
+            client: { select: { tradeName: true, companyName: true } },
           },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });

@@ -232,6 +232,13 @@ suite("manifestos pelo painel", () => {
     });
 
   const ler = (id: string) => prisma.collection.findUniqueOrThrow({ where: { id } });
+  // Linhas do histórico da carga, da mais antiga para a mais nova.
+  const linhas = (collectionId: string) =>
+    prisma.collectionStatusHistory.findMany({
+      where: { collectionId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+  const contarLinhas = () => prisma.collectionStatusHistory.count({ where: { collection: { clientId: clienteId } } });
   const lerManifesto = (id: string) => prisma.manifest.findUniqueOrThrow({ where: { id } });
 
   // Manifestos da suite: os que usam os veículos de teste.
@@ -1129,6 +1136,92 @@ suite("manifestos pelo painel", () => {
 
       expect((await encerrar(id)).status).toBe(200);
       expect(await listar()).not.toContain(id);
+    });
+  });
+
+  describe("histórico no embarque e na retirada", () => {
+    it("liberar grava uma linha COLLECTED → ROUTE por carga, com o operador; recusa não grava", async () => {
+      const { id, cargas } = await montagem(3);
+      const antes = await contarLinhas();
+
+      expect((await sair(id)).status).toBe(200);
+      expect((await contarLinhas()) - antes).toBe(cargas.length);
+      for (const alvo of cargas) {
+        const doAlvo = await linhas(alvo.id);
+        expect(doAlvo).toHaveLength(1);
+        expect(doAlvo[0]).toMatchObject({ fromStatus: "COLLECTED", toStatus: "ROUTE", userId: operadorId });
+      }
+
+      // Repetida (409), inexistente (404), sem sessão (401) e motorista (403): nenhuma linha.
+      const depois = await contarLinhas();
+      expect((await sair(id)).status).toBe(409);
+      expect((await sair(SEM_ID)).status).toBe(404);
+
+      const outra = await montagem(2);
+      sessao.mockResolvedValue(null);
+      expect((await sair(outra.id)).status).toBe(401);
+      comoMotorista();
+      expect((await sair(outra.id)).status).toBe(403);
+      comoOperador();
+      expect(await contarLinhas()).toBe(depois);
+    });
+
+    it("liberação recusada no meio da transação (veículo na oficina) não deixa linha", async () => {
+      const { id, cargas, vehicleId } = await montagem(2);
+      await prisma.vehicle.update({ where: { id: vehicleId }, data: { status: "MAINTENANCE" } });
+      const antes = await contarLinhas();
+
+      expect((await sair(id)).status).toBe(409);
+      expect(await contarLinhas()).toBe(antes);
+      for (const alvo of cargas) expect(await linhas(alvo.id)).toHaveLength(0);
+
+      await prisma.vehicle.update({ where: { id: vehicleId }, data: { status: "AVAILABLE" } });
+    });
+
+    it("só a carga que embarca ganha linha: a que não está coletada (dado legado) fica de fora", async () => {
+      const { id, cargas } = await montagem(2);
+      await prisma.collection.update({ where: { id: cargas[1].id }, data: { status: "DELIVERED" } });
+
+      expect((await sair(id)).status).toBe(200);
+      expect((await linhas(cargas[0].id)).map((l) => [l.fromStatus, l.toStatus])).toEqual([["COLLECTED", "ROUTE"]]);
+      expect(await linhas(cargas[1].id)).toHaveLength(0);
+      expect((await ler(cargas[1].id)).status).toBe("DELIVERED");
+    });
+
+    it("retirar carga em rota grava ROUTE → COLLECTED com o operador; 404 e 409 não gravam", async () => {
+      const { id, cargas } = await viagem(2);
+
+      expect((await retirar(id, cargas[0].id)).status).toBe(200);
+      const daRetirada = await linhas(cargas[0].id);
+      expect(daRetirada.map((l) => [l.fromStatus, l.toStatus])).toEqual([
+        ["COLLECTED", "ROUTE"],
+        ["ROUTE", "COLLECTED"],
+      ]);
+      expect(daRetirada[1].userId).toBe(operadorId);
+
+      const antes = await contarLinhas();
+      // Repetida e inexistente → 404.
+      expect((await retirar(id, cargas[0].id)).status).toBe(404);
+      expect((await retirar(SEM_ID, cargas[1].id)).status).toBe(404);
+      // Entregue → 409.
+      expect((await mudar(cargas[1].id, { status: "DELIVERED", receiverName: "Fulano" })).status).toBe(200);
+      const comBaixa = await contarLinhas();
+      expect(comBaixa - antes).toBe(1);
+      expect((await retirar(id, cargas[1].id)).status).toBe(409);
+      // Viagem finalizada → 409.
+      expect((await encerrar(id)).status).toBe(200);
+      expect((await retirar(id, cargas[1].id)).status).toBe(409);
+      expect(await contarLinhas()).toBe(comBaixa);
+    });
+
+    it("retirar carga de viagem em montagem não grava linha: ela sai coletada como entrou", async () => {
+      const { id, cargas } = await montagem(2);
+      const antes = await contarLinhas();
+
+      expect((await retirar(id, cargas[0].id)).status).toBe(200);
+      expect(await ler(cargas[0].id)).toMatchObject({ status: "COLLECTED", manifestId: null });
+      expect(await linhas(cargas[0].id)).toHaveLength(0);
+      expect(await contarLinhas()).toBe(antes);
     });
   });
 

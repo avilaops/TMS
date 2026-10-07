@@ -11,6 +11,7 @@ import {
 } from '@/lib/manifestos';
 import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
+import { recordStatusChanges } from '@/lib/historico';
 
 /** Libera a saída: as cargas passam para "em rota" e o veículo fica ocupado. */
 export async function POST(
@@ -18,7 +19,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireStaff();
+    const { user, error } = await requireStaff();
     if (error) return error;
 
     const manifestId = (await params).id;
@@ -54,11 +55,21 @@ export async function POST(
         throw new ManifestError(409, DRIVER_BUSY_MESSAGE);
       }
 
-      const { count } = await tx.collection.updateMany({
-        where: { manifestId, status: 'COLLECTED' },
+      // As cargas que embarcam, lidas e seguradas antes da troca: são elas que
+      // ganham a linha no histórico, na mesma transação.
+      const embarcando = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "Collection" WHERE "manifestId" = ${manifestId} AND status = 'COLLECTED' FOR UPDATE`;
+      if (embarcando.length === 0) throw new ManifestError(409, EMPTY_MANIFEST_MESSAGE);
+      const ids = embarcando.map((c) => c.id);
+
+      await tx.collection.updateMany({
+        where: { id: { in: ids }, manifestId, status: 'COLLECTED' },
         data: { status: 'ROUTE' },
       });
-      if (count === 0) throw new ManifestError(409, EMPTY_MANIFEST_MESSAGE);
+      await recordStatusChanges(
+        tx,
+        ids.map((collectionId) => ({ collectionId, fromStatus: 'COLLECTED', toStatus: 'ROUTE', userId: user.id })),
+      );
 
       await tx.vehicle.update({ where: { id: manifest.vehicleId }, data: { status: 'ON_ROUTE' } });
       await tx.manifest.update({ where: { id: manifestId }, data: { status: 'ROUTE' } });
