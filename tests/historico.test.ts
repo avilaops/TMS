@@ -130,7 +130,7 @@ suite("histórico de status da coleta", () => {
   // usuários → cliente. O histórico não aparece aqui de propósito: sai junto da
   // coleta, pela chave estrangeira.
   async function limpar() {
-    await prisma.collection.deleteMany({ where: { client: { cnpj: CNPJ_TESTE } } });
+    await prisma.collection.deleteMany({ where: { client: { cnpj: { in: [CNPJ_TESTE, CNPJ_OUTRA] } } } });
     await prisma.manifest.deleteMany({ where: { vehicle: { plate: PLACA_TESTE } } });
     await prisma.vehicle.deleteMany({ where: { plate: PLACA_TESTE } });
     await prisma.driver.deleteMany({ where: { cpf: CPF_TESTE } });
