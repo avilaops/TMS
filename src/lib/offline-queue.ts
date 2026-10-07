@@ -7,7 +7,10 @@
  *
  * Regra de reenvio:
  *  - resposta 2xx  -> enviado, sai da fila;
- *  - resposta 4xx  -> o servidor recusou e vai recusar de novo (entrega que não
+ *  - 401 ou 403    -> a sessão caiu (ou o cadastro do motorista está parado).
+ *                     O comprovante continua no aparelho e sobe depois do login;
+ *  - 408 ou 429    -> o servidor pediu para tentar depois. Continua na fila;
+ *  - demais 4xx    -> o servidor recusou e vai recusar de novo (entrega que não
  *                     é do motorista, dado inválido). Sai da fila e vira aviso;
  *  - 5xx ou falha de rede -> continua na fila para a próxima tentativa.
  */
@@ -17,18 +20,62 @@ const DB_VERSION = 1;
 const STORE = "pending-baixas";
 
 export type PendingBaixa = {
-  /** Id da coleta: uma baixa por carga, a mais recente substitui a anterior. */
+  /** Chave do item: o id da coleta. Uma baixa por carga, a mais recente substitui a anterior. */
   id: string;
-  deliveryId: string;
+  collectionId: string;
   payload: Record<string, unknown>;
   createdAt: number;
 };
 
 export type FlushResult = {
   sent: number;
-  rejected: { deliveryId: string; reason: string }[];
+  rejected: { collectionId: string; reason: string }[];
   stillPending: number;
+  /** Alguma baixa ficou na fila porque o servidor não reconheceu a sessão. */
+  needsLogin: boolean;
 };
+
+export type BaixaOutcome = "sent" | "rejected" | "retry";
+
+// 4xx que não são recusa da baixa em si: repetir o mesmo envio pode dar certo.
+const AUTH_STATUSES = [401, 403];
+const RETRY_LATER_STATUSES = [408, 429];
+
+export const SESSION_EXPIRED_MESSAGE =
+  "Sua sessão expirou. A baixa ficou salva no aparelho: entre de novo para enviar.";
+
+/** O que fazer com o item da fila conforme a resposta do servidor. */
+export function classifyBaixaResponse(status: number): BaixaOutcome {
+  if (status >= 200 && status < 300) return "sent";
+  if (AUTH_STATUSES.includes(status) || RETRY_LATER_STATUSES.includes(status)) return "retry";
+  if (status >= 400 && status < 500) return "rejected";
+  return "retry";
+}
+
+/** A baixa ficou na fila por falta de sessão: só sobe depois de um novo login. */
+export function needsLogin(status: number) {
+  return AUTH_STATUSES.includes(status);
+}
+
+/**
+ * Lê um item como ele está gravado no aparelho. Versões anteriores gravavam o
+ * id da coleta no campo `deliveryId`; esses itens continuam valendo.
+ */
+export function readPending(raw: unknown): PendingBaixa | null {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw as Record<string, unknown>;
+  const collectionId = [item.collectionId, item.deliveryId, item.id].find(
+    (value): value is string => typeof value === "string" && value !== "",
+  );
+  if (!collectionId) return null;
+  const payload = item.payload && typeof item.payload === "object" ? (item.payload as Record<string, unknown>) : {};
+  return {
+    id: typeof item.id === "string" && item.id !== "" ? item.id : collectionId,
+    collectionId,
+    payload,
+    createdAt: typeof item.createdAt === "number" ? item.createdAt : 0,
+  };
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -57,25 +104,19 @@ function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequ
   );
 }
 
-/** O que fazer com o item da fila conforme a resposta do servidor. */
-export function classifyBaixaResponse(status: number): "sent" | "rejected" | "retry" {
-  if (status >= 200 && status < 300) return "sent";
-  if (status >= 400 && status < 500) return "rejected";
-  return "retry";
-}
-
-export function enqueue(deliveryId: string, payload: Record<string, unknown>) {
+export function enqueue(collectionId: string, payload: Record<string, unknown>) {
   const item: PendingBaixa = {
-    id: deliveryId,
-    deliveryId,
+    id: collectionId,
+    collectionId,
     payload,
     createdAt: Date.now(),
   };
   return tx("readwrite", (store) => store.put(item)).then(() => item);
 }
 
-export function listPending(): Promise<PendingBaixa[]> {
-  return tx<PendingBaixa[]>("readonly", (store) => store.getAll() as IDBRequest<PendingBaixa[]>);
+export async function listPending(): Promise<PendingBaixa[]> {
+  const stored = await tx<unknown[]>("readonly", (store) => store.getAll());
+  return stored.map(readPending).filter((item): item is PendingBaixa => item !== null);
 }
 
 export function countPending(): Promise<number> {
@@ -86,37 +127,53 @@ function removeItem(id: string) {
   return tx("readwrite", (store) => store.delete(id));
 }
 
-/** Tenta reenviar tudo o que está na fila. Seguro para chamar várias vezes. */
-export async function flushQueue(): Promise<FlushResult> {
-  const pending = await listPending();
-  const result: FlushResult = { sent: 0, rejected: [], stillPending: 0 };
+function sendBaixa(item: PendingBaixa) {
+  return fetch(`/api/driver/entregas/${item.collectionId}/baixa`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item.payload),
+  });
+}
+
+type QueueIo = {
+  list: () => Promise<PendingBaixa[]>;
+  send: (item: PendingBaixa) => Promise<Pick<Response, "status" | "json">>;
+  remove: (id: string) => Promise<unknown>;
+};
+
+/**
+ * Tenta reenviar tudo o que está na fila. Seguro para chamar várias vezes.
+ * O `io` só existe para o teste trocar o IndexedDB e a rede.
+ */
+export async function flushQueue(
+  io: QueueIo = { list: listPending, send: sendBaixa, remove: removeItem },
+): Promise<FlushResult> {
+  const pending = await io.list();
+  const result: FlushResult = { sent: 0, rejected: [], stillPending: 0, needsLogin: false };
 
   for (const item of pending) {
     try {
-      const response = await fetch(`/api/driver/entregas/${item.deliveryId}/baixa`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item.payload),
-      });
+      const response = await io.send(item);
 
       const outcome = classifyBaixaResponse(response.status);
 
       if (outcome === "sent") {
-        await removeItem(item.id);
+        await io.remove(item.id);
         result.sent += 1;
         continue;
       }
 
       if (outcome === "rejected") {
         const body = await response.json().catch(() => null);
-        await removeItem(item.id);
+        await io.remove(item.id);
         result.rejected.push({
-          deliveryId: item.deliveryId,
+          collectionId: item.collectionId,
           reason: body?.error ?? `Recusado pelo servidor (${response.status})`,
         });
         continue;
       }
 
+      if (needsLogin(response.status)) result.needsLogin = true;
       result.stillPending += 1;
     } catch {
       // Sem rede: mantém na fila.

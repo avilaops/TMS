@@ -1,18 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { Truck, Map, User, LogOut, CloudOff, RefreshCw, CheckCircle2 } from "lucide-react";
-import { countPending, flushQueue } from "@/lib/offline-queue";
+import { SESSION_EXPIRED_MESSAGE, countPending, flushQueue } from "@/lib/offline-queue";
+
+function subscribeToConnection(notify: () => void) {
+  window.addEventListener("online", notify);
+  window.addEventListener("offline", notify);
+  return () => {
+    window.removeEventListener("online", notify);
+    window.removeEventListener("offline", notify);
+  };
+}
 
 export default function DriverShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [online, setOnline] = useState(true);
+  // No servidor não há `navigator`: a página sai como "online" e acerta ao hidratar.
+  const online = useSyncExternalStore(subscribeToConnection, () => navigator.onLine, () => true);
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [feedback, setFeedback] = useState("");
+  // O servidor não reconheceu a sessão no reenvio: as baixas seguem no aparelho.
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const refreshPending = useCallback(() => {
     countPending()
@@ -33,6 +45,7 @@ export default function DriverShell({ children }: { children: React.ReactNode })
       if (result.rejected.length > 0) {
         setFeedback(`Recusado pelo servidor: ${result.rejected[0].reason}`);
       }
+      setSessionExpired(result.needsLogin);
     } finally {
       setSyncing(false);
       refreshPending();
@@ -40,7 +53,6 @@ export default function DriverShell({ children }: { children: React.ReactNode })
   }, [syncing, refreshPending]);
 
   useEffect(() => {
-    setOnline(navigator.onLine);
     refreshPending();
 
     if ("serviceWorker" in navigator) {
@@ -49,19 +61,16 @@ export default function DriverShell({ children }: { children: React.ReactNode })
       });
     }
 
+    // A conexão voltou: sobe o que ficou na fila.
     const handleOnline = () => {
-      setOnline(true);
       sync();
     };
-    const handleOffline = () => setOnline(false);
 
     window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
     window.addEventListener("mello:baixa-enfileirada", refreshPending);
 
     return () => {
       window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
       window.removeEventListener("mello:baixa-enfileirada", refreshPending);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,6 +103,16 @@ export default function DriverShell({ children }: { children: React.ReactNode })
           <CloudOff className="w-4 h-4 shrink-0" />
           <span>Sem conexão. As baixas ficam salvas no aparelho e sobem sozinhas.</span>
         </div>
+      )}
+
+      {sessionExpired && pending > 0 && (
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="bg-amber-500 text-white px-4 py-2 text-sm flex items-center gap-2 z-10 w-full text-left"
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          <span>{SESSION_EXPIRED_MESSAGE} Toque aqui.</span>
+        </button>
       )}
 
       {online && pending > 0 && (

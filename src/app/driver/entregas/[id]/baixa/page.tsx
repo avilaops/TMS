@@ -6,11 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { enqueue } from '@/lib/offline-queue';
+import { SESSION_EXPIRED_MESSAGE, classifyBaixaResponse, enqueue, needsLogin } from '@/lib/offline-queue';
+import { PHOTO_MIME_TYPES, photoProblem } from '@/lib/entregas';
+import { createStrokeTracker } from '@/lib/assinatura';
 
 export default function DeliveryProofPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const deliveryId = use(params).id;
+  // A entrega é a própria carga: o `[id]` da rota é o da coleta.
+  const collectionId = use(params).id;
   
   const [receiverName, setReceiverName] = useState('');
   const [receiverDoc, setReceiverDoc] = useState('');
@@ -19,26 +22,37 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [photoError, setPhotoError] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoBase64(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // HEIC e foto grande demais o servidor recusa: avisa já, antes do envio.
+    const problem = photoProblem(file);
+    if (problem) {
+      setPhotoBase64('');
+      setPhotoError(problem);
+      e.target.value = '';
+      return;
     }
+
+    setPhotoError('');
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPhotoBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   // Funções simples para Canvas de Assinatura
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const strokes = useRef(createStrokeTracker());
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    setIsDrawing(true);
+    strokes.current.start();
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
@@ -53,7 +67,7 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
+    if (!strokes.current.move()) return;
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
@@ -68,7 +82,9 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
   };
 
   const endDrawing = () => {
-    setIsDrawing(false);
+    // Ponteiro que só passou pelo quadro, ou toque sem traço, não é assinatura:
+    // o quadro em branco viraria um PNG vazio no comprovante.
+    if (!strokes.current.end()) return;
     if (canvasRef.current) {
       setSignatureBase64(canvasRef.current.toDataURL());
     }
@@ -80,9 +96,10 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        setSignatureBase64('');
       }
     }
+    strokes.current.clear();
+    setSignatureBase64('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,9 +135,12 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
 
       // Entregar costuma ser justamente onde o sinal cai. Em vez de perder o
       // comprovante, a baixa vai para a fila local e sobe quando a rede voltar.
-      const guardarNaFila = async () => {
-        await enqueue(deliveryId, payload);
+      const guardar = async () => {
+        await enqueue(collectionId, payload);
         window.dispatchEvent(new Event('mello:baixa-enfileirada'));
+      };
+      const guardarNaFila = async () => {
+        await guardar();
         router.push('/driver');
         router.refresh();
       };
@@ -132,7 +152,7 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
 
       let res: Response;
       try {
-        res = await fetch(`/api/driver/entregas/${deliveryId}/baixa`, {
+        res = await fetch(`/api/driver/entregas/${collectionId}/baixa`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -144,8 +164,15 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
       }
 
       if (!res.ok) {
-        // 5xx pode ser momentâneo; 4xx é recusa definitiva e precisa aparecer.
-        if (res.status >= 500) {
+        // Mesma regra do reenvio da fila: 5xx, 408 e 429 podem ser momentâneos;
+        // os demais 4xx são recusa definitiva e precisam aparecer.
+        if (classifyBaixaResponse(res.status) === 'retry') {
+          if (needsLogin(res.status)) {
+            // Sessão caída: o comprovante fica no aparelho e o motorista é
+            // avisado aqui, em vez de perder o que acabou de colher.
+            await guardar();
+            throw new Error(SESSION_EXPIRED_MESSAGE);
+          }
           await guardarNaFila();
           return;
         }
@@ -155,8 +182,8 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
 
       router.push('/driver');
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao registrar baixa');
     } finally {
       setLoading(false);
     }
@@ -196,7 +223,7 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
               <Label>Foto do Local/Mercadoria</Label>
               <Input 
                 type="file" 
-                accept="image/*" 
+                accept={PHOTO_MIME_TYPES.join(',')}
                 capture="environment" 
                 onChange={handlePhotoCapture}
                 ref={fileInputRef}
@@ -207,11 +234,13 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
                 onClick={() => fileInputRef.current?.click()}
               >
                 {photoBase64 ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- imagem embutida (data URL), não há o que otimizar
                   <img src={photoBase64} alt="Foto da entrega" className="max-h-40 object-contain" />
                 ) : (
                   <span className="text-gray-500">Toque para abrir a câmera</span>
                 )}
               </div>
+              {photoError && <p role="alert" className="text-red-500 text-sm">{photoError}</p>}
             </div>
 
             <div className="space-y-2">

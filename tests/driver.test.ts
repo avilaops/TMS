@@ -1,12 +1,25 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getServerSession } from "next-auth";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   DELIVERED_BY_PANEL_MESSAGE,
   DELIVERY_NOT_FOUND_MESSAGE,
+  MAX_PHOTO_CHARS,
   MAX_SIGNATURE_CHARS,
   NOT_IN_ROUTE_MESSAGE,
+  PHOTO_MESSAGE,
+  PHOTO_TOO_BIG,
+  baixaSchema,
+  photoProblem,
 } from "../src/lib/entregas";
-import { classifyBaixaResponse } from "../src/lib/offline-queue";
+import {
+  type PendingBaixa,
+  classifyBaixaResponse,
+  flushQueue,
+  needsLogin,
+  readPending,
+} from "../src/lib/offline-queue";
+import { createStrokeTracker } from "../src/lib/assinatura";
 
 /**
  * Aplicativo do motorista: a baixa de entrega pela viagem e a lista de viagens,
@@ -18,6 +31,16 @@ import { classifyBaixaResponse } from "../src/lib/offline-queue";
  * ela sempre roda.
  */
 vi.mock("next-auth", () => ({ getServerSession: vi.fn() }));
+// Fora do Next, `notFound` e `redirect` viram erros com nome, para a página do
+// comprovante poder ser chamada como função.
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    throw new Error("NOT_FOUND");
+  },
+  redirect: (url: string) => {
+    throw new Error(`REDIRECT ${url}`);
+  },
+}));
 
 const temBanco = Boolean(process.env.DATABASE_URL);
 
@@ -35,12 +58,230 @@ describe("fila offline: o que fazer com a resposta do servidor", () => {
     expect(classifyBaixaResponse(status)).toBe("sent");
   });
 
-  it.each([400, 404, 409])("%i → rejected", (status) => {
+  it.each([400, 404, 409, 413, 422])("%i → rejected", (status) => {
     expect(classifyBaixaResponse(status)).toBe("rejected");
   });
 
   it.each([500, 502, 503])("%i → retry", (status) => {
     expect(classifyBaixaResponse(status)).toBe("retry");
+  });
+
+  // Sessão caída ou servidor pedindo para esperar não é recusa da baixa: o
+  // comprovante não pode sumir do aparelho.
+  it.each([401, 403, 408, 429])("%i → retry", (status) => {
+    expect(classifyBaixaResponse(status)).toBe("retry");
+  });
+
+  it("só 401 e 403 pedem novo login", () => {
+    expect([401, 403].map(needsLogin)).toEqual([true, true]);
+    expect([200, 400, 404, 408, 409, 429, 500].map(needsLogin)).toEqual(Array(7).fill(false));
+  });
+});
+
+describe("fila offline: reenvio", () => {
+  const item = (collectionId: string): PendingBaixa => ({
+    id: collectionId,
+    collectionId,
+    payload: { receiverName: "Maria" },
+    createdAt: 1,
+  });
+
+  // Fila em memória no lugar do IndexedDB, e respostas combinadas no lugar da rede.
+  function fila(respostas: Record<string, number | Error>, corpos: Record<string, unknown> = {}) {
+    const itens = new Map(Object.keys(respostas).map((id) => [id, item(id)]));
+    const enviados: string[] = [];
+    return {
+      itens,
+      enviados,
+      io: {
+        list: async () => [...itens.values()],
+        send: async (pendente: PendingBaixa) => {
+          enviados.push(pendente.collectionId);
+          const resposta = respostas[pendente.collectionId];
+          if (resposta instanceof Error) throw resposta;
+          return {
+            status: resposta,
+            json: async () => {
+              if (!(pendente.collectionId in corpos)) throw new Error("sem corpo");
+              return corpos[pendente.collectionId];
+            },
+          };
+        },
+        remove: async (id: string) => itens.delete(id),
+      },
+    };
+  }
+
+  it.each([401, 403])("%i (sessão expirada): o comprovante continua no aparelho e pede login", async (status) => {
+    const { io, itens } = fila({ "coleta-1": status });
+
+    expect(await flushQueue(io)).toEqual({ sent: 0, rejected: [], stillPending: 1, needsLogin: true });
+    expect([...itens.keys()]).toEqual(["coleta-1"]);
+    expect(itens.get("coleta-1")?.payload).toEqual({ receiverName: "Maria" });
+  });
+
+  it.each([408, 429, 500, 503])("%i: continua na fila, sem pedir login", async (status) => {
+    const { io, itens } = fila({ "coleta-1": status });
+
+    expect(await flushQueue(io)).toEqual({ sent: 0, rejected: [], stillPending: 1, needsLogin: false });
+    expect(itens.size).toBe(1);
+  });
+
+  it("falha de rede: continua na fila", async () => {
+    const { io, itens } = fila({ "coleta-1": new TypeError("Failed to fetch") });
+
+    expect(await flushQueue(io)).toEqual({ sent: 0, rejected: [], stillPending: 1, needsLogin: false });
+    expect(itens.size).toBe(1);
+  });
+
+  it("cada item tem o seu destino: enviado sai, recusado sai com o motivo, o resto fica", async () => {
+    const { io, itens, enviados } = fila(
+      { enviada: 200, recusada: 409, "sem-motivo": 404, "sem-sessao": 401, "sem-rede": new Error("rede") },
+      { recusada: { error: NOT_IN_ROUTE_MESSAGE } },
+    );
+
+    expect(await flushQueue(io)).toEqual({
+      sent: 1,
+      rejected: [
+        { collectionId: "recusada", reason: NOT_IN_ROUTE_MESSAGE },
+        { collectionId: "sem-motivo", reason: "Recusado pelo servidor (404)" },
+      ],
+      stillPending: 2,
+      needsLogin: true,
+    });
+    expect(enviados).toEqual(["enviada", "recusada", "sem-motivo", "sem-sessao", "sem-rede"]);
+    expect([...itens.keys()]).toEqual(["sem-sessao", "sem-rede"]);
+  });
+});
+
+describe("fila offline: item gravado por versão anterior do aplicativo", () => {
+  it("lê o id da coleta do campo antigo `deliveryId`", () => {
+    const antigo = { id: "coleta-1", deliveryId: "coleta-1", payload: { receiverName: "Maria" }, createdAt: 123 };
+
+    expect(readPending(antigo)).toEqual({
+      id: "coleta-1",
+      collectionId: "coleta-1",
+      payload: { receiverName: "Maria" },
+      createdAt: 123,
+    });
+  });
+
+  it("item novo passa igual, e o nome novo vale mais que o antigo", () => {
+    const novo = { id: "coleta-2", collectionId: "coleta-2", payload: { receiverDoc: "123" }, createdAt: 5 };
+    expect(readPending(novo)).toEqual(novo);
+    expect(readPending({ ...novo, deliveryId: "outra" })?.collectionId).toBe("coleta-2");
+  });
+
+  it("sem os dois campos, vale a chave do item; sem nada disso, o item é ignorado", () => {
+    expect(readPending({ id: "coleta-3", payload: {}, createdAt: 1 })?.collectionId).toBe("coleta-3");
+    for (const invalido of [null, undefined, "texto", 7, {}, { deliveryId: "" }, { collectionId: 9 }]) {
+      expect(readPending(invalido), JSON.stringify(invalido)).toBeNull();
+    }
+  });
+
+  it("um item antigo é reenviado para a coleta certa e sai da fila", async () => {
+    const itens = new Map([["coleta-1", { id: "coleta-1", deliveryId: "coleta-1", payload: {}, createdAt: 1 }]]);
+    const enviados: string[] = [];
+
+    const resultado = await flushQueue({
+      list: async () => [...itens.values()].flatMap((bruto) => readPending(bruto) ?? []),
+      send: async (pendente) => {
+        enviados.push(pendente.collectionId);
+        return { status: 200, json: async () => ({}) };
+      },
+      remove: async (id) => itens.delete(id),
+    });
+
+    expect(resultado.sent).toBe(1);
+    expect(enviados).toEqual(["coleta-1"]);
+    expect(itens.size).toBe(0);
+  });
+});
+
+describe("foto do comprovante: conferência no aparelho, antes do envio", () => {
+  it.each(["image/jpeg", "image/png", "image/webp", "IMAGE/JPEG"])("%s serve", (type) => {
+    expect(photoProblem({ type, size: 3_000_000 })).toBeNull();
+  });
+
+  it.each(["image/heic", "image/heif", "image/gif", "image/svg+xml", "application/pdf", ""])(
+    "tipo %j → avisa o formato aceito",
+    (type) => {
+      expect(photoProblem({ type, size: 1000 })).toBe(PHOTO_MESSAGE);
+    },
+  );
+
+  it("a mensagem diz o que enviar", () => {
+    expect(PHOTO_MESSAGE).toContain("JPEG, PNG ou WebP");
+  });
+
+  it("foto que passaria do limite do servidor é barrada pelo tamanho do arquivo", () => {
+    const prefixo = "data:image/jpeg;base64,".length;
+    const maiorQueCabe = Math.floor((MAX_PHOTO_CHARS - prefixo) / 4) * 3;
+
+    expect(photoProblem({ type: "image/jpeg", size: maiorQueCabe })).toBeNull();
+    expect(photoProblem({ type: "image/jpeg", size: maiorQueCabe + 1 })).toBe(PHOTO_TOO_BIG);
+  });
+});
+
+describe("limite de tamanho da foto no servidor", () => {
+  const baixa = (photoBase64: string) =>
+    baixaSchema.safeParse({ receiverName: "Maria Recebedora", receiverDoc: "123.456.789-00", photoBase64 });
+  const foto = (tamanho: number) => {
+    const prefixo = "data:image/jpeg;base64,";
+    return prefixo + "A".repeat(tamanho - prefixo.length);
+  };
+
+  it("foto com exatamente o limite passa", () => {
+    expect(baixa(foto(MAX_PHOTO_CHARS)).success).toBe(true);
+  });
+
+  it("um caractere a mais → recusada com a mensagem de tamanho", () => {
+    const resultado = baixa(foto(MAX_PHOTO_CHARS + 1));
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues[0].message).toBe(PHOTO_TOO_BIG);
+  });
+
+  it("foto HEIC → recusada com a mensagem do formato", () => {
+    const resultado = baixa("data:image/heic;base64,AAAA");
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues[0].message).toBe(PHOTO_MESSAGE);
+  });
+});
+
+describe("quadro de assinatura: só traço vira assinatura", () => {
+  it("ponteiro que sai do quadro sem ter descido não gera assinatura", () => {
+    const quadro = createStrokeTracker();
+    expect(quadro.move()).toBe(false);
+    expect(quadro.end()).toBe(false);
+  });
+
+  it("toque sem traço não gera assinatura", () => {
+    const quadro = createStrokeTracker();
+    quadro.start();
+    expect(quadro.end()).toBe(false);
+  });
+
+  it("traço gera assinatura uma vez; o ponteiro sair depois não repete", () => {
+    const quadro = createStrokeTracker();
+    quadro.start();
+    expect(quadro.move()).toBe(true);
+    expect(quadro.end()).toBe(true);
+    expect(quadro.move()).toBe(false);
+    expect(quadro.end()).toBe(false);
+  });
+
+  it("segundo traço soma ao primeiro; depois de limpar, volta a não haver assinatura", () => {
+    const quadro = createStrokeTracker();
+    quadro.start();
+    quadro.move();
+    quadro.end();
+    quadro.start();
+    expect(quadro.end()).toBe(true);
+
+    quadro.clear();
+    expect(quadro.end()).toBe(false);
+    quadro.start();
+    expect(quadro.end()).toBe(false);
   });
 });
 
@@ -58,7 +299,6 @@ const ASSINATURA = "data:image/png;base64,iVBORw0KGgo=";
 
 const RECEIVER_NAME_MESSAGE = "Informe o nome de quem recebeu (2 a 120 caracteres).";
 const RECEIVER_DOC_MESSAGE = "Informe o documento de quem recebeu (5 a 20 caracteres).";
-const PHOTO_MESSAGE = "A foto precisa ser uma imagem JPEG, PNG ou WebP.";
 const SIGNATURE_MESSAGE = "A assinatura precisa ser uma imagem.";
 const SIGNATURE_TOO_BIG = "A assinatura ficou grande demais. Limpe e assine de novo.";
 const LOCATION_MESSAGE = "Localização inválida.";
@@ -79,6 +319,7 @@ suite("aplicativo do motorista", () => {
   let coletas: typeof import("../src/app/api/coletas/route");
   let statusRota: typeof import("../src/app/api/dashboard/coletas/[id]/status/route");
   let historico: typeof import("../src/app/api/coletas/[id]/historico/route");
+  let comprovantePagina: typeof import("../src/app/dashboard/entregas/[id]/comprovante/page");
 
   let operadorId: string;
   let adminId: string;
@@ -227,6 +468,7 @@ suite("aplicativo do motorista", () => {
     coletas = await import("../src/app/api/coletas/route");
     statusRota = await import("../src/app/api/dashboard/coletas/[id]/status/route");
     historico = await import("../src/app/api/coletas/[id]/historico/route");
+    comprovantePagina = await import("../src/app/dashboard/entregas/[id]/comprovante/page");
 
     await limpar();
 
@@ -302,6 +544,12 @@ suite("aplicativo do motorista", () => {
       ["foto em data:text/html", { photoBase64: "data:text/html;base64,PHNjcmlwdD4=" }, PHOTO_MESSAGE],
       ["foto em endereço externo", { photoBase64: "https://exemplo.br/foto.jpg" }, PHOTO_MESSAGE],
       ["foto em svg", { photoBase64: "data:image/svg+xml;base64,PHN2Zz4=" }, PHOTO_MESSAGE],
+      ["foto em HEIC", { photoBase64: "data:image/heic;base64,AAAAGGZ0eXBoZWlj" }, PHOTO_MESSAGE],
+      [
+        "foto grande demais",
+        { photoBase64: `data:image/jpeg;base64,${"A".repeat(MAX_PHOTO_CHARS)}` },
+        PHOTO_TOO_BIG,
+      ],
       ["assinatura em data:text/html", { signatureBase64: "data:text/html;base64,PHNjcmlwdD4=" }, SIGNATURE_MESSAGE],
       ["assinatura em endereço externo", { signatureBase64: "https://exemplo.br/a.png" }, SIGNATURE_MESSAGE],
       [
@@ -622,6 +870,67 @@ suite("aplicativo do motorista", () => {
       const operador = { id: operadorId, name: "operacao" };
       expect(lista.slice(0, 3).map((linha) => linha.user)).toEqual([operador, operador, operador]);
       expect(lista[3].user).toEqual({ id: motorista.userId, name: motorista.name });
+    });
+  });
+
+  describe("página do comprovante no painel", () => {
+    const abrir = (collectionId: string) => comprovantePagina.default({ params: Promise.resolve({ id: collectionId }) });
+
+    // Carga com baixa do motorista: o que a página tem para mostrar.
+    async function entregue() {
+      const { cargas, userId } = await viagem();
+      expect((await baixarComo(userId, cargas[0].id)).status).toBe(200);
+      return { collectionId: cargas[0].id, motoristaUserId: userId };
+    }
+
+    it("ADMIN e OPERATION veem o comprovante, com recebedor, foto e assinatura", async () => {
+      const { collectionId } = await entregue();
+
+      for (const [id, role] of [[adminId, "ADMIN"], [operadorId, "OPERATION"]] as const) {
+        entrar(id, role);
+        const html = renderToStaticMarkup(await abrir(collectionId));
+
+        expect(html, role).toContain("Maria Recebedora");
+        expect(html, role).toContain("123.456.789-00");
+        expect(html, role).toContain(`src="${FOTO}"`);
+        expect(html, role).toContain(`src="${ASSINATURA}"`);
+      }
+    });
+
+    it("motorista e cliente não veem, nem o motorista que deu a baixa", async () => {
+      const { collectionId, motoristaUserId } = await entregue();
+
+      entrar(motoristaUserId, "DRIVER");
+      await expect(abrir(collectionId)).rejects.toThrow("NOT_FOUND");
+
+      entrar(usuarioClienteId, "CLIENT", clienteId);
+      await expect(abrir(collectionId)).rejects.toThrow("NOT_FOUND");
+    });
+
+    // O perfil vale o do banco: token antigo de quem já foi operador não abre.
+    it("token que diz ADMIN, de usuário que no banco é motorista ou foi apagado → não vê", async () => {
+      const { collectionId, motoristaUserId } = await entregue();
+
+      entrar(motoristaUserId, "ADMIN");
+      await expect(abrir(collectionId)).rejects.toThrow("NOT_FOUND");
+
+      entrar(SEM_ID, "ADMIN");
+      await expect(abrir(collectionId)).rejects.toThrow("NOT_FOUND");
+    });
+
+    it("sem sessão → vai para o login", async () => {
+      const { collectionId } = await entregue();
+
+      sessao.mockResolvedValue(null);
+      await expect(abrir(collectionId)).rejects.toThrow("REDIRECT /login");
+    });
+
+    it("carga sem comprovante ou que não existe → não encontrada", async () => {
+      const { cargas } = await viagem();
+
+      entrar(adminId, "ADMIN");
+      await expect(abrir(cargas[0].id)).rejects.toThrow("NOT_FOUND");
+      await expect(abrir(SEM_ID)).rejects.toThrow("NOT_FOUND");
     });
   });
 });

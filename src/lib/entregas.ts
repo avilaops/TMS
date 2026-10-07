@@ -20,8 +20,9 @@ export const MAX_SIGNATURE_CHARS = 500_000;
 const INVALID_BODY = "Dados inválidos.";
 const RECEIVER_NAME_MESSAGE = "Informe o nome de quem recebeu (2 a 120 caracteres).";
 const RECEIVER_DOC_MESSAGE = "Informe o documento de quem recebeu (5 a 20 caracteres).";
-const PHOTO_MESSAGE = "A foto precisa ser uma imagem JPEG, PNG ou WebP.";
-const PHOTO_TOO_BIG = "A foto ficou grande demais. Tire outra com menos resolução.";
+export const PHOTO_MESSAGE =
+  "Formato de foto não aceito. Envie uma foto JPEG, PNG ou WebP. No iPhone, troque em Ajustes > Câmera > Formatos para \"Mais compatível\" e tire outra.";
+export const PHOTO_TOO_BIG = "A foto ficou grande demais. Tire outra com menos resolução.";
 const SIGNATURE_MESSAGE = "A assinatura precisa ser uma imagem.";
 const SIGNATURE_TOO_BIG = "A assinatura ficou grande demais. Limpe e assine de novo.";
 const LOCATION_MESSAGE = "Localização inválida.";
@@ -38,6 +39,25 @@ const image = (invalid: string, tooBig: string, max: number) =>
     .transform((value) => (value === "" ? null : value))
     .pipe(z.string().regex(IMAGE_DATA_URL, invalid).nullable())
     .nullish();
+
+export const PHOTO_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+// O arquivo vira texto base64 (4 caracteres a cada 3 bytes) atrás do prefixo
+// `data:<tipo>;base64,`.
+const dataUrlLength = (file: { type: string; size: number }) =>
+  `data:${file.type};base64,`.length + Math.ceil(file.size / 3) * 4;
+
+/**
+ * Confere a foto ainda no aparelho, antes de enviar: devolve a mensagem para o
+ * motorista ou `null` quando a foto serve. A câmera de alguns celulares grava
+ * HEIC, que o servidor recusa; avisar aqui evita ele preencher tudo e só
+ * descobrir no envio (ou, sem sinal, só quando a fila for recusada).
+ */
+export function photoProblem(file: { type: string; size: number }): string | null {
+  if (!PHOTO_MIME_TYPES.includes(file.type.toLowerCase())) return PHOTO_MESSAGE;
+  if (dataUrlLength(file) > MAX_PHOTO_CHARS) return PHOTO_TOO_BIG;
+  return null;
+}
 
 export const baixaSchema = z.object(
   {
