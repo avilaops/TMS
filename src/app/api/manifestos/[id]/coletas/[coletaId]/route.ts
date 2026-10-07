@@ -5,7 +5,7 @@ import { COLLECTION_STATUS, statusBadge } from '@/lib/format';
 
 const MANIFEST_NOT_FOUND = 'Manifesto não encontrado.';
 const COLLECTION_NOT_FOUND = 'Esta carga não está neste manifesto.';
-const MANIFEST_NOT_IN_ROUTE = 'Só dá para retirar carga de viagem em rota; esta já foi finalizada.';
+const MANIFEST_CLOSED = 'Só dá para retirar carga de viagem em montagem ou em rota; esta já foi finalizada ou cancelada.';
 const ALREADY_DELIVERED = 'Esta carga já foi entregue e não pode ser retirada da viagem.';
 const CHANGED_MEANWHILE = 'A carga mudou de status enquanto você decidia. Atualize a página e tente de novo.';
 
@@ -36,23 +36,28 @@ export async function DELETE(
       return NextResponse.json({ error: COLLECTION_NOT_FOUND }, { status: 404 });
     }
 
-    if (manifest.status !== 'ROUTE') {
-      return NextResponse.json({ error: MANIFEST_NOT_IN_ROUTE }, { status: 409 });
+    // Em montagem a carga está reservada, ainda coletada; em rota, está na rua.
+    // Nos dois casos ela sai da viagem como "Coletado".
+    const expected = manifest.status === 'ASSEMBLING' ? 'COLLECTED' : 'ROUTE';
+
+    if (manifest.status !== 'ASSEMBLING' && manifest.status !== 'ROUTE') {
+      return NextResponse.json({ error: MANIFEST_CLOSED }, { status: 409 });
     }
     if (current.status === 'DELIVERED') {
       return NextResponse.json({ error: ALREADY_DELIVERED }, { status: 409 });
     }
-    if (current.status !== 'ROUTE') {
+    if (current.status !== expected) {
       return NextResponse.json(
-        { error: `Só carga em rota pode ser retirada; esta está "${statusBadge(COLLECTION_STATUS, current.status).label}".` },
+        { error: `Só carga ${expected === 'ROUTE' ? 'em rota' : 'coletada'} pode ser retirada; esta está "${statusBadge(COLLECTION_STATUS, current.status).label}".` },
         { status: 409 }
       );
     }
 
-    // Grava só se a carga ainda estiver em rota neste manifesto: se a baixa
-    // chegou antes, a contagem é zero e a resposta é 409.
+    // Grava só se a viagem e a carga ainda estiverem como lidas acima: se a
+    // baixa ou a liberação da saída chegou antes, a contagem é zero e a
+    // resposta é 409.
     const { count } = await prisma.collection.updateMany({
-      where: { id: coletaId, manifestId, status: 'ROUTE' },
+      where: { id: coletaId, manifestId, status: expected, manifest: { status: manifest.status } },
       data: { status: 'COLLECTED', manifestId: null },
     });
     if (count === 0) {

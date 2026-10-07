@@ -45,6 +45,9 @@ suite("permissões das rotas internas", () => {
   let fiscal: typeof import("../src/app/api/fiscal/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
+  let manifestoPorId: typeof import("../src/app/api/manifestos/[id]/route");
+  let manifestoLiberar: typeof import("../src/app/api/manifestos/[id]/liberar/route");
+  let manifestoCancelar: typeof import("../src/app/api/manifestos/[id]/cancelar/route");
   let manifestoFinalizar: typeof import("../src/app/api/manifestos/[id]/finalizar/route");
   let manifestoCarga: typeof import("../src/app/api/manifestos/[id]/coletas/[coletaId]/route");
   let motoristas: typeof import("../src/app/api/motoristas/route");
@@ -109,6 +112,9 @@ suite("permissões das rotas internas", () => {
     fiscal = await import("../src/app/api/fiscal/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
     manifestos = await import("../src/app/api/manifestos/route");
+    manifestoPorId = await import("../src/app/api/manifestos/[id]/route");
+    manifestoLiberar = await import("../src/app/api/manifestos/[id]/liberar/route");
+    manifestoCancelar = await import("../src/app/api/manifestos/[id]/cancelar/route");
     manifestoFinalizar = await import("../src/app/api/manifestos/[id]/finalizar/route");
     manifestoCarga = await import("../src/app/api/manifestos/[id]/coletas/[coletaId]/route");
     motoristas = await import("../src/app/api/motoristas/route");
@@ -151,6 +157,9 @@ suite("permissões das rotas internas", () => {
       ["POST /api/fiscal/cte", () => fiscalCte.POST(req("POST", {}))],
       ["GET /api/manifestos", () => manifestos.GET()],
       ["POST /api/manifestos", () => manifestos.POST(req("POST", {}))],
+      ["PATCH /api/manifestos/[id]", () => manifestoPorId.PATCH(req("PATCH", { driverId: semId }), ctx(semId))],
+      ["POST /api/manifestos/[id]/liberar", () => manifestoLiberar.POST(req("POST"), ctx(semId))],
+      ["POST /api/manifestos/[id]/cancelar", () => manifestoCancelar.POST(req("POST"), ctx(semId))],
       ["POST /api/manifestos/[id]/finalizar", () => manifestoFinalizar.POST(req("POST"), ctx(semId))],
       [
         "DELETE /api/manifestos/[id]/coletas/[coletaId]",
