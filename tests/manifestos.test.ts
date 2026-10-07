@@ -9,6 +9,7 @@ import {
   canEmbark,
   createManifestSchema,
   isManifestEditable,
+  manifestLoadsLabel,
   updateManifestSchema,
 } from "../src/lib/manifestos";
 import { MANIFESTOS_ENDPOINTS, loadManifestos } from "../src/app/dashboard/manifestos/carregar";
@@ -59,6 +60,17 @@ describe("regras do manifesto", () => {
       expect(isManifestEditable({ status }), status).toBe(status === "ASSEMBLING");
     }
     expect(isManifestEditable({ status: "INVENTADO" })).toBe(false);
+  });
+
+  it("o cartão conta cargas reservadas ou entregas, e o da cancelada não mostra quantidade", () => {
+    expect(manifestLoadsLabel("ASSEMBLING", 0)).toBe("0 cargas reservadas");
+    expect(manifestLoadsLabel("ASSEMBLING", 1)).toBe("1 carga reservada");
+    expect(manifestLoadsLabel("ASSEMBLING", 2)).toBe("2 cargas reservadas");
+    expect(manifestLoadsLabel("ROUTE", 1)).toBe("1 Entrega na Rota");
+    expect(manifestLoadsLabel("ROUTE", 3)).toBe("3 Entregas na Rota");
+    expect(manifestLoadsLabel("FINISHED", 2)).toBe("2 Entregas na Rota");
+    expect(manifestLoadsLabel("CANCELLED", 0)).toBe("Cargas liberadas");
+    expect(manifestLoadsLabel("CANCELLED", 0)).not.toMatch(/\d|Rota/);
   });
 
   it("a alteração aceita motorista, veículo ou carga, e descarta o status", () => {
@@ -260,16 +272,31 @@ suite("manifestos pelo painel", () => {
 
   const padrao = () => ({ driverId: motoristaId, vehicleId: veiculoId });
 
-  // Resolve quando alguma conexão deste banco está parada esperando trava de
-  // linha: é o sinal de que a rota chegou à trava, sem depender de tempo fixo.
-  // Nunca resolve se ninguém parar; quem chama põe o limite.
-  async function esperandoTrava(): Promise<void> {
-    for (;;) {
+  // Resolve quando `quantas` conexões deste banco estão paradas esperando trava
+  // de linha: é o sinal de que a rota chegou à trava, sem depender de tempo fixo.
+  // Nunca resolve se ninguém parar: quem chama põe o limite e, quando a espera
+  // perde a corrida, avisa por `parar` para o laço não seguir consultando.
+  async function esperandoTrava(quantas = 1, parar?: AbortSignal): Promise<void> {
+    while (!parar?.aborted) {
       const [{ parados }] = await prisma.$queryRaw<{ parados: number }[]>`
         SELECT count(*)::int AS parados FROM pg_stat_activity
         WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`;
-      if (parados > 0) return;
+      if (parados >= quantas) return;
       await new Promise((pronto) => setTimeout(pronto, 20));
+    }
+  }
+
+  // Corrida entre a ação responder e `quantas` conexões pararem em trava. Quem
+  // perde é desligado: a espera pela trava não sobra rodando depois do teste.
+  async function quemChegaPrimeiro(resposta: Promise<Response>, quantas = 1): Promise<"parada" | "respondeu"> {
+    const parar = new AbortController();
+    try {
+      return await Promise.race([
+        esperandoTrava(quantas, parar.signal).then(() => "parada" as const),
+        resposta.then(() => "respondeu" as const),
+      ]);
+    } finally {
+      parar.abort();
     }
   }
 
@@ -294,10 +321,7 @@ suite("manifestos pelo painel", () => {
         }
 
         resposta = acao();
-        const primeiro = await Promise.race([
-          esperandoTrava().then(() => "parada" as const),
-          resposta.then(() => "respondeu" as const),
-        ]);
+        const primeiro = await quemChegaPrimeiro(resposta);
         expect(primeiro, "a ação respondeu sem esperar a troca aberta").toBe("parada");
       });
       return await resposta!;
@@ -512,11 +536,9 @@ suite("manifestos pelo painel", () => {
         await tx.$queryRaw`SELECT id FROM "Driver" WHERE id = ${motoristaId} FOR SHARE`;
 
         resposta = criar([alvo.id]);
-        const primeiro = await Promise.race([resposta, esperandoTrava().then(() => "parada" as const)]);
-        if (primeiro === "parada") {
-          throw new Error("A montagem ficou esperando a trava compartilhada de outra transação.");
-        }
-        expect(primeiro.status).toBe(201);
+        const primeiro = await quemChegaPrimeiro(resposta);
+        expect(primeiro, "a montagem ficou esperando a trava compartilhada de outra transação").toBe("respondeu");
+        expect((await resposta).status).toBe(201);
       }).finally(() => resposta?.catch(() => undefined));
 
       expect((await ler(alvo.id)).manifestId).not.toBeNull();
@@ -880,6 +902,42 @@ suite("manifestos pelo painel", () => {
       expect(await prisma.manifest.count({ where: { vehicleId: uma.vehicleId, status: "ROUTE" } })).toBe(1);
     });
 
+    // A liberação fica parada no meio (outra transação segura o veículo dela),
+    // já com a viagem lida. A alteração da mesma viagem tem de esperar a trava
+    // do manifesto: se passasse, trocaria o veículo depois de conferido, e a
+    // viagem sairia com um veículo enquanto o outro é que ficaria ocupado.
+    it("alterar e liberar a mesma viagem ao mesmo tempo: a alteração espera a saída e é recusada", async () => {
+      const alvo = await montagem(1);
+      const outro = await novaDupla();
+      let saida: Promise<Response> | undefined;
+      let troca: Promise<Response> | undefined;
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Vehicle" WHERE id = ${alvo.vehicleId} FOR UPDATE`;
+
+          saida = sair(alvo.id);
+          expect(await quemChegaPrimeiro(saida), "a liberação não parou no veículo").toBe("parada");
+
+          troca = alterar(alvo.id, { vehicleId: outro.vehicleId });
+          expect(await quemChegaPrimeiro(troca, 2), "a alteração não esperou a liberação da mesma viagem").toBe(
+            "parada",
+          );
+        });
+      } finally {
+        await Promise.all([saida?.catch(() => undefined), troca?.catch(() => undefined)]);
+      }
+
+      expect((await saida!).status).toBe(200);
+      const recusada = await troca!;
+      expect(recusada.status).toBe(409);
+      expect((await recusada.json()).error).toMatch(/Só viagem em montagem pode ser alterada/);
+
+      expect(await lerManifesto(alvo.id)).toMatchObject({ status: "ROUTE", vehicleId: alvo.vehicleId });
+      expect((await lerVeiculo(alvo.vehicleId)).status).toBe("ON_ROUTE");
+      expect((await lerVeiculo(outro.vehicleId)).status).toBe("AVAILABLE");
+    });
+
     it("viagem vazia, motorista desativado ou veículo que foi para a oficina → não sai", async () => {
       const vazia = await montagem(1);
       expect((await retirar(vazia.id, vazia.cargas[0].id)).status).toBe(200);
@@ -1001,6 +1059,53 @@ suite("manifestos pelo painel", () => {
       const respostas = await Promise.all([encerrar(id), encerrar(id)]);
       expect(respostas.map((r) => r.status).sort()).toEqual([200, 409]);
       expect((await lerManifesto(id)).status).toBe("FINISHED");
+    });
+
+    // A saída da segunda viagem fica parada já segurando o veículo (outra
+    // transação segura o motorista dela), e a finalização da primeira chega
+    // nesse intervalo. Se a finalização gravasse FINISHED antes de segurar o
+    // veículo, a saída passaria e a soltura, decidida com a fotografia de antes,
+    // deixaria o veículo "Disponível" com a segunda viagem em rota.
+    it("finalizar e liberar outra viagem do mesmo veículo ao mesmo tempo: o veículo não fica disponível em rota", async () => {
+      const primeira = await viagem();
+      expect((await retirar(primeira.id, primeira.cargas[0].id)).status).toBe(200);
+      const segunda = await montagem(1, { ...(await novaDupla()), vehicleId: primeira.vehicleId });
+      let saida: Promise<Response> | undefined;
+      let fim: Promise<Response> | undefined;
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Driver" WHERE id = ${segunda.driverId} FOR UPDATE`;
+
+          saida = sair(segunda.id);
+          expect(await quemChegaPrimeiro(saida), "a liberação não parou no motorista").toBe("parada");
+
+          fim = encerrar(primeira.id);
+          expect(await quemChegaPrimeiro(fim, 2), "a finalização não esperou o veículo que a liberação segura").toBe(
+            "parada",
+          );
+          // Enquanto espera o veículo, a finalização ainda não gravou nada que outra transação veja.
+          expect((await lerManifesto(primeira.id)).status).toBe("ROUTE");
+        });
+      } finally {
+        await Promise.all([saida?.catch(() => undefined), fim?.catch(() => undefined)]);
+      }
+
+      // A saída conferiu antes de a primeira viagem terminar: recusada. A finalização vale.
+      const recusada = await saida!;
+      expect(recusada.status).toBe(409);
+      expect((await recusada.json()).error).toMatch(/veículo já está em rota/);
+      expect((await fim!).status).toBe(200);
+
+      expect((await lerManifesto(primeira.id)).status).toBe("FINISHED");
+      expect((await lerManifesto(segunda.id)).status).toBe("ASSEMBLING");
+      const emRota = await prisma.manifest.count({ where: { vehicleId: primeira.vehicleId, status: "ROUTE" } });
+      expect(emRota).toBe(0);
+      expect((await lerVeiculo(primeira.vehicleId)).status).toBe("AVAILABLE");
+
+      // Com a primeira encerrada, a segunda sai e o veículo volta a ficar ocupado.
+      expect((await sair(segunda.id)).status).toBe(200);
+      expect((await lerVeiculo(primeira.vehicleId)).status).toBe("ON_ROUTE");
     });
 
     it("o motorista só vê a viagem liberada, e ela some da lista quando finaliza", async () => {

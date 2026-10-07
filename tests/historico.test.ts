@@ -24,6 +24,7 @@ const suite = temBanco ? describe : describe.skip;
 // Tudo o que esta suite cria usa estes marcadores, e só isso é apagado.
 const PREFIXO = "teste-historico-";
 const CNPJ_TESTE = "99888777000832";
+const CNPJ_OUTRA = "99888777000913";
 const CPF_TESTE = "99988877600";
 const PLACA_TESTE = "THS0A01";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
@@ -134,7 +135,7 @@ suite("histórico de status da coleta", () => {
     await prisma.vehicle.deleteMany({ where: { plate: PLACA_TESTE } });
     await prisma.driver.deleteMany({ where: { cpf: CPF_TESTE } });
     await prisma.user.deleteMany({ where: { email: { startsWith: PREFIXO, mode: "insensitive" } } });
-    await prisma.client.deleteMany({ where: { cnpj: CNPJ_TESTE } });
+    await prisma.client.deleteMany({ where: { cnpj: { in: [CNPJ_TESTE, CNPJ_OUTRA] } } });
   }
 
   async function criarUsuario(nome: string, role: Perfil, extra: { clientId?: string } = {}) {
@@ -269,6 +270,42 @@ suite("histórico de status da coleta", () => {
       const gravadas = await linhas(collection.id);
       expect(gravadas).toHaveLength(1);
       expect(gravadas[0]).toMatchObject({ fromStatus: null, toStatus: "PENDING", userId: ids.CLIENT });
+    });
+
+    // Sessão que sobrou de um usuário apagado: sem a conferência no banco, a
+    // gravação do histórico esbarraria na chave estrangeira e a rota daria 500.
+    it("portal: sessão de usuário apagado → 401, sem criar coleta nem linha", async () => {
+      const apagado = await criarUsuario("apagado", "CLIENT", { clientId: clienteId });
+      await prisma.user.delete({ where: { id: apagado.id } });
+      sessao.mockResolvedValue({ user: { id: apagado.id, role: "CLIENT", clientId: clienteId } });
+      const coletasAntes = await prisma.collection.count({ where: { clientId: clienteId } });
+      const antes = await contar();
+
+      const res = await portal.POST(req("POST", corpo({ volumes: 2, weight: 5 })));
+      expect(res.status).toBe(401);
+      expect((await res.json()).error).toBe("Não autorizado");
+      expect((await portal.GET()).status).toBe(401);
+
+      expect(await prisma.collection.count({ where: { clientId: clienteId } })).toBe(coletasAntes);
+      expect(await contar()).toBe(antes);
+    });
+
+    // Perfil e empresa valem os do banco, não os do token.
+    it("portal: quem deixou de ser cliente não entra, e a empresa é a do cadastro", async () => {
+      const outra = await prisma.client.create({ data: { companyName: "Outra Empresa Historico LTDA", cnpj: CNPJ_OUTRA } });
+      try {
+        sessao.mockResolvedValue({ user: { id: ids.OPERATION, role: "CLIENT", clientId: clienteId } });
+        expect((await portal.POST(req("POST", corpo()))).status).toBe(401);
+
+        sessao.mockResolvedValue({ user: { id: ids.CLIENT, role: "CLIENT", clientId: outra.id } });
+        const res = await portal.POST(req("POST", corpo({ volumes: 2, weight: 5 })));
+        expect(res.status).toBe(201);
+        const { collection } = await res.json();
+        expect((await prisma.collection.findUniqueOrThrow({ where: { id: collection.id } })).clientId).toBe(clienteId);
+        expect(await prisma.collection.count({ where: { clientId: outra.id } })).toBe(0);
+      } finally {
+        await prisma.client.delete({ where: { id: outra.id } });
+      }
     });
 
     it("portal: 400 não cria linha", async () => {

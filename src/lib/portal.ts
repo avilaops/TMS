@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import prisma from "@/lib/prisma";
 
 /**
  * Resolve a empresa do usuário logado no portal do cliente.
@@ -8,6 +9,9 @@ import { authOptions } from "@/lib/auth";
  * Toda consulta do portal precisa passar por aqui e filtrar pelo `clientId`
  * devolvido — é o que impede um cliente de enxergar dados de outro. O `userId`
  * vai junto para quem precisa registrar quem fez (histórico de status).
+ *
+ * Perfil e empresa vêm do banco, não do token, como em `requireStaff()`: quem
+ * foi apagado, mudou de perfil ou de empresa não segue com o acesso antigo.
  */
 export async function requirePortalClient(): Promise<
   | { clientId: string; userId: string; error: null }
@@ -15,15 +19,23 @@ export async function requirePortalClient(): Promise<
 > {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user || session.user.role !== "CLIENT") {
-    return {
-      clientId: null,
-      userId: null,
-      error: NextResponse.json({ error: "Não autorizado" }, { status: 401 }),
-    };
-  }
+  const naoAutorizado = {
+    clientId: null,
+    userId: null,
+    error: NextResponse.json({ error: "Não autorizado" }, { status: 401 }),
+  };
 
-  if (!session.user.clientId) {
+  if (!session?.user?.id) return naoAutorizado;
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true, role: true, clientId: true },
+  });
+
+  // Sessão de um usuário que não existe mais: trata como não autenticado.
+  if (!user || user.role !== "CLIENT") return naoAutorizado;
+
+  if (!user.clientId) {
     return {
       clientId: null,
       userId: null,
@@ -34,5 +46,5 @@ export async function requirePortalClient(): Promise<
     };
   }
 
-  return { clientId: session.user.clientId, userId: session.user.id, error: null };
+  return { clientId: user.clientId, userId: user.id, error: null };
 }

@@ -90,3 +90,10 @@ export function pendingDeliveriesMessage(count: number): string {
   const cargas = count === 1 ? "1 carga ainda em rota" : `${count} cargas ainda em rota`;
   return `Esta viagem tem ${cargas}: dê baixa na entrega ou retire a carga antes de finalizar.`;
 }
+
+/** Linha de cargas no cartão da viagem. A cancelada soltou as suas: não há quantidade a mostrar. */
+export function manifestLoadsLabel(status: string, total: number): string {
+  if (status === "CANCELLED") return "Cargas liberadas";
+  if (status === "ASSEMBLING") return `${total} ${total === 1 ? "carga reservada" : "cargas reservadas"}`;
+  return total === 1 ? "1 Entrega na Rota" : `${total} Entregas na Rota`;
+}

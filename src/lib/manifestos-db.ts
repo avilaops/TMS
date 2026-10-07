@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { MANIFEST_NOT_FOUND_MESSAGE } from "@/lib/manifestos";
 
 // Apoio das rotas que mudam uma viagem dentro de transação (alterar, liberar,
-// cancelar). Só o servidor importa este arquivo.
+// finalizar, cancelar). Só o servidor importa este arquivo.
 
 type Tx = Prisma.TransactionClient;
 
@@ -17,8 +17,8 @@ export class ManifestError extends Error {
 }
 
 /**
- * Lê o manifesto segurando a linha até o fim da transação. Alterar, liberar e
- * cancelar passam por aqui, então duas chamadas à mesma viagem correm uma
+ * Lê o manifesto segurando a linha até o fim da transação. Alterar, liberar,
+ * finalizar e cancelar passam por aqui, então duas chamadas à mesma viagem correm uma
  * depois da outra e a segunda já enxerga o status que a primeira gravou.
  */
 export async function lockManifest(tx: Tx, manifestId: string) {

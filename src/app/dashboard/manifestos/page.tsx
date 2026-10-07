@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, Loader2, Route, Truck, Package, MapPin, User, ArrowRight, AlertTriangle, LogIn } from "lucide-react";
 import { COLLECTION_STATUS, MANIFEST_STATUS, statusBadge } from "@/lib/format";
-import { canEmbark, isManifestEditable } from "@/lib/manifestos";
+import { canEmbark, isManifestEditable, manifestLoadsLabel } from "@/lib/manifestos";
 import { loadManifestos, type Manifesto, type ManifestosState, type Minuta } from "./carregar";
 
 // A mensagem que o servidor devolveu; `fallback` quando a resposta não é JSON.
@@ -281,9 +281,7 @@ export default function ManifestosPage() {
                 <div className="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
                   <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center">
                     <Package className="w-4 h-4 mr-1.5" /> 
-                    {emMontagem
-                      ? `${total} ${total === 1 ? "carga reservada" : "cargas reservadas"}`
-                      : total === 1 ? "1 Entrega na Rota" : `${total} Entregas na Rota`}
+                    {manifestLoadsLabel(manifesto.status, total)}
                   </h4>
                   
                   <div className="space-y-3 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
