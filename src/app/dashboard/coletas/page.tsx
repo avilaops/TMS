@@ -128,28 +128,29 @@ export default function ColetasPage() {
   
   const [formData, setFormData] = useState(EMPTY_FORM);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // A tela já nasce com `isLoading` ligado: a primeira carga só busca.
+  const loadData = () =>
+    Promise.all([
+      fetch('/api/coletas'),
+      fetch('/api/clientes'),
+      fetch('/api/motoristas')
+    ])
+      .then(async ([coletasRes, clientesRes, motoristasRes]) => {
+        if (coletasRes.ok) setColetas(await coletasRes.json());
+        if (clientesRes.ok) setClientes(await clientesRes.json());
+        if (motoristasRes.ok) setMotoristas(await motoristasRes.json());
+      })
+      .catch((error) => console.error("Failed to fetch data", error))
+      .finally(() => setIsLoading(false));
 
   const fetchData = async () => {
     setIsLoading(true);
-    try {
-      const [coletasRes, clientesRes, motoristasRes] = await Promise.all([
-        fetch('/api/coletas'),
-        fetch('/api/clientes'),
-        fetch('/api/motoristas')
-      ]);
-      
-      if (coletasRes.ok) setColetas(await coletasRes.json());
-      if (clientesRes.ok) setClientes(await clientesRes.json());
-      if (motoristasRes.ok) setMotoristas(await motoristasRes.json());
-    } catch (error) {
-      console.error("Failed to fetch data", error);
-    } finally {
-      setIsLoading(false);
-    }
+    await loadData();
   };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const closeModal = () => {
     setIsModalOpen(false);

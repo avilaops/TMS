@@ -304,6 +304,9 @@ suite("histórico de status da coleta", () => {
         expect((await prisma.collection.findUniqueOrThrow({ where: { id: collection.id } })).clientId).toBe(clienteId);
         expect(await prisma.collection.count({ where: { clientId: outra.id } })).toBe(0);
       } finally {
+        // Se o teste falhou com coleta gravada na outra empresa, ela sai antes:
+        // a chave estrangeira não deixa apagar a empresa com coleta.
+        await prisma.collection.deleteMany({ where: { clientId: outra.id } });
         await prisma.client.delete({ where: { id: outra.id } });
       }
     });
