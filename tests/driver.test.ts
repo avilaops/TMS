@@ -156,7 +156,12 @@ describe("fila offline: reenvio", () => {
       ...vazio,
       stillPending: 1,
       blocked: [
-        { id: `${EU}:coleta-1`, collectionId: "coleta-1", reason: blockedMessage("Motorista inativo.") },
+        {
+          id: `${EU}:coleta-1`,
+          collectionId: "coleta-1",
+          reason: blockedMessage("Motorista inativo."),
+          receiverName: "Maria",
+        },
       ],
     });
     expect(resultado.blocked[0].reason).toContain("Motorista inativo.");
@@ -168,9 +173,30 @@ describe("fila offline: reenvio", () => {
     const { io, itens } = fila({ "coleta-1": 403 });
 
     expect((await flushQueue(EU, io)).blocked).toEqual([
-      { id: `${EU}:coleta-1`, collectionId: "coleta-1", reason: blockedMessage(DRIVER_BLOCKED_FALLBACK) },
+      {
+        id: `${EU}:coleta-1`,
+        collectionId: "coleta-1",
+        reason: blockedMessage(DRIVER_BLOCKED_FALLBACK),
+        receiverName: "Maria",
+      },
     ]);
     expect(itens.size).toBe(1);
+  });
+
+  it("baixa presa leva o nome do recebedor, para o motorista saber qual é; sem nome, vai sem", async () => {
+    const presas = async (payload: Record<string, unknown>) =>
+      (
+        await flushQueue(EU, {
+          list: async () => [buildPending("coleta-1", payload, EU, 1), buildPending("antiga", payload, null, 2)],
+          send: async (pendente) => ({ status: pendente.userId ? 403 : 404, json: async () => ({}) }),
+          remove: async () => undefined,
+        })
+      ).blocked.map((presa) => presa.receiverName);
+
+    expect(await presas({ receiverName: "  José Lima " })).toEqual(["José Lima", "José Lima"]);
+    expect(await presas({})).toEqual([null, null]);
+    expect(await presas({ receiverName: "   " })).toEqual([null, null]);
+    expect(await presas({ receiverName: 7 })).toEqual([null, null]);
   });
 
   it("baixa de outro motorista no mesmo aparelho não é enviada nem apagada", async () => {
@@ -211,7 +237,7 @@ describe("fila offline: reenvio", () => {
       ...vazio,
       stillPending: 1,
       rejected: [{ collectionId: "minha", reason: DELIVERY_NOT_FOUND_MESSAGE }],
-      blocked: [{ id: "antiga", collectionId: "antiga", reason: UNKNOWN_OWNER_REASON }],
+      blocked: [{ id: "antiga", collectionId: "antiga", reason: UNKNOWN_OWNER_REASON, receiverName: "Maria" }],
     });
     expect([...itens.keys()]).toEqual(["antiga"]);
   });

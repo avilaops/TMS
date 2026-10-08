@@ -18,7 +18,9 @@
 -- O `db:rls` (prisma/sql/010-rls.sql) vem depois porque o gatilho
 -- `tms_mesmo_tenant` de ProofOfDelivery passa a conferir tambem
 -- `reviewedById`: o conferente tem de ser usuario da mesma empresa do
--- comprovante. `npm run db:push` faz as duas coisas de uma vez e chega ao
+-- comprovante. Nunca na ordem inversa: o 010-rls.sql novo sem este 003 quebra
+-- a baixa do motorista (o gatilho procura `reviewedById` e a coluna nao existe).
+-- `npm run db:push` faz as duas coisas de uma vez e chega ao
 -- mesmo resultado; este arquivo existe para quem prefere ver o SQL antes.
 --
 -- Aplique ANTES de publicar a versao que confere comprovante: sem as colunas,

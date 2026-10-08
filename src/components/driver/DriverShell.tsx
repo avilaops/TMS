@@ -59,8 +59,13 @@ export default function DriverShell({ children }: { children: React.ReactNode })
       });
   }, [userId]);
 
+  // Trava do reenvio. O estado `syncing` só muda no próximo desenho: a conexão
+  // voltando e o toque do motorista no mesmo instante passariam os dois por ele.
+  const syncingRef = useRef(false);
+
   const sync = useCallback(async () => {
-    if (syncing) return;
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setSyncing(true);
     try {
       const { owner, sessionExpired: expired } = await resolveSyncOwner(userId);
@@ -82,22 +87,26 @@ export default function DriverShell({ children }: { children: React.ReactNode })
       setSessionExpired(result.needsLogin);
       setBlocked(result.blocked);
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
       refreshPending();
     }
-  }, [syncing, userId, refreshPending]);
+  }, [userId, refreshPending]);
 
-  const discardBlocked = useCallback(async () => {
-    const count = blocked.length;
-    const confirmed = window.confirm(
-      `Apagar ${count} ${count === 1 ? "baixa salva" : "baixas salvas"} neste aparelho? ` +
-        "O comprovante (recebedor, foto e assinatura) será perdido e a entrega continuará sem baixa."
-    );
-    if (!confirmed) return;
-    await discardPending(blocked.map((item) => item.id));
-    setBlocked([]);
-    refreshPending();
-  }, [blocked, refreshPending]);
+  // Uma baixa por vez: cada uma está presa por um motivo e é de uma entrega.
+  const discardBlocked = useCallback(
+    async (item: BlockedBaixa) => {
+      const confirmed = window.confirm(
+        `Apagar a baixa salva neste aparelho${item.receiverName ? ` (recebedor: ${item.receiverName})` : ""}? ` +
+          "O comprovante (recebedor, foto e assinatura) será perdido e a entrega continuará sem baixa."
+      );
+      if (!confirmed) return;
+      await discardPending([item.id]);
+      setBlocked((current) => current.filter((other) => other.id !== item.id));
+      refreshPending();
+    },
+    [refreshPending]
+  );
 
   // Os ouvintes abaixo são registrados uma vez; chamam sempre a versão atual.
   const syncRef = useRef(sync);
@@ -115,6 +124,22 @@ export default function DriverShell({ children }: { children: React.ReactNode })
     if (navigator.onLine) syncRef.current();
     else refreshRef.current();
   }, [userId]);
+
+  // Sem usuário no provedor (sessão vencida, ou consulta feita sem sinal) e com
+  // baixa guardada: tenta o reenvio já ao abrir. É ele que mostra a sessão
+  // expirada e a baixa presa, sem esperar o toque do motorista.
+  useEffect(() => {
+    if (status !== "unauthenticated" || !navigator.onLine) return;
+    let active = true;
+    countPending(rememberedOwner())
+      .then(({ mine }) => {
+        if (active && mine > 0) syncRef.current();
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [status]);
 
   useEffect(() => {
     refreshRef.current();
@@ -190,12 +215,17 @@ export default function DriverShell({ children }: { children: React.ReactNode })
       {blocked.length > 0 && (
         <div role="alert" className="bg-red-50 text-red-800 px-4 py-2 text-sm flex items-start gap-2 z-10">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p>{blocked[0].reason}</p>
-            <button onClick={discardBlocked} className="underline font-medium mt-1">
-              Descartar {blocked.length === 1 ? "a baixa presa" : `as ${blocked.length} baixas presas`}
-            </button>
-          </div>
+          <ul className="flex-1 space-y-2">
+            {blocked.map((item) => (
+              <li key={item.id}>
+                {item.receiverName && <p className="font-medium">Recebedor: {item.receiverName}</p>}
+                <p>{item.reason}</p>
+                <button onClick={() => discardBlocked(item)} className="underline font-medium mt-1">
+                  Descartar esta baixa
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

@@ -42,7 +42,13 @@ export type PendingBaixa = {
 };
 
 /** Baixa que continua no aparelho e não sobe sozinha: precisa de alguém agir. */
-export type BlockedBaixa = { id: string; collectionId: string; reason: string };
+export type BlockedBaixa = {
+  id: string;
+  collectionId: string;
+  reason: string;
+  /** Quem recebeu, como o motorista digitou: é o que ele reconhece na hora de descartar. */
+  receiverName: string | null;
+};
 
 export type FlushResult = {
   sent: number;
@@ -117,6 +123,12 @@ export function readPending(raw: unknown): PendingBaixa | null {
 /** O item é de outro motorista: fica no aparelho, à espera do login dele. */
 function isFromAnotherUser(item: PendingBaixa, userId: string) {
   return item.userId !== null && item.userId !== userId;
+}
+
+/** Nome do recebedor que está na baixa guardada, quando há. */
+function receiverOf(item: PendingBaixa) {
+  const name = item.payload.receiverName;
+  return typeof name === "string" && name.trim() !== "" ? name.trim() : null;
 }
 
 /** Monta o item da fila. Sem usuário conhecido, a chave é só a coleta, como nas versões anteriores. */
@@ -262,9 +274,22 @@ export function summarizePending(items: PendingBaixa[], userId: string | null): 
   return { mine: items.length - others, others };
 }
 
+/**
+ * Conta pelas chaves, sem ler os itens: cada um carrega foto e assinatura, e a
+ * contagem roda a cada mudança da tela. A chave diz o dono porque é
+ * `buildPending` quem a monta: `<usuário>:<coleta>`, ou só a coleta quando a
+ * baixa não tem dono (ids de coleta não têm dois-pontos).
+ */
+export function summarizeKeys(keys: unknown[], userId: string | null): PendingCount {
+  const ids = keys.filter((key): key is string => typeof key === "string" && key !== "");
+  const others =
+    userId === null ? 0 : ids.filter((id) => id.includes(":") && !id.startsWith(`${userId}:`)).length;
+  return { mine: ids.length - others, others };
+}
+
 /** Sem usuário conhecido, tudo conta como pendente: nada some da tela enquanto a sessão carrega. */
 export async function countPending(userId: string | null): Promise<PendingCount> {
-  return summarizePending(await listPending(), userId);
+  return summarizeKeys(await tx<IDBValidKey[]>("readonly", (store) => store.getAllKeys()), userId);
 }
 
 function removeItem(id: string) {
@@ -319,7 +344,12 @@ export async function flushQueue(
       // Baixa sem dono que o servidor não acha na viagem deste motorista pode
       // ser de outro: fica no aparelho, e só sai se alguém mandar descartar.
       if (outcome === "rejected" && response.status === 404 && item.userId === null) {
-        result.blocked.push({ id: item.id, collectionId: item.collectionId, reason: UNKNOWN_OWNER_REASON });
+        result.blocked.push({
+          id: item.id,
+          collectionId: item.collectionId,
+          reason: UNKNOWN_OWNER_REASON,
+          receiverName: receiverOf(item),
+        });
         result.stillPending += 1;
         continue;
       }
@@ -341,6 +371,7 @@ export async function flushQueue(
           id: item.id,
           collectionId: item.collectionId,
           reason: blockedMessage(typeof body?.error === "string" ? body.error : DRIVER_BLOCKED_FALLBACK),
+          receiverName: receiverOf(item),
         });
       }
       result.stillPending += 1;
