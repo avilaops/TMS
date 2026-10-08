@@ -76,6 +76,7 @@ Todas estão documentadas em [.env.example](.env.example). As essenciais:
 | `DATABASE_URL` | Conexão Postgres |
 | `NEXTAUTH_URL` | URL pública do sistema (`https://tms.avilaops.com` em produção) |
 | `NEXTAUTH_SECRET` | Assinatura do JWT de sessão |
+| `AVILAOPS_CLIENT_ID`, `AVILAOPS_CLIENT_SECRET` | Cliente OIDC do TMS no auth (o segredo é o `OIDC_SEGREDO_TMS` de lá) |
 | `TMS_EMPRESA_PADRAO` | Slug da empresa das rotas públicas de cotação e lead quando a requisição não informa `empresa` |
 | `TENANT_SLUG`, `TENANT_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed: cria a empresa e o administrador dela |
 
@@ -97,11 +98,13 @@ No código ([src/lib/prisma.ts](src/lib/prisma.ts)):
 | `paraEmpresa(id)` | Empresa informada por quem chama: rota pública que recebe a empresa por parâmetro |
 | `sistema` | Sem empresa e sem política. Só para o que acontece antes de haver empresa: login, saúde, rastreio público por código, seed |
 
-**Login.** O TMS não tem formulário de senha. A tela `/login` manda direto para o login único da Ávila Ops, que autentica com senha, Google, Microsoft ou Facebook, e na volta abre a sessão do TMS com a empresa dentro (`tenantId` no token; sessão sem ela é tratada como não ter sessão). Sair encerra também a sessão do login único ([src/lib/sair.ts](src/lib/sair.ts)); sem isso a tela de login colocaria a pessoa para dentro de novo. O e-mail é único por empresa, então a mesma conta pode ter cadastro em duas: nesse caso a tela pede a empresa (o slug).
+**Login.** O TMS não tem senha própria. A tela `/login` manda direto para o login único da Ávila Ops (`auth.avilaops.com`), por **OIDC** (authorization code + PKCE; provedor `avilaops` em [src/lib/auth.ts](src/lib/auth.ts)). É o auth que autentica (senha, Google, Microsoft, Facebook), confere se a conta foi liberada para o app `tms` e cobra o segundo fator; o TMS recebe só quem passou. Por ser OIDC e não cookie de `.avilaops.com`, funciona também em domínio próprio de cliente: basta registrar o endereço de retorno do domínio novo em `src/lib/oidc.ts` do auth. Sair encerra também a sessão do auth ([src/lib/sair.ts](src/lib/sair.ts)).
 
-**Login único da Ávila Ops.** A entrada usa a sessão de `auth.avilaops.com` ([src/lib/sso.ts](src/lib/sso.ts)). O TMS não guarda o segredo do cookie `avila_sso`: no login ele pergunta ao auth quem é a pessoa e se ela foi liberada para o app `tms` (`GET /api/session?app=tms`). A conta entra na empresa em que o e-mail dela tem cadastro; com cadastro em mais de uma, informa a empresa. Quem libera ou revoga o acesso de um cliente é o painel do auth (Aplicações → TMS), e o perfil dentro da empresa continua sendo o do cadastro no TMS.
+**Em que empresa a pessoa entra** (`resolverEntrada`). O e-mail é único por empresa, não no sistema. Com cadastro em uma empresa só, entra direto. Com cadastro em mais de uma, escolhe em `/empresa`. Sem cadastro em nenhuma, não entra. A empresa escolhida vai no token da sessão (`tenantId`), que dura 8 horas, como a sessão do auth.
 
-A equipe da Ávila Ops (papel `ADMIN` no auth, com a verificação em duas etapas conferida) entra em qualquer empresa informando o slug, mesmo sem cadastro: na primeira entrada nasce um administrador "Nome (Ávila Ops)", visível na lista de usuários da empresa, com senha aleatória que só serve para o login único.
+**Equipe da Ávila Ops** (papel `ADMIN` no auth). Opera a plataforma: em `/plataforma/empresas` cria empresa com o primeiro administrador, renomeia, desativa e reativa (desativar impede a entrada e as rotas públicas, sem apagar nada). Em `/empresa` entra em qualquer empresa ativa; na primeira entrada nasce um administrador "Nome (Ávila Ops)", visível na lista de usuários daquela empresa. Administrador de transportadora não é equipe e não vê outras empresas.
+
+**Quem ainda não tem conta no auth.** Cadastrar alguém no TMS não cria a conta no auth nem libera o app: hoje isso é feito no painel do auth. A coluna de senha do usuário continua no banco, preenchida com valor aleatório, até o cadastro por convite existir.
 
 **Tabela nova.** Declare `tenantId` igual ao das outras (com o `@default(dbgenerated(...))` e a relação com `Tenant`), rode `npm run db:push` e, se ela referencia outra tabela, acrescente o par em `referencias`, no `010-rls.sql`. A política e as permissões são criadas sozinhas para toda tabela que tenha `tenantId`.
 

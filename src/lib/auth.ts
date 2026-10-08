@@ -1,9 +1,7 @@
 import { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
 import { randomBytes } from "node:crypto";
 import { sistema } from "@/lib/prisma";
 import { normalizarSlug } from "@/lib/empresas";
-import { sessaoDoLoginUnico } from "@/lib/sso";
 import bcrypt from "bcryptjs";
 
 /**
@@ -59,110 +57,179 @@ export async function findUsersForLogin(email: string, empresa?: string) {
   return sistema.user.findMany({ where: { id: { in: ids } } });
 }
 
+/** Quem o login único (auth.avilaops.com) diz que a pessoa é. */
+export type ContaAvilaOps = {
+  email: string;
+  nome: string;
+  /** `ADMIN` é a equipe da Ávila Ops; `CLIENTE`, todo o resto. */
+  papel: string;
+};
+
+/** A equipe da Ávila Ops opera a plataforma: vê e cria empresas e entra em qualquer uma. */
+export function ehEquipe(conta: Pick<ContaAvilaOps, "papel"> | null | undefined): boolean {
+  return conta?.papel === "ADMIN";
+}
+
+export type Entrada =
+  | { situacao: "dentro"; user: { id: string; name: string; email: string; role: string; clientId: string | null; tenantId: string } }
+  /** A conta existe em mais de uma empresa, ou é da equipe: falta escolher. */
+  | { situacao: "escolher" }
+  /** Não é da equipe e não tem cadastro em nenhuma empresa ativa. */
+  | { situacao: "sem-cadastro" }
+  /** A empresa pedida não existe, está desativada ou a conta não tem cadastro nela. */
+  | { situacao: "recusada" };
+
 /**
- * Equipe da Ávila Ops (papel ADMIN no login único) entra em qualquer empresa
- * para dar suporte, mesmo sem cadastro nela: o cadastro de administrador é
- * criado na primeira entrada e fica visível na lista de usuários da empresa.
+ * Decide em que empresa a conta do login único entra.
  *
- * Exige o segundo fator conferido no auth e a empresa informada. A senha
- * gravada é aleatória e ninguém a conhece: esse cadastro só entra pelo login
- * único. Quem não é da equipe e não tem cadastro não entra em lugar nenhum.
+ * Sem `empresa`: entra direto se só há um cadastro; a equipe e quem tem mais de
+ * um vão escolher. Com `empresa` (o slug): entra no cadastro daquela empresa.
+ *
+ * A equipe da Ávila Ops entra em qualquer empresa para dar suporte, mesmo sem
+ * cadastro: ele nasce na primeira entrada, como administrador "Nome (Ávila
+ * Ops)", visível na lista de usuários da empresa. O segundo fator da equipe é
+ * cobrado pelo auth antes de emitir o código de autorização.
  */
-async function entrarComoEquipe(conta: { email: string; nome: string; papel: string; mfa: boolean }, empresa?: string) {
-  if (conta.papel !== "ADMIN") {
-    throw new Error("Sua conta não tem cadastro em nenhuma empresa do TMS. Peça o acesso a quem administra a empresa.");
-  }
+export async function resolverEntrada(conta: ContaAvilaOps, empresa?: string | null): Promise<Entrada> {
+  const slug = empresa ? normalizarSlug(empresa) : null;
+  if (empresa && !slug) return { situacao: "recusada" };
 
-  if (!conta.mfa) {
-    throw new Error("Confirme a verificação em duas etapas em auth.avilaops.com e tente de novo.");
-  }
+  const candidatos = await findUsersForLogin(conta.email, slug ?? undefined);
 
-  const slug = normalizarSlug(empresa);
   if (!slug) {
-    throw new Error("Equipe Ávila Ops: informe a empresa para entrar.");
+    if (ehEquipe(conta)) {
+      // A equipe sempre escolhe: mesmo com um cadastro só, ela pode querer outra empresa.
+      return { situacao: "escolher" };
+    }
+    if (candidatos.length === 1) return { situacao: "dentro", user: candidatos[0] };
+    return { situacao: candidatos.length > 1 ? "escolher" : "sem-cadastro" };
   }
+
+  if (candidatos.length === 1) return { situacao: "dentro", user: candidatos[0] };
+  if (!ehEquipe(conta)) return { situacao: "recusada" };
 
   const tenant = await sistema.tenant.findUnique({ where: { slug }, select: { id: true, active: true } });
-  if (!tenant?.active) {
-    throw new Error("Empresa não encontrada.");
-  }
+  if (!tenant?.active) return { situacao: "recusada" };
 
-  const password = await bcrypt.hash(randomBytes(32).toString("base64"), 12);
-
+  // Senha aleatória que ninguém conhece: a coluna é obrigatória, mas o TMS não
+  // tem login por senha.
+  const password = await bcrypt.hash(randomBytes(32).toString("base64"), 10);
   const user = await sistema.user.create({
     data: { tenantId: tenant.id, email: conta.email, name: `${conta.nome} (Ávila Ops)`, role: "ADMIN", password },
   });
 
   console.info(`Login único: cadastro de suporte criado para ${conta.email} na empresa ${slug}.`);
-  return user;
+  return { situacao: "dentro", user };
 }
+
+/** Empresas em que a conta pode entrar: todas as ativas para a equipe, as do próprio cadastro para os demais. */
+export async function empresasDaConta(conta: ContaAvilaOps) {
+  if (ehEquipe(conta)) {
+    return sistema.tenant.findMany({
+      where: { active: true },
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
+  const candidatos = await findUsersForLogin(conta.email);
+  if (candidatos.length === 0) return [];
+
+  return sistema.tenant.findMany({
+    where: { id: { in: candidatos.map((c) => c.tenantId) }, active: true },
+    select: { slug: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+const EMISSOR = (process.env.AVILAOPS_ISSUER || "https://auth.avilaops.com").replace(/\/+$/, "");
 
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
+    // A mesma vida da sessão do auth: saiu da equipe ou perdeu o acesso lá,
+    // perde aqui no máximo em 8 horas.
+    maxAge: 8 * 60 * 60,
   },
   pages: {
     signIn: "/login",
+    error: "/login",
   },
   providers: [
-    // A única porta de entrada é o login único da Ávila Ops (auth.avilaops.com),
-    // que oferece senha, Google, Microsoft e Facebook. O TMS não tem formulário
-    // de senha próprio. Ver src/lib/sso.ts.
-    CredentialsProvider({
-      id: "sso",
+    // A única porta de entrada é o login único da Ávila Ops, por OIDC
+    // (authorization code + PKCE). O TMS não tem senha própria. O auth confere
+    // se a conta foi liberada para o app `tms` e cobra o segundo fator antes de
+    // emitir o código; aqui chega só quem passou.
+    //
+    // `idToken: false`: o id_token do auth é assinado com um segredo que não é
+    // o deste cliente, então a identidade vem do /oauth/userinfo, numa conexão
+    // direta autenticada pelo access token.
+    {
+      id: "avilaops",
       name: "Ávila Ops",
-      credentials: {
-        empresa: { label: "Empresa", type: "text" }
-      },
-      async authorize(credentials, req) {
-        const cabecalhos = (req?.headers ?? {}) as Record<string, string | string[] | undefined>;
-        const cookie = Array.isArray(cabecalhos.cookie) ? cabecalhos.cookie.join("; ") : cabecalhos.cookie;
-
-        const conta = await sessaoDoLoginUnico(cookie);
-        if (!conta) {
-          throw new Error("Não há sessão do login único com acesso ao TMS. Entre em auth.avilaops.com e tente de novo.");
-        }
-
-        const candidatos = await findUsersForLogin(conta.email, credentials?.empresa);
-
-        if (candidatos.length > 1) {
-          throw new Error("Este acesso existe em mais de uma empresa. Informe a empresa para entrar.");
-        }
-
-        let user = candidatos[0] ?? null;
-
-        if (!user) {
-          user = await entrarComoEquipe(conta, credentials?.empresa);
-        }
-
+      type: "oauth",
+      clientId: process.env.AVILAOPS_CLIENT_ID || "tms",
+      clientSecret: process.env.AVILAOPS_CLIENT_SECRET,
+      authorization: { url: `${EMISSOR}/oauth/authorize`, params: { scope: "openid profile email" } },
+      token: `${EMISSOR}/oauth/token`,
+      userinfo: `${EMISSOR}/oauth/userinfo`,
+      idToken: false,
+      checks: ["pkce", "state"],
+      client: { token_endpoint_auth_method: "client_secret_post" },
+      profile(perfil: { sub: string; email: string; name?: string; papel?: string }) {
         return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          clientId: user.clientId,
-          tenantId: user.tenantId,
+          id: perfil.sub,
+          email: perfil.email,
+          name: perfil.name ?? perfil.email,
+          papel: perfil.papel ?? "CLIENTE",
         };
-      }
-    })
+      },
+    },
   ],
   callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.role = user.role;
-        token.id = user.id;
-        token.clientId = user.clientId ?? null;
-        token.tenantId = user.tenantId;
+    async jwt({ token, user, account, trigger, session }) {
+      const aplicar = (entrada: Entrada) => {
+        if (entrada.situacao === "dentro") {
+          token.id = entrada.user.id;
+          token.name = entrada.user.name;
+          token.role = entrada.user.role;
+          token.clientId = entrada.user.clientId ?? null;
+          token.tenantId = entrada.user.tenantId;
+        }
+        token.situacao = entrada.situacao;
+      };
+
+      // Acabou de voltar do auth: guarda quem é e tenta entrar numa empresa.
+      if (account?.provider === "avilaops" && user?.email) {
+        token.conta = {
+          email: user.email.trim().toLowerCase(),
+          nome: user.name ?? user.email,
+          papel: (user as { papel?: string }).papel ?? "CLIENTE",
+        };
+        delete token.id;
+        delete token.tenantId;
+        token.role = "";
+        token.clientId = null;
+        aplicar(await resolverEntrada(token.conta));
       }
+
+      // Escolha (ou troca) de empresa, pedida pela tela /empresa.
+      if (trigger === "update" && token.conta && typeof session?.empresa === "string") {
+        const entrada = await resolverEntrada(token.conta, session.empresa);
+        if (entrada.situacao === "dentro") aplicar(entrada);
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.role = token.role as string;
-        session.user.id = token.id as string;
+        session.user.role = (token.role as string | undefined) ?? "";
+        session.user.id = (token.id as string | undefined) ?? "";
         session.user.clientId = (token.clientId as string | null) ?? null;
-        // Sessão emitida antes do multi-tenant não tem empresa: fica sem acesso ao banco até entrar de novo.
+        // Sem empresa (ainda não escolheu, ou não tem cadastro) não há acesso ao banco.
         session.user.tenantId = (token.tenantId as string | undefined) ?? null;
+        session.user.equipe = ehEquipe(token.conta);
+        session.user.situacao = token.situacao ?? (token.tenantId ? "dentro" : "sem-cadastro");
       }
       return session;
     }

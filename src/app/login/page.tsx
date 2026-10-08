@@ -1,86 +1,38 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getSession, signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { Truck, LogIn, Loader2 } from "lucide-react";
-import { sair, urlDoLoginUnico } from "@/lib/sair";
-
-const HOME_BY_ROLE: Record<string, string> = {
-  ADMIN: "/dashboard",
-  OPERATION: "/dashboard",
-  DRIVER: "/driver",
-  CLIENT: "/portal",
-};
+import { sair } from "@/lib/sair";
 
 /**
  * O TMS não tem formulário de senha: quem autentica é o login único da Ávila
- * Ops (auth.avilaops.com), com senha, Google, Microsoft ou Facebook. Esta tela
- * só faz a ponte:
+ * Ops (auth.avilaops.com), por OIDC. Esta tela só dispara a ida para lá. Na
+ * volta, o NextAuth abre a sessão e a raiz (`/`) leva para a área da pessoa ou
+ * para a escolha de empresa.
  *
- * - chega aqui sem sessão do login único → vai direto para o auth;
- * - volta de lá (`?sso=1`) ou já tinha sessão → entra sem digitar nada;
- * - a conta existe em mais de uma empresa (ou é da equipe) → pede a empresa;
- * - a conta não tem acesso → explica e oferece trocar de conta.
+ * Ela só fica parada em dois casos: quem acabou de sair (`?saiu=1`) e quem
+ * voltou do auth com erro (`?error=`), para não ficar indo e voltando sem fim.
  */
 export default function LoginPage() {
-  const router = useRouter();
-  const [estado, setEstado] = useState<"entrando" | "parado">("entrando");
-  const [erro, setErro] = useState("");
-  const [saiu, setSaiu] = useState(false);
-  const [empresa, setEmpresa] = useState("");
-  const [pedirEmpresa, setPedirEmpresa] = useState(false);
+  const [estado, setEstado] = useState<"indo" | "saiu" | "erro">("indo");
 
-  const entrar = async (slug = "") => {
-    setEstado("entrando");
-    setErro("");
-
-    try {
-      const res = await signIn("sso", { empresa: slug, redirect: false });
-
-      if (!res?.error) {
-        // Cada perfil tem a sua área; mandar todo mundo para /dashboard fazia
-        // motorista e cliente caírem numa tela que o proxy vai barrar.
-        const session = await getSession();
-        router.push(HOME_BY_ROLE[session?.user?.role ?? ""] ?? "/dashboard");
-        router.refresh();
-        return;
-      }
-
-      // Sem sessão no auth: é lá que se entra. Se acabou de voltar de lá e
-      // ainda não há sessão, para e mostra o erro em vez de ir e voltar sem fim.
-      const voltouDoAuth = new URLSearchParams(window.location.search).get("sso") === "1";
-      if (res.error.includes("Não há sessão do login único") && !voltouDoAuth) {
-        window.location.href = urlDoLoginUnico(window.location.origin);
-        return;
-      }
-
-      if (res.error.toLowerCase().includes("informe a empresa")) setPedirEmpresa(true);
-      setErro(res.error);
-      setEstado("parado");
-    } catch {
-      setErro("Não foi possível entrar agora. Tente de novo.");
-      setEstado("parado");
-    }
+  const entrar = () => {
+    setEstado("indo");
+    void signIn("avilaops", { callbackUrl: "/" });
   };
 
-  const tentou = useRef(false);
+  const disparou = useRef(false);
   useEffect(() => {
-    if (tentou.current) return;
-    tentou.current = true;
+    if (disparou.current) return;
+    disparou.current = true;
 
-    // Quem acabou de sair não é posto para dentro de novo.
-    if (new URLSearchParams(window.location.search).get("saiu") === "1") {
-      setSaiu(true);
-      setEstado("parado");
-      return;
-    }
+    const query = new URLSearchParams(window.location.search);
+    if (query.get("saiu") === "1") return setEstado("saiu");
+    if (query.get("error")) return setEstado("erro");
 
-    void entrar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    entrar();
   }, []);
-
-  const precisaDaEmpresa = pedirEmpresa && estado === "parado";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
@@ -92,69 +44,32 @@ export default function LoginPage() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-4 font-outfit">TMS</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-              {estado === "entrando"
-                ? "Entrando com a sua conta Ávila Ops…"
-                : saiu
-                  ? "Você saiu do sistema."
-                  : "O acesso é feito com a sua conta Ávila Ops."}
+              {estado === "indo" && "Abrindo o login da Ávila Ops…"}
+              {estado === "saiu" && "Você saiu do sistema."}
+              {estado === "erro" && "O acesso é feito com a sua conta Ávila Ops."}
             </p>
           </div>
 
-          {estado === "entrando" && (
-            <div className="flex justify-center py-4" role="status" aria-label="Entrando">
+          {estado === "indo" && (
+            <div className="flex justify-center py-4" role="status" aria-label="Abrindo o login">
               <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
             </div>
           )}
 
-          {estado === "parado" && erro && (
+          {estado === "erro" && (
             <div
               role="alert"
               className="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 rounded-xl text-sm"
             >
-              {erro}
+              Não foi possível entrar. Sua conta pode não ter acesso ao TMS: peça a liberação a quem administra a sua
+              empresa, ou entre com outra conta.
             </div>
           )}
 
-          {precisaDaEmpresa && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void entrar(empresa);
-              }}
-            >
-              <div className="space-y-1.5">
-                <label htmlFor="empresa" className="text-sm font-medium text-gray-700 dark:text-gray-300 ml-1">
-                  Empresa
-                </label>
-                <input
-                  id="empresa"
-                  type="text"
-                  required
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  value={empresa}
-                  onChange={(e) => setEmpresa(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none dark:text-white"
-                  placeholder="identificador da empresa"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
-              >
-                <span>Entrar</span>
-                <LogIn className="w-4 h-4" />
-              </button>
-            </form>
-          )}
-
-          {estado === "parado" && !precisaDaEmpresa && (
+          {estado !== "indo" && (
             <button
               type="button"
-              onClick={() => {
-                window.location.href = urlDoLoginUnico(window.location.origin);
-              }}
+              onClick={entrar}
               className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
             >
               <span>Entrar com Ávila Ops</span>
@@ -162,7 +77,7 @@ export default function LoginPage() {
             </button>
           )}
 
-          {estado === "parado" && erro && (
+          {estado === "erro" && (
             <button
               type="button"
               onClick={() => void sair()}

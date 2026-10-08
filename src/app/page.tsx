@@ -14,5 +14,8 @@ const HOME_BY_ROLE: Record<string, string> = {
 // e todo o resto para o login. O site institucional vive em outro repositorio.
 export default async function Home() {
   const session = await getServerSession(authOptions);
-  redirect(HOME_BY_ROLE[session?.user?.role ?? ""] ?? "/login");
+  if (!session?.user) redirect("/login");
+  // Entrou pelo login único mas ainda não está em nenhuma empresa.
+  if (!session.user.tenantId) redirect("/empresa");
+  redirect(HOME_BY_ROLE[session.user.role] ?? "/empresa");
 }

@@ -21,22 +21,33 @@ const HOME_BY_ROLE: Record<string, string> = {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  const area = Object.keys(AREA_ROLES).find(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
-
-  if (!area) return NextResponse.next();
+  const dentroDe = (prefix: string) => pathname === prefix || pathname.startsWith(`${prefix}/`);
 
   const token = await getToken({ req: request });
 
-  // Sessão emitida antes de o sistema ter empresas (sem `tenantId`) não lê nada
-  // do banco: vale como não ter sessão, e a pessoa entra de novo.
-  if (!token || typeof token.tenantId !== "string") {
-    const login = new URL("/login", request.url);
-    login.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(login);
+  const irPara = (destino: string) => NextResponse.redirect(new URL(destino, request.url));
+  const login = () => {
+    const url = new URL("/login", request.url);
+    url.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(url);
+  };
+
+  // Sem identidade do login único não há o que mostrar em área nenhuma.
+  if (!token?.conta) return login();
+
+  // Escolha de empresa: basta ter entrado pelo login único.
+  if (dentroDe("/empresa")) return NextResponse.next();
+
+  // Plataforma (cadastro de empresas): só a equipe da Ávila Ops.
+  if (dentroDe("/plataforma")) {
+    return token.conta.papel === "ADMIN" ? NextResponse.next() : irPara("/");
   }
+
+  // As áreas de uma empresa exigem ter entrado em uma.
+  if (typeof token.tenantId !== "string") return irPara("/empresa");
+
+  const area = Object.keys(AREA_ROLES).find(dentroDe);
+  if (!area) return NextResponse.next();
 
   const role = typeof token.role === "string" ? token.role : "";
 
@@ -45,9 +56,9 @@ export async function proxy(request: NextRequest) {
   }
 
   // Autenticado, mas sem permissão nesta área: devolve para a área dele.
-  return NextResponse.redirect(new URL(HOME_BY_ROLE[role] ?? "/login", request.url));
+  return irPara(HOME_BY_ROLE[role] ?? "/empresa");
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/driver/:path*", "/portal/:path*"],
+  matcher: ["/dashboard/:path*", "/driver/:path*", "/portal/:path*", "/empresa/:path*", "/plataforma/:path*"],
 };
