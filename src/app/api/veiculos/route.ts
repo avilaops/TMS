@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     const data = parsed.data;
 
     // `data.plate` já vem em maiúsculas e sem hífen: "abc-1d23" e "ABC1D23" são o mesmo veículo.
-    const existingVehicle = await prisma.vehicle.findUnique({
+    const existingVehicle = await prisma.vehicle.findFirst({
       where: { plate: data.plate },
       select: { id: true }
     });

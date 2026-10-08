@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { COLLECTION_STATUS, statusBadge } from '@/lib/format';
 import { recordStatusChanges } from '@/lib/historico';
@@ -59,7 +59,7 @@ export async function DELETE(
     // resposta é 409. Só a carga que estava em rota muda de status, e é ela
     // que ganha linha no histórico, na mesma transação; a de viagem em
     // montagem sai "Coletado" como entrou.
-    const changed = await prisma.$transaction(async (tx) => {
+    const changed = await transacao(async (tx) => {
       const { count } = await tx.collection.updateMany({
         where: { id: coletaId, manifestId, status: expected, manifest: { status: manifest.status } },
         data: { status: 'COLLECTED', manifestId: null },

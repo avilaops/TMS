@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
@@ -15,7 +15,7 @@ export async function POST(
 
     const manifestId = (await params).id;
 
-    const released = await prisma.$transaction(async (tx) => {
+    const released = await transacao(async (tx) => {
       const manifest = await lockManifest(tx, manifestId);
       if (manifest.status !== 'ASSEMBLING') {
         throw new ManifestError(

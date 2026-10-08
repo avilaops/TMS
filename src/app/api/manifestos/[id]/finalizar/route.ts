@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { pendingDeliveriesMessage } from '@/lib/manifestos';
 import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
@@ -18,7 +18,7 @@ export async function POST(
 
     const manifestId = (await params).id;
 
-    await prisma.$transaction(async (tx) => {
+    await transacao(async (tx) => {
       const current = await lockManifest(tx, manifestId);
       if (current.status !== 'ROUTE') {
         throw new ManifestError(

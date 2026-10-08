@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { INACTIVE_DRIVER_MESSAGE } from '@/lib/coletas';
 import {
@@ -24,7 +24,7 @@ export async function POST(
 
     const manifestId = (await params).id;
 
-    await prisma.$transaction(async (tx) => {
+    await transacao(async (tx) => {
       const manifest = await lockManifest(tx, manifestId);
       if (manifest.status !== 'ASSEMBLING') {
         throw new ManifestError(

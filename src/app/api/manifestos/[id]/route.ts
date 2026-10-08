@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { firstIssue } from '@/lib/usuarios';
 import { INACTIVE_DRIVER_MESSAGE } from '@/lib/coletas';
@@ -31,7 +31,7 @@ export async function PATCH(
     }
     const { driverId, vehicleId, addCollectionIds = [] } = parsed.data;
 
-    await prisma.$transaction(async (tx) => {
+    await transacao(async (tx) => {
       const manifest = await lockManifest(tx, manifestId);
       if (!isManifestEditable(manifest)) throw new ManifestError(409, NOT_ASSEMBLING_MESSAGE);
 

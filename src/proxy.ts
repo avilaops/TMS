@@ -30,7 +30,9 @@ export async function proxy(request: NextRequest) {
 
   const token = await getToken({ req: request });
 
-  if (!token) {
+  // Sessão emitida antes de o sistema ter empresas (sem `tenantId`) não lê nada
+  // do banco: vale como não ter sessão, e a pessoa entra de novo.
+  if (!token || typeof token.tenantId !== "string") {
     const login = new URL("/login", request.url);
     login.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(login);

@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
+import { EMPRESA_PADRAO } from "./tests/empresas-de-teste";
 
 export default defineConfig({
   resolve: {
@@ -10,6 +11,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // Aplica o isolamento por empresa e cria as empresas de teste.
+    globalSetup: ["tests/preparar-banco.ts"],
+    // Consulta de teste que nao diz empresa cai nesta (src/lib/prisma.ts).
+    env: { TMS_TENANT_TESTE: EMPRESA_PADRAO.id },
     // As rotas conversam com um Postgres de verdade. Rodar arquivos em paralelo
     // faria dois testes disputarem as mesmas linhas.
     fileParallelism: false,

@@ -32,3 +32,14 @@ Este repositório pertence à Ávila Ops Tecnologia, que ajuda pequenas empresas
 
 This version has breaking changes, APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
+
+## Multi-tenant: regras deste repositório
+
+O sistema atende várias transportadoras no mesmo banco, isoladas pelo Postgres (README, seção "Várias empresas no mesmo sistema"). Ao mexer no código:
+
+- Use `prisma` (export padrão de `src/lib/prisma.ts`) e `transacao()`. Eles rodam na empresa da sessão e não funcionam sem ela.
+- Não escreva `tenantId` em `where` nem em `data` de rota: o banco filtra e preenche. Filtro manual esconde o erro no dia em que a política faltar.
+- `sistema` enxerga todas as empresas. Só entra onde ainda não existe empresa (login, saúde, rastreio público, seed, cadastro de empresas). Uso novo precisa de teste que prove que não vaza.
+- Tabela nova: `tenantId` como nas outras, `npm run db:push`, e o par em `referencias` no `prisma/sql/010-rls.sql` se ela tiver chave estrangeira.
+- Mudou o schema: `npm run db:push` em produção antes do push na `main` (o deploy não aplica schema).
+- Toda mudança que toque em acesso a dado ganha caso em `tests/multi-tenant.test.ts`.

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { DRIVER_PUBLIC_INCLUDE, createDriverSchema, isUniqueViolation } from '@/lib/cadastros';
 import { BCRYPT_ROUNDS, firstIssue } from '@/lib/usuarios';
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     }
     const data = parsed.data;
 
-    const existingDriver = await prisma.driver.findUnique({
+    const existingDriver = await prisma.driver.findFirst({
       where: { cpf: data.cpf },
       select: { id: true }
     });
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     try {
       // O Driver exige um User. Os dois nascem na mesma transação: se o Driver
       // falhar, o User não fica órfão ocupando o e-mail.
-      const newDriver = await prisma.$transaction(async (tx) => {
+      const newDriver = await transacao(async (tx) => {
         const newUser = await tx.user.create({
           data: {
             name: data.name,
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       // Duas criações simultâneas: a segunda bate no índice único do CPF ou do
       // e-mail e a transação inteira é desfeita.
       if (isUniqueViolation(err)) {
-        const cpfTaken = await prisma.driver.findUnique({ where: { cpf: data.cpf }, select: { id: true } });
+        const cpfTaken = await prisma.driver.findFirst({ where: { cpf: data.cpf }, select: { id: true } });
         return NextResponse.json({ error: cpfTaken ? DUPLICATE_CPF : DUPLICATE_EMAIL }, { status: 409 });
       }
       throw err;

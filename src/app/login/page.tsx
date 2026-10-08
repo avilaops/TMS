@@ -18,6 +18,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  // O campo só aparece quando o mesmo acesso existe em mais de uma empresa.
+  const [empresa, setEmpresa] = useState("");
+  const [pedirEmpresa, setPedirEmpresa] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,10 +32,12 @@ export default function LoginPage() {
       const res = await signIn("credentials", {
         email,
         password,
+        empresa: pedirEmpresa ? empresa : "",
         redirect: false,
       });
 
       if (res?.error) {
+        if (res.error.includes("mais de uma empresa")) setPedirEmpresa(true);
         setError(res.error);
         setLoading(false);
       } else {
@@ -105,6 +110,22 @@ export default function LoginPage() {
                 placeholder="••••••••"
               />
             </div>
+
+            {pedirEmpresa && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 ml-1">Empresa</label>
+                <input
+                  type="text"
+                  required
+                  autoCapitalize="none"
+                  autoComplete="organization"
+                  value={empresa}
+                  onChange={(e) => setEmpresa(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-900/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white"
+                  placeholder="identificador da empresa"
+                />
+              </div>
+            )}
 
             <button
               type="submit"

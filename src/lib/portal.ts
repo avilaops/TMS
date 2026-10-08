@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import prisma, { SemEmpresaError } from "@/lib/prisma";
 
 /**
  * Resolve a empresa do usuário logado no portal do cliente.
@@ -27,10 +27,16 @@ export async function requirePortalClient(): Promise<
 
   if (!session?.user?.id) return naoAutorizado;
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, role: true, clientId: true },
-  });
+  // Na empresa da sessão: ver o comentário em requireStaff().
+  const user = await prisma.user
+    .findUnique({
+      where: { id: session.user.id },
+      select: { id: true, role: true, clientId: true },
+    })
+    .catch((error: unknown) => {
+      if (error instanceof SemEmpresaError) return null;
+      throw error;
+    });
 
   // Sessão de um usuário que não existe mais: trata como não autenticado.
   if (!user || user.role !== "CLIENT") return naoAutorizado;

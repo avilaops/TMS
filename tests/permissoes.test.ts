@@ -305,7 +305,7 @@ suite("permissões das rotas internas", () => {
       expect(corpo).not.toHaveProperty("password");
       expect(corpo).toMatchObject({ name: "Novo Operador", email, role: "OPERATION", clientId: null });
 
-      const gravado = await prisma.user.findUniqueOrThrow({ where: { email } });
+      const gravado = await prisma.user.findFirstOrThrow({ where: { email } });
       expect(gravado.password).not.toBe(senha);
       const bcrypt = (await import("bcryptjs")).default;
       expect(await bcrypt.compare(senha, gravado.password)).toBe(true);

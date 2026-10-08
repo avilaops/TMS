@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { sistema } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -37,14 +37,24 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.upsert({
-      where: { email },
+    // Desenvolvimento: o administrador nasce na empresa de TMS_EMPRESA_PADRAO, criada aqui se faltar.
+    const slug = process.env.TMS_EMPRESA_PADRAO || 'dev';
+    const tenant = await sistema.tenant.upsert({
+      where: { slug },
+      update: {},
+      create: { slug, name: 'Empresa de desenvolvimento' },
+      select: { id: true },
+    });
+
+    const user = await sistema.user.upsert({
+      where: { tenantId_email: { tenantId: tenant.id, email } },
       update: { password: hashedPassword, role: 'ADMIN' },
       create: {
         name: 'Administrador Mello',
         email,
         password: hashedPassword,
         role: 'ADMIN',
+        tenantId: tenant.id,
       },
       // Nunca devolver o hash da senha na resposta.
       select: { id: true, name: true, email: true, role: true },

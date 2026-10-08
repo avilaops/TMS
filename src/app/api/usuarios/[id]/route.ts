@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import prisma from "@/lib/prisma";
+import { transacao } from "@/lib/prisma";
 import { requireStaff } from "@/lib/staff";
 import {
   BCRYPT_ROUNDS,
@@ -33,7 +33,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const data = parsed.data;
     const passwordHash = data.password ? await bcrypt.hash(data.password, BCRYPT_ROUNDS) : undefined;
 
-    const usuario = await prisma.$transaction(async (tx) => {
+    const usuario = await transacao(async (tx) => {
       // Trava as linhas de ADMIN: sem isto, dois administradores rebaixando um
       // ao outro ao mesmo tempo passariam os dois pela contagem abaixo.
       if (data.role !== undefined) {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { requireStaff } from '@/lib/staff';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import { DRIVER_USER_SELECT, firstIssue } from '@/lib/usuarios';
 import { INACTIVE_DRIVER_MESSAGE } from '@/lib/coletas';
 import {
@@ -105,7 +105,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const newManifest = await prisma.$transaction(async (tx) => {
+    const newManifest = await transacao(async (tx) => {
       // Segura veículo e motorista, sempre nesta ordem, e confere de novo: quem
       // desativa o motorista ou põe o veículo em manutenção durante a montagem
       // espera esta transação, ou chega antes e a montagem é recusada aqui.

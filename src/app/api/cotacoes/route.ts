@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { paraEmpresa } from "@/lib/prisma";
+import { empresaPublica } from "@/lib/empresas";
 
 export async function POST(req: Request) {
   try {
@@ -19,7 +20,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Preencha todos os campos obrigatórios." }, { status: 400 });
     }
 
-    const lead = await prisma.quoteLead.create({
+    // Rota pública: a empresa vem do corpo (`empresa`, o slug) ou do padrão do ambiente.
+    const tenantId = await empresaPublica(data.empresa);
+    if (!tenantId) {
+      return NextResponse.json({ error: "Empresa não encontrada." }, { status: 404 });
+    }
+
+    const lead = await paraEmpresa(tenantId).db.quoteLead.create({
       data: {
         companyName,
         email,

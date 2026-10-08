@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
-import prisma from '@/lib/prisma';
+import { transacao } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
 import { BCRYPT_ROUNDS, firstIssue } from '@/lib/usuarios';
@@ -23,7 +23,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     // Nome, e-mail e senha ficam no User; o resto, no Driver. Uma transação só:
     // ou muda tudo, ou não muda nada.
-    const motorista = await prisma.$transaction(async (tx) => {
+    const motorista = await transacao(async (tx) => {
       const target = await tx.driver.findUnique({
         where: { id },
         select: { id: true, userId: true, user: { select: { role: true } } }

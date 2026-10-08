@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -33,7 +33,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Usamos transação para garantir que ambas as operações funcionem juntas
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await transacao(async (tx) => {
       // 1. Cria a manutenção
       const maintenance = await tx.maintenance.create({
         data: {

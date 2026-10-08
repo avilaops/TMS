@@ -194,7 +194,7 @@ suite("histórico de status da coleta", () => {
       const a = await montar();
       const b = await montar();
 
-      await prisma.$transaction((tx) =>
+      await (await import("../src/lib/prisma")).transacao((tx) =>
         lib.recordStatusChanges(tx, [
           { collectionId: a.id, fromStatus: "COLLECTED", toStatus: "ROUTE", userId: ids.OPERATION },
           { collectionId: b.id, fromStatus: "COLLECTED", toStatus: "ROUTE", userId: null },
@@ -211,7 +211,7 @@ suite("histórico de status da coleta", () => {
       const coleta = await montar();
 
       await expect(
-        prisma.$transaction(async (tx) => {
+        (await import("../src/lib/prisma")).transacao(async (tx) => {
           await lib.recordStatusChanges(tx, [
             { collectionId: coleta.id, fromStatus: "PENDING", toStatus: "CONFIRMED", userId: null },
           ]);

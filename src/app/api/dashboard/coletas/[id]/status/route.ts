@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { canTransition, statusChangeSchema } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
@@ -51,7 +51,7 @@ export async function POST(
     // Grava só se a coleta ainda estiver no status lido acima: de duas chamadas
     // simultâneas, uma encontra zero linhas e recebe 409. A linha do histórico
     // vai na mesma transação: ou ficam as duas gravações, ou nenhuma.
-    const changed = await prisma.$transaction(async (tx) => {
+    const changed = await transacao(async (tx) => {
       const { count } = await tx.collection.updateMany({
         where: {
           id: collectionId,

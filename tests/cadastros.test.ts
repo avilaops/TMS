@@ -393,7 +393,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
     });
 
     it("PATCH: usuário de outro perfil só aceita a desativação sozinha", async () => {
-      const antigo = await prisma.driver.findUniqueOrThrow({ where: { cpf: CPF_PERFIL } });
+      const antigo = await prisma.driver.findFirstOrThrow({ where: { cpf: CPF_PERFIL } });
 
       // Desativar junto com outro campo, ou reativar, continua recusado.
       for (const corpo of [{ active: false, cnh: "00000000000" }, { active: false, phone: "" }, { active: true }]) {
@@ -422,7 +422,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
     let motoristaId: string;
 
     beforeAll(async () => {
-      motoristaId = (await prisma.driver.findUniqueOrThrow({ where: { cpf: CPF_TESTE } })).id;
+      motoristaId = (await prisma.driver.findFirstOrThrow({ where: { cpf: CPF_TESTE } })).id;
     });
 
     it("cria com a placa digitada e guarda normalizada, com os nomes que a tela manda", async () => {

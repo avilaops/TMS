@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import prisma, { SemEmpresaError } from "@/lib/prisma";
 
 /**
  * Resolve o cadastro de motorista do usuário logado.
@@ -23,10 +23,16 @@ export async function requireDriver(): Promise<
     };
   }
 
-  const driver = await prisma.driver.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true, active: true },
-  });
+  // Na empresa da sessão: ver o comentário em requireStaff().
+  const driver = await prisma.driver
+    .findUnique({
+      where: { userId: session.user.id },
+      select: { id: true, active: true },
+    })
+    .catch((error: unknown) => {
+      if (error instanceof SemEmpresaError) return null;
+      throw error;
+    });
 
   if (!driver) {
     return {

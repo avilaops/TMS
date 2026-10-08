@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
 import { requireDriver } from '@/lib/driver';
 import { firstIssue } from '@/lib/usuarios';
 import {
@@ -64,7 +64,7 @@ export async function POST(
       return NextResponse.json({ error: NOT_IN_ROUTE_MESSAGE }, { status: 409 });
     }
 
-    const proofId = await prisma.$transaction(async (tx) => {
+    const proofId = await transacao(async (tx) => {
       // Grava só se a carga ainda estiver em rota nesta viagem: de duas baixas
       // simultâneas, ou de baixa e retirada ao mesmo tempo, uma encontra zero linhas.
       // Comprovante e linha do histórico vão na mesma transação: ou ficam as

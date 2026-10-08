@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const data = parsed.data;
 
     // `data.cnpj` já vem só com dígitos: com ou sem máscara é o mesmo cliente.
-    const existingClient = await prisma.client.findUnique({
+    const existingClient = await prisma.client.findFirst({
       where: { cnpj: data.cnpj },
       select: { id: true }
     });

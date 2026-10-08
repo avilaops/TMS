@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { sistema } from '@/lib/prisma';
 
 /**
  * Saude do sistema, para o healthcheck do container e para o deploy.
@@ -14,7 +14,7 @@ export async function GET() {
   const commit = process.env.GIT_SHA || 'dev';
 
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await sistema.$queryRaw`SELECT 1`;
     return NextResponse.json({ status: 'ok', commit });
   } catch (error) {
     console.error('Health check: banco indisponivel:', error);

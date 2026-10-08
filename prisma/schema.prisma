@@ -13,10 +13,47 @@ enum Role {
   CLIENT
 }
 
+// ---------------------------------------------------------------------------
+// Multi-tenant
+//
+// Cada transportadora que usa o sistema e um Tenant. Toda tabela de negocio
+// carrega `tenantId`, e quem separa uma empresa da outra e o proprio Postgres:
+// as politicas de seguranca por linha (prisma/sql/010-rls.sql) so mostram as
+// linhas do tenant gravado em `app.tenant_id` na transacao. O codigo nao
+// preenche `tenantId` na mao: o valor padrao da coluna le essa mesma variavel,
+// e sem ela o INSERT falha. Ver src/lib/prisma.ts.
+// ---------------------------------------------------------------------------
+model Tenant {
+  id        String   @id @default(uuid())
+  // Identificador curto e estavel (URL, integracoes). So letras minusculas, numeros e hifen.
+  slug      String   @unique
+  name      String
+  cnpj      String?  @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  clients        Client[]
+  drivers        Driver[]
+  vehicles       Vehicle[]
+  collections    Collection[]
+  statusHistory  CollectionStatusHistory[]
+  manifests      Manifest[]
+  transactions   FinancialTransaction[]
+  maintenances   Maintenance[]
+  proofs         ProofOfDelivery[]
+  quoteLeads     QuoteLead[]
+  articles       Article[]
+  socialPosts    SocialPost[]
+  contentMetrics ContentMetric[]
+}
+
 model User {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id        String   @id @default(uuid())
   name      String
-  email     String   @unique
+  email     String
   password  String
   role      Role     @default(CLIENT)
   clientId  String?  // Empresa que este usuário representa (obrigatório na prática quando role = CLIENT)
@@ -29,13 +66,18 @@ model User {
   statusChanges CollectionStatusHistory[]
 
   @@index([clientId])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, email])
 }
 
 model Client {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id              String   @id @default(uuid())
   companyName     String   // Razão social
   tradeName       String?  // Nome fantasia
-  cnpj            String   @unique
+  cnpj            String
   ie              String?
   contactName     String?
   email           String?
@@ -51,12 +93,17 @@ model Client {
   collections     Collection[]
   users           User[]
   transactions    FinancialTransaction[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, cnpj])
 }
 
 model Driver {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id        String   @id @default(uuid())
   userId    String   @unique
-  cpf       String   @unique
+  cpf       String
   cnh       String
   cnhExpiry DateTime
   category  String
@@ -70,11 +117,16 @@ model Driver {
   vehicles  Vehicle[]
   manifests Manifest[]
   collections Collection[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, cpf])
 }
 
 model Vehicle {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id           String   @id @default(uuid())
-  plate        String   @unique
+  plate        String
   model        String
   type         String
   capacity     Float?
@@ -89,9 +141,14 @@ model Vehicle {
   driver       Driver?  @relation(fields: [driverId], references: [id])
   manifests    Manifest[]
   maintenances Maintenance[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, plate])
 }
 
 model Collection {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   clientId    String
   sender      String
@@ -127,6 +184,14 @@ model Collection {
   manifest    Manifest? @relation(fields: [manifestId], references: [id])
   statusHistory CollectionStatusHistory[]
   proof       ProofOfDelivery?
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+  @@index([tenantId, createdAt])
+  @@index([manifestId])
+  @@index([driverId])
 }
 
 // Uma linha por status que a coleta assumiu, com quando e quem. `fromStatus`
@@ -134,6 +199,7 @@ model Collection {
 // ou a criacao aninhada da propria coleta; coleta anterior a esta tabela fica
 // sem historico, porque nao ha de onde tirar a data real de cada troca.
 model CollectionStatusHistory {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id           String   @id @default(uuid())
   collectionId String
   fromStatus   String?
@@ -146,9 +212,13 @@ model CollectionStatusHistory {
   user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([collectionId, createdAt])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }
 
 model Manifest {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   driverId    String
   vehicleId   String
@@ -160,9 +230,14 @@ model Manifest {
   driver      Driver    @relation(fields: [driverId], references: [id])
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
   collections Collection[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([tenantId, status])
 }
 
 model FinancialTransaction {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   type        String   // INCOME, EXPENSE
   amount      Float
@@ -177,9 +252,13 @@ model FinancialTransaction {
   client      Client?  @relation(fields: [clientId], references: [id])
 
   @@index([clientId])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }
 
 model Maintenance {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   vehicleId   String
   description String
@@ -191,11 +270,15 @@ model Maintenance {
 
   // Relations
   vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }
 
 // Comprovante da entrega de uma carga, registrado pelo motorista na baixa.
 // A entrega e a propria carga (Collection): nao ha registro de entrega a parte.
 model ProofOfDelivery {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id              String   @id @default(uuid())
   collectionId    String   @unique
   photoBase64     String?  @db.Text
@@ -210,9 +293,13 @@ model ProofOfDelivery {
 
   // Relations
   collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }
 
 model QuoteLead {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id              String   @id @default(uuid())
   companyName     String
   email           String
@@ -225,6 +312,9 @@ model QuoteLead {
   status          String   @default("NEW") // NEW, CONTACTED, CONVERTED, LOST
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +349,7 @@ enum PostStatus {
 }
 
 model Article {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   slug        String   @unique // o mesmo slug de src/content/blog.ts
   title       String
@@ -276,9 +367,13 @@ model Article {
   metrics     ContentMetric[]
 
   @@index([publishedAt])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }
 
 model SocialPost {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String     @id @default(uuid())
   channel     Channel
   status      PostStatus @default(DRAFT)
@@ -314,9 +409,13 @@ model SocialPost {
   @@unique([channel, externalId])
   @@index([status, scheduledFor])
   @@index([articleId])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }
 
 model ContentMetric {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   articleId   String
   measuredOn  DateTime @db.Date // a data da medição, não o instante
@@ -336,4 +435,7 @@ model ContentMetric {
   // não pode dobrar o número.
   @@unique([articleId, measuredOn])
   @@index([measuredOn])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }

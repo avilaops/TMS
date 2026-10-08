@@ -44,8 +44,9 @@ Requisitos: Node 22+ e um Postgres acessível. Tudo aqui precisa do banco.
 npm install
 cp .env.example .env          # preencha DATABASE_URL e NEXTAUTH_SECRET
 npx prisma generate
-npx prisma db push            # cria as tabelas
-ADMIN_EMAIL=voce@exemplo.com ADMIN_PASSWORD=troque npx tsx prisma/seed.ts
+npm run db:push               # cria as tabelas e aplica o isolamento por empresa
+TENANT_SLUG=minha-transportadora TENANT_NAME="Minha Transportadora" \
+  ADMIN_EMAIL=voce@exemplo.com ADMIN_PASSWORD=troque-por-12-caracteres npx tsx prisma/seed.ts
 npm run dev
 ```
 
@@ -75,7 +76,34 @@ Todas estão documentadas em [.env.example](.env.example). As essenciais:
 | `DATABASE_URL` | Conexão Postgres |
 | `NEXTAUTH_URL` | URL pública do sistema (`https://tms.avilaops.com` em produção) |
 | `NEXTAUTH_SECRET` | Assinatura do JWT de sessão |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed do administrador |
+| `TMS_EMPRESA_PADRAO` | Slug da empresa das rotas públicas de cotação e lead quando a requisição não informa `empresa` |
+| `TENANT_SLUG`, `TENANT_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed: cria a empresa e o administrador dela |
+
+## Várias empresas no mesmo sistema (multi-tenant)
+
+Cada transportadora é uma linha de `Tenant`, e toda tabela de negócio tem `tenantId`. Todas dividem o mesmo banco; quem separa uma da outra é o **Postgres**, não o código de cada rota:
+
+- **Políticas de segurança por linha** ([prisma/sql/010-rls.sql](prisma/sql/010-rls.sql)). Consulta feita em nome de uma empresa roda numa transação que troca para o papel `tms_app` e grava a empresa em `app.tenant_id`. Para esse papel, só existem as linhas daquela empresa: um `findMany` sem filtro, um `UPDATE` sem `WHERE` ou um id de outra empresa na URL não alcançam dado alheio.
+- **`tenantId` preenchido pelo banco.** O valor padrão da coluna lê `app.tenant_id`. O código não informa a empresa ao gravar, e gravar fora de uma transação de empresa falha em vez de cair na empresa errada.
+- **Referência entre empresas é recusada** por gatilho (`tms_mesmo_tenant`): chave estrangeira não passa por política, e sem isso daria para apontar uma coleta para o cliente de outra empresa sabendo o id.
+- **Unicidade por empresa:** CNPJ do cliente, CPF do motorista, placa e e-mail do usuário são únicos dentro da empresa. Código de rastreio e chave de CT-e continuam únicos no sistema inteiro.
+
+No código ([src/lib/prisma.ts](src/lib/prisma.ts)):
+
+| Uso | O que é |
+| --- | --- |
+| `prisma` (export padrão) | Empresa tirada da sessão de quem fez a requisição. Sem sessão, lança erro: não há consulta sem empresa |
+| `transacao(fn)` | Transação interativa na empresa da sessão. O cliente padrão não tem `$transaction` de propósito |
+| `paraEmpresa(id)` | Empresa informada por quem chama: rota pública que recebe a empresa por parâmetro |
+| `sistema` | Sem empresa e sem política. Só para o que acontece antes de haver empresa: login, saúde, rastreio público por código, seed |
+
+**Login.** O e-mail é único por empresa, então a mesma pessoa pode ter acesso em duas. O login acha a empresa pela senha; o campo "Empresa" (o slug) só aparece quando e-mail e senha coincidem em mais de uma. A empresa vai no token da sessão (`tenantId`); sessão sem ela é tratada como não ter sessão.
+
+**Tabela nova.** Declare `tenantId` igual ao das outras (com o `@default(dbgenerated(...))` e a relação com `Tenant`), rode `npm run db:push` e, se ela referencia outra tabela, acrescente o par em `referencias`, no `010-rls.sql`. A política e as permissões são criadas sozinhas para toda tabela que tenha `tenantId`.
+
+**Rotas públicas.** `POST /api/leads` e `POST /api/cotacoes` aceitam `empresa` (slug) no corpo; sem ele vale `TMS_EMPRESA_PADRAO`. Empresa inexistente ou desativada responde 404. `GET /api/rastreio` não precisa de empresa: o código de rastreio é único no sistema.
+
+Os testes em [tests/multi-tenant.test.ts](tests/multi-tenant.test.ts) provam o isolamento contra o banco, com duas empresas.
 
 ## Estrutura
 
@@ -127,12 +155,24 @@ Os jobs de imagem e deploy são cópia dos de `avilaops/infra` porque este repos
 
 ### Banco em produção
 
-Não há migrações versionadas: o schema é aplicado com `prisma db push`, da sua máquina, por túnel SSH. O deploy **não** faz isso sozinho, então mudança de schema precisa ser aplicada antes de o código que depende dela chegar à `main`.
+Não há migrações versionadas: o schema é aplicado com `npm run db:push` (o `prisma db push` seguido do isolamento por empresa), da sua máquina, por túnel SSH. O deploy **não** faz isso sozinho, então mudança de schema precisa ser aplicada antes de o código que depende dela chegar à `main`.
 
 ```bash
 ssh -N -L 5433:127.0.0.1:5432 applications &
-DATABASE_URL="postgresql://tms_avilaops_com:<senha>@127.0.0.1:5433/tms_avilaops_com?schema=public" npx prisma db push
+DATABASE_URL="postgresql://tms_avilaops_com:<senha>@127.0.0.1:5433/tms_avilaops_com?schema=public" npm run db:push
 ```
+
+O papel `tms_app` precisa existir no servidor, com o dono do banco como membro. O dono não pode criar papel, então um superusuário faz isso uma única vez: `CREATE ROLE tms_app NOLOGIN; GRANT tms_app TO tms_avilaops_com;`.
+
+Empresa nova entra pelo seed, com a `DATABASE_URL` de produção no ambiente (`TENANT_SLUG`, `TENANT_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`).
+
+**Coluna `tenantId` em tabela que já existe.** O Postgres calcula o valor padrão ao criar a coluna, mesmo com a tabela vazia, e sem `app.tenant_id` o `db push` para com `unrecognized configuration parameter "app.tenant_id"`. Informe a variável na própria conexão, com o id da empresa que deve ficar com as linhas existentes:
+
+```bash
+DATABASE_URL="postgresql://…/tms_avilaops_com?schema=public&options=-c%20app.tenant_id%3D<id-da-empresa>" npx prisma db push
+```
+
+Foi assim que o banco de produção, criado antes de haver empresas, recebeu o schema em 08/10/2026 (estava vazio).
 
 - **Variáveis:** `/opt/tms-avilaops-com/.env` (modo 600), a partir de [.env.example](.env.example).
 - **Voltar versão:** republicar o commit anterior pela `main`. Não há cópia de código nem de build guardada no servidor.

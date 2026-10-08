@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { sistema } from '@/lib/prisma';
 import { consumeRateLimit } from '@/lib/rate-limit';
 import { normalizeTaxId, normalizeTrackingCode } from '@/lib/tracking';
 
@@ -72,7 +72,9 @@ export async function GET(req: Request) {
   if (!taxId || !trackingCode) return notFound();
 
   try {
-    const minuta = await prisma.collection.findFirst({
+    // Sem sessão e sem empresa: o código de rastreio é único no sistema inteiro,
+    // e o CNPJ confere dentro da empresa a que a coleta pertence.
+    const minuta = await sistema.collection.findFirst({
       where: {
         trackingCode,
         client: { cnpj: taxId },

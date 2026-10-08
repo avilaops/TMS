@@ -285,7 +285,10 @@ suite("manifestos pelo painel", () => {
   // perde a corrida, avisa por `parar` para o laço não seguir consultando.
   async function esperandoTrava(quantas = 1, parar?: AbortSignal): Promise<void> {
     while (!parar?.aborted) {
-      const [{ parados }] = await prisma.$queryRaw<{ parados: number }[]>`
+      // Pelo caminho de sistema: o papel das consultas de empresa (tms_app) não
+      // enxerga o estado das outras conexões em pg_stat_activity.
+      const { sistema } = await import("../src/lib/prisma");
+      const [{ parados }] = await sistema.$queryRaw<{ parados: number }[]>`
         SELECT count(*)::int AS parados FROM pg_stat_activity
         WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`;
       if (parados >= quantas) return;
@@ -320,7 +323,7 @@ suite("manifestos pelo painel", () => {
   ): Promise<Response> {
     let resposta: Promise<Response> | undefined;
     try {
-      await prisma.$transaction(async (tx) => {
+      await (await import("../src/lib/prisma")).transacao(async (tx) => {
         if (qual === "veiculo") {
           await tx.vehicle.update({ where: { id: dupla.vehicleId }, data: { status: "MAINTENANCE" } });
         } else {
@@ -538,7 +541,7 @@ suite("manifestos pelo painel", () => {
       const alvo = await montar();
       let resposta: Promise<Response> | undefined;
 
-      await prisma.$transaction(async (tx) => {
+      await (await import("../src/lib/prisma")).transacao(async (tx) => {
         await tx.$queryRaw`SELECT id FROM "Vehicle" WHERE id = ${veiculoId} FOR SHARE`;
         await tx.$queryRaw`SELECT id FROM "Driver" WHERE id = ${motoristaId} FOR SHARE`;
 
@@ -920,7 +923,7 @@ suite("manifestos pelo painel", () => {
       let troca: Promise<Response> | undefined;
 
       try {
-        await prisma.$transaction(async (tx) => {
+        await (await import("../src/lib/prisma")).transacao(async (tx) => {
           await tx.$queryRaw`SELECT id FROM "Vehicle" WHERE id = ${alvo.vehicleId} FOR UPDATE`;
 
           saida = sair(alvo.id);
@@ -1081,7 +1084,7 @@ suite("manifestos pelo painel", () => {
       let fim: Promise<Response> | undefined;
 
       try {
-        await prisma.$transaction(async (tx) => {
+        await (await import("../src/lib/prisma")).transacao(async (tx) => {
           await tx.$queryRaw`SELECT id FROM "Driver" WHERE id = ${segunda.driverId} FOR UPDATE`;
 
           saida = sair(segunda.id);

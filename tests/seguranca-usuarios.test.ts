@@ -239,7 +239,7 @@ suite("segurança de usuários e motoristas", () => {
       const resposta = await res.json();
       expect(temChaveDeSenha(resposta)).toBe(false);
 
-      const gravado = await prisma.user.findUniqueOrThrow({ where: { email } });
+      const gravado = await prisma.user.findFirstOrThrow({ where: { email } });
       expect(gravado.role).toBe("DRIVER");
       expect(gravado.password).toMatch(/^\$2[aby]\$12\$.{53}$/);
       expect(await bcrypt.compare(SENHA, gravado.password)).toBe(true);

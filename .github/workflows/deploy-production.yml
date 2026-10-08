@@ -43,6 +43,8 @@ jobs:
       - run: npm ci
       - run: npx prisma generate --schema=prisma/schema.prisma
       - run: npx prisma db push --schema=prisma/schema.prisma
+      # Papel, politicas de isolamento por empresa e gatilhos (prisma/sql/010-rls.sql).
+      - run: npm run db:rls
       - run: npm run typecheck
       - run: npm test
 
