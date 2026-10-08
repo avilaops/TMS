@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { transacao } from "@/lib/prisma";
 import { requireStaff } from "@/lib/staff";
 import {
-  BCRYPT_ROUNDS,
   DRIVER_ROLE_MESSAGE,
   USER_PUBLIC_SELECT,
   firstIssue,
@@ -31,7 +29,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const data = parsed.data;
-    const passwordHash = data.password ? await bcrypt.hash(data.password, BCRYPT_ROUNDS) : undefined;
 
     const usuario = await transacao(async (tx) => {
       // Trava as linhas de ADMIN: sem isto, dois administradores rebaixando um
@@ -87,7 +84,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           ...(data.name !== undefined && { name: data.name }),
           ...(roleChange && { role: roleChange }),
           ...(clientId !== undefined && { clientId }),
-          ...(passwordHash && { password: passwordHash }),
         },
         select: USER_PUBLIC_SELECT,
       });

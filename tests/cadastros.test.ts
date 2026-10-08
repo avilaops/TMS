@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getServerSession } from "next-auth";
-import bcrypt from "bcryptjs";
 
 /**
  * Cadastros de clientes, motoristas e veículos — criar, listar, editar e
@@ -214,7 +213,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
   describe("motoristas", () => {
     let motoristaId: string;
 
-    it("cria motorista e usuário DRIVER, com a senha em bcrypt", async () => {
+    it("cria motorista e usuário DRIVER, sem senha, e pede a liberação no login único", async () => {
       const res = await motoristas.POST(req("POST", corpoMotorista({ email: ` ${email("motorista").toUpperCase()} ` })));
       expect(res.status).toBe(201);
       const corpo = await res.json();
@@ -227,8 +226,11 @@ suite("cadastros de clientes, motoristas e veículos", () => {
       expect(gravado).toMatchObject({ cpf: CPF_TESTE, cnh: "12345678900", category: "D", active: true });
       expect(gravado.cnhExpiry.toISOString().slice(0, 10)).toBe("2031-06-30");
       expect(gravado.user).toMatchObject({ role: "DRIVER", email: email("motorista") });
-      expect(gravado.user.password).not.toBe(SENHA);
-      expect(await bcrypt.compare(SENHA, gravado.user.password)).toBe(true);
+      // Senha no corpo é ignorada; a coluna guarda um valor que não é hash de nada.
+      expect(gravado.user.password).toMatch(/^sem-senha:/);
+      // Em teste o login único não está configurado: o cadastro vale e o
+      // operador é avisado de que falta liberar o acesso.
+      expect(corpo.acesso).toEqual({ ok: false, erro: expect.any(String) });
     });
 
     it("CPF repetido → 409 e não sobra usuário órfão", async () => {
@@ -252,9 +254,6 @@ suite("cadastros de clientes, motoristas e veículos", () => {
     it("dados inválidos → 400", async () => {
       const base = corpoMotorista({ cpf: CPF_OUTRO, email: email("invalido") });
       const casos: [string, Record<string, unknown>][] = [
-        ["senha curta", { ...base, password: "1234567" }],
-        ["senha longa demais", { ...base, password: "x".repeat(73) }],
-        ["sem senha", { ...base, password: undefined }],
         ["sem e-mail", { ...base, email: undefined }],
         ["CPF com 10 dígitos", { ...base, cpf: "1234567890" }],
         ["categoria fora da lista", { ...base, category: "Z" }],
@@ -278,7 +277,6 @@ suite("cadastros de clientes, motoristas e veículos", () => {
         ["nome numérico", { ...base, name: 123 }, /nome/i],
         ["CPF numérico", { ...base, cpf: 12345678901 }, /CPF/],
         ["e-mail em objeto", { ...base, email: { a: 1 } }, /e-mail/i],
-        ["senha numérica", { ...base, password: 12345678 }, /senha/i],
         ["CNH numérica", { ...base, cnh: 12345678900 }, /CNH/],
         ["categoria numérica", { ...base, category: 1 }, /categoria/i],
         ["validade numérica", { ...base, cnhExpiry: 20310630 }, /validade/i],
@@ -308,7 +306,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
       expect(temChaveDeSenha(corpo)).toBe(false);
     });
 
-    it("PATCH altera os dados e, com senha nova, troca o hash", async () => {
+    it("PATCH altera os dados; senha no corpo é ignorada", async () => {
       const antes = await prisma.driver.findUniqueOrThrow({ where: { id: motoristaId }, include: { user: true } });
 
       const res = await motorista.PATCH(
@@ -331,9 +329,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
       // CPF não é editável: o campo é ignorado.
       expect(depois).toMatchObject({ cpf: CPF_TESTE, phone: null, category: "E" });
       expect(depois.cnhExpiry.toISOString().slice(0, 10)).toBe("2020-01-15");
-      expect(depois.user.password).not.toBe(antes.user.password);
-      expect(await bcrypt.compare("outra-senha-456", depois.user.password)).toBe(true);
-      expect(await bcrypt.compare(SENHA, depois.user.password)).toBe(false);
+      expect(depois.user.password).toBe(antes.user.password);
     });
 
     it("PATCH sem senha mantém o hash; active: false grava", async () => {
@@ -362,6 +358,7 @@ suite("cadastros de clientes, motoristas e veículos", () => {
       expect(gravado.user.email).toBe(email("motorista"));
 
       expect((await motorista.PATCH(req("PATCH", {}), ctx(motoristaId))).status).toBe(400);
+      // Só senha no corpo: não há o que alterar.
       expect((await motorista.PATCH(req("PATCH", { password: "curta" }), ctx(motoristaId))).status).toBe(400);
       // Só campo não editável é o mesmo que não mandar nada.
       expect((await motorista.PATCH(req("PATCH", { cpf: CPF_OUTRO }), ctx(motoristaId))).status).toBe(400);

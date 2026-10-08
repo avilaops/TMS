@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AvisoDeAcesso, type Acesso } from "@/components/AvisoDeAcesso";
 
 interface Usuario {
   id: string;
@@ -35,7 +36,7 @@ const ASSIGNABLE_ROLES = ["ADMIN", "OPERATION", "CLIENT"];
 const SELECT_CLASS =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
-const EMPTY_FORM = { name: "", email: "", role: "OPERATION", clientId: "", password: "" };
+const EMPTY_FORM = { name: "", email: "", role: "OPERATION", clientId: "" };
 
 async function errorMessage(res: Response, fallback: string) {
   const body = await res.json().catch(() => null);
@@ -52,10 +53,11 @@ export default function UsuariosPage() {
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Edição em linha: um usuário por vez.
-  const [editing, setEditing] = useState<{ id: string; mode: "role" | "password" } | null>(null);
+  const [editing, setEditing] = useState<{ id: string } | null>(null);
+  // Resultado da liberação no login único do último cadastro (ou de "Liberar acesso").
+  const [acesso, setAcesso] = useState<{ nome: string; acesso: Acesso } | null>(null);
   const [editRole, setEditRole] = useState("OPERATION");
   const [editClientId, setEditClientId] = useState("");
-  const [editPassword, setEditPassword] = useState("");
 
   // Mudar `reloadKey` refaz a busca depois de criar ou alterar um usuário.
   const [reloadKey, setReloadKey] = useState(0);
@@ -100,13 +102,14 @@ export default function UsuariosPage() {
           name: form.name,
           email: form.email,
           role: form.role,
-          password: form.password,
           clientId: form.role === "CLIENT" ? form.clientId || null : null,
         }),
       });
       if (res.ok) {
+        const criado = (await res.json()) as { name: string; acesso?: Acesso };
         setForm(EMPTY_FORM);
         setFeedback({ ok: true, text: "Usuário criado." });
+        if (criado.acesso) setAcesso({ nome: criado.name, acesso: criado.acesso });
         reload();
       } else {
         setFeedback({ ok: false, text: await errorMessage(res, "Erro ao criar usuário.") });
@@ -118,12 +121,28 @@ export default function UsuariosPage() {
     }
   };
 
-  const startEdit = (usuario: Usuario, mode: "role" | "password") => {
+  const startEdit = (usuario: Usuario) => {
     setFeedback(null);
-    setEditing({ id: usuario.id, mode });
+    setEditing({ id: usuario.id });
     setEditRole(usuario.role);
     setEditClientId(usuario.clientId ?? "");
-    setEditPassword("");
+  };
+
+  // Pede de novo ao login único a liberação da pessoa. Para quem foi cadastrado
+  // com o login único fora do ar, ou perdeu o acesso.
+  const liberar = async (usuario: Usuario) => {
+    setFeedback(null);
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/usuarios/${usuario.id}/acesso`, { method: "POST" });
+      const corpo = (await res.json().catch(() => ({}))) as { acesso?: Acesso; error?: string };
+      if (corpo.acesso) setAcesso({ nome: usuario.name, acesso: corpo.acesso });
+      else setFeedback({ ok: false, text: corpo.error ?? "Erro ao liberar o acesso." });
+    } catch {
+      setFeedback({ ok: false, text: "Erro ao liberar o acesso." });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleUpdate = async () => {
@@ -131,20 +150,14 @@ export default function UsuariosPage() {
     setFeedback(null);
     setIsSaving(true);
     try {
-      const body =
-        editing.mode === "password"
-          ? { password: editPassword }
-          : { role: editRole, clientId: editRole === "CLIENT" ? editClientId || null : null };
+      const body = { role: editRole, clientId: editRole === "CLIENT" ? editClientId || null : null };
       const res = await fetch(`/api/usuarios/${editing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        setFeedback({
-          ok: true,
-          text: editing.mode === "password" ? "Senha redefinida." : "Perfil alterado.",
-        });
+        setFeedback({ ok: true, text: "Perfil alterado." });
         setEditing(null);
         reload();
       } else {
@@ -200,6 +213,8 @@ export default function UsuariosPage() {
         </p>
       )}
 
+      {acesso && <AvisoDeAcesso nome={acesso.nome} acesso={acesso.acesso} onFechar={() => setAcesso(null)} />}
+
       <Card>
         <CardHeader>
           <CardTitle>Novo usuário</CardTitle>
@@ -243,19 +258,6 @@ export default function UsuariosPage() {
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="usuario-senha">Senha inicial (mín. 8 caracteres)</Label>
-              <Input
-                id="usuario-senha"
-                type="password"
-                required
-                minLength={8}
-                maxLength={72}
-                autoComplete="new-password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-              />
             </div>
             {form.role === "CLIENT" && (
               <div className="space-y-1.5 md:col-span-2">
@@ -323,7 +325,6 @@ export default function UsuariosPage() {
                       <td className="px-3 py-3">
                         {isEditing ? (
                           <div className="flex flex-wrap items-center justify-end gap-2">
-                            {editing.mode === "role" ? (
                               <>
                                 <select
                                   aria-label="Novo perfil"
@@ -353,19 +354,6 @@ export default function UsuariosPage() {
                                   </select>
                                 )}
                               </>
-                            ) : (
-                              <Input
-                                aria-label="Nova senha"
-                                type="password"
-                                placeholder="Nova senha (mín. 8)"
-                                minLength={8}
-                                maxLength={72}
-                                autoComplete="new-password"
-                                className="w-48"
-                                value={editPassword}
-                                onChange={(e) => setEditPassword(e.target.value)}
-                              />
-                            )}
                             <Button size="sm" disabled={isSaving} onClick={handleUpdate}>
                               Salvar
                             </Button>
@@ -376,12 +364,12 @@ export default function UsuariosPage() {
                         ) : (
                           <div className="flex flex-wrap justify-end gap-2">
                             {usuario.role !== "DRIVER" && (
-                              <Button size="sm" variant="outline" onClick={() => startEdit(usuario, "role")}>
+                              <Button size="sm" variant="outline" onClick={() => startEdit(usuario)}>
                                 Trocar perfil
                               </Button>
                             )}
-                            <Button size="sm" variant="outline" onClick={() => startEdit(usuario, "password")}>
-                              Redefinir senha
+                            <Button size="sm" variant="outline" disabled={isSaving} onClick={() => liberar(usuario)}>
+                              Liberar acesso
                             </Button>
                           </div>
                         )}

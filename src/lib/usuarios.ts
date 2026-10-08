@@ -1,8 +1,5 @@
 import { z } from "zod";
 
-// Custo igual ao de prisma/seed.ts.
-export const BCRYPT_ROUNDS = 12;
-
 // Campos que as rotas de usuário devolvem. `password` nunca entra aqui.
 export const USER_PUBLIC_SELECT = {
   id: true,
@@ -26,11 +23,6 @@ export const DRIVER_ROLE_MESSAGE =
 
 const role = z.enum(["ADMIN", "OPERATION", "DRIVER", "CLIENT"]);
 const name = z.string().trim().min(2, "Informe o nome.").max(120);
-// O bcrypt só considera os primeiros 72 bytes; acima disso a senha seria truncada em silêncio.
-const password = z
-  .string()
-  .min(8, "A senha precisa ter pelo menos 8 caracteres.")
-  .max(72, "A senha pode ter no máximo 72 caracteres.");
 const clientId = z.string().trim().min(1);
 
 export const createUserSchema = z.object({
@@ -38,7 +30,6 @@ export const createUserSchema = z.object({
   // Normaliza antes de validar: espaço nas pontas e maiúsculas não criam um segundo usuário.
   email: z.string().trim().toLowerCase().max(254).pipe(z.email("E-mail inválido.")),
   role,
-  password,
   clientId: clientId.nullish(),
 });
 
@@ -46,11 +37,10 @@ export const updateUserSchema = z
   .object({
     name: name.optional(),
     role: role.optional(),
-    password: password.optional(),
     clientId: clientId.nullish(),
   })
-  .refine((data) => data.name !== undefined || data.role !== undefined || data.password !== undefined, {
-    message: "Informe nome, perfil ou senha para alterar.",
+  .refine((data) => data.name !== undefined || data.role !== undefined, {
+    message: "Informe nome ou perfil para alterar.",
   });
 
 export function firstIssue(error: z.ZodError): string {

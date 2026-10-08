@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Building2, Loader2, Plus } from "lucide-react";
+import { AvisoDeAcesso, type Acesso } from "@/components/AvisoDeAcesso";
 
 type Empresa = {
   id: string;
@@ -26,6 +27,7 @@ export default function EmpresasDaPlataforma() {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
+  const [acesso, setAcesso] = useState<{ nome: string; acesso: Acesso } | null>(null);
 
   const carregar = () =>
     fetch("/api/plataforma/empresas")
@@ -51,12 +53,11 @@ export default function EmpresasDaPlataforma() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
-    const corpo = (await res.json().catch(() => ({}))) as { error?: string; name?: string };
+    const corpo = (await res.json().catch(() => ({}))) as { error?: string; name?: string; acesso?: Acesso };
 
     if (res.ok) {
-      setAviso(
-        `Empresa "${corpo.name}" criada. Para ${form.adminEmail} conseguir entrar, a conta precisa existir no auth e estar liberada para o TMS.`,
-      );
+      setAviso(`Empresa "${corpo.name}" criada.`);
+      if (corpo.acesso) setAcesso({ nome: form.adminName, acesso: corpo.acesso });
       setForm(VAZIO);
       await carregar();
     } else {
@@ -106,6 +107,8 @@ export default function EmpresasDaPlataforma() {
             {aviso}
           </div>
         )}
+
+        {acesso && <AvisoDeAcesso nome={acesso.nome} acesso={acesso.acesso} onFechar={() => setAcesso(null)} />}
 
         <form
           onSubmit={criar}

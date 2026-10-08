@@ -292,7 +292,7 @@ suite("permissões das rotas internas", () => {
       expect(JSON.stringify(lista)).not.toContain(HASH_FALSO);
     });
 
-    it("cria usuário com senha gravada em bcrypt, e e-mail repetido → 409", async () => {
+    it("cria usuário sem senha, pede a liberação no login único, e e-mail repetido → 409", async () => {
       entrarComo("ADMIN");
       const email = `${PREFIXO}novo@exemplo.br`;
       const senha = "senha-de-teste-123";
@@ -306,9 +306,9 @@ suite("permissões das rotas internas", () => {
       expect(corpo).toMatchObject({ name: "Novo Operador", email, role: "OPERATION", clientId: null });
 
       const gravado = await prisma.user.findFirstOrThrow({ where: { email } });
-      expect(gravado.password).not.toBe(senha);
-      const bcrypt = (await import("bcryptjs")).default;
-      expect(await bcrypt.compare(senha, gravado.password)).toBe(true);
+      // Senha no corpo é ignorada; a coluna guarda um valor que não é hash de nada.
+      expect(gravado.password).toMatch(/^sem-senha:/);
+      expect(corpo.acesso).toEqual({ ok: false, erro: expect.any(String) });
 
       const repetido = await usuarios.POST(
         req("POST", { name: "Outro", email, role: "OPERATION", password: senha }),
@@ -322,7 +322,6 @@ suite("permissões das rotas internas", () => {
       const base = { name: "Fulano", email: `${PREFIXO}invalido@exemplo.br`, role: "OPERATION", password: "12345678" };
 
       const casos: [string, Record<string, unknown>][] = [
-        ["senha curta", { ...base, password: "1234567" }],
         ["e-mail inválido", { ...base, email: "nao-e-email" }],
         ["perfil inexistente", { ...base, role: "ROOT" }],
         ["CLIENT sem empresa", { ...base, role: "CLIENT" }],
@@ -354,7 +353,7 @@ suite("permissões das rotas internas", () => {
       expect((await res.json()).clientId).toBe(clienteId);
     });
 
-    it("altera nome e redefine senha", async () => {
+    it("altera o nome; senha no corpo é ignorada", async () => {
       entrarComo("ADMIN");
       const alvo = await criarUsuario("alterar", "OPERATION");
 
@@ -368,8 +367,7 @@ suite("permissões das rotas internas", () => {
       expect(corpo.name).toBe("Nome Novo");
 
       const gravado = await prisma.user.findUniqueOrThrow({ where: { id: alvo.id } });
-      const bcrypt = (await import("bcryptjs")).default;
-      expect(await bcrypt.compare("outra-senha-456", gravado.password)).toBe(true);
+      expect(gravado.password).toBe(alvo.password);
 
       expect((await usuario.PATCH(req("PATCH", { password: "curta" }), ctx(alvo.id))).status).toBe(400);
       expect((await usuario.PATCH(req("PATCH", {}), ctx(alvo.id))).status).toBe(400);

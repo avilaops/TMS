@@ -222,7 +222,7 @@ suite("segurança de usuários e motoristas", () => {
       cnhExpiry: "2031-06-30",
     });
 
-    it("grava em bcrypt a senha informada, sem devolvê-la", async () => {
+    it("ignora senha informada: nada dela é gravado nem devolvido", async () => {
       entrarComo("OPERATION");
       const email = `${PREFIXO}motorista-novo@exemplo.br`;
       const res = await motoristas.POST(req("POST", corpo(CPF_NOVO, email)));
@@ -232,17 +232,17 @@ suite("segurança de usuários e motoristas", () => {
 
       const gravado = await prisma.user.findFirstOrThrow({ where: { email } });
       expect(gravado.role).toBe("DRIVER");
-      expect(gravado.password).toMatch(/^\$2[aby]\$12\$.{53}$/);
-      expect(await bcrypt.compare(SENHA, gravado.password)).toBe(true);
-      expect(await bcrypt.compare("password123", gravado.password)).toBe(false);
+      // O TMS não tem senha: a que vier no corpo é ignorada, e a coluna guarda
+      // um valor que não é hash de nada.
+      expect(gravado.password).toMatch(/^sem-senha:/);
       expect(JSON.stringify(resposta)).not.toContain(gravado.password);
       expect(JSON.stringify(resposta)).not.toContain(SENHA);
 
-      // Um ADMIN ainda redefine a senha em Usuários.
+      // Nem o ADMIN define senha em Usuários: o campo não existe mais.
       entrarComo("ADMIN");
-      expect((await usuario.PATCH(req("PATCH", { password: "outra-senha-456" }), ctx(gravado.id))).status).toBe(200);
+      expect((await usuario.PATCH(req("PATCH", { password: "outra-senha-456" }), ctx(gravado.id))).status).toBe(400);
       const depois = await prisma.user.findUniqueOrThrow({ where: { id: gravado.id } });
-      expect(await bcrypt.compare("outra-senha-456", depois.password)).toBe(true);
+      expect(depois.password).toBe(gravado.password);
     });
 
     it("falha ao criar o Driver não deixa User órfão", async () => {

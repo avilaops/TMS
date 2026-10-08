@@ -213,3 +213,106 @@ suite("entrada pelo login único e plataforma", () => {
     });
   });
 });
+
+/**
+ * Ponte com a API de provisionamento do login único (src/lib/acessos.ts). O
+ * auth é simulado trocando o `fetch`: o que se prova é o que o TMS pede e o que
+ * faz com cada resposta.
+ */
+describe("liberação de acesso no login único", () => {
+  const SEGREDO = "segredo-de-teste";
+  let acessos: typeof import("../src/lib/acessos");
+
+  beforeAll(async () => {
+    acessos = await import("../src/lib/acessos");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  function authResponde(status: number, corpo: unknown) {
+    const chamadas: { url: string; method: string; authorization: string | null; body: unknown }[] = [];
+    vi.stubEnv("AVILAOPS_CLIENT_SECRET", SEGREDO);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        chamadas.push({
+          url: String(url),
+          method: init?.method ?? "GET",
+          authorization: new Headers(init?.headers).get("authorization"),
+          body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+        });
+        return new Response(JSON.stringify(corpo), { status, headers: { "content-type": "application/json" } });
+      }),
+    );
+    return chamadas;
+  }
+
+  it("sem segredo configurado não chama ninguém e avisa", async () => {
+    vi.stubEnv("AVILAOPS_CLIENT_SECRET", "");
+    const fetchFalso = vi.fn();
+    vi.stubGlobal("fetch", fetchFalso);
+
+    expect(await acessos.liberarAcesso({ email: "a@exemplo.br", nome: "A" })).toEqual({ ok: false, erro: expect.any(String) });
+    expect(await acessos.revogarAcesso("a@exemplo.br")).toBe(false);
+    expect(fetchFalso).not.toHaveBeenCalled();
+  });
+
+  it("conta nova: manda os dados como o cliente OIDC e devolve o convite", async () => {
+    const chamadas = authResponde(201, { email: "novo@exemplo.br", criada: true, convite: "https://auth.avilaops.com/recuperar/abc" });
+
+    const acesso = await acessos.liberarAcesso({ email: "novo@exemplo.br", nome: "Novo", cpf: "12345678901", telefone: null });
+    expect(acesso).toEqual({ ok: true, contaNova: true, convite: "https://auth.avilaops.com/recuperar/abc" });
+
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0].url).toBe("https://auth.avilaops.com/api/provisionamento/acessos");
+    expect(chamadas[0].method).toBe("POST");
+    expect(chamadas[0].authorization).toBe(`Basic ${Buffer.from(`tms:${SEGREDO}`).toString("base64")}`);
+    expect(chamadas[0].body).toEqual({ email: "novo@exemplo.br", nome: "Novo", cpf: "12345678901" });
+  });
+
+  it("conta que já existia: liberada, sem convite", async () => {
+    authResponde(200, { email: "velho@exemplo.br", criada: false, convite: null });
+    expect(await acessos.liberarAcesso({ email: "velho@exemplo.br", nome: "Velho" })).toEqual({
+      ok: true,
+      contaNova: false,
+      convite: null,
+    });
+  });
+
+  it("recusa do auth: 409 leva a mensagem ao operador; os demais erros, não", async () => {
+    const silencio = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      authResponde(409, { error: "Esta conta está desligada no login único." });
+      expect(await acessos.liberarAcesso({ email: "x@exemplo.br", nome: "X" })).toEqual({
+        ok: false,
+        erro: "Esta conta está desligada no login único.",
+      });
+
+      authResponde(401, { error: "Cliente ou segredo inválidos." });
+      const recusado = await acessos.liberarAcesso({ email: "x@exemplo.br", nome: "X" });
+      expect(recusado.ok).toBe(false);
+      expect(JSON.stringify(recusado)).not.toContain("segredo");
+
+      vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new Error("sem rede"))));
+      expect((await acessos.liberarAcesso({ email: "x@exemplo.br", nome: "X" })).ok).toBe(false);
+    } finally {
+      silencio.mockRestore();
+    }
+  });
+
+  it("revogar chama DELETE com o e-mail", async () => {
+    const chamadas = authResponde(200, { revogada: true });
+    expect(await acessos.revogarAcesso("sai+daqui@exemplo.br")).toBe(true);
+    expect(chamadas[0].method).toBe("DELETE");
+    expect(chamadas[0].url).toBe("https://auth.avilaops.com/api/provisionamento/acessos?email=sai%2Bdaqui%40exemplo.br");
+  });
+
+  it("o valor da coluna de senha não é hash e nunca se repete", () => {
+    const a = acessos.senhaSemUso();
+    expect(a).toMatch(/^sem-senha:/);
+    expect(a).not.toBe(acessos.senhaSemUso());
+  });
+});

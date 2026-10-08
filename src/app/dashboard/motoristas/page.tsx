@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Plus, Loader2, CarFront, User } from "lucide-react";
+import { AvisoDeAcesso, type Acesso } from "@/components/AvisoDeAcesso";
 
 interface Motorista {
   id: string;
@@ -20,7 +21,6 @@ const FORM_VAZIO = {
   name: "",
   cpf: "",
   email: "",
-  password: "",
   phone: "",
   cnh: "",
   category: "B",
@@ -50,6 +50,8 @@ export default function MotoristasPage() {
   // `null` = cadastro novo; com id, o modal edita aquele motorista.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  // Resultado da liberação no login único do último motorista salvo.
+  const [acesso, setAcesso] = useState<{ nome: string; acesso: Acesso } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [motoristas, setMotoristas] = useState<Motorista[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,8 +89,7 @@ export default function MotoristasPage() {
       name: motorista.user?.name ?? "",
       cpf: motorista.cpf,
       email: motorista.user?.email ?? "",
-      password: "",
-      phone: motorista.phone ?? "",
+          phone: motorista.phone ?? "",
       cnh: motorista.cnh,
       category: motorista.category,
       cnhExpiry: diaDaValidade(motorista.cnhExpiry),
@@ -101,18 +102,12 @@ export default function MotoristasPage() {
       alert("Nome, CPF, e-mail, CNH e validade da CNH são obrigatórios.");
       return;
     }
-    if (!editingId && !formData.password) {
-      alert("Defina a senha de acesso do motorista.");
-      return;
-    }
 
     setIsSaving(true);
     try {
-      // Na edição o CPF não muda, e a senha em branco fica como está.
-      const { cpf, password, ...resto } = formData;
-      const body = editingId
-        ? { ...resto, ...(password && { password }) }
-        : { ...resto, cpf, password };
+      // Na edição o CPF não muda.
+      const { cpf, ...resto } = formData;
+      const body = editingId ? resto : { ...resto, cpf };
 
       const res = await fetch(editingId ? `/api/motoristas/${editingId}` : '/api/motoristas', {
         method: editingId ? 'PATCH' : 'POST',
@@ -121,6 +116,8 @@ export default function MotoristasPage() {
       });
 
       if (res.ok) {
+        const salvo = (await res.json().catch(() => ({}))) as { acesso?: Acesso };
+        if (salvo.acesso) setAcesso({ nome: formData.name, acesso: salvo.acesso });
         setIsModalOpen(false);
         setFormData(FORM_VAZIO);
         fetchMotoristas();
@@ -179,6 +176,8 @@ export default function MotoristasPage() {
           <span>Novo Motorista</span>
         </button>
       </div>
+
+      {acesso && <AvisoDeAcesso nome={acesso.nome} acesso={acesso.acesso} onFechar={() => setAcesso(null)} />}
 
       <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
         {isLoading ? (
@@ -326,19 +325,8 @@ export default function MotoristasPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <label className={LABEL}>{editingId ? "Nova senha" : "Senha de acesso"}</label>
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    placeholder={editingId ? "Em branco = não muda" : "Mínimo de 8 caracteres"}
-                    autoComplete="new-password"
-                    className={INPUT}
-                  />
-                </div>
               </div>
-              <p className="text-xs text-gray-500">É com este e-mail e esta senha que o motorista entra no aplicativo.</p>
+              <p className="text-xs text-gray-500">O motorista entra no aplicativo com a conta Ávila Ops deste e-mail (ou do CPF). Se ele ainda não tem conta, você recebe um link para enviar a ele.</p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">

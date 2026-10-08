@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { requireStaff } from "@/lib/staff";
 import {
-  BCRYPT_ROUNDS,
   DRIVER_ROLE_MESSAGE,
   USER_PUBLIC_SELECT,
   createUserSchema,
   firstIssue,
 } from "@/lib/usuarios";
+import { liberarAcesso, senhaSemUso } from "@/lib/acessos";
 
 export async function GET() {
   const { error } = await requireStaff(["ADMIN"]);
@@ -71,11 +70,14 @@ export async function POST(req: Request) {
           email: data.email,
           role: data.role,
           clientId,
-          password: await bcrypt.hash(data.password, BCRYPT_ROUNDS),
+          password: senhaSemUso(),
         },
         select: USER_PUBLIC_SELECT,
       });
-      return NextResponse.json(usuario, { status: 201 });
+
+      // O cadastro só vale para quem tem conta liberada no login único.
+      const acesso = await liberarAcesso({ email: usuario.email, nome: usuario.name });
+      return NextResponse.json({ ...usuario, acesso }, { status: 201 });
     } catch (err) {
       // Duas criações simultâneas com o mesmo e-mail: a segunda bate no índice único.
       if ((err as { code?: string }).code === "P2002") {

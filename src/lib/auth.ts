@@ -1,8 +1,7 @@
 import { NextAuthOptions } from "next-auth";
-import { randomBytes } from "node:crypto";
 import { sistema } from "@/lib/prisma";
 import { normalizarSlug } from "@/lib/empresas";
-import bcrypt from "bcryptjs";
+import { senhaSemUso } from "@/lib/acessos";
 
 /**
  * Acha o usuário pelo e-mail digitado no login, sem diferenciar maiúsculas nem
@@ -111,11 +110,8 @@ export async function resolverEntrada(conta: ContaAvilaOps, empresa?: string | n
   const tenant = await sistema.tenant.findUnique({ where: { slug }, select: { id: true, active: true } });
   if (!tenant?.active) return { situacao: "recusada" };
 
-  // Senha aleatória que ninguém conhece: a coluna é obrigatória, mas o TMS não
-  // tem login por senha.
-  const password = await bcrypt.hash(randomBytes(32).toString("base64"), 10);
   const user = await sistema.user.create({
-    data: { tenantId: tenant.id, email: conta.email, name: `${conta.nome} (Ávila Ops)`, role: "ADMIN", password },
+    data: { tenantId: tenant.id, email: conta.email, name: `${conta.nome} (Ávila Ops)`, role: "ADMIN", password: senhaSemUso() },
   });
 
   console.info(`Login único: cadastro de suporte criado para ${conta.email} na empresa ${slug}.`);

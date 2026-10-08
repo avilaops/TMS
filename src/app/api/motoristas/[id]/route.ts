@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
-import { transacao } from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
+import { sistema, transacao } from '@/lib/prisma';
 import { DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
-import { BCRYPT_ROUNDS, firstIssue } from '@/lib/usuarios';
+import { firstIssue } from '@/lib/usuarios';
+import { liberarAcesso, revogarAcesso } from '@/lib/acessos';
 
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
 
@@ -19,18 +19,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const data = parsed.data;
-    const passwordHash = data.password ? await bcrypt.hash(data.password, BCRYPT_ROUNDS) : undefined;
 
-    // Nome, e-mail e senha ficam no User; o resto, no Driver. Uma transação só:
+    // Nome e e-mail ficam no User; o resto, no Driver. Uma transação só:
     // ou muda tudo, ou não muda nada.
+    let emailAnterior: string | null = null;
+
     const motorista = await transacao(async (tx) => {
       const target = await tx.driver.findUnique({
         where: { id },
-        select: { id: true, userId: true, user: { select: { role: true } } }
+        select: { id: true, userId: true, user: { select: { role: true, email: true } } }
       });
       if (!target) throw new Refusal('Motorista não encontrado.', 404);
       // Cadastro antigo pode ligar o motorista a um usuário de outro perfil:
-      // por aqui ninguém troca o e-mail nem a senha de uma conta que não é de motorista.
+      // por aqui ninguém troca o e-mail de uma conta que não é de motorista.
       // Desativar continua valendo: só mexe no Driver e é o que tira o acesso.
       const changed = Object.keys(data).filter((key) => data[key as keyof typeof data] !== undefined);
       const onlyDeactivating = data.active === false && changed.length === 1;
@@ -47,16 +48,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         if (other) throw new Refusal(DUPLICATE_EMAIL, 409);
       }
 
-      if (data.name !== undefined || data.email !== undefined || passwordHash) {
+      if (data.name !== undefined || data.email !== undefined) {
         await tx.user.update({
           where: { id: target.userId },
           data: {
             name: data.name,
             email: data.email,
-            ...(passwordHash && { password: passwordHash }),
           },
           select: { id: true }
         });
+      }
+
+      if (data.email !== undefined && data.email !== target.user.email.toLowerCase()) {
+        emailAnterior = target.user.email;
       }
 
       // `active: false` é o que barra o acesso: `requireDriver` recusa inativo.
@@ -72,6 +76,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         include: DRIVER_PUBLIC_INCLUDE,
       });
     });
+
+    // E-mail novo é outra conta no login único: libera a nova e revoga a
+    // antiga, se nenhum outro cadastro (em qualquer empresa) ainda a usa.
+    if (emailAnterior) {
+      const acesso = await liberarAcesso({
+        email: motorista.user.email,
+        nome: motorista.user.name,
+        cpf: motorista.cpf,
+        telefone: motorista.phone,
+      });
+      const aindaUsado = await sistema.user.count({
+        where: { email: { equals: emailAnterior, mode: 'insensitive' } },
+      });
+      if (aindaUsado === 0) await revogarAcesso(emailAnterior);
+      return NextResponse.json({ ...motorista, acesso });
+    }
 
     return NextResponse.json(motorista);
   } catch (err) {

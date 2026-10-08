@@ -64,12 +64,6 @@ const activeFlag = z.boolean("Informe se o cadastro está ativo.");
 // Normaliza antes de validar: espaço nas pontas e maiúsculas não criam um segundo usuário.
 const email = z.string("Informe o e-mail.").trim().toLowerCase().max(254, "E-mail inválido.").pipe(z.email("E-mail inválido."));
 
-// O bcrypt só considera os primeiros 72 bytes; acima disso a senha seria truncada em silêncio.
-const password = z
-  .string("Informe a senha.")
-  .min(8, "A senha precisa ter pelo menos 8 caracteres.")
-  .max(72, "A senha pode ter no máximo 72 caracteres.");
-
 /* ---------------------------------- Clientes --------------------------------- */
 
 const TAX_ID_MESSAGE = "Informe um CNPJ (14 dígitos) ou CPF (11 dígitos) válido.";
@@ -152,7 +146,6 @@ export const createDriverSchema = z.object(
     name: driverName,
     cpf,
     email,
-    password,
     cnh,
     category: cnhCategory,
     cnhExpiry,
@@ -168,7 +161,6 @@ export const updateDriverSchema = z
     {
       name: driverName.optional(),
       email: email.optional(),
-      password: password.optional(),
       cnh: cnh.optional(),
       category: cnhCategory.optional(),
       cnhExpiry: cnhExpiry.optional(),

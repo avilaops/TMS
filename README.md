@@ -104,7 +104,9 @@ No código ([src/lib/prisma.ts](src/lib/prisma.ts)):
 
 **Equipe da Ávila Ops** (papel `ADMIN` no auth). Opera a plataforma: em `/plataforma/empresas` cria empresa com o primeiro administrador, renomeia, desativa e reativa (desativar impede a entrada e as rotas públicas, sem apagar nada). Em `/empresa` entra em qualquer empresa ativa; na primeira entrada nasce um administrador "Nome (Ávila Ops)", visível na lista de usuários daquela empresa. Administrador de transportadora não é equipe e não vê outras empresas.
 
-**Quem ainda não tem conta no auth.** Cadastrar alguém no TMS não cria a conta no auth nem libera o app: hoje isso é feito no painel do auth. A coluna de senha do usuário continua no banco, preenchida com valor aleatório, até o cadastro por convite existir.
+**Cadastrar alguém já libera o acesso** ([src/lib/acessos.ts](src/lib/acessos.ts)). Criar usuário, motorista ou empresa (com o primeiro administrador) chama a API de provisionamento do auth (`POST /api/provisionamento/acessos`, autenticada com o mesmo cliente OIDC do login), que garante a conta e libera o app `tms`. Para conta criada na hora, a resposta traz um **convite**: link de uso único, válido por 7 dias, para a pessoa definir a senha. A tela mostra o link uma vez, com "Copiar" e "Enviar por WhatsApp". Conta que já existia não recebe link: a pessoa entra com o que já usa. Se o auth não responder, o cadastro vale mesmo assim e o operador usa "Liberar acesso" depois (`POST /api/usuarios/[id]/acesso`). Trocar o e-mail de um motorista libera o novo e revoga o antigo, se nenhum outro cadastro o usa.
+
+Nenhuma tela pede senha. A coluna `password` do usuário continua no banco por enquanto, com um valor `sem-senha:…` que não é hash de nada e que nenhum código lê.
 
 **Tabela nova.** Declare `tenantId` igual ao das outras (com o `@default(dbgenerated(...))` e a relação com `Tenant`), rode `npm run db:push` e, se ela referencia outra tabela, acrescente o par em `referencias`, no `010-rls.sql`. A política e as permissões são criadas sozinhas para toda tabela que tenha `tenantId`.
 
