@@ -79,7 +79,7 @@ DECLARE
     "Manifest": ["driverId", "Driver", "vehicleId", "Vehicle"],
     "FinancialTransaction": ["clientId", "Client"],
     "Maintenance": ["vehicleId", "Vehicle"],
-    "ProofOfDelivery": ["collectionId", "Collection"],
+    "ProofOfDelivery": ["collectionId", "Collection", "reviewedById", "User"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

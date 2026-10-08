@@ -36,6 +36,8 @@ suite("isolamento entre empresas", () => {
   let clientePorId: typeof import("../src/app/api/clientes/[id]/route");
   let leads: typeof import("../src/app/api/leads/route");
   let crm: typeof import("../src/app/api/dashboard/crm/route");
+  let comprovantes: typeof import("../src/app/api/comprovantes/route");
+  let conferir: typeof import("../src/app/api/comprovantes/[id]/conferir/route");
 
   const sessao = vi.mocked(getServerSession);
 
@@ -95,6 +97,27 @@ suite("isolamento entre empresas", () => {
     lado.clienteId = cliente.id;
   }
 
+  // Carga entregue com comprovante aguardando conferência, na empresa dada.
+  async function comprovanteDe(lado: typeof padrao) {
+    const { db } = banco.paraEmpresa(lado.tenantId);
+    const coleta = await db.collection.create({
+      data: {
+        clientId: lado.clienteId,
+        sender: `${PREFIXO}remetente do comprovante`,
+        receiver: "Destinatário",
+        origin: "A",
+        destination: "B",
+        volumes: 1,
+        weight: 1,
+        status: "DELIVERED",
+      },
+    });
+    const proof = await db.proofOfDelivery.create({
+      data: { collectionId: coleta.id, receiverName: "Maria", receiverDoc: "12345" },
+    });
+    return { collectionId: coleta.id, proofId: proof.id };
+  }
+
   beforeAll(async () => {
     banco = await import("../src/lib/prisma");
     auth = await import("../src/lib/auth");
@@ -102,6 +125,8 @@ suite("isolamento entre empresas", () => {
     clientePorId = await import("../src/app/api/clientes/[id]/route");
     leads = await import("../src/app/api/leads/route");
     crm = await import("../src/app/api/dashboard/crm/route");
+    comprovantes = await import("../src/app/api/comprovantes/route");
+    conferir = await import("../src/app/api/comprovantes/[id]/conferir/route");
     await limpar();
     await montar(padrao, SENHA);
     await montar(outra, SENHA_OUTRA);
@@ -186,6 +211,37 @@ suite("isolamento entre empresas", () => {
       expect(daOutra.map((l) => l.email)).toContain(email);
     });
 
+    it("a fila de comprovantes só traz os da empresa de quem está logado", async () => {
+      const doPadrao = await comprovanteDe(padrao);
+      const daOutra = await comprovanteDe(outra);
+
+      entrar(outra);
+      const res = await comprovantes.GET(new Request("http://localhost/api/comprovantes"));
+      expect(res.status).toBe(200);
+      const ids = ((await res.json()) as { id: string }[]).map((c) => c.id);
+      expect(ids).toContain(daOutra.proofId);
+      expect(ids).not.toContain(doPadrao.proofId);
+    });
+
+    it("conferir o comprovante de outra empresa pelo id responde 404 e não muda nada", async () => {
+      const doPadrao = await comprovanteDe(padrao);
+
+      entrar(outra);
+      for (const body of [{ decision: "APPROVED" }, { decision: "REJECTED", reason: "Motivo da invasão." }]) {
+        const res = await conferir.POST(req("POST", body), ctx(doPadrao.collectionId));
+        expect(res.status).toBe(404);
+      }
+
+      const intacto = await banco.sistema.proofOfDelivery.findUniqueOrThrow({ where: { id: doPadrao.proofId } });
+      expect(intacto).toMatchObject({ status: "SUBMITTED", reviewedById: null, reviewedAt: null, rejectionReason: null });
+
+      // Na própria empresa a mesma chamada vale, e o conferente é de lá.
+      entrar(padrao);
+      expect((await conferir.POST(req("POST", { decision: "APPROVED" }), ctx(doPadrao.collectionId))).status).toBe(200);
+      const conferido = await banco.sistema.proofOfDelivery.findUniqueOrThrow({ where: { id: doPadrao.proofId } });
+      expect(conferido).toMatchObject({ status: "APPROVED", reviewedById: padrao.adminId, tenantId: EMPRESA_PADRAO.id });
+    });
+
     it("lead público para empresa que não existe responde 404", async () => {
       const res = await leads.POST(
         req("POST", {
@@ -249,6 +305,22 @@ suite("isolamento entre empresas", () => {
       ).rejects.toThrow(/outra empresa/);
 
       expect(await banco.sistema.collection.count({ where: { sender: coleta.sender } })).toBe(0);
+    });
+
+    it("comprovante não aponta para conferente de outra empresa, mesmo sabendo o id", async () => {
+      const daOutra = await comprovanteDe(outra);
+      const conferencia = { status: "APPROVED", reviewedAt: new Date(), reviewedById: padrao.adminId };
+
+      // Pela empresa e pelo caminho de sistema: o gatilho recusa nos dois.
+      await expect(
+        banco.paraEmpresa(outra.tenantId).db.proofOfDelivery.update({ where: { id: daOutra.proofId }, data: conferencia }),
+      ).rejects.toThrow();
+      await expect(
+        banco.sistema.proofOfDelivery.update({ where: { id: daOutra.proofId }, data: conferencia }),
+      ).rejects.toThrow(/outra empresa/);
+
+      const intacto = await banco.sistema.proofOfDelivery.findUniqueOrThrow({ where: { id: daOutra.proofId } });
+      expect(intacto).toMatchObject({ status: "SUBMITTED", reviewedById: null });
     });
 
     it("gravar sem dizer a empresa falha em vez de cair em alguma", async () => {

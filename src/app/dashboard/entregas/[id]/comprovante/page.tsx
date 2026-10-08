@@ -6,6 +6,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { PROOF_STATUS } from '@/lib/entregas';
 import { statusBadge } from '@/lib/format';
+import { Conferencia } from './conferencia';
 
 /** Comprovante da entrega de uma carga. O `[id]` é o da coleta. */
 export default async function ComprovantePage({ params }: { params: Promise<{ id: string }> }) {
@@ -31,7 +32,7 @@ export default async function ComprovantePage({ params }: { params: Promise<{ id
           vehicle: { select: { plate: true } },
         },
       },
-      proof: true,
+      proof: { include: { reviewedBy: { select: { name: true } } } },
     },
   });
 
@@ -46,8 +47,8 @@ export default async function ComprovantePage({ params }: { params: Promise<{ id
     <div className="container mx-auto p-6 max-w-4xl">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Comprovante de Entrega (POD)</h1>
-        <Link href="/dashboard/coletas" className="text-blue-600 hover:underline">
-          &larr; Voltar para Minutas
+        <Link href="/dashboard/comprovantes" className="text-blue-600 hover:underline">
+          &larr; Voltar para Comprovantes
         </Link>
       </div>
 
@@ -75,6 +76,21 @@ export default async function ComprovantePage({ params }: { params: Promise<{ id
                 {selo.label}
               </span>
             </div>
+            {proof.reviewedAt && (
+              <div>
+                <p className="text-sm text-gray-500">Conferido por</p>
+                <p>
+                  {proof.reviewedBy?.name ?? 'Usuário removido'} ·{' '}
+                  {new Date(proof.reviewedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                </p>
+              </div>
+            )}
+            {proof.rejectionReason && (
+              <div>
+                <p className="text-sm text-gray-500">Motivo da recusa</p>
+                <p className="whitespace-pre-wrap">{proof.rejectionReason}</p>
+              </div>
+            )}
             <div>
               <p className="text-sm text-gray-500">Data da Baixa</p>
               <p>{new Date(proof.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
@@ -107,6 +123,7 @@ export default async function ComprovantePage({ params }: { params: Promise<{ id
                 </a>
               </div>
             )}
+            {proof.status === 'SUBMITTED' && <Conferencia collectionId={collectionId} />}
           </CardContent>
         </Card>
 

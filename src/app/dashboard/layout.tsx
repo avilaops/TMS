@@ -19,7 +19,8 @@ import {
   FileText,
   DollarSign,
   UserPlus,
-  UserCog
+  UserCog,
+  ClipboardCheck
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -31,6 +32,7 @@ const sidebarLinks: { href: string; icon: typeof Truck; label: string; roles?: s
   { href: "/dashboard/clientes", icon: Users, label: "Clientes" },
   { href: "/dashboard/coletas", icon: Package, label: "Minutas" },
   { href: "/dashboard/manifestos", icon: Route, label: "Manifestos" },
+  { href: "/dashboard/comprovantes", icon: ClipboardCheck, label: "Comprovantes" },
   { href: "/dashboard/fiscal/cte", icon: FileText, label: "Emissão CT-e" },
   { href: "/dashboard/financeiro", icon: DollarSign, label: "Financeiro", roles: ["ADMIN"] },
   { href: "/dashboard/motoristas", icon: CarFront, label: "Motoristas" },

@@ -100,3 +100,64 @@ export const baixaSchema = z.object(
 export const DELIVERY_NOT_FOUND_MESSAGE = "Entrega não encontrada na sua viagem.";
 export const DELIVERED_BY_PANEL_MESSAGE = "Esta entrega já recebeu baixa pelo painel, sem comprovante do motorista.";
 export const NOT_IN_ROUTE_MESSAGE = "Só carga em rota recebe baixa de entrega.";
+
+// Conferência do comprovante no painel: o operador aprova ou recusa, e a
+// decisão é final.
+
+export const REVIEW_DECISIONS = ["APPROVED", "REJECTED"] as const;
+export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
+
+export const REJECTION_REASON_MIN = 5;
+export const REJECTION_REASON_MAX = 500;
+
+export const DECISION_MESSAGE = "Informe a decisão: aprovar ou recusar.";
+export const REJECTION_REASON_MESSAGE = "Informe o motivo da recusa (5 a 500 caracteres).";
+export const PROOF_NOT_FOUND_MESSAGE = "Comprovante não encontrado.";
+export const ALREADY_REVIEWED_MESSAGE = "Este comprovante já foi conferido.";
+export const PROOF_STATUS_FILTER_MESSAGE = "Status inválido. Use SUBMITTED, APPROVED ou REJECTED.";
+
+// O motivo só existe na recusa: o que vier junto de uma aprovação é ignorado,
+// seja o que for.
+export const conferenciaSchema = z
+  .object(
+    {
+      decision: z.enum(REVIEW_DECISIONS, DECISION_MESSAGE),
+      reason: z.unknown().optional(),
+    },
+    INVALID_BODY,
+  )
+  .transform(({ decision, reason }, ctx) => {
+    if (decision === "APPROVED") return { decision, reason: null };
+
+    const motivo = typeof reason === "string" ? reason.trim() : "";
+    if (motivo.length < REJECTION_REASON_MIN || motivo.length > REJECTION_REASON_MAX) {
+      ctx.addIssue({ code: "custom", message: REJECTION_REASON_MESSAGE, path: ["reason"] });
+      return z.NEVER;
+    }
+    return { decision, reason: motivo };
+  });
+
+export const PROOF_LIST_LIMIT = 200;
+
+// O que a fila de comprovantes devolve. Sem foto nem assinatura (pesam e são
+// dado pessoal: ficam só na página do comprovante) e sem nada do cadastro do
+// cliente ou do conferente além do nome.
+export const PROOF_LIST_SELECT = {
+  id: true,
+  status: true,
+  receiverName: true,
+  receiverDoc: true,
+  createdAt: true,
+  reviewedAt: true,
+  rejectionReason: true,
+  reviewedBy: { select: { id: true, name: true } },
+  collection: {
+    select: {
+      id: true,
+      trackingCode: true,
+      receiver: true,
+      destination: true,
+      client: { select: { tradeName: true, companyName: true } },
+    },
+  },
+} as const;

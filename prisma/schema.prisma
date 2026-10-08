@@ -64,6 +64,7 @@ model User {
   driver    Driver?
   client    Client?  @relation(fields: [clientId], references: [id])
   statusChanges CollectionStatusHistory[]
+  proofsReviewed ProofOfDelivery[]
 
   @@index([clientId])
 
@@ -288,11 +289,18 @@ model ProofOfDelivery {
   latitude        Float?
   longitude       Float?
   status          String   @default("SUBMITTED") // SUBMITTED, APPROVED, REJECTED
+  // Conferência no painel: quem decidiu, quando e, na recusa, o motivo.
+  reviewedAt      DateTime?
+  reviewedById    String?
+  rejectionReason String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   // Relations
   collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  reviewedBy      User?      @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
