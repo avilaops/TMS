@@ -20,11 +20,14 @@ import {
   UNKNOWN_OWNER_REASON,
   blockedMessage,
   buildPending,
+  checkSession,
   classifyBaixaResponse,
   flushQueue,
   isDriverBlocked,
   needsLogin,
   readPending,
+  readSessionCheck,
+  resolveSyncOwner,
   summarizePending,
 } from "../src/lib/offline-queue";
 import { createStrokeTracker } from "../src/lib/assinatura";
@@ -327,6 +330,73 @@ describe("fila offline: dono da baixa e contagem", () => {
     });
 
     expect(enviados).toHaveLength(summarizePending(legiveis, "user-ana").mine);
+  });
+});
+
+describe("fila offline: em nome de quem o reenvio roda", () => {
+  const resposta = (ok: boolean, corpo: unknown) =>
+    (async () => ({ ok, json: async () => corpo })) as unknown as typeof fetch;
+
+  it("com o usuário no provedor da sessão, reenvia sem consultar o servidor", async () => {
+    const consulta = vi.fn();
+    expect(await resolveSyncOwner("user-ana", consulta)).toEqual({ owner: "user-ana", sessionExpired: false });
+    expect(consulta).not.toHaveBeenCalled();
+  });
+
+  it("provedor sem usuário por consulta feita sem sinal: o servidor confirma e a baixa sobe", async () => {
+    const consulta = async () => ({ state: "user", userId: "user-ana" }) as const;
+    expect(await resolveSyncOwner(null, consulta)).toEqual({ owner: "user-ana", sessionExpired: false });
+  });
+
+  it("servidor confirma que não há sessão: não reenvia e pede novo login", async () => {
+    const consulta = async () => ({ state: "none" }) as const;
+    expect(await resolveSyncOwner(null, consulta)).toEqual({ owner: null, sessionExpired: true });
+  });
+
+  it("sem resposta do servidor: não reenvia e não diz que a sessão expirou", async () => {
+    const consulta = async () => ({ state: "unknown" }) as const;
+    expect(await resolveSyncOwner(null, consulta)).toEqual({ owner: null, sessionExpired: false });
+  });
+
+  it("lê a resposta da consulta de sessão", () => {
+    expect(readSessionCheck(true, { user: { id: "user-ana" }, expires: "2026-11-01" })).toEqual({
+      state: "user",
+      userId: "user-ana",
+    });
+    expect(readSessionCheck(true, {})).toEqual({ state: "none" });
+  });
+
+  it("resposta que não prova nada não vira sessão nem falta de sessão", () => {
+    expect(readSessionCheck(false, {})).toEqual({ state: "unknown" });
+    expect(readSessionCheck(true, null)).toEqual({ state: "unknown" });
+    expect(readSessionCheck(true, "<html>")).toEqual({ state: "unknown" });
+    expect(readSessionCheck(true, [])).toEqual({ state: "unknown" });
+    expect(readSessionCheck(true, { error: "falha" })).toEqual({ state: "unknown" });
+    expect(readSessionCheck(true, { user: { name: "Ana" } })).toEqual({ state: "unknown" });
+    expect(readSessionCheck(true, { user: { id: "" } })).toEqual({ state: "unknown" });
+  });
+
+  it("consulta de sessão: falha de rede, erro do servidor e página no lugar do JSON ficam sem resposta", async () => {
+    const semRede = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as unknown as typeof fetch;
+    const portal = (async () => ({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError("Unexpected token <");
+      },
+    })) as unknown as typeof fetch;
+
+    expect(await checkSession(semRede)).toEqual({ state: "unknown" });
+    expect(await checkSession(resposta(false, {}))).toEqual({ state: "unknown" });
+    expect(await checkSession(portal)).toEqual({ state: "unknown" });
+  });
+
+  it("consulta de sessão: pergunta ao servidor sem usar resposta guardada", async () => {
+    const fetcher = vi.fn(resposta(true, { user: { id: "user-ana" } }));
+    expect(await checkSession(fetcher)).toEqual({ state: "user", userId: "user-ana" });
+    expect(fetcher).toHaveBeenCalledWith("/api/auth/session", { cache: "no-store" });
+    expect(await checkSession(resposta(true, {}))).toEqual({ state: "none" });
   });
 });
 

@@ -157,6 +157,61 @@ export function rememberedOwner(): string | null {
   }
 }
 
+/** O que o servidor disse sobre a sessão deste aparelho. */
+export type SessionCheck =
+  | { state: "user"; userId: string }
+  | { state: "none" }
+  // Sem resposta que valha (sem rede, erro do servidor, portal de wifi): não se sabe.
+  | { state: "unknown" };
+
+/**
+ * Lê a resposta de `/api/auth/session`. O servidor responde `{}` quando não há
+ * sessão; qualquer outra coisa que não traga o id do usuário não prova nada.
+ */
+export function readSessionCheck(ok: boolean, body: unknown): SessionCheck {
+  if (!ok || typeof body !== "object" || body === null || Array.isArray(body)) return { state: "unknown" };
+  const user = (body as { user?: unknown }).user;
+  if (user === undefined) {
+    return Object.keys(body).length === 0 ? { state: "none" } : { state: "unknown" };
+  }
+  const id = typeof user === "object" && user !== null ? (user as { id?: unknown }).id : undefined;
+  return typeof id === "string" && id !== "" ? { state: "user", userId: id } : { state: "unknown" };
+}
+
+/** Pergunta ao servidor quem está logado, sem passar pelo provedor da sessão. */
+export async function checkSession(fetcher: typeof fetch = fetch): Promise<SessionCheck> {
+  try {
+    const response = await fetcher("/api/auth/session", { cache: "no-store" });
+    return readSessionCheck(response.ok, await response.json());
+  } catch {
+    return { state: "unknown" };
+  }
+}
+
+export type SyncOwner = {
+  /** Em nome de quem reenviar; `null` quando não dá para reenviar agora. */
+  owner: string | null;
+  /** O servidor confirmou que não há sessão: só um novo login faz a fila subir. */
+  sessionExpired: boolean;
+};
+
+/**
+ * Decide em nome de quem o reenvio roda. O provedor da sessão pode ter ficado
+ * sem usuário por uma consulta feita sem sinal, com o login ainda valendo: antes
+ * de desistir, confirma no servidor. Só id confirmado pelo servidor autoriza o
+ * reenvio; o usuário lembrado no aparelho nunca. Sem resposta do servidor não se
+ * conclui nada: a fila fica como está e a próxima tentativa pergunta de novo.
+ */
+export async function resolveSyncOwner(
+  providerUserId: string | null,
+  check: () => Promise<SessionCheck> = checkSession,
+): Promise<SyncOwner> {
+  if (providerUserId) return { owner: providerUserId, sessionExpired: false };
+  const session = await check();
+  if (session.state === "user") return { owner: session.userId, sessionExpired: false };
+  return { owner: null, sessionExpired: session.state === "none" };
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);

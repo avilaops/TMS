@@ -13,6 +13,7 @@ import {
   flushQueue,
   rememberOwner,
   rememberedOwner,
+  resolveSyncOwner,
 } from "@/lib/offline-queue";
 
 function subscribeToConnection(notify: () => void) {
@@ -30,6 +31,8 @@ export default function DriverShell({ children }: { children: React.ReactNode })
   const online = useSyncExternalStore(subscribeToConnection, () => navigator.onLine, () => true);
   const { data: session, status } = useSession();
   // Só a sessão confirmada pelo servidor autoriza o reenvio em nome de alguém.
+  // O provedor pode ficar sem usuário por uma consulta feita sem sinal; nesse
+  // caso o `sync` confirma direto no servidor.
   const userId = status === "authenticated" ? (session?.user?.id ?? null) : null;
   const [pending, setPending] = useState(0);
   // Baixas de outro motorista neste aparelho: não sobem na sessão deste.
@@ -38,7 +41,8 @@ export default function DriverShell({ children }: { children: React.ReactNode })
   const [blocked, setBlocked] = useState<BlockedBaixa[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [feedback, setFeedback] = useState("");
-  // O servidor não reconheceu a sessão no reenvio: as baixas seguem no aparelho.
+  // O servidor disse que não há sessão (na consulta ou com 401 no reenvio):
+  // as baixas seguem no aparelho.
   const [sessionExpired, setSessionExpired] = useState(false);
 
   const refreshPending = useCallback(() => {
@@ -55,10 +59,17 @@ export default function DriverShell({ children }: { children: React.ReactNode })
   }, [userId]);
 
   const sync = useCallback(async () => {
-    if (syncing || !userId) return;
+    if (syncing) return;
     setSyncing(true);
     try {
-      const result = await flushQueue(userId);
+      const { owner, sessionExpired: expired } = await resolveSyncOwner(userId);
+      if (!owner) {
+        // Sem resposta do servidor, o aviso de sessão fica como estava.
+        if (expired) setSessionExpired(true);
+        return;
+      }
+      rememberOwner(owner);
+      const result = await flushQueue(owner);
       if (result.sent > 0) {
         setFeedback(
           `${result.sent} ${result.sent === 1 ? "baixa enviada" : "baixas enviadas"}.`
@@ -165,7 +176,7 @@ export default function DriverShell({ children }: { children: React.ReactNode })
         </div>
       )}
 
-      {(sessionExpired || (online && status === "unauthenticated")) && pending > 0 && (
+      {sessionExpired && pending > 0 && (
         <button
           onClick={leave}
           className="bg-amber-500 text-white px-4 py-2 text-sm flex items-center gap-2 z-10 w-full text-left"
