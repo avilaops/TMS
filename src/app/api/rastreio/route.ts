@@ -86,6 +86,14 @@ export async function GET(req: Request) {
         origin: true,
         destination: true,
         createdAt: true,
+        // Linha do tempo: só o status e a hora. Quem fez a troca (`userId`) é
+        // dado interno e fica de fora.
+        statusHistory: {
+          select: { toStatus: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        // Nome da transportadora, para a página pública dizer de quem é a carga.
+        tenant: { select: { name: true } },
         manifest: {
           select: {
             driver: {

@@ -110,7 +110,7 @@ Nenhuma tela pede senha. A coluna `password` do usuário continua no banco por e
 
 **Tabela nova.** Declare `tenantId` igual ao das outras (com o `@default(dbgenerated(...))` e a relação com `Tenant`), rode `npm run db:push` e, se ela referencia outra tabela, acrescente o par em `referencias`, no `010-rls.sql`. A política e as permissões são criadas sozinhas para toda tabela que tenha `tenantId`.
 
-**Rotas públicas.** `POST /api/leads` e `POST /api/cotacoes` aceitam `empresa` (slug) no corpo; sem ele vale `TMS_EMPRESA_PADRAO`. Empresa inexistente ou desativada responde 404. `GET /api/rastreio` não precisa de empresa: o código de rastreio é único no sistema.
+**Rotas públicas.** `POST /api/leads` e `POST /api/cotacoes` aceitam `empresa` (slug) no corpo; sem ele vale `TMS_EMPRESA_PADRAO`. Empresa inexistente ou desativada responde 404. `GET /api/rastreio` não precisa de empresa: o código de rastreio é único no sistema. A página pública `/rastreio` usa essa rota: pede o CNPJ ou CPF de quem contratou e o código, mostra a transportadora, a situação e a linha do tempo, e aceita link já preenchido (`/rastreio?cnpj=…&codigo=…`).
 
 Os testes em [tests/multi-tenant.test.ts](tests/multi-tenant.test.ts) provam o isolamento contra o banco, com duas empresas.
 

@@ -277,8 +277,12 @@ suite("GET /api/rastreio", () => {
     it("o DTO público tem exatamente as chaves previstas", async () => {
       const { body } = await consultar({ cnpj: CNPJ_A, codigo: CODIGO_A });
       expect(Object.keys(body[0]).sort()).toEqual(
-        ["createdAt", "destination", "id", "manifest", "origin", "status", "trackingCode"].sort(),
+        ["createdAt", "destination", "id", "manifest", "origin", "status", "statusHistory", "tenant", "trackingCode"].sort(),
       );
+      expect(Object.keys(body[0].tenant)).toEqual(["name"]);
+      for (const passo of body[0].statusHistory) {
+        expect(Object.keys(passo).sort()).toEqual(["createdAt", "toStatus"]);
+      }
       expect(Object.keys(body[0].manifest)).toEqual(["driver"]);
       expect(Object.keys(body[0].manifest.driver)).toEqual(["user"]);
       expect(Object.keys(body[0].manifest.driver.user)).toEqual(["name"]);
