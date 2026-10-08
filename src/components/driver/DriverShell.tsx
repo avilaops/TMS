@@ -1,11 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
-import { Truck, Map, User, LogOut, CloudOff, RefreshCw, CheckCircle2 } from "lucide-react";
-import { SESSION_EXPIRED_MESSAGE, countPending, flushQueue } from "@/lib/offline-queue";
+import { signOut, useSession } from "next-auth/react";
+import { Truck, Map, User, LogOut, CloudOff, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
+import {
+  type BlockedBaixa,
+  SESSION_EXPIRED_MESSAGE,
+  countPending,
+  discardPending,
+  flushQueue,
+  rememberOwner,
+  rememberedOwner,
+} from "@/lib/offline-queue";
 
 function subscribeToConnection(notify: () => void) {
   window.addEventListener("online", notify);
@@ -20,23 +28,37 @@ export default function DriverShell({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   // No servidor não há `navigator`: a página sai como "online" e acerta ao hidratar.
   const online = useSyncExternalStore(subscribeToConnection, () => navigator.onLine, () => true);
+  const { data: session, status } = useSession();
+  // Só a sessão confirmada pelo servidor autoriza o reenvio em nome de alguém.
+  const userId = status === "authenticated" ? (session?.user?.id ?? null) : null;
   const [pending, setPending] = useState(0);
+  // Baixas de outro motorista neste aparelho: não sobem na sessão deste.
+  const [othersPending, setOthersPending] = useState(0);
+  // Baixas que o servidor não aceita e que não sobem sozinhas (cadastro parado).
+  const [blocked, setBlocked] = useState<BlockedBaixa[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [feedback, setFeedback] = useState("");
   // O servidor não reconheceu a sessão no reenvio: as baixas seguem no aparelho.
   const [sessionExpired, setSessionExpired] = useState(false);
 
   const refreshPending = useCallback(() => {
-    countPending()
-      .then(setPending)
-      .catch(() => setPending(0));
-  }, []);
+    // Sem a sessão carregada (sem sinal), conta pelo último usuário confirmado.
+    countPending(userId ?? rememberedOwner())
+      .then(({ mine, others }) => {
+        setPending(mine);
+        setOthersPending(others);
+      })
+      .catch(() => {
+        setPending(0);
+        setOthersPending(0);
+      });
+  }, [userId]);
 
   const sync = useCallback(async () => {
-    if (syncing) return;
+    if (syncing || !userId) return;
     setSyncing(true);
     try {
-      const result = await flushQueue();
+      const result = await flushQueue(userId);
       if (result.sent > 0) {
         setFeedback(
           `${result.sent} ${result.sent === 1 ? "baixa enviada" : "baixas enviadas"}.`
@@ -46,14 +68,44 @@ export default function DriverShell({ children }: { children: React.ReactNode })
         setFeedback(`Recusado pelo servidor: ${result.rejected[0].reason}`);
       }
       setSessionExpired(result.needsLogin);
+      setBlocked(result.blocked);
     } finally {
       setSyncing(false);
       refreshPending();
     }
-  }, [syncing, refreshPending]);
+  }, [syncing, userId, refreshPending]);
+
+  const discardBlocked = useCallback(async () => {
+    const count = blocked.length;
+    const confirmed = window.confirm(
+      `Apagar ${count} ${count === 1 ? "baixa salva" : "baixas salvas"} neste aparelho? ` +
+        "O comprovante (recebedor, foto e assinatura) será perdido e a entrega continuará sem baixa."
+    );
+    if (!confirmed) return;
+    await discardPending(blocked.map((item) => item.id));
+    setBlocked([]);
+    refreshPending();
+  }, [blocked, refreshPending]);
+
+  // Os ouvintes abaixo são registrados uma vez; chamam sempre a versão atual.
+  const syncRef = useRef(sync);
+  const refreshRef = useRef(refreshPending);
+  useEffect(() => {
+    syncRef.current = sync;
+    refreshRef.current = refreshPending;
+  });
+
+  // Sessão confirmada (inclusive logo depois de um novo login): sobe o que
+  // ficou na fila, sem esperar a conexão oscilar nem o toque do motorista.
+  useEffect(() => {
+    if (!userId) return;
+    rememberOwner(userId);
+    if (navigator.onLine) syncRef.current();
+    else refreshRef.current();
+  }, [userId]);
 
   useEffect(() => {
-    refreshPending();
+    refreshRef.current();
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch((error) => {
@@ -63,18 +115,26 @@ export default function DriverShell({ children }: { children: React.ReactNode })
 
     // A conexão voltou: sobe o que ficou na fila.
     const handleOnline = () => {
-      sync();
+      syncRef.current();
+    };
+    const handleQueued = () => {
+      refreshRef.current();
     };
 
     window.addEventListener("online", handleOnline);
-    window.addEventListener("mello:baixa-enfileirada", refreshPending);
+    window.addEventListener("mello:baixa-enfileirada", handleQueued);
 
     return () => {
       window.removeEventListener("online", handleOnline);
-      window.removeEventListener("mello:baixa-enfileirada", refreshPending);
+      window.removeEventListener("mello:baixa-enfileirada", handleQueued);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const leave = () => {
+    // Saída pedida pelo motorista: o próximo a entrar não herda o dono da fila.
+    rememberOwner(null);
+    signOut({ callbackUrl: "/login" });
+  };
 
   useEffect(() => {
     if (!feedback) return;
@@ -90,7 +150,7 @@ export default function DriverShell({ children }: { children: React.ReactNode })
           <span className="font-outfit font-bold text-lg">Mello App</span>
         </div>
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={leave}
           className="p-2 hover:bg-blue-700 rounded-full transition-colors"
           aria-label="Sair"
         >
@@ -105,14 +165,37 @@ export default function DriverShell({ children }: { children: React.ReactNode })
         </div>
       )}
 
-      {sessionExpired && pending > 0 && (
+      {(sessionExpired || (online && status === "unauthenticated")) && pending > 0 && (
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={leave}
           className="bg-amber-500 text-white px-4 py-2 text-sm flex items-center gap-2 z-10 w-full text-left"
         >
           <LogOut className="w-4 h-4 shrink-0" />
           <span>{SESSION_EXPIRED_MESSAGE} Toque aqui.</span>
         </button>
+      )}
+
+      {blocked.length > 0 && (
+        <div role="alert" className="bg-red-50 text-red-800 px-4 py-2 text-sm flex items-start gap-2 z-10">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p>{blocked[0].reason}</p>
+            <button onClick={discardBlocked} className="underline font-medium mt-1">
+              Descartar {blocked.length === 1 ? "a baixa presa" : `as ${blocked.length} baixas presas`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {othersPending > 0 && (
+        <div className="bg-gray-100 text-gray-700 px-4 py-2 text-sm flex items-center gap-2 z-10">
+          <CloudOff className="w-4 h-4 shrink-0" />
+          <span>
+            {othersPending === 1
+              ? "Há 1 baixa de outro motorista neste aparelho. Ela sobe quando ele entrar."
+              : `Há ${othersPending} baixas de outro motorista neste aparelho. Elas sobem quando ele entrar.`}
+          </span>
+        </div>
       )}
 
       {online && pending > 0 && (

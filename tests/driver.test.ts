@@ -11,13 +11,21 @@ import {
   PHOTO_TOO_BIG,
   baixaSchema,
   photoProblem,
+  resolvePhotoType,
+  sniffPhotoType,
 } from "../src/lib/entregas";
 import {
   type PendingBaixa,
+  DRIVER_BLOCKED_FALLBACK,
+  UNKNOWN_OWNER_REASON,
+  blockedMessage,
+  buildPending,
   classifyBaixaResponse,
   flushQueue,
+  isDriverBlocked,
   needsLogin,
   readPending,
+  summarizePending,
 } from "../src/lib/offline-queue";
 import { createStrokeTracker } from "../src/lib/assinatura";
 
@@ -72,23 +80,36 @@ describe("fila offline: o que fazer com a resposta do servidor", () => {
     expect(classifyBaixaResponse(status)).toBe("retry");
   });
 
-  it("só 401 e 403 pedem novo login", () => {
-    expect([401, 403].map(needsLogin)).toEqual([true, true]);
-    expect([200, 400, 404, 408, 409, 429, 500].map(needsLogin)).toEqual(Array(7).fill(false));
+  it("só 401 pede novo login", () => {
+    expect(needsLogin(401)).toBe(true);
+    expect([200, 400, 403, 404, 408, 409, 429, 500].map(needsLogin)).toEqual(Array(8).fill(false));
+  });
+
+  // 403 vem com a sessão válida (motorista inativo ou sem cadastro): mandar
+  // entrar de novo não resolve.
+  it("só 403 é cadastro parado", () => {
+    expect(isDriverBlocked(403)).toBe(true);
+    expect([200, 400, 401, 404, 408, 409, 429, 500].map(isDriverBlocked)).toEqual(Array(8).fill(false));
   });
 });
 
 describe("fila offline: reenvio", () => {
-  const item = (collectionId: string): PendingBaixa => ({
-    id: collectionId,
-    collectionId,
-    payload: { receiverName: "Maria" },
-    createdAt: 1,
-  });
+  const EU = "user-ana";
+  const OUTRO = "user-beto";
+  const item = (collectionId: string, userId: string | null = EU): PendingBaixa =>
+    buildPending(collectionId, { receiverName: "Maria" }, userId, 1);
+  const vazio = { sent: 0, rejected: [], stillPending: 0, needsLogin: false, blocked: [] };
 
-  // Fila em memória no lugar do IndexedDB, e respostas combinadas no lugar da rede.
-  function fila(respostas: Record<string, number | Error>, corpos: Record<string, unknown> = {}) {
-    const itens = new Map(Object.keys(respostas).map((id) => [id, item(id)]));
+  // Fila em memória no lugar do IndexedDB, e respostas combinadas no lugar da
+  // rede. `donos` diz de quem é cada baixa; sem isso, é de quem está logado.
+  function fila(
+    respostas: Record<string, number | Error>,
+    corpos: Record<string, unknown> = {},
+    donos: Record<string, string | null> = {},
+  ) {
+    const itens = new Map(
+      Object.keys(respostas).map((id) => [id, item(id, id in donos ? donos[id] : EU)]),
+    );
     const enviados: string[] = [];
     return {
       itens,
@@ -107,30 +128,109 @@ describe("fila offline: reenvio", () => {
             },
           };
         },
-        remove: async (id: string) => itens.delete(id),
+        // O mapa do teste é indexado pela coleta; a fila remove pela chave do item.
+        remove: async (id: string) => {
+          for (const [coleta, pendente] of itens) if (pendente.id === id) itens.delete(coleta);
+        },
       },
     };
   }
 
-  it.each([401, 403])("%i (sessão expirada): o comprovante continua no aparelho e pede login", async (status) => {
-    const { io, itens } = fila({ "coleta-1": status });
+  it("401 (sessão expirada): o comprovante continua no aparelho e pede login", async () => {
+    const { io, itens } = fila({ "coleta-1": 401 });
 
-    expect(await flushQueue(io)).toEqual({ sent: 0, rejected: [], stillPending: 1, needsLogin: true });
+    expect(await flushQueue(EU, io)).toEqual({ ...vazio, stillPending: 1, needsLogin: true });
     expect([...itens.keys()]).toEqual(["coleta-1"]);
     expect(itens.get("coleta-1")?.payload).toEqual({ receiverName: "Maria" });
+  });
+
+  it("403 (motorista inativo): fica no aparelho, não pede login e avisa o motivo do servidor", async () => {
+    const { io, itens } = fila({ "coleta-1": 403 }, { "coleta-1": { error: "Motorista inativo." } });
+
+    const resultado = await flushQueue(EU, io);
+
+    expect(resultado).toEqual({
+      ...vazio,
+      stillPending: 1,
+      blocked: [
+        { id: `${EU}:coleta-1`, collectionId: "coleta-1", reason: blockedMessage("Motorista inativo.") },
+      ],
+    });
+    expect(resultado.blocked[0].reason).toContain("Motorista inativo.");
+    expect(resultado.blocked[0].reason).not.toContain("entre de novo");
+    expect(itens.get("coleta-1")?.payload).toEqual({ receiverName: "Maria" });
+  });
+
+  it("403 sem corpo: fica presa com um motivo padrão", async () => {
+    const { io, itens } = fila({ "coleta-1": 403 });
+
+    expect((await flushQueue(EU, io)).blocked).toEqual([
+      { id: `${EU}:coleta-1`, collectionId: "coleta-1", reason: blockedMessage(DRIVER_BLOCKED_FALLBACK) },
+    ]);
+    expect(itens.size).toBe(1);
+  });
+
+  it("baixa de outro motorista no mesmo aparelho não é enviada nem apagada", async () => {
+    // O servidor responderia 404 (a entrega não é de quem está logado) e a
+    // recusa apagaria o comprovante do outro.
+    const { io, itens, enviados } = fila(
+      { minha: 200, "do-outro": 404 },
+      {},
+      { "do-outro": OUTRO },
+    );
+
+    expect(await flushQueue(EU, io)).toEqual({ ...vazio, sent: 1 });
+    expect(enviados).toEqual(["minha"]);
+    expect([...itens.keys()]).toEqual(["do-outro"]);
+    expect(itens.get("do-outro")?.payload).toEqual({ receiverName: "Maria" });
+
+    // Quando o dono entra, a baixa dele sobe.
+    const doDono = fila({ "do-outro": 200 }, {}, { "do-outro": OUTRO });
+    expect(await flushQueue(OUTRO, doDono.io)).toEqual({ ...vazio, sent: 1 });
+    expect(doDono.itens.size).toBe(0);
+  });
+
+  it("baixa sem dono (versão anterior) sobe na sessão de quem está logado", async () => {
+    const { io, itens } = fila({ antiga: 200 }, {}, { antiga: null });
+
+    expect(await flushQueue(EU, io)).toEqual({ ...vazio, sent: 1 });
+    expect(itens.size).toBe(0);
+  });
+
+  it("baixa sem dono com 404 pode ser de outro motorista: fica presa em vez de ser apagada", async () => {
+    const { io, itens } = fila(
+      { antiga: 404, minha: 404 },
+      { antiga: { error: DELIVERY_NOT_FOUND_MESSAGE }, minha: { error: DELIVERY_NOT_FOUND_MESSAGE } },
+      { antiga: null },
+    );
+
+    expect(await flushQueue(EU, io)).toEqual({
+      ...vazio,
+      stillPending: 1,
+      rejected: [{ collectionId: "minha", reason: DELIVERY_NOT_FOUND_MESSAGE }],
+      blocked: [{ id: "antiga", collectionId: "antiga", reason: UNKNOWN_OWNER_REASON }],
+    });
+    expect([...itens.keys()]).toEqual(["antiga"]);
+  });
+
+  it("baixa sem dono recusada por outro motivo sai da fila, como antes", async () => {
+    const { io, itens } = fila({ antiga: 409 }, { antiga: { error: NOT_IN_ROUTE_MESSAGE } }, { antiga: null });
+
+    expect((await flushQueue(EU, io)).rejected).toEqual([{ collectionId: "antiga", reason: NOT_IN_ROUTE_MESSAGE }]);
+    expect(itens.size).toBe(0);
   });
 
   it.each([408, 429, 500, 503])("%i: continua na fila, sem pedir login", async (status) => {
     const { io, itens } = fila({ "coleta-1": status });
 
-    expect(await flushQueue(io)).toEqual({ sent: 0, rejected: [], stillPending: 1, needsLogin: false });
+    expect(await flushQueue(EU, io)).toEqual({ ...vazio, stillPending: 1 });
     expect(itens.size).toBe(1);
   });
 
   it("falha de rede: continua na fila", async () => {
     const { io, itens } = fila({ "coleta-1": new TypeError("Failed to fetch") });
 
-    expect(await flushQueue(io)).toEqual({ sent: 0, rejected: [], stillPending: 1, needsLogin: false });
+    expect(await flushQueue(EU, io)).toEqual({ ...vazio, stillPending: 1 });
     expect(itens.size).toBe(1);
   });
 
@@ -140,7 +240,8 @@ describe("fila offline: reenvio", () => {
       { recusada: { error: NOT_IN_ROUTE_MESSAGE } },
     );
 
-    expect(await flushQueue(io)).toEqual({
+    expect(await flushQueue(EU, io)).toEqual({
+      ...vazio,
       sent: 1,
       rejected: [
         { collectionId: "recusada", reason: NOT_IN_ROUTE_MESSAGE },
@@ -154,6 +255,81 @@ describe("fila offline: reenvio", () => {
   });
 });
 
+describe("fila offline: dono da baixa e contagem", () => {
+  it("a chave do item junta usuário e coleta: um motorista não sobrescreve a baixa do outro", () => {
+    const ana = buildPending("coleta-1", { receiverName: "Maria" }, "user-ana", 10);
+    const beto = buildPending("coleta-1", { receiverName: "José" }, "user-beto", 11);
+
+    expect(ana).toEqual({
+      id: "user-ana:coleta-1",
+      collectionId: "coleta-1",
+      userId: "user-ana",
+      payload: { receiverName: "Maria" },
+      createdAt: 10,
+    });
+    expect(beto.id).not.toBe(ana.id);
+    // A mesma baixa refeita pelo mesmo motorista substitui a anterior.
+    expect(buildPending("coleta-1", {}, "user-ana").id).toBe(ana.id);
+  });
+
+  it("sem usuário conhecido, o item entra sem dono, com a chave das versões anteriores", () => {
+    expect(buildPending("coleta-1", {}, null, 1)).toEqual({
+      id: "coleta-1",
+      collectionId: "coleta-1",
+      userId: null,
+      payload: {},
+      createdAt: 1,
+    });
+  });
+
+  it("o dono sobrevive à gravação e à leitura", () => {
+    const gravado = JSON.parse(JSON.stringify(buildPending("coleta-1", { receiverDoc: "123" }, "user-ana", 5)));
+    expect(readPending(gravado)).toEqual(gravado);
+    expect(readPending({ ...gravado, userId: "" })?.userId).toBeNull();
+    expect(readPending({ ...gravado, userId: 7 })?.userId).toBeNull();
+  });
+
+  it("conta só o que o reenvio leva: item ilegível fica fora, baixa de outro é contada à parte", () => {
+    const gravados: unknown[] = [
+      buildPending("coleta-1", {}, "user-ana", 1),
+      buildPending("coleta-2", {}, "user-beto", 2),
+      { id: "coleta-3", deliveryId: "coleta-3", payload: {}, createdAt: 3 },
+      { id: "", payload: {} },
+      null,
+      "lixo",
+    ];
+    const legiveis = gravados.flatMap((bruto) => readPending(bruto) ?? []);
+
+    expect(legiveis).toHaveLength(3);
+    expect(summarizePending(legiveis, "user-ana")).toEqual({ mine: 2, others: 1 });
+    expect(summarizePending(legiveis, "user-beto")).toEqual({ mine: 2, others: 1 });
+    expect(summarizePending(legiveis, "user-caio")).toEqual({ mine: 1, others: 2 });
+    // Sessão ainda não carregou: nada some da tela.
+    expect(summarizePending(legiveis, null)).toEqual({ mine: 3, others: 0 });
+    expect(summarizePending([], "user-ana")).toEqual({ mine: 0, others: 0 });
+  });
+
+  it("a contagem bate com o que o reenvio tenta enviar", async () => {
+    const legiveis = [
+      buildPending("coleta-1", {}, "user-ana", 1),
+      buildPending("coleta-2", {}, "user-beto", 2),
+      buildPending("coleta-3", {}, null, 3),
+    ];
+    const enviados: string[] = [];
+
+    await flushQueue("user-ana", {
+      list: async () => legiveis,
+      send: async (pendente) => {
+        enviados.push(pendente.collectionId);
+        return { status: 503, json: async () => ({}) };
+      },
+      remove: async () => undefined,
+    });
+
+    expect(enviados).toHaveLength(summarizePending(legiveis, "user-ana").mine);
+  });
+});
+
 describe("fila offline: item gravado por versão anterior do aplicativo", () => {
   it("lê o id da coleta do campo antigo `deliveryId`", () => {
     const antigo = { id: "coleta-1", deliveryId: "coleta-1", payload: { receiverName: "Maria" }, createdAt: 123 };
@@ -161,6 +337,7 @@ describe("fila offline: item gravado por versão anterior do aplicativo", () => 
     expect(readPending(antigo)).toEqual({
       id: "coleta-1",
       collectionId: "coleta-1",
+      userId: null,
       payload: { receiverName: "Maria" },
       createdAt: 123,
     });
@@ -168,7 +345,7 @@ describe("fila offline: item gravado por versão anterior do aplicativo", () => 
 
   it("item novo passa igual, e o nome novo vale mais que o antigo", () => {
     const novo = { id: "coleta-2", collectionId: "coleta-2", payload: { receiverDoc: "123" }, createdAt: 5 };
-    expect(readPending(novo)).toEqual(novo);
+    expect(readPending(novo)).toEqual({ ...novo, userId: null });
     expect(readPending({ ...novo, deliveryId: "outra" })?.collectionId).toBe("coleta-2");
   });
 
@@ -183,7 +360,7 @@ describe("fila offline: item gravado por versão anterior do aplicativo", () => 
     const itens = new Map([["coleta-1", { id: "coleta-1", deliveryId: "coleta-1", payload: {}, createdAt: 1 }]]);
     const enviados: string[] = [];
 
-    const resultado = await flushQueue({
+    const resultado = await flushQueue("user-ana", {
       list: async () => [...itens.values()].flatMap((bruto) => readPending(bruto) ?? []),
       send: async (pendente) => {
         enviados.push(pendente.collectionId);
@@ -209,6 +386,47 @@ describe("foto do comprovante: conferência no aparelho, antes do envio", () => 
       expect(photoProblem({ type, size: 1000 })).toBe(PHOTO_MESSAGE);
     },
   );
+
+  const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);
+  const WEBP = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50]);
+  // HEIC: caixa `ftyp` com a marca `heic`.
+  const HEIC = Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]);
+  // WAV também começa com "RIFF", mas não é WebP.
+  const WAV = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x41, 0x56, 0x45]);
+
+  it("reconhece JPEG, PNG e WebP pelos primeiros bytes", () => {
+    expect(sniffPhotoType(JPEG)).toBe("image/jpeg");
+    expect(sniffPhotoType(PNG)).toBe("image/png");
+    expect(sniffPhotoType(WEBP)).toBe("image/webp");
+    for (const outro of [HEIC, WAV, new Uint8Array(), Uint8Array.from([0xff, 0xd8])]) {
+      expect(sniffPhotoType(outro)).toBeNull();
+    }
+  });
+
+  it("foto que chega sem tipo vale pelo que os bytes dizem", () => {
+    expect(photoProblem({ type: resolvePhotoType("", JPEG), size: 1000 })).toBeNull();
+    expect(photoProblem({ type: resolvePhotoType("", PNG), size: 1000 })).toBeNull();
+    expect(photoProblem({ type: resolvePhotoType("", WEBP), size: 1000 })).toBeNull();
+    // O tipo descoberto é o que o servidor aceita no prefixo `data:`.
+    expect(
+      baixaSchema.safeParse({
+        receiverName: "Maria",
+        receiverDoc: "12345",
+        photoBase64: `data:${resolvePhotoType("", JPEG)};base64,AAAA`,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("sem tipo e sem ser foto aceita, continua recusada com a mensagem de formato", () => {
+    expect(photoProblem({ type: resolvePhotoType("", HEIC), size: 1000 })).toBe(PHOTO_MESSAGE);
+    expect(photoProblem({ type: resolvePhotoType("", new Uint8Array()), size: 1000 })).toBe(PHOTO_MESSAGE);
+  });
+
+  it("tipo declarado vale como veio: HEIC com bytes de JPEG segue recusado", () => {
+    expect(resolvePhotoType("image/heic", JPEG)).toBe("image/heic");
+    expect(resolvePhotoType("image/png", new Uint8Array())).toBe("image/png");
+  });
 
   it("a mensagem diz o que enviar", () => {
     expect(PHOTO_MESSAGE).toContain("JPEG, PNG ou WebP");

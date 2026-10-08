@@ -5,10 +5,18 @@
  * comprovante, a baixa vai para o IndexedDB do aparelho e é reenviada assim que
  * a conexão volta.
  *
+ * Cada baixa guarda o usuário que a colheu. O aparelho pode passar de um
+ * motorista para outro: o reenvio só leva as baixas de quem está logado, e as
+ * do outro esperam o login dele.
+ *
  * Regra de reenvio:
  *  - resposta 2xx  -> enviado, sai da fila;
- *  - 401 ou 403    -> a sessão caiu (ou o cadastro do motorista está parado).
- *                     O comprovante continua no aparelho e sobe depois do login;
+ *  - 401           -> a sessão caiu. O comprovante continua no aparelho e sobe
+ *                     depois do login;
+ *  - 403           -> a sessão vale, mas o cadastro do motorista está parado
+ *                     (inativo ou sem cadastro). Entrar de novo não resolve: a
+ *                     baixa fica presa, com o motivo, até a operação acertar o
+ *                     cadastro ou o motorista descartá-la;
  *  - 408 ou 429    -> o servidor pediu para tentar depois. Continua na fila;
  *  - demais 4xx    -> o servidor recusou e vai recusar de novo (entrega que não
  *                     é do motorista, dado inválido). Sai da fila e vira aviso;
@@ -18,14 +26,23 @@
 const DB_NAME = "mello-driver";
 const DB_VERSION = 1;
 const STORE = "pending-baixas";
+const OWNER_KEY = "mello:driver-user";
 
 export type PendingBaixa = {
-  /** Chave do item: o id da coleta. Uma baixa por carga, a mais recente substitui a anterior. */
+  /** Chave do item: usuário e coleta. Uma baixa por carga e por motorista, a mais recente substitui a anterior. */
   id: string;
   collectionId: string;
+  /**
+   * Usuário que colheu a baixa. `null` em item gravado por versão anterior do
+   * aplicativo, ou colhido sem a sessão carregada: não dá para saber de quem é.
+   */
+  userId: string | null;
   payload: Record<string, unknown>;
   createdAt: number;
 };
+
+/** Baixa que continua no aparelho e não sobe sozinha: precisa de alguém agir. */
+export type BlockedBaixa = { id: string; collectionId: string; reason: string };
 
 export type FlushResult = {
   sent: number;
@@ -33,33 +50,52 @@ export type FlushResult = {
   stillPending: number;
   /** Alguma baixa ficou na fila porque o servidor não reconheceu a sessão. */
   needsLogin: boolean;
+  /** Baixas presas: o servidor reconheceu a sessão e mesmo assim não aceita o envio. */
+  blocked: BlockedBaixa[];
 };
 
 export type BaixaOutcome = "sent" | "rejected" | "retry";
 
-// 4xx que não são recusa da baixa em si: repetir o mesmo envio pode dar certo.
-const AUTH_STATUSES = [401, 403];
+// 4xx que não são recusa da baixa em si: o comprovante não pode sumir do aparelho.
+const SESSION_STATUS = 401;
+const DRIVER_BLOCKED_STATUS = 403;
 const RETRY_LATER_STATUSES = [408, 429];
 
 export const SESSION_EXPIRED_MESSAGE =
   "Sua sessão expirou. A baixa ficou salva no aparelho: entre de novo para enviar.";
+export const DRIVER_BLOCKED_FALLBACK = "Seu cadastro de motorista não está liberado.";
+export const UNKNOWN_OWNER_REASON =
+  "Entrega não encontrada na sua viagem. A baixa pode ser de outro motorista que usou este aparelho.";
+
+/** Aviso da baixa presa pelo cadastro: o motivo do servidor e o que fazer. */
+export function blockedMessage(reason: string) {
+  return `${reason} A baixa ficou salva no aparelho. Fale com a operação para liberar o envio.`;
+}
 
 /** O que fazer com o item da fila conforme a resposta do servidor. */
 export function classifyBaixaResponse(status: number): BaixaOutcome {
   if (status >= 200 && status < 300) return "sent";
-  if (AUTH_STATUSES.includes(status) || RETRY_LATER_STATUSES.includes(status)) return "retry";
+  if (status === SESSION_STATUS || status === DRIVER_BLOCKED_STATUS || RETRY_LATER_STATUSES.includes(status)) {
+    return "retry";
+  }
   if (status >= 400 && status < 500) return "rejected";
   return "retry";
 }
 
 /** A baixa ficou na fila por falta de sessão: só sobe depois de um novo login. */
 export function needsLogin(status: number) {
-  return AUTH_STATUSES.includes(status);
+  return status === SESSION_STATUS;
+}
+
+/** A sessão vale, mas o cadastro do motorista está parado: novo login não resolve. */
+export function isDriverBlocked(status: number) {
+  return status === DRIVER_BLOCKED_STATUS;
 }
 
 /**
  * Lê um item como ele está gravado no aparelho. Versões anteriores gravavam o
- * id da coleta no campo `deliveryId`; esses itens continuam valendo.
+ * id da coleta no campo `deliveryId` e não gravavam o dono; esses itens
+ * continuam valendo.
  */
 export function readPending(raw: unknown): PendingBaixa | null {
   if (!raw || typeof raw !== "object") return null;
@@ -72,9 +108,53 @@ export function readPending(raw: unknown): PendingBaixa | null {
   return {
     id: typeof item.id === "string" && item.id !== "" ? item.id : collectionId,
     collectionId,
+    userId: typeof item.userId === "string" && item.userId !== "" ? item.userId : null,
     payload,
     createdAt: typeof item.createdAt === "number" ? item.createdAt : 0,
   };
+}
+
+/** O item é de outro motorista: fica no aparelho, à espera do login dele. */
+function isFromAnotherUser(item: PendingBaixa, userId: string) {
+  return item.userId !== null && item.userId !== userId;
+}
+
+/** Monta o item da fila. Sem usuário conhecido, a chave é só a coleta, como nas versões anteriores. */
+export function buildPending(
+  collectionId: string,
+  payload: Record<string, unknown>,
+  userId: string | null,
+  createdAt = Date.now(),
+): PendingBaixa {
+  return {
+    id: userId ? `${userId}:${collectionId}` : collectionId,
+    collectionId,
+    userId,
+    payload,
+    createdAt,
+  };
+}
+
+/**
+ * Sem sinal a sessão não carrega, e é justamente aí que a baixa vai para a
+ * fila. O aparelho lembra o último usuário que a sessão confirmou, só para
+ * marcar o dono da baixa; quem autoriza o envio continua sendo o servidor.
+ */
+export function rememberOwner(userId: string | null) {
+  try {
+    if (userId) localStorage.setItem(OWNER_KEY, userId);
+    else localStorage.removeItem(OWNER_KEY);
+  } catch {
+    // Armazenamento bloqueado: a baixa entra sem dono, como nas versões anteriores.
+  }
+}
+
+export function rememberedOwner(): string | null {
+  try {
+    return localStorage.getItem(OWNER_KEY);
+  } catch {
+    return null;
+  }
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -104,13 +184,8 @@ function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequ
   );
 }
 
-export function enqueue(collectionId: string, payload: Record<string, unknown>) {
-  const item: PendingBaixa = {
-    id: collectionId,
-    collectionId,
-    payload,
-    createdAt: Date.now(),
-  };
+export function enqueue(collectionId: string, payload: Record<string, unknown>, userId: string | null) {
+  const item = buildPending(collectionId, payload, userId);
   return tx("readwrite", (store) => store.put(item)).then(() => item);
 }
 
@@ -119,12 +194,31 @@ export async function listPending(): Promise<PendingBaixa[]> {
   return stored.map(readPending).filter((item): item is PendingBaixa => item !== null);
 }
 
-export function countPending(): Promise<number> {
-  return tx<number>("readonly", (store) => store.count());
+export type PendingCount = {
+  /** Baixas que o reenvio deste usuário leva: as dele e as sem dono. */
+  mine: number;
+  /** Baixas de outro motorista, paradas até o login dele. */
+  others: number;
+};
+
+/** Conta pela mesma leitura do reenvio: item ilegível não é enviado, então não é contado. */
+export function summarizePending(items: PendingBaixa[], userId: string | null): PendingCount {
+  const others = userId === null ? 0 : items.filter((item) => isFromAnotherUser(item, userId)).length;
+  return { mine: items.length - others, others };
+}
+
+/** Sem usuário conhecido, tudo conta como pendente: nada some da tela enquanto a sessão carrega. */
+export async function countPending(userId: string | null): Promise<PendingCount> {
+  return summarizePending(await listPending(), userId);
 }
 
 function removeItem(id: string) {
   return tx("readwrite", (store) => store.delete(id));
+}
+
+/** Apaga do aparelho as baixas que o motorista decidiu descartar. O comprovante se perde. */
+export async function discardPending(ids: string[]) {
+  for (const id of ids) await removeItem(id);
 }
 
 function sendBaixa(item: PendingBaixa) {
@@ -142,14 +236,18 @@ type QueueIo = {
 };
 
 /**
- * Tenta reenviar tudo o que está na fila. Seguro para chamar várias vezes.
- * O `io` só existe para o teste trocar o IndexedDB e a rede.
+ * Tenta reenviar o que está na fila em nome de `userId`, o usuário logado.
+ * Baixa de outro motorista nem é enviada: a sessão é a deste usuário, o
+ * servidor responderia que a entrega não é dele e o comprovante se perderia.
+ * Seguro para chamar várias vezes. O `io` só existe para o teste trocar o
+ * IndexedDB e a rede.
  */
 export async function flushQueue(
+  userId: string,
   io: QueueIo = { list: listPending, send: sendBaixa, remove: removeItem },
 ): Promise<FlushResult> {
-  const pending = await io.list();
-  const result: FlushResult = { sent: 0, rejected: [], stillPending: 0, needsLogin: false };
+  const pending = (await io.list()).filter((item) => !isFromAnotherUser(item, userId));
+  const result: FlushResult = { sent: 0, rejected: [], stillPending: 0, needsLogin: false, blocked: [] };
 
   for (const item of pending) {
     try {
@@ -160,6 +258,14 @@ export async function flushQueue(
       if (outcome === "sent") {
         await io.remove(item.id);
         result.sent += 1;
+        continue;
+      }
+
+      // Baixa sem dono que o servidor não acha na viagem deste motorista pode
+      // ser de outro: fica no aparelho, e só sai se alguém mandar descartar.
+      if (outcome === "rejected" && response.status === 404 && item.userId === null) {
+        result.blocked.push({ id: item.id, collectionId: item.collectionId, reason: UNKNOWN_OWNER_REASON });
+        result.stillPending += 1;
         continue;
       }
 
@@ -174,6 +280,14 @@ export async function flushQueue(
       }
 
       if (needsLogin(response.status)) result.needsLogin = true;
+      if (isDriverBlocked(response.status)) {
+        const body = await response.json().catch(() => null);
+        result.blocked.push({
+          id: item.id,
+          collectionId: item.collectionId,
+          reason: blockedMessage(typeof body?.error === "string" ? body.error : DRIVER_BLOCKED_FALLBACK),
+        });
+      }
       result.stillPending += 1;
     } catch {
       // Sem rede: mantém na fila.

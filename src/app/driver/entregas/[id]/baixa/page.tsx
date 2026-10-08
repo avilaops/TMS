@@ -2,18 +2,29 @@
 
 import { useState, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { SESSION_EXPIRED_MESSAGE, classifyBaixaResponse, enqueue, needsLogin } from '@/lib/offline-queue';
-import { PHOTO_MIME_TYPES, photoProblem } from '@/lib/entregas';
+import {
+  DRIVER_BLOCKED_FALLBACK,
+  SESSION_EXPIRED_MESSAGE,
+  blockedMessage,
+  classifyBaixaResponse,
+  enqueue,
+  isDriverBlocked,
+  needsLogin,
+  rememberedOwner,
+} from '@/lib/offline-queue';
+import { PHOTO_MIME_TYPES, photoProblem, resolvePhotoType } from '@/lib/entregas';
 import { createStrokeTracker } from '@/lib/assinatura';
 
 export default function DeliveryProofPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   // A entrega é a própria carga: o `[id]` da rota é o da coleta.
   const collectionId = use(params).id;
+  const { data: session } = useSession();
   
   const [receiverName, setReceiverName] = useState('');
   const [receiverDoc, setReceiverDoc] = useState('');
@@ -26,16 +37,21 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
 
+    // Foto que chega sem tipo é identificada pelos primeiros bytes.
+    const header = file.type === '' ? new Uint8Array(await file.slice(0, 12).arrayBuffer()) : new Uint8Array();
+    const type = resolvePhotoType(file.type, header);
+
     // HEIC e foto grande demais o servidor recusa: avisa já, antes do envio.
-    const problem = photoProblem(file);
+    const problem = photoProblem({ type, size: file.size });
     if (problem) {
       setPhotoBase64('');
       setPhotoError(problem);
-      e.target.value = '';
+      input.value = '';
       return;
     }
 
@@ -44,7 +60,8 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
     reader.onloadend = () => {
       setPhotoBase64(reader.result as string);
     };
-    reader.readAsDataURL(file);
+    // O tipo conferido vai no arquivo lido: é ele que vira o prefixo `data:<tipo>`.
+    reader.readAsDataURL(file.type === type ? file : new Blob([file], { type }));
   };
 
   // Funções simples para Canvas de Assinatura
@@ -136,7 +153,8 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
       // Entregar costuma ser justamente onde o sinal cai. Em vez de perder o
       // comprovante, a baixa vai para a fila local e sobe quando a rede voltar.
       const guardar = async () => {
-        await enqueue(collectionId, payload);
+        // Sem sinal a sessão pode não ter carregado: vale o último usuário confirmado.
+        await enqueue(collectionId, payload, session?.user?.id ?? rememberedOwner());
         window.dispatchEvent(new Event('mello:baixa-enfileirada'));
       };
       const guardarNaFila = async () => {
@@ -172,6 +190,13 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
             // avisado aqui, em vez de perder o que acabou de colher.
             await guardar();
             throw new Error(SESSION_EXPIRED_MESSAGE);
+          }
+          if (isDriverBlocked(res.status)) {
+            // Cadastro parado: entrar de novo não resolve. O comprovante fica
+            // no aparelho e o motorista vê o motivo que o servidor deu.
+            const data = await res.json().catch(() => null);
+            await guardar();
+            throw new Error(blockedMessage(typeof data?.error === 'string' ? data.error : DRIVER_BLOCKED_FALLBACK));
           }
           await guardarNaFila();
           return;
