@@ -140,6 +140,41 @@ export async function empresasDaConta(conta: ContaAvilaOps) {
 
 const EMISSOR = (process.env.AVILAOPS_ISSUER || "https://auth.avilaops.com").replace(/\/+$/, "");
 
+/**
+ * Troca o código de autorização pelo access token, direto no auth.
+ *
+ * Só o access token segue adiante: é com ele que o `/oauth/userinfo` diz quem é
+ * a pessoa. O `id_token` que vem junto é descartado de propósito (ver o
+ * comentário no provedor). Qualquer falha vira erro, e o login não acontece.
+ */
+export async function trocarCodigoPorToken(code: string | undefined, redirectUri: string, codeVerifier: string | undefined) {
+  if (!code) throw new Error("Resposta do login único sem código de autorização.");
+
+  const corpo = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: redirectUri,
+    client_id: process.env.AVILAOPS_CLIENT_ID || "tms",
+    client_secret: process.env.AVILAOPS_CLIENT_SECRET ?? "",
+  });
+  if (codeVerifier) corpo.set("code_verifier", codeVerifier);
+
+  const res = await fetch(`${EMISSOR}/oauth/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    body: corpo,
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000),
+  });
+
+  const dados = (await res.json().catch(() => ({}))) as { access_token?: unknown; token_type?: unknown; error?: unknown };
+  if (!res.ok || typeof dados.access_token !== "string" || !dados.access_token) {
+    throw new Error(`Login único recusou a troca do código (${res.status}${typeof dados.error === "string" ? `: ${dados.error}` : ""}).`);
+  }
+
+  return { access_token: dados.access_token, token_type: typeof dados.token_type === "string" ? dados.token_type : "Bearer" };
+}
+
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
@@ -167,7 +202,16 @@ export const authOptions: NextAuthOptions = {
       clientId: process.env.AVILAOPS_CLIENT_ID || "tms",
       clientSecret: process.env.AVILAOPS_CLIENT_SECRET,
       authorization: { url: `${EMISSOR}/oauth/authorize`, params: { scope: "openid profile email" } },
-      token: `${EMISSOR}/oauth/token`,
+      token: {
+        url: `${EMISSOR}/oauth/token`,
+        // A troca do código é feita aqui, e não pela biblioteca: a resposta do
+        // auth traz um `id_token`, e com `idToken: false` a biblioteca recusa
+        // qualquer resposta que tenha um ("id_token detected in the response").
+        // Foi o que impediu todo login em 08/10/2026.
+        async request({ params, checks, provider }) {
+          return { tokens: await trocarCodigoPorToken(params.code, provider.callbackUrl, checks.code_verifier) };
+        },
+      },
       userinfo: `${EMISSOR}/oauth/userinfo`,
       idToken: false,
       checks: ["pkce", "state"],
