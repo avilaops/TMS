@@ -9,6 +9,7 @@ import {
 } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
 import { withTrackingCode } from '@/lib/tracking';
+import { freteDaColeta } from '@/lib/frete-coleta';
 
 export async function GET() {
   const { error } = await requireStaff();
@@ -55,6 +56,15 @@ export async function POST(req: Request) {
       }
     }
 
+    // O frete sai da tabela do cliente (ou da padrão). Sem tabela, fica a cotar.
+    const frete = await freteDaColeta(prisma, {
+      clientId: data.clientId,
+      destination: data.destination,
+      weight: data.weight,
+      volumes: data.volumes,
+      invoiceValue: data.invoiceValue,
+    });
+
     // Toda coleta nasce com codigo: e ele, com o CNPJ, que abre o rastreio
     // publico. Uma coleta sem codigo simplesmente nao seria rastreavel.
     const newCollection = await withTrackingCode((trackingCode) =>
@@ -70,6 +80,8 @@ export async function POST(req: Request) {
           invoiceKey: data.invoiceKey ?? null,
           invoiceValue: data.invoiceValue ?? null,
           driverId: data.driverId ?? null,
+          ...frete,
+          freightDetails: frete.freightDetails ?? undefined,
           // Quem cria pelo painel é o operador que aprovaria: nasce confirmada.
           // `PENDING` fica para o pedido que vem do portal do cliente.
           status: 'CONFIRMED',

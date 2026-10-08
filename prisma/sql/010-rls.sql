@@ -76,7 +76,7 @@ DECLARE
     "FreightTableCity": ["tableId", "FreightTable"],
     "Driver": ["userId", "User"],
     "Vehicle": ["driverId", "Driver"],
-    "Collection": ["clientId", "Client", "driverId", "Driver", "manifestId", "Manifest"],
+    "Collection": ["clientId", "Client", "driverId", "Driver", "manifestId", "Manifest", "freightTableId", "FreightTable"],
     "CollectionStatusHistory": ["collectionId", "Collection", "userId", "User"],
     "Manifest": ["driverId", "Driver", "vehicleId", "Vehicle"],
     "FinancialTransaction": ["clientId", "Client"],

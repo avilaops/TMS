@@ -14,6 +14,8 @@ type Detalhe = {
   volumes: number;
   weight: number;
   invoiceValue: number | null;
+  freightValue: number | null;
+  freightDeadlineHours: number | null;
   status: string;
   createdAt: string;
   trackingCode: string | null;
@@ -129,6 +131,14 @@ export default function PortalColetaPage({ params }: { params: Promise<{ id: str
           <Dado rotulo="Destinatário" valor={coleta.receiver} />
           <Dado rotulo="Volumes e peso" valor={`${coleta.volumes} · ${formatWeight(coleta.weight)}`} />
           <Dado rotulo="Valor da mercadoria" valor={formatCurrency(coleta.invoiceValue)} />
+          <Dado
+            rotulo="Frete"
+            valor={
+              coleta.freightValue == null
+                ? "A cotar pela transportadora"
+                : `${formatCurrency(coleta.freightValue)}${coleta.freightDeadlineHours ? ` · prazo de ${coleta.freightDeadlineHours} h` : ""}`
+            }
+          />
         </dl>
 
         {coleta.manifest && !semEntrega && coleta.status !== "DELIVERED" && (

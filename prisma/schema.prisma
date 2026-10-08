@@ -142,6 +142,7 @@ model FreightTable {
 
   cities           FreightTableCity[]
   clients          Client[]
+  collections      Collection[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -228,6 +229,18 @@ model Collection {
   driverId    String?
   manifestId  String?
   status      String   @default("PENDING") // PENDING, CONFIRMED, COLLECTED, ROUTE, DELIVERED
+
+  // Frete desta carga. Calculado pela tabela de frete quando a coleta nasce e
+  // refeito quando destino, peso, volumes ou valor da nota mudam; se o operador
+  // informar o valor à mão (`freightManual`), ele deixa de ser refeito. Nulo =
+  // a cotar (sem tabela em vigor, ou cidade fora dela). Ver src/lib/frete-coleta.ts.
+  freightValue         Float?
+  freightDeadlineHours Int?
+  freightManual        Boolean  @default(false)
+  // Tabela que deu o valor, e a composição e os avisos da conta naquele momento.
+  freightTableId       String?
+  freightDetails       Json?
+  freightTable         FreightTable? @relation(fields: [freightTableId], references: [id], onDelete: SetNull)
   receiverName String?
 
   // Codigo publico de rastreio: 10 digitos sorteados com CSPRNG (src/lib/tracking.ts).

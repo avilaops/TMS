@@ -31,6 +31,9 @@ interface Coleta {
   manifestId: string | null;
   invoiceKey: string | null;
   invoiceValue: number | null;
+  // Frete calculado pela tabela, ou informado à mão (`freightManual`). Nulo = a cotar.
+  freightValue: number | null;
+  freightManual: boolean;
   trackingCode: string | null;
   // Comprovante registrado pelo motorista na baixa; nulo na baixa feita pelo painel.
   proof?: { id: string; status: string } | null;
@@ -86,6 +89,7 @@ const EMPTY_FORM = {
   weight: "",
   invoiceKey: "",
   invoiceValue: "",
+  freightValue: "",
   driverId: "",
 };
 
@@ -99,6 +103,8 @@ const toEditForm = (coleta: Coleta) => ({
   weight: String(coleta.weight),
   invoiceKey: coleta.invoiceKey ?? "",
   invoiceValue: coleta.invoiceValue === null ? "" : String(coleta.invoiceValue),
+  // Só o valor fixado à mão aparece no campo: em branco quer dizer "pela tabela".
+  freightValue: coleta.freightManual && coleta.freightValue !== null ? String(coleta.freightValue) : "",
   driverId: coleta.driver?.id ?? "",
 });
 
@@ -346,7 +352,7 @@ export default function ColetasPage() {
                   <th className="px-6 py-4">Cliente / Rota</th>
                   <th className="px-6 py-4">Cód. rastreio</th>
                   <th className="px-6 py-4">Volumes / Peso</th>
-                  <th className="px-6 py-4">Valor NF</th>
+                  <th className="px-6 py-4">Valor NF / Frete</th>
                   <th className="px-6 py-4">Motorista</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">Ações</th>
@@ -381,7 +387,12 @@ export default function ColetasPage() {
                       <div className="text-xs text-gray-500">{coleta.weight} kg</div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                      {coleta.invoiceValue ? `R$ ${coleta.invoiceValue.toFixed(2)}` : '-'}
+                      <div>{coleta.invoiceValue ? `R$ ${coleta.invoiceValue.toFixed(2)}` : '-'}</div>
+                      <div className="text-xs text-gray-500">
+                        {coleta.freightValue === null
+                          ? 'Frete a cotar'
+                          : `Frete R$ ${coleta.freightValue.toFixed(2)}${coleta.freightManual ? ' (manual)' : ''}`}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
                       {coleta.driver ? (
@@ -573,6 +584,23 @@ export default function ColetasPage() {
                   />
                 </div>
               </div>
+
+              {/* Frete: só na edição. Na criação ele sai da tabela de frete. */}
+              {editingId && (
+                <div className="space-y-1.5">
+                  <label htmlFor="coleta-frete" className="text-sm font-medium text-gray-700 dark:text-gray-300">Frete (R$)</label>
+                  <input
+                    id="coleta-frete"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.freightValue}
+                    onChange={(e) => setFormData({...formData, freightValue: e.target.value})}
+                    placeholder="Em branco = calcular pela tabela de frete"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                  />
+                </div>
+              )}
 
               {/* Motorista Alocado */}
               <div className="space-y-1.5">

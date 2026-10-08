@@ -126,7 +126,9 @@ O preço do frete sai de tabelas cadastradas no painel (`/dashboard/tabelas-fret
 - **Cotação do site** (`POST /api/leads` e `/api/cotacoes`, [src/lib/cotacao.ts](src/lib/cotacao.ts)): o valor estimado vem da tabela padrão da empresa. Sem tabela em vigor, ou com a cidade fora dela, o pedido é gravado sem valor para o comercial responder.
 - **Permissão**: criar e alterar tabela e cidades é do administrador; a operação consulta e usa o simulador (`POST /api/tabelas-frete/calcular`).
 
-O frete gravado em cada coleta e o faturamento ainda não existem: são a etapa seguinte.
+- **Frete na coleta** ([src/lib/frete-coleta.ts](src/lib/frete-coleta.ts)): toda coleta, do painel ou do portal, nasce com o frete calculado pela tabela do cliente (ou pela padrão), o prazo e a composição da conta (`freightValue`, `freightDeadlineHours`, `freightDetails`). Mudar destino, peso, volumes ou valor da nota refaz o cálculo. O operador pode fixar o valor à mão na edição (`freightManual`); apagar o campo devolve a conta para a tabela. Sem tabela em vigor, ou com o destino fora dela, a coleta fica "a cotar". O cliente vê no portal só o valor e o prazo.
+
+O faturamento ainda não existe: é a etapa seguinte.
 
 ## Portal do cliente
 

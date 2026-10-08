@@ -35,6 +35,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         volumes: true,
         weight: true,
         invoiceValue: true,
+        freightValue: true,
+        freightDeadlineHours: true,
         status: true,
         createdAt: true,
         trackingCode: true,

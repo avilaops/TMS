@@ -88,6 +88,7 @@ const VOLUMES_MESSAGE = "Os volumes precisam ser um número inteiro maior ou igu
 const WEIGHT_MESSAGE = "O peso precisa ser um número maior que zero.";
 const INVOICE_VALUE_MESSAGE = "O valor da NF precisa ser um número maior ou igual a zero.";
 const INVOICE_KEY_MESSAGE = "A chave da NF precisa ter 44 dígitos.";
+const FREIGHT_VALUE_MESSAGE = "O frete precisa ser um número maior ou igual a zero.";
 const DRIVER_MESSAGE = "Motorista inválido.";
 
 // A coluna é int4: acima do teto o banco recusaria com erro em vez de 400.
@@ -152,6 +153,12 @@ export const updateCollectionSchema = z
       invoiceKey,
       invoiceValue,
       driverId,
+      // Frete informado à mão. Número fixa o valor; vazio ou `null` devolve o
+      // cálculo para a tabela de frete.
+      freightValue: z.preprocess(
+        fromFormNumber,
+        z.number(FREIGHT_VALUE_MESSAGE).min(0, FREIGHT_VALUE_MESSAGE).nullish(),
+      ),
     },
     INVALID_BODY,
   )

@@ -9,6 +9,8 @@ import {
   updateCollectionSchema,
 } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
+import { freteDaColeta, type FreteDaColeta } from '@/lib/frete-coleta';
+import { Prisma } from '@prisma/client';
 
 const NOT_FOUND = 'Coleta não encontrada.';
 const IN_MANIFEST = 'Esta coleta já está em um manifesto e não pode mais ser alterada.';
@@ -51,7 +53,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const target = await prisma.collection.findUnique({
       where: { id },
-      select: { status: true, manifestId: true, driverId: true }
+      select: {
+        status: true,
+        manifestId: true,
+        driverId: true,
+        clientId: true,
+        destination: true,
+        weight: true,
+        volumes: true,
+        invoiceValue: true,
+        freightManual: true,
+      }
     });
     if (!target) {
       return NextResponse.json({ error: NOT_FOUND }, { status: 404 });
@@ -74,6 +86,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
+    // Frete: número no corpo fixa o valor à mão; `null` devolve o cálculo para a
+    // tabela. Sem o campo, o valor só é refeito se não estava fixado e algo que
+    // entra na conta mudou.
+    const { freightValue, ...campos } = data;
+    let frete: (FreteDaColeta & { freightManual: boolean }) | undefined;
+
+    if (typeof freightValue === 'number') {
+      frete = { freightValue, freightDeadlineHours: null, freightTableId: null, freightDetails: null, freightManual: true };
+    } else {
+      const mudouAConta =
+        campos.destination !== undefined ||
+        campos.weight !== undefined ||
+        campos.volumes !== undefined ||
+        campos.invoiceValue !== undefined;
+      if (freightValue === null || (mudouAConta && !target.freightManual)) {
+        const calculado = await freteDaColeta(prisma, {
+          clientId: target.clientId,
+          destination: campos.destination ?? target.destination,
+          weight: campos.weight ?? target.weight,
+          volumes: campos.volumes ?? target.volumes,
+          invoiceValue: campos.invoiceValue === undefined ? target.invoiceValue : campos.invoiceValue,
+        });
+        frete = { ...calculado, freightManual: false };
+      }
+    }
+
     // Campo ausente (`undefined`) fica como está; `null` apaga. O filtro repete
     // a condição lida acima: se a carga entrou em manifesto ou mudou de status
     // nesse meio-tempo, nada é gravado.
@@ -89,6 +127,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         invoiceKey: data.invoiceKey,
         invoiceValue: data.invoiceValue,
         driverId: data.driverId,
+        ...(frete && {
+          freightValue: frete.freightValue,
+          freightDeadlineHours: frete.freightDeadlineHours,
+          freightTableId: frete.freightTableId,
+          freightDetails: frete.freightDetails ?? Prisma.DbNull,
+          freightManual: frete.freightManual,
+        }),
       },
     });
     if (count === 0) {

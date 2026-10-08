@@ -31,6 +31,9 @@ suite("tabelas de frete", () => {
   let clientePorId: typeof import("../src/app/api/clientes/[id]/route");
   let leads: typeof import("../src/app/api/leads/route");
   let cotacoes: typeof import("../src/app/api/cotacoes/route");
+  let coletas: typeof import("../src/app/api/coletas/route");
+  let coletaPorId: typeof import("../src/app/api/coletas/[id]/route");
+  let portalColetas: typeof import("../src/app/api/portal/coletas/route");
 
   const sessao = vi.mocked(getServerSession);
   const ids = { ADMIN: "", OPERATION: "", CLIENT: "" };
@@ -57,6 +60,8 @@ suite("tabelas de frete", () => {
   async function limpar() {
     const { sistema } = banco;
     await sistema.quoteLead.deleteMany({ where: { email: { startsWith: PREFIXO } } });
+    await sistema.user.updateMany({ where: { email: { startsWith: PREFIXO } }, data: { clientId: null } });
+    await sistema.collection.deleteMany({ where: { client: { cnpj: CNPJ } } });
     await sistema.client.deleteMany({ where: { cnpj: CNPJ } });
     await sistema.freightTable.deleteMany({ where: { name: { startsWith: PREFIXO } } });
     await sistema.user.deleteMany({ where: { email: { startsWith: PREFIXO } } });
@@ -89,6 +94,9 @@ suite("tabelas de frete", () => {
     clientePorId = await import("../src/app/api/clientes/[id]/route");
     leads = await import("../src/app/api/leads/route");
     cotacoes = await import("../src/app/api/cotacoes/route");
+    coletas = await import("../src/app/api/coletas/route");
+    coletaPorId = await import("../src/app/api/coletas/[id]/route");
+    portalColetas = await import("../src/app/api/portal/coletas/route");
     await limpar();
 
     for (const perfil of ["ADMIN", "OPERATION", "CLIENT"] as const) {
@@ -104,6 +112,8 @@ suite("tabelas de frete", () => {
     sessao.mockReset();
     const { sistema } = banco;
     await sistema.quoteLead.deleteMany({ where: { email: { startsWith: PREFIXO } } });
+    await sistema.user.updateMany({ where: { email: { startsWith: PREFIXO } }, data: { clientId: null } });
+    await sistema.collection.deleteMany({ where: { client: { cnpj: CNPJ } } });
     await sistema.client.deleteMany({ where: { cnpj: CNPJ } });
     await sistema.freightTable.deleteMany({ where: { name: { startsWith: PREFIXO } } });
     // A suíte parte de uma empresa sem tabela padrão, seja qual for a ordem dos arquivos.
@@ -353,6 +363,140 @@ suite("tabelas de frete", () => {
       const corpo = await naOutra.json();
       expect(corpo.estimatedValue).toBeNull();
       expect((await banco.sistema.quoteLead.findUniqueOrThrow({ where: { id: corpo.lead.id } })).tenantId).toBe(EMPRESA_OUTRA.id);
+    });
+  });
+
+  describe("frete na coleta", () => {
+    const corpoColeta = (clientId: string, extra: Record<string, unknown> = {}) => ({
+      clientId,
+      sender: "Remetente",
+      receiver: "Destinatário",
+      origin: "São José do Rio Preto",
+      destination: "Mirassol/SP",
+      volumes: "2",
+      weight: "100",
+      ...extra,
+    });
+
+    async function criarCliente(freightTableId?: string) {
+      entrarComo("ADMIN");
+      const res = await clientes.POST(req("POST", { cnpj: CNPJ, companyName: `${PREFIXO}cliente`, freightTableId }));
+      expect(res.status).toBe(201);
+      return ((await res.json()) as { id: string }).id;
+    }
+
+    const gravada = (id: string) => banco.default.collection.findUniqueOrThrow({ where: { id } });
+
+    it("coleta do painel nasce com o frete da tabela padrão, o prazo e a composição", async () => {
+      const tabela = await criarTabela({ isDefault: true, maxVolumes: 1 }, CIDADES);
+      const clienteId = await criarCliente();
+
+      entrarComo("OPERATION");
+      const res = await coletas.POST(req("POST", corpoColeta(clienteId)));
+      expect(res.status).toBe(201);
+      const corpo = (await res.json()) as { id: string; freightValue: number };
+      expect(corpo.freightValue).toBe(85);
+
+      const coleta = await gravada(corpo.id);
+      expect(coleta).toMatchObject({ freightValue: 85, freightDeadlineHours: 24, freightManual: false, freightTableId: tabela.id });
+      expect(coleta.freightDetails).toMatchObject({
+        tabela: nome("geral"),
+        composicao: [{ valor: 50 }, { valor: 35 }],
+        avisos: [expect.stringMatching(/até 1 volumes/)],
+      });
+    });
+
+    it("a tabela negociada do cliente vence a padrão", async () => {
+      await criarTabela({ isDefault: true }, CIDADES);
+      const negociada = await criarTabela({ name: nome("negociada"), includedWeightKg: 51, excessPerKg: 0.85 }, [
+        { city: "Mirassol", minimum: 40, deadlineHours: 48 },
+      ]);
+      const clienteId = await criarCliente(negociada.id);
+
+      entrarComo("OPERATION");
+      const corpo = (await (await coletas.POST(req("POST", corpoColeta(clienteId)))).json()) as { id: string };
+      expect(await gravada(corpo.id)).toMatchObject({ freightValue: 81.65, freightDeadlineHours: 48, freightTableId: negociada.id });
+    });
+
+    it("sem tabela em vigor, ou com o destino fora dela, a coleta nasce a cotar", async () => {
+      const clienteId = await criarCliente();
+      entrarComo("OPERATION");
+      const semTabela = (await (await coletas.POST(req("POST", corpoColeta(clienteId)))).json()) as { id: string };
+      expect(await gravada(semTabela.id)).toMatchObject({ freightValue: null, freightTableId: null, freightDetails: null });
+
+      await criarTabela({ isDefault: true }, CIDADES);
+      entrarComo("OPERATION");
+      const fora = (await (await coletas.POST(req("POST", corpoColeta(clienteId, { destination: "Campinas" })))).json()) as { id: string };
+      expect((await gravada(fora.id)).freightValue).toBeNull();
+    });
+
+    it("pedido de coleta pelo portal também nasce com o frete, e o cliente vê só valor e prazo", async () => {
+      await criarTabela({ isDefault: true }, CIDADES);
+      const clienteId = await criarCliente();
+      await banco.default.user.update({ where: { id: ids.CLIENT }, data: { clientId: clienteId } });
+
+      entrarComo("CLIENT");
+      const res = await portalColetas.POST(req("POST", corpoColeta(clienteId, { weight: 30, volumes: 1 })));
+      expect(res.status).toBe(201);
+      const { collection } = (await res.json()) as { collection: Record<string, unknown> };
+      expect(collection).toMatchObject({ freightValue: 50, freightDeadlineHours: 24 });
+      expect(Object.keys(collection)).not.toContain("freightDetails");
+      expect(Object.keys(collection)).not.toContain("freightTableId");
+
+      const lista = (await (await portalColetas.GET()).json()) as Record<string, unknown>[];
+      expect(lista[0]).toMatchObject({ freightValue: 50 });
+    });
+
+    it("mudar peso, destino ou nota refaz o frete; mudar outro campo, não", async () => {
+      await criarTabela({ isDefault: true, invoiceLimit: 2000, adValoremPct: 3 }, CIDADES);
+      const clienteId = await criarCliente();
+      entrarComo("OPERATION");
+      const { id } = (await (await coletas.POST(req("POST", corpoColeta(clienteId)))).json()) as { id: string };
+
+      const alterar = async (corpo: Record<string, unknown>) => {
+        entrarComo("OPERATION");
+        const res = await coletaPorId.PATCH(req("PATCH", corpo), ctx(id));
+        expect(res.status, JSON.stringify(corpo)).toBe(200);
+        return gravada(id);
+      };
+
+      expect((await alterar({ weight: "30" })).freightValue).toBe(50);
+      expect(await alterar({ destination: "São José do Rio Preto" })).toMatchObject({ freightValue: 60, freightDeadlineHours: 48 });
+      // 5.000 de nota: 3% sobre 3.000 = 90.
+      expect((await alterar({ invoiceValue: "5000" })).freightValue).toBe(150);
+      expect((await alterar({ invoiceValue: "" })).freightValue).toBe(60);
+      expect((await alterar({ destination: "Campinas" })).freightValue).toBeNull();
+
+      // Trocar o remetente não mexe no frete, nem com a tabela já alterada.
+      await alterar({ destination: "Mirassol" });
+      entrarComo("ADMIN");
+      const padrao = await banco.default.freightTable.findFirstOrThrow({ where: { isDefault: true } });
+      await cidades.PUT(req("PUT", { cities: [{ city: "Mirassol", minimum: 999, deadlineHours: 24 }] }), ctx(padrao.id));
+      expect((await alterar({ sender: "Outro remetente" })).freightValue).toBe(50);
+    });
+
+    it("frete informado à mão fica fixo até ser apagado, quando volta para a tabela", async () => {
+      await criarTabela({ isDefault: true }, CIDADES);
+      const clienteId = await criarCliente();
+      entrarComo("OPERATION");
+      const { id } = (await (await coletas.POST(req("POST", corpoColeta(clienteId)))).json()) as { id: string };
+
+      entrarComo("OPERATION");
+      expect((await coletaPorId.PATCH(req("PATCH", { freightValue: "120,50" }), ctx(id))).status).toBe(200);
+      expect(await gravada(id)).toMatchObject({ freightValue: 120.5, freightManual: true, freightTableId: null, freightDetails: null });
+
+      // Com o valor fixado, mudar o peso não refaz a conta.
+      entrarComo("OPERATION");
+      await coletaPorId.PATCH(req("PATCH", { weight: 500 }), ctx(id));
+      expect(await gravada(id)).toMatchObject({ freightValue: 120.5, freightManual: true });
+
+      // Apagar o valor devolve o cálculo para a tabela, já com o peso novo: 50 + 470 x 0,50.
+      entrarComo("OPERATION");
+      expect((await coletaPorId.PATCH(req("PATCH", { freightValue: "" }), ctx(id))).status).toBe(200);
+      expect(await gravada(id)).toMatchObject({ freightValue: 285, freightManual: false });
+
+      entrarComo("OPERATION");
+      expect((await coletaPorId.PATCH(req("PATCH", { freightValue: -1 }), ctx(id))).status).toBe(400);
     });
   });
 });

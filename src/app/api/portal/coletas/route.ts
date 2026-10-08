@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePortalClient } from '@/lib/portal';
 import { withTrackingCode } from '@/lib/tracking';
+import { freteDaColeta } from '@/lib/frete-coleta';
 
 const COLLECTION_FIELDS = {
   id: true,
@@ -15,6 +16,9 @@ const COLLECTION_FIELDS = {
   status: true,
   createdAt: true,
   trackingCode: true,
+  // O cliente vê o valor e o prazo; a composição e a tabela ficam com a transportadora.
+  freightValue: true,
+  freightDeadlineHours: true,
 } as const;
 
 export async function GET() {
@@ -66,6 +70,14 @@ export async function POST(req: Request) {
       }
     }
 
+    const frete = await freteDaColeta(prisma, {
+      clientId,
+      destination: String(destination),
+      weight: weightNumber,
+      volumes: volumesNumber,
+      invoiceValue: invoiceValueNumber,
+    });
+
     const collection = await withTrackingCode((trackingCode) =>
       prisma.collection.create({
         data: {
@@ -77,6 +89,8 @@ export async function POST(req: Request) {
           volumes: volumesNumber,
           weight: weightNumber,
           invoiceValue: invoiceValueNumber,
+          ...frete,
+          freightDetails: frete.freightDetails ?? undefined,
           status: 'PENDING',
           trackingCode,
           // Primeira linha do histórico, gravada junto da coleta.
