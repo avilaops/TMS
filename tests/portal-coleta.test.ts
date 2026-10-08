@@ -18,6 +18,8 @@ const suite = temBanco ? describe : describe.skip;
 const PREFIXO = "teste-portalcoleta-";
 const CNPJ_A = "99777666000155";
 const CNPJ_B = "99777666000236";
+// Ids dos passos da coleta de empate: iguais até o último dígito, para a ordem ser conhecida.
+const ID_EMPATE = "99777666-0000-4000-8000-00000000000";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
 
 suite("detalhe da coleta no portal do cliente", () => {
@@ -28,9 +30,13 @@ suite("detalhe da coleta no portal do cliente", () => {
   let clienteA: string;
   let usuarioA: string;
   let operador: string;
+  let admin: string;
+  let motorista: string;
   let semEmpresa: string;
   let coletaA: string;
   let coletaB: string;
+  let coletaSemHistorico: string;
+  let coletaEmpate: string;
 
   const entrar = (id: string | null, role = "CLIENT") =>
     sessao.mockResolvedValue(id ? { user: { id, role, clientId: null, name: "x", email: "x@teste" } } : null);
@@ -74,6 +80,16 @@ suite("detalhe da coleta no portal do cliente", () => {
         data: { name: "Operador", email: `${PREFIXO}op@exemplo.br`, password: HASH_FALSO, role: "OPERATION" },
       })
     ).id;
+    admin = (
+      await prisma.user.create({
+        data: { name: "Admin", email: `${PREFIXO}admin@exemplo.br`, password: HASH_FALSO, role: "ADMIN" },
+      })
+    ).id;
+    motorista = (
+      await prisma.user.create({
+        data: { name: "Motorista", email: `${PREFIXO}motorista@exemplo.br`, password: HASH_FALSO, role: "DRIVER" },
+      })
+    ).id;
 
     semEmpresa = (
       await prisma.user.create({
@@ -108,6 +124,21 @@ suite("detalhe da coleta no portal do cliente", () => {
       })
     ).id;
     coletaB = (await prisma.collection.create({ data: coleta(clienteB, "PENDING") })).id;
+    coletaSemHistorico = (await prisma.collection.create({ data: coleta(clienteA, "PENDING") })).id;
+
+    // Quatro passos na mesma hora, gravados fora da ordem dos ids: só o desempate por id põe em ordem.
+    coletaEmpate = (await prisma.collection.create({ data: coleta(clienteA, "DELIVERED") })).id;
+    const mesmaHora = new Date("2026-06-03T12:00:00Z");
+    for (const [fim, toStatus] of [
+      ["3", "COLLECTED"],
+      ["1", "PENDING"],
+      ["4", "DELIVERED"],
+      ["2", "CONFIRMED"],
+    ]) {
+      await prisma.collectionStatusHistory.create({
+        data: { id: `${ID_EMPATE}${fim}`, collectionId: coletaEmpate, toStatus, userId: operador, createdAt: mesmaHora },
+      });
+    }
   });
 
   beforeEach(() => sessao.mockReset());
@@ -131,11 +162,22 @@ suite("detalhe da coleta no portal do cliente", () => {
   });
 
   it("coleta sem histórico gravado devolve a linha do tempo vazia, sem erro", async () => {
-    await prisma.collectionStatusHistory.deleteMany({ where: { collectionId: coletaA } });
     entrar(usuarioA);
-    const res = await ver(coletaA);
+    const res = await ver(coletaSemHistorico);
     expect(res.status).toBe(200);
     expect((await res.json()).statusHistory).toEqual([]);
+  });
+
+  it("passos gravados na mesma hora saem na ordem do id", async () => {
+    entrar(usuarioA);
+    const corpo = await (await ver(coletaEmpate)).json();
+    expect(new Set(corpo.statusHistory.map((p: { createdAt: string }) => p.createdAt)).size).toBe(1);
+    expect(corpo.statusHistory.map((p: { toStatus: string }) => p.toStatus)).toEqual([
+      "PENDING",
+      "CONFIRMED",
+      "COLLECTED",
+      "DELIVERED",
+    ]);
   });
 
   it("comprovante em conferência ou recusado não aparece; aprovado aparece", async () => {
@@ -162,7 +204,11 @@ suite("detalhe da coleta no portal do cliente", () => {
 
   it("a resposta não carrega dado interno, nem com o comprovante aprovado", async () => {
     entrar(usuarioA);
-    const texto = JSON.stringify(await (await ver(coletaA)).json());
+    const corpo = await (await ver(coletaA)).json();
+    // Com histórico e comprovante de verdade: sem eles, a lista abaixo não provaria nada.
+    expect(corpo.statusHistory).toHaveLength(2);
+    expect(corpo.proof).not.toBeNull();
+    const texto = JSON.stringify(corpo);
     for (const proibido of [
       "latitude",
       "longitude",
@@ -196,8 +242,14 @@ suite("detalhe da coleta no portal do cliente", () => {
     entrar(null);
     expect((await ver(coletaA)).status).toBe(401);
 
-    entrar(operador, "OPERATION");
-    expect((await ver(coletaA)).status).toBe(401);
+    for (const [id, role] of [
+      [operador, "OPERATION"],
+      [admin, "ADMIN"],
+      [motorista, "DRIVER"],
+    ]) {
+      entrar(id, role);
+      expect((await ver(coletaA)).status, `perfil ${role}`).toBe(401);
+    }
   });
 
   it("cliente sem empresa vinculada recebe 403", async () => {
