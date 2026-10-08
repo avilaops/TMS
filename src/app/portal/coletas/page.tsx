@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Package, Plus, X, Loader2, AlertCircle } from "lucide-react";
 import {
   COLLECTION_STATUS,
@@ -187,7 +188,9 @@ export default function PortalColetasPage() {
                     <tr key={coleta.id} className="hover:bg-gray-50/60">
                       <Td>{formatDate(coleta.createdAt)}</Td>
                       <Td className="font-medium text-gray-900">
-                        {coleta.origin} → {coleta.destination}
+                        <Link href={`/portal/coletas/${coleta.id}`} className="hover:text-orange-600 hover:underline">
+                          {coleta.origin} → {coleta.destination}
+                        </Link>
                       </Td>
                       <Td>{coleta.receiver}</Td>
                       <Td>{coleta.volumes}</Td>
