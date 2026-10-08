@@ -28,6 +28,7 @@ export const CLIENT_PUBLIC_SELECT = {
   address: true,
   paymentCondition: true,
   creditLimit: true,
+  freightTableId: true,
   active: true,
   createdAt: true,
   updatedAt: true,
@@ -97,6 +98,12 @@ const clientOptionalFields = {
   address: optionalText(300, "Endereço muito longo."),
   paymentCondition: optionalText(120, "Condição de pagamento muito longa."),
   creditLimit: optionalAmount("O limite de crédito precisa ser um número maior ou igual a zero."),
+  // Tabela de frete negociada. Vazio ou null volta para a padrão da transportadora.
+  freightTableId: z
+    .string(INVALID_BODY)
+    .trim()
+    .transform((value) => (value === "" ? null : value))
+    .nullish(),
 };
 
 export const createClientSchema = z.object(
@@ -115,6 +122,144 @@ export const updateClientSchema = z
     INVALID_BODY,
   )
   .refine((data) => Object.values(data).some((value) => value !== undefined), { message: NOTHING_TO_CHANGE });
+
+/* ------------------------------ Tabelas de frete ------------------------------ */
+
+const numero = (message: string, min = 0) => z.preprocess(fromFormNumber, z.number(message).min(min, message));
+const numeroOpcional = (message: string, min = 0) =>
+  z.preprocess(fromFormNumber, z.number(message).min(min, message).nullish());
+const percentual = (message: string) =>
+  z.preprocess(fromFormNumber, z.number(message).min(0, message).max(100, message).nullish());
+const inteiroOpcional = (message: string) =>
+  z.preprocess(fromFormNumber, z.number(message).int(message).min(1, message).nullish());
+
+// Data do formulário (AAAA-MM-DD) ou ISO. Vazio apaga; ausente não mexe.
+const dataOpcional = (message: string) =>
+  z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+    z.coerce.date(message).nullish(),
+  );
+
+const freightTableFields = {
+  includedWeightKg: numero("O peso coberto pelo frete mínimo precisa ser um número maior ou igual a zero."),
+  excessPerKg: numero("O valor do kg excedente precisa ser um número maior ou igual a zero."),
+  cubageFactor: numeroOpcional("O fator de cubagem precisa ser um número maior ou igual a zero."),
+  invoiceLimit: numeroOpcional("O limite de valor da nota precisa ser um número maior ou igual a zero."),
+  adValoremPct: percentual("O percentual sobre a nota precisa estar entre 0 e 100."),
+  maxVolumes: inteiroOpcional("O máximo de volumes precisa ser um número inteiro maior que zero."),
+  redeliveryPct: percentual("O percentual de reentrega precisa estar entre 0 e 100."),
+  returnPct: percentual("O percentual de devolução precisa estar entre 0 e 100."),
+  validFrom: dataOpcional("Data de início inválida."),
+  validTo: dataOpcional("Data de fim inválida."),
+  notes: optionalText(1000, "Observação muito longa."),
+};
+
+const freightTableName = z.string("Informe o nome da tabela.").trim().min(2, "Informe o nome da tabela.").max(120, "Nome muito longo.");
+
+const validadeCoerente = (data: { validFrom?: Date | null; validTo?: Date | null }) =>
+  !data.validFrom || !data.validTo || data.validFrom <= data.validTo;
+const VALIDADE_INVERTIDA = { message: "O fim da validade não pode ser antes do início.", path: ["validTo"] };
+
+export const createFreightTableSchema = z
+  .object(
+    {
+      name: freightTableName,
+      ...freightTableFields,
+      isDefault: z.boolean("Informe se a tabela é a padrão.").optional(),
+    },
+    INVALID_BODY,
+  )
+  .refine(validadeCoerente, VALIDADE_INVERTIDA);
+
+export const updateFreightTableSchema = z
+  .object(
+    {
+      name: freightTableName.optional(),
+      includedWeightKg: freightTableFields.includedWeightKg.optional(),
+      excessPerKg: freightTableFields.excessPerKg.optional(),
+      cubageFactor: freightTableFields.cubageFactor,
+      invoiceLimit: freightTableFields.invoiceLimit,
+      adValoremPct: freightTableFields.adValoremPct,
+      maxVolumes: freightTableFields.maxVolumes,
+      redeliveryPct: freightTableFields.redeliveryPct,
+      returnPct: freightTableFields.returnPct,
+      validFrom: freightTableFields.validFrom,
+      validTo: freightTableFields.validTo,
+      notes: freightTableFields.notes,
+      isDefault: z.boolean("Informe se a tabela é a padrão.").optional(),
+      active: activeFlag.optional(),
+    },
+    INVALID_BODY,
+  )
+  .refine((data) => Object.values(data).some((value) => value !== undefined), { message: NOTHING_TO_CHANGE })
+  .refine(validadeCoerente, VALIDADE_INVERTIDA);
+
+/** Tamanho máximo de uma tabela: folga larga sobre o maior estado do país (853 municípios). */
+export const MAX_CIDADES_POR_TABELA = 2000;
+
+export const freightCitiesSchema = z.object(
+  {
+    cities: z
+      .array(
+        z.object(
+          {
+            city: z.string("Informe o nome da cidade.").trim().min(2, "Informe o nome da cidade.").max(120, "Nome de cidade muito longo."),
+            minimum: numero("O frete mínimo da cidade precisa ser um número maior ou igual a zero."),
+            deadlineHours: z.preprocess(
+              fromFormNumber,
+              z.number("O prazo precisa ser um número de horas.").int("O prazo precisa ser um número inteiro de horas.").min(1, "O prazo precisa ser de pelo menos 1 hora.").max(24 * 60, "Prazo muito longo."),
+            ),
+            dedicated: z.boolean("Informe se a cidade é só com veículo dedicado.").optional(),
+          },
+          INVALID_BODY,
+        ),
+        "Envie a lista de cidades.",
+      )
+      .max(MAX_CIDADES_POR_TABELA, `A tabela aceita no máximo ${MAX_CIDADES_POR_TABELA} cidades.`),
+  },
+  INVALID_BODY,
+);
+
+export const simulateFreightSchema = z.object(
+  {
+    city: z.string("Informe a cidade de destino.").trim().min(2, "Informe a cidade de destino.").max(120),
+    weight: numero("Informe o peso em kg."),
+    volumes: inteiroOpcional("A quantidade de volumes precisa ser um número inteiro maior que zero."),
+    invoiceValue: numeroOpcional("O valor da nota precisa ser um número maior ou igual a zero."),
+    cubicMeters: numeroOpcional("O volume em m³ precisa ser um número maior ou igual a zero."),
+    clientId: z.string().trim().min(1).nullish(),
+    tableId: z.string().trim().min(1).nullish(),
+  },
+  INVALID_BODY,
+);
+
+export const FREIGHT_TABLE_SELECT = {
+  id: true,
+  name: true,
+  active: true,
+  isDefault: true,
+  validFrom: true,
+  validTo: true,
+  includedWeightKg: true,
+  excessPerKg: true,
+  cubageFactor: true,
+  invoiceLimit: true,
+  adValoremPct: true,
+  maxVolumes: true,
+  redeliveryPct: true,
+  returnPct: true,
+  notes: true,
+  updatedAt: true,
+  _count: { select: { cities: true, clients: true } },
+} as const;
+
+export const FREIGHT_CITY_SELECT = {
+  id: true,
+  city: true,
+  minimum: true,
+  deadlineHours: true,
+  dedicated: true,
+} as const;
 
 /* --------------------------------- Motoristas -------------------------------- */
 

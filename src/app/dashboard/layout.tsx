@@ -20,7 +20,8 @@ import {
   DollarSign,
   UserPlus,
   UserCog,
-  ClipboardCheck
+  ClipboardCheck,
+  Calculator
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -30,6 +31,7 @@ const sidebarLinks: { href: string; icon: typeof Truck; label: string; roles?: s
   { href: "/dashboard", icon: LayoutDashboard, label: "Visão Geral" },
   { href: "/dashboard/crm", icon: UserPlus, label: "CRM" },
   { href: "/dashboard/clientes", icon: Users, label: "Clientes" },
+  { href: "/dashboard/tabelas-frete", icon: Calculator, label: "Tabelas de frete" },
   { href: "/dashboard/coletas", icon: Package, label: "Minutas" },
   { href: "/dashboard/manifestos", icon: Route, label: "Manifestos" },
   { href: "/dashboard/comprovantes", icon: ClipboardCheck, label: "Comprovantes" },

@@ -1,46 +1,24 @@
 import { NextResponse } from 'next/server';
-import { paraEmpresa } from '@/lib/prisma';
-import { empresaPublica } from '@/lib/empresas';
+import { registrarCotacao } from '@/lib/cotacao';
 
+// Pedido de cotação do site. Mesma regra de `/api/cotacoes` (src/lib/cotacao.ts);
+// muda só o formato da resposta, que o site já consome assim.
 export async function POST(req: Request) {
   try {
-    const data = await req.json();
-    
-    const { companyName, email, origin, destination, weight, phone = '', volumes = 1 } = data;
-
-    if (!companyName || !email || !origin || !destination || !weight) {
-      return NextResponse.json({ error: 'Faltam campos obrigatórios' }, { status: 400 });
+    const resultado = await registrarCotacao(await req.json().catch(() => null), { volumesPadrao: 1 });
+    if (!resultado.ok) {
+      return NextResponse.json(
+        { error: resultado.status === 404 ? 'Empresa não encontrada' : 'Faltam campos obrigatórios' },
+        { status: resultado.status },
+      );
     }
-
-    // Lógica simples de cálculo de frete para o lead
-    const baseRate = 150.0;
-    const ratePerKg = 2.5;
-    const estimatedValue = baseRate + (Number(weight) * ratePerKg);
-
-    // Rota pública: a empresa vem do corpo (`empresa`, o slug) ou do padrão do ambiente.
-    const tenantId = await empresaPublica(data.empresa);
-    if (!tenantId) {
-      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
-    }
-
-    const lead = await paraEmpresa(tenantId).db.quoteLead.create({
-      data: {
-        companyName,
-        email,
-        phone,
-        origin,
-        destination,
-        volumes: Number(volumes),
-        weight: Number(weight),
-        estimatedValue,
-        status: 'NEW'
-      }
-    });
 
     return NextResponse.json({
       message: 'Cotação recebida com sucesso',
-      estimatedValue,
-      lead
+      // Nulo quando não há tabela em vigor ou a cidade não está nela: o comercial responde.
+      estimatedValue: resultado.estimatedValue,
+      prazoHoras: resultado.prazoHoras,
+      lead: resultado.lead,
     });
   } catch (error) {
     console.error('Error creating lead:', error);

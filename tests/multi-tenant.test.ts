@@ -323,6 +323,31 @@ suite("isolamento entre empresas", () => {
       expect(intacto).toMatchObject({ status: "SUBMITTED", reviewedById: null });
     });
 
+    it("tabela de frete e cidades de uma empresa não existem para a outra, e cidade não entra em tabela alheia", async () => {
+      const daPadrao = await banco.paraEmpresa(padrao.tenantId).db.freightTable.create({
+        data: { name: `${PREFIXO}tabela`, isDefault: false, cities: { create: [{ city: "Mirassol", cityKey: "mirassol", minimum: 50 }] } },
+      });
+      try {
+        const { db } = banco.paraEmpresa(outra.tenantId);
+        expect(await db.freightTable.findUnique({ where: { id: daPadrao.id } })).toBeNull();
+        expect(await db.freightTableCity.count({ where: { tableId: daPadrao.id } })).toBe(0);
+        // O mesmo nome pode existir nas duas empresas.
+        const daOutra = await db.freightTable.create({ data: { name: `${PREFIXO}tabela` } });
+        expect(daOutra.tenantId).toBe(EMPRESA_OUTRA.id);
+
+        // Cidade apontando para a tabela da outra empresa: nem pela empresa, nem pelo caminho de sistema.
+        const linha = { tableId: daPadrao.id, city: "Intrusa", cityKey: "intrusa", minimum: 1 };
+        await expect(db.freightTableCity.create({ data: linha })).rejects.toThrow();
+        await expect(banco.sistema.freightTableCity.create({ data: { ...linha, tenantId: EMPRESA_OUTRA.id } })).rejects.toThrow(
+          /outra empresa/,
+        );
+        // Cliente de uma empresa também não aponta para a tabela da outra.
+        await expect(db.client.update({ where: { id: outra.clienteId }, data: { freightTableId: daPadrao.id } })).rejects.toThrow();
+      } finally {
+        await banco.sistema.freightTable.deleteMany({ where: { name: `${PREFIXO}tabela` } });
+      }
+    });
+
     it("gravar sem dizer a empresa falha em vez de cair em alguma", async () => {
       await expect(
         banco.sistema.client.create({ data: { cnpj: "99000111000133", companyName: "Sem empresa" } }),

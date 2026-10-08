@@ -34,6 +34,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
+    // Tabela de frete informada precisa existir nesta empresa.
+    if (data.freightTableId) {
+      const tabela = await prisma.freightTable.findUnique({ where: { id: data.freightTableId }, select: { id: true } });
+      if (!tabela) return NextResponse.json({ error: 'Tabela de frete não encontrada.' }, { status: 400 });
+    }
+
     try {
       // Campo ausente (`undefined`) fica como está; `null` apaga.
       const cliente = await prisma.client.update({
@@ -49,6 +55,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           address: data.address,
           paymentCondition: data.paymentCondition,
           creditLimit: data.creditLimit,
+          freightTableId: data.freightTableId,
           active: data.active,
         },
         select: CLIENT_PUBLIC_SELECT,

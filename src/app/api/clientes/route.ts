@@ -44,6 +44,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: DUPLICATE_MESSAGE }, { status: 409 });
     }
 
+    // Tabela de frete informada precisa existir nesta empresa.
+    if (data.freightTableId) {
+      const tabela = await prisma.freightTable.findUnique({ where: { id: data.freightTableId }, select: { id: true } });
+      if (!tabela) return NextResponse.json({ error: 'Tabela de frete não encontrada.' }, { status: 400 });
+    }
+
     try {
       const newClient = await prisma.client.create({
         data: {
@@ -57,6 +63,7 @@ export async function POST(req: Request) {
           address: data.address,
           paymentCondition: data.paymentCondition,
           creditLimit: data.creditLimit,
+          freightTableId: data.freightTableId,
         },
         select: CLIENT_PUBLIC_SELECT,
       });

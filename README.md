@@ -114,6 +114,20 @@ Nenhuma tela pede senha. A coluna `password` do usuário continua no banco por e
 
 Os testes em [tests/multi-tenant.test.ts](tests/multi-tenant.test.ts) provam o isolamento contra o banco, com duas empresas.
 
+## Tabelas de frete e cotação
+
+O preço do frete sai de tabelas cadastradas no painel (`/dashboard/tabelas-frete`), nunca de valor fixo no código.
+
+- **Tabela** (`FreightTable`): peso coberto pelo frete mínimo, valor do kg excedente, fator de cubagem, valor de nota coberto e percentual sobre o que passa dele, máximo de volumes, percentuais de reentrega e devolução, e validade. Uma por empresa é a **padrão**; marcar outra como padrão desmarca a anterior.
+- **Cidades** (`FreightTableCity`): frete mínimo e prazo de cada cidade atendida. A tela aceita a lista colada da planilha (`Cidade;Mínimo;Prazo`, com vírgula decimal e prazos como `Até 24h`) e grava a lista inteira de uma vez.
+- **Cliente**: pode ter uma tabela negociada (`Client.freightTableId`). Sem ela, vale a padrão.
+- **A conta** ([src/lib/frete.ts](src/lib/frete.ts), `calcularFrete`): mínimo da cidade + excedente sobre o maior entre peso real e cubado + percentual sobre a nota acima do limite. Volumes acima do combinado, nota acima do limite sem percentual definido e cidade só com veículo dedicado saem como **aviso**, sem impedir o cálculo. O nome da cidade casa sem acento, caixa, UF ou apóstrofo.
+- **Qual tabela vale** (`tabelaVigente`): a do cliente, se ativa e dentro da validade; senão a padrão; senão nenhuma.
+- **Cotação do site** (`POST /api/leads` e `/api/cotacoes`, [src/lib/cotacao.ts](src/lib/cotacao.ts)): o valor estimado vem da tabela padrão da empresa. Sem tabela em vigor, ou com a cidade fora dela, o pedido é gravado sem valor para o comercial responder.
+- **Permissão**: criar e alterar tabela e cidades é do administrador; a operação consulta e usa o simulador (`POST /api/tabelas-frete/calcular`).
+
+O frete gravado em cada coleta e o faturamento ainda não existem: são a etapa seguinte.
+
 ## Portal do cliente
 
 Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu e consulta faturas. Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.

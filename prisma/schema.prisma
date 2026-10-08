@@ -44,6 +44,8 @@ model Tenant {
   maintenances   Maintenance[]
   proofs         ProofOfDelivery[]
   quoteLeads     QuoteLead[]
+  freightTables  FreightTable[]
+  freightCities  FreightTableCity[]
   articles       Article[]
   socialPosts    SocialPost[]
   contentMetrics ContentMetric[]
@@ -95,9 +97,72 @@ model Client {
   users           User[]
   transactions    FinancialTransaction[]
 
+  // Tabela de frete negociada com este cliente. Sem ela vale a padrão da transportadora.
+  freightTableId  String?
+  freightTable    FreightTable? @relation(fields: [freightTableId], references: [id], onDelete: SetNull)
+
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
   @@unique([tenantId, cnpj])
+  @@index([freightTableId])
+}
+
+// ---------------------------------------------------------------------------
+// Tabelas de frete
+//
+// Uma tabela tem as regras gerais (peso coberto pelo frete mínimo, valor do kg
+// excedente, cubagem, limite de nota) e uma linha por cidade atendida, com o
+// frete mínimo e o prazo de lá. A transportadora tem uma tabela padrão
+// (`isDefault`) e pode ter tabelas negociadas, ligadas a clientes. Quem faz a
+// conta é `calcularFrete` (src/lib/frete.ts).
+// ---------------------------------------------------------------------------
+model FreightTable {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id               String    @id @default(uuid())
+  name             String
+  active           Boolean   @default(true)
+  // A tabela usada quando o cliente não tem uma própria. No máximo uma por
+  // empresa: a rota desmarca a anterior na mesma transação.
+  isDefault        Boolean   @default(false)
+  validFrom        DateTime?
+  validTo          DateTime?
+
+  includedWeightKg Float     @default(0) // peso coberto pelo frete mínimo da cidade
+  excessPerKg      Float     @default(0) // R$ por kg acima do peso coberto
+  cubageFactor     Float?    // kg por m³; nulo = não cubar
+  invoiceLimit     Float?    // valor de nota coberto pelo frete; nulo = sem limite
+  adValoremPct     Float?    // % sobre o que passa do limite; nulo = consultar o comercial
+  maxVolumes       Int?      // acima disso a cotação sai com aviso
+  redeliveryPct    Float?    // reentrega, % do frete original
+  returnPct        Float?    // devolução, % do frete original
+  notes            String?
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  cities           FreightTableCity[]
+  clients          Client[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, name])
+}
+
+model FreightTableCity {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String   @id @default(uuid())
+  tableId       String
+  city          String   // como a transportadora escreveu
+  cityKey       String   // sem acento, caixa nem pontuação: é por aqui que a cotação acha a cidade
+  minimum       Float    // frete mínimo para esta cidade
+  deadlineHours Int      @default(24)
+  dedicated     Boolean  @default(false) // só com veículo dedicado: a cotação avisa
+
+  table         FreightTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tableId, cityKey])
 }
 
 model Driver {

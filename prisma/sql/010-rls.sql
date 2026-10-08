@@ -72,6 +72,8 @@ DECLARE
   -- tabela => pares (coluna, tabela referenciada)
   referencias jsonb := '{
     "User": ["clientId", "Client"],
+    "Client": ["freightTableId", "FreightTable"],
+    "FreightTableCity": ["tableId", "FreightTable"],
     "Driver": ["userId", "User"],
     "Vehicle": ["driverId", "Driver"],
     "Collection": ["clientId", "Client", "driverId", "Driver", "manifestId", "Manifest"],

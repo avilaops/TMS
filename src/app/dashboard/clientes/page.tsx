@@ -16,6 +16,7 @@ interface Cliente {
   address: string | null;
   paymentCondition: string | null;
   creditLimit: number | null;
+  freightTableId: string | null;
   active: boolean;
 }
 
@@ -30,6 +31,7 @@ const FORM_VAZIO = {
   address: "",
   paymentCondition: "",
   creditLimit: "",
+  freightTableId: "",
 };
 
 type Form = typeof FORM_VAZIO;
@@ -45,6 +47,7 @@ const toForm = (cliente: Cliente): Form => ({
   address: cliente.address ?? "",
   paymentCondition: cliente.paymentCondition ?? "",
   creditLimit: cliente.creditLimit == null ? "" : String(cliente.creditLimit),
+  freightTableId: cliente.freightTableId ?? "",
 });
 
 const INPUT =
@@ -62,9 +65,15 @@ export default function ClientesPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [formData, setFormData] = useState(FORM_VAZIO);
+  // Tabelas de frete para o seletor do formulário.
+  const [tabelas, setTabelas] = useState<{ id: string; name: string; isDefault: boolean; active: boolean }[]>([]);
 
   useEffect(() => {
     fetchClientes();
+    fetch('/api/tabelas-frete')
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setTabelas)
+      .catch(() => setTabelas([]));
   }, []);
 
   const fetchClientes = async () => {
@@ -408,6 +417,25 @@ export default function ClientesPage() {
                     onChange={(e) => setFormData({...formData, creditLimit: e.target.value})}
                     className={INPUT}
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="cliente-tabela-frete" className={LABEL}>Tabela de frete</label>
+                  <select
+                    id="cliente-tabela-frete"
+                    value={formData.freightTableId}
+                    onChange={(e) => setFormData({...formData, freightTableId: e.target.value})}
+                    className={INPUT}
+                  >
+                    <option value="">Padrão da transportadora</option>
+                    {tabelas
+                      .filter((tabela) => tabela.active || tabela.id === formData.freightTableId)
+                      .map((tabela) => (
+                        <option key={tabela.id} value={tabela.id}>
+                          {tabela.name}
+                          {tabela.active ? "" : " (inativa)"}
+                        </option>
+                      ))}
+                  </select>
                 </div>
               </div>
 
