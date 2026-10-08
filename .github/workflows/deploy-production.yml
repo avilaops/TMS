@@ -39,6 +39,9 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
+          # O jsdom dos testes de tela exige Node >= 22.22.2. Sem isto vale a 22
+          # que estiver em cache no runner, que pode ser mais antiga.
+          check-latest: true
           cache: npm
       - run: npm ci
       - run: npx prisma generate --schema=prisma/schema.prisma

@@ -38,6 +38,7 @@ type Perfil = "ADMIN" | "OPERATION";
 
 suite("segurança de usuários e motoristas", () => {
   let prisma: typeof import("../src/lib/prisma").default;
+  let sistema: typeof import("../src/lib/prisma").sistema;
   let auth: typeof import("../src/lib/auth");
   let coletas: typeof import("../src/app/api/coletas/route");
   let dashboard: typeof import("../src/app/api/dashboard/route");
@@ -101,7 +102,9 @@ suite("segurança de usuários e motoristas", () => {
   }
 
   beforeAll(async () => {
-    prisma = (await import("../src/lib/prisma")).default;
+    const banco = await import("../src/lib/prisma");
+    prisma = banco.default;
+    sistema = banco.sistema;
     auth = await import("../src/lib/auth");
     coletas = await import("../src/app/api/coletas/route");
     dashboard = await import("../src/app/api/dashboard/route");
@@ -382,10 +385,35 @@ suite("segurança de usuários e motoristas", () => {
           sessao.mockReset();
           sessao.mockResolvedValueOnce(sessaoDe(a.id)).mockResolvedValueOnce(sessaoDe(b.id));
 
-          const respostas = await Promise.all([
-            usuario.PATCH(req("PATCH", { role: "OPERATION" }), ctx(b.id)),
-            usuario.PATCH(req("PATCH", { role: "OPERATION" }), ctx(a.id)),
-          ]);
+          // A conferência de perfil (`requireStaff`) lê o banco fora da transação
+          // da rota. Soltos, os dois PATCH às vezes nem se cruzam: um grava antes
+          // de o outro conferir o perfil, e o segundo sai com 403 (já não é ADMIN)
+          // sem chegar à trava. Para a corrida acontecer sempre, o teste segura as
+          // linhas de A e B até os dois estarem parados na trava da rota, já com o
+          // perfil conferido, e só então solta.
+          const respostas = await sistema.$transaction(
+            async (tx) => {
+              await tx.$queryRaw`SELECT id FROM "User" WHERE id IN (${a.id}, ${b.id}) FOR UPDATE`;
+
+              const chamadas = [
+                usuario.PATCH(req("PATCH", { role: "OPERATION" }), ctx(b.id)),
+                usuario.PATCH(req("PATCH", { role: "OPERATION" }), ctx(a.id)),
+              ];
+
+              await vi.waitFor(
+                async () => {
+                  // `pg_locks` e não `pg_stat_activity`: este fica congelado dentro da transação.
+                  const [{ parados }] = await tx.$queryRaw<{ parados: number }[]>`
+                    SELECT count(DISTINCT pid)::int AS parados FROM pg_locks WHERE NOT granted`;
+                  expect(parados, "PATCH parados na trava").toBe(2);
+                },
+                { timeout: 4000, interval: 20 },
+              );
+
+              return chamadas;
+            },
+            { timeout: 15000 },
+          ).then((chamadas) => Promise.all(chamadas));
 
           expect(respostas.map((r) => r.status).sort(), `rodada ${rodada}`).toEqual([200, 409]);
           expect(await prisma.user.count({ where: { role: "ADMIN" } }), `rodada ${rodada}`).toBe(1);
