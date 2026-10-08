@@ -174,6 +174,7 @@ export default function PortalColetasPage() {
                 <tr>
                   <Th>Data</Th>
                   <Th>Trajeto</Th>
+                  <Th>Rastreio</Th>
                   <Th>Destinatário</Th>
                   <Th>Volumes</Th>
                   <Th>Peso</Th>
@@ -192,6 +193,7 @@ export default function PortalColetasPage() {
                           {coleta.origin} → {coleta.destination}
                         </Link>
                       </Td>
+                      <Td className="font-mono">{coleta.trackingCode ?? "-"}</Td>
                       <Td>{coleta.receiver}</Td>
                       <Td>{coleta.volumes}</Td>
                       <Td>{formatWeight(coleta.weight)}</Td>

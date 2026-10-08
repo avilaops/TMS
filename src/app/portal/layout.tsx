@@ -47,7 +47,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
           {links.map((link) => {
-            const isActive = pathname === link.href;
+            // "Visão geral" é prefixo de tudo: só marca na própria página.
+            const isActive =
+              pathname === link.href || (link.href !== "/portal" && pathname.startsWith(`${link.href}/`));
             return (
               <Link
                 key={link.href}

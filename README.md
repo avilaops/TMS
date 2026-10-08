@@ -14,7 +14,7 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 | --- | --- | --- | --- |
 | Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e manutenção, financeiro, fiscal/CT-e, mensagens, usuários |
 | Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline |
-| Cliente | `/portal` | `CLIENT` | Coletas, faturas e minutas da própria empresa |
+| Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas e minutas da própria empresa |
 | API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
 
 Não há página pública: a raiz `/` leva quem já entrou para a própria área e todo o resto para `/login`.

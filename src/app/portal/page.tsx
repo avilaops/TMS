@@ -107,7 +107,9 @@ export default function PortalHomePage() {
                 <li key={coleta.id} className="p-6 flex flex-wrap gap-4 items-center justify-between">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900 truncate">
-                      {coleta.origin} → {coleta.destination}
+                      <Link href={`/portal/coletas/${coleta.id}`} className="hover:text-orange-600 hover:underline">
+                        {coleta.origin} → {coleta.destination}
+                      </Link>
                     </p>
                     <p className="text-sm text-gray-500 truncate">
                       {coleta.receiver} · {formatDate(coleta.createdAt)}

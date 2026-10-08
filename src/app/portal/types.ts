@@ -9,6 +9,7 @@ export type PortalCollection = {
   invoiceValue: number | null;
   status: string;
   createdAt: string;
+  trackingCode: string | null;
   driver?: { user: { name: string } } | null;
 };
 

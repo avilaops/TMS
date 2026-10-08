@@ -28,6 +28,7 @@ suite("detalhe da coleta no portal do cliente", () => {
   let clienteA: string;
   let usuarioA: string;
   let operador: string;
+  let semEmpresa: string;
   let coletaA: string;
   let coletaB: string;
 
@@ -74,6 +75,12 @@ suite("detalhe da coleta no portal do cliente", () => {
       })
     ).id;
 
+    semEmpresa = (
+      await prisma.user.create({
+        data: { name: "Sem empresa", email: `${PREFIXO}solto@exemplo.br`, password: HASH_FALSO, role: "CLIENT" },
+      })
+    ).id;
+
     coletaA = (
       await prisma.collection.create({
         data: {
@@ -81,8 +88,9 @@ suite("detalhe da coleta no portal do cliente", () => {
           trackingCode: "9977766601",
           statusHistory: {
             create: [
-              { fromStatus: null, toStatus: "PENDING", userId: usuarioA },
-              { fromStatus: "PENDING", toStatus: "DELIVERED", userId: operador },
+              // Horas distintas: gravadas juntas, as duas linhas sairiam com o mesmo `createdAt`.
+              { fromStatus: null, toStatus: "PENDING", userId: usuarioA, createdAt: new Date("2026-06-01T12:00:00Z") },
+              { fromStatus: "PENDING", toStatus: "DELIVERED", userId: operador, createdAt: new Date("2026-06-02T12:00:00Z") },
             ],
           },
           proof: {
@@ -116,6 +124,18 @@ suite("detalhe da coleta no portal do cliente", () => {
     const corpo = await res.json();
     expect(corpo).toMatchObject({ id: coletaA, status: "DELIVERED", trackingCode: "9977766601", client: { cnpj: CNPJ_A } });
     expect(corpo.statusHistory.map((p: { toStatus: string }) => p.toStatus)).toEqual(["PENDING", "DELIVERED"]);
+    // Cada passo leva só a situação e a hora: quem trocou o status é dado interno.
+    for (const passo of corpo.statusHistory) expect(Object.keys(passo).sort()).toEqual(["createdAt", "toStatus"]);
+    // A resposta pode levar foto e assinatura: não fica em cache.
+    expect(res.headers.get("Cache-Control")).toBe("private, no-store");
+  });
+
+  it("coleta sem histórico gravado devolve a linha do tempo vazia, sem erro", async () => {
+    await prisma.collectionStatusHistory.deleteMany({ where: { collectionId: coletaA } });
+    entrar(usuarioA);
+    const res = await ver(coletaA);
+    expect(res.status).toBe(200);
+    expect((await res.json()).statusHistory).toEqual([]);
   });
 
   it("comprovante em conferência ou recusado não aparece; aprovado aparece", async () => {
@@ -178,5 +198,10 @@ suite("detalhe da coleta no portal do cliente", () => {
 
     entrar(operador, "OPERATION");
     expect((await ver(coletaA)).status).toBe(401);
+  });
+
+  it("cliente sem empresa vinculada recebe 403", async () => {
+    entrar(semEmpresa);
+    expect((await ver(coletaA)).status).toBe(403);
   });
 });
