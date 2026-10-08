@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Truck, LogIn, Loader2 } from "lucide-react";
+import { Truck, LogIn, Loader2, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 
 const HOME_BY_ROLE: Record<string, string> = {
@@ -12,6 +12,10 @@ const HOME_BY_ROLE: Record<string, string> = {
   DRIVER: "/driver",
   CLIENT: "/portal",
 };
+
+// Login único da Ávila Ops. O identificador é o do cadastro de aplicações de lá.
+const SSO_URL = "https://auth.avilaops.com";
+const SSO_APP = "tms";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,6 +26,53 @@ export default function LoginPage() {
   const [empresa, setEmpresa] = useState("");
   const [pedirEmpresa, setPedirEmpresa] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Depois de um login (senha ou login único), cada perfil vai para a sua área.
+  const irParaAArea = async () => {
+    const session = await getSession();
+    router.push(HOME_BY_ROLE[session?.user?.role ?? ""] ?? "/dashboard");
+    router.refresh();
+  };
+
+  // Login único da Ávila Ops. Sem sessão lá, o auth pede o login e devolve para
+  // cá com `?sso=1`; com sessão, a entrada acontece sem digitar senha.
+  const entrarComLoginUnico = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await signIn("sso", { empresa: pedirEmpresa ? empresa : "", redirect: false });
+
+      if (!res?.error) {
+        await irParaAArea();
+        return;
+      }
+
+      const jaVoltouDoAuth = new URLSearchParams(window.location.search).get("sso") === "1";
+      if (res.error.includes("Não há sessão do login único") && !jaVoltouDoAuth) {
+        const volta = `${window.location.origin}/login?sso=1`;
+        window.location.href = `${SSO_URL}/login?app=${SSO_APP}&returnTo=${encodeURIComponent(volta)}`;
+        return;
+      }
+
+      if (res.error.toLowerCase().includes("informe a empresa")) setPedirEmpresa(true);
+      setError(res.error);
+      setLoading(false);
+    } catch {
+      setError("Erro interno ao tentar fazer login");
+      setLoading(false);
+    }
+  };
+
+  // Voltando do auth: tenta a entrada sozinho, uma vez.
+  const tentouAoVoltar = useRef(false);
+  useEffect(() => {
+    if (tentouAoVoltar.current) return;
+    if (new URLSearchParams(window.location.search).get("sso") !== "1") return;
+    tentouAoVoltar.current = true;
+    void entrarComLoginUnico();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +88,7 @@ export default function LoginPage() {
       });
 
       if (res?.error) {
-        if (res.error.includes("mais de uma empresa")) setPedirEmpresa(true);
+        if (res.error.toLowerCase().includes("informe a empresa")) setPedirEmpresa(true);
         setError(res.error);
         setLoading(false);
       } else {
@@ -140,6 +191,16 @@ export default function LoginPage() {
                   <LogIn className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={entrarComLoginUnico}
+              disabled={loading}
+              className="w-full py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-900/50 font-medium transition-all flex items-center justify-center space-x-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Entrar com Ávila Ops</span>
             </button>
           </form>
         </div>

@@ -99,6 +99,10 @@ No código ([src/lib/prisma.ts](src/lib/prisma.ts)):
 
 **Login.** O e-mail é único por empresa, então a mesma pessoa pode ter acesso em duas. O login acha a empresa pela senha; o campo "Empresa" (o slug) só aparece quando e-mail e senha coincidem em mais de uma. A empresa vai no token da sessão (`tenantId`); sessão sem ela é tratada como não ter sessão.
 
+**Login único da Ávila Ops.** O botão "Entrar com Ávila Ops" usa a sessão de `auth.avilaops.com` ([src/lib/sso.ts](src/lib/sso.ts)). O TMS não guarda o segredo do cookie `avila_sso`: no login ele pergunta ao auth quem é a pessoa e se ela foi liberada para o app `tms` (`GET /api/session?app=tms`). A conta entra na empresa em que o e-mail dela tem cadastro; com cadastro em mais de uma, informa a empresa. Quem libera ou revoga o acesso de um cliente é o painel do auth (Aplicações → TMS), e o perfil dentro da empresa continua sendo o do cadastro no TMS.
+
+A equipe da Ávila Ops (papel `ADMIN` no auth, com a verificação em duas etapas conferida) entra em qualquer empresa informando o slug, mesmo sem cadastro: na primeira entrada nasce um administrador "Nome (Ávila Ops)", visível na lista de usuários da empresa, com senha aleatória que só serve para o login único.
+
 **Tabela nova.** Declare `tenantId` igual ao das outras (com o `@default(dbgenerated(...))` e a relação com `Tenant`), rode `npm run db:push` e, se ela referencia outra tabela, acrescente o par em `referencias`, no `010-rls.sql`. A política e as permissões são criadas sozinhas para toda tabela que tenha `tenantId`.
 
 **Rotas públicas.** `POST /api/leads` e `POST /api/cotacoes` aceitam `empresa` (slug) no corpo; sem ele vale `TMS_EMPRESA_PADRAO`. Empresa inexistente ou desativada responde 404. `GET /api/rastreio` não precisa de empresa: o código de rastreio é único no sistema.
