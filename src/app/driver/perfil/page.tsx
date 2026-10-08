@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { signOut } from "next-auth/react";
+import { sair } from "@/lib/sair";
 import { Loader2, IdCard, Truck, AlertTriangle, LogOut, Phone, Mail } from "lucide-react";
 import { daysUntil, formatCalendarDate } from "@/lib/format";
 
@@ -137,7 +137,7 @@ export default function DriverPerfilPage() {
       </div>
 
       <button
-        onClick={() => signOut({ callbackUrl: "/login" })}
+        onClick={() => sair()}
         className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl bg-white text-red-600 font-medium shadow-sm active:scale-95 transition-transform"
       >
         <LogOut className="w-5 h-5" />

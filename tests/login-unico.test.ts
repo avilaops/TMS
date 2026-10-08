@@ -46,7 +46,7 @@ suite("login único", () => {
   });
 
   const entrar = (credenciais: Record<string, string> = {}, cookie: string | undefined = "outro=1; avila_sso=token.do.auth") => {
-    const provider = auth.authOptions.providers[1] as unknown as {
+    const provider = auth.authOptions.providers[0] as unknown as {
       options: {
         authorize: (c: Record<string, string>, r: unknown) => Promise<{ id: string; tenantId: string; role: string } | null>;
       };
@@ -162,22 +162,9 @@ suite("login único", () => {
       expect(await banco.sistema.user.count({ where: { email: email("gabi") } })).toBe(1);
     });
 
-    it("a senha gravada não serve para entrar pelo formulário", async () => {
-      authResponde(equipe());
-      const silencio = vi.spyOn(console, "info").mockImplementation(() => undefined);
-      try {
-        await entrar({ empresa: EMPRESA_PADRAO.slug });
-      } finally {
-        silencio.mockRestore();
-      }
-
-      const porSenha = auth.authOptions.providers[0] as unknown as {
-        options: { authorize: (c: Record<string, string>, r: unknown) => Promise<unknown> };
-      };
-      await expect(porSenha.options.authorize({ email: email("gabi"), password: "" }, {})).rejects.toThrow();
-      await expect(porSenha.options.authorize({ email: email("gabi"), password: "qualquer-coisa" }, {})).rejects.toThrow(
-        "E-mail ou senha inválidos.",
-      );
+    it("o login único é a única forma de entrar: não existe provedor de senha", () => {
+      const ids = auth.authOptions.providers.map((p) => (p as unknown as { options?: { id?: string } }).options?.id ?? p.id);
+      expect(ids).toEqual(["sso"]);
     });
 
     it("sem segundo fator, sem empresa ou com empresa inexistente: não entra e nada é criado", async () => {

@@ -105,53 +105,9 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   providers: [
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        email: { label: "Email", type: "email", placeholder: "seu@email.com" },
-        password: { label: "Senha", type: "password" },
-        // Slug da empresa. Só é preciso quando o mesmo e-mail e a mesma senha existem em mais de uma.
-        empresa: { label: "Empresa", type: "text" }
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("E-mail e senha são obrigatórios.");
-        }
-
-        // Mensagem única para não permitir descobrir quais e-mails existem.
-        const invalid = new Error("E-mail ou senha inválidos.");
-
-        const candidatos = await findUsersForLogin(credentials.email, credentials.empresa);
-
-        // Confere a senha em todos, mesmo depois de achar: o tempo de resposta
-        // não deve contar em quantas empresas o e-mail existe.
-        const conferidos = await Promise.all(
-          candidatos.map(async (candidato) => ((await bcrypt.compare(credentials.password, candidato.password)) ? candidato : null))
-        );
-        const validos = conferidos.filter((candidato) => candidato !== null);
-
-        if (validos.length === 0) {
-          throw invalid;
-        }
-
-        if (validos.length > 1) {
-          throw new Error("Este acesso existe em mais de uma empresa. Informe a empresa para entrar.");
-        }
-
-        const user = validos[0];
-
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          clientId: user.clientId,
-          tenantId: user.tenantId,
-        };
-      }
-    }),
-    // Login único da Ávila Ops: quem já entrou em auth.avilaops.com não digita
-    // senha aqui. Ver src/lib/sso.ts.
+    // A única porta de entrada é o login único da Ávila Ops (auth.avilaops.com),
+    // que oferece senha, Google, Microsoft e Facebook. O TMS não tem formulário
+    // de senha próprio. Ver src/lib/sso.ts.
     CredentialsProvider({
       id: "sso",
       name: "Ávila Ops",

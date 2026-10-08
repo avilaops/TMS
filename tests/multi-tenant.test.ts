@@ -276,39 +276,24 @@ suite("isolamento entre empresas", () => {
     });
   });
 
-  describe("login", () => {
-    const autorizar = (credenciais: Record<string, string>) => {
-      const provider = auth.authOptions.providers[0] as unknown as {
-        options: { authorize: (c: Record<string, string>, r: unknown) => Promise<{ id: string; tenantId: string } | null> };
-      };
-      return provider.options.authorize(credenciais, {});
-    };
-
+  describe("a quem pertence um e-mail", () => {
     const email = `${PREFIXO}admin@exemplo.br`;
 
-    it("o mesmo e-mail em duas empresas entra na empresa da senha digitada", async () => {
-      expect((await autorizar({ email, password: SENHA }))?.tenantId).toBe(EMPRESA_PADRAO.id);
-      expect((await autorizar({ email, password: SENHA_OUTRA }))?.tenantId).toBe(EMPRESA_OUTRA.id);
-      await expect(autorizar({ email, password: "errada-errada" })).rejects.toThrow("E-mail ou senha inválidos.");
-    });
+    it("o mesmo e-mail em duas empresas são dois cadastros; com a empresa informada, um só", async () => {
+      const todos = await auth.findUsersForLogin(email);
+      expect(todos.map((u) => u.tenantId).sort()).toEqual([EMPRESA_PADRAO.id, EMPRESA_OUTRA.id].sort());
+      expect(await auth.findUserForLogin(email)).toBeNull();
 
-    it("mesma senha nas duas: pede a empresa e entra com ela informada", async () => {
-      await banco.sistema.user.update({
-        where: { id: outra.adminId },
-        data: { password: await bcrypt.hash(SENHA, 4) },
-      });
-
-      await expect(autorizar({ email, password: SENHA })).rejects.toThrow(/mais de uma empresa/);
-      expect((await autorizar({ email, password: SENHA, empresa: EMPRESA_OUTRA.slug }))?.id).toBe(outra.adminId);
-      expect((await autorizar({ email, password: SENHA, empresa: EMPRESA_PADRAO.slug }))?.id).toBe(padrao.adminId);
+      expect((await auth.findUserForLogin(email, EMPRESA_OUTRA.slug))?.id).toBe(outra.adminId);
+      expect((await auth.findUserForLogin(email, EMPRESA_PADRAO.slug))?.id).toBe(padrao.adminId);
+      expect(await auth.findUsersForLogin(email, "nao-existe")).toEqual([]);
     });
 
     it("empresa desativada não entra", async () => {
       await banco.sistema.tenant.update({ where: { id: EMPRESA_OUTRA.id }, data: { active: false } });
       try {
-        await expect(autorizar({ email, password: SENHA, empresa: EMPRESA_OUTRA.slug })).rejects.toThrow(
-          "E-mail ou senha inválidos.",
-        );
+        expect(await auth.findUserForLogin(email, EMPRESA_OUTRA.slug)).toBeNull();
+        expect((await auth.findUsersForLogin(email)).map((u) => u.tenantId)).toEqual([EMPRESA_PADRAO.id]);
       } finally {
         await banco.sistema.tenant.update({ where: { id: EMPRESA_OUTRA.id }, data: { active: true } });
       }

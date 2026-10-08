@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { sair } from "@/lib/sair";
 import { Truck, Map, User, LogOut, CloudOff, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 import {
   type BlockedBaixa,
@@ -144,7 +145,7 @@ export default function DriverShell({ children }: { children: React.ReactNode })
   const leave = () => {
     // Saída pedida pelo motorista: o próximo a entrar não herda o dono da fila.
     rememberOwner(null);
-    signOut({ callbackUrl: "/login" });
+    sair();
   };
 
   useEffect(() => {

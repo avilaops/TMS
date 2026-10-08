@@ -131,28 +131,19 @@ suite("segurança de usuários e motoristas", () => {
   });
 
   describe("login não diferencia caixa do e-mail", () => {
-    // O `authorize` de verdade, como o NextAuth o chama.
-    const entrar = (email: string, password: string) => {
-      const provider = auth.authOptions.providers[0] as unknown as {
-        options: { authorize: (c: Record<string, string>, r: unknown) => Promise<{ id: string } | null> };
-      };
-      return provider.options.authorize({ email, password }, {});
-    };
+    // A busca que o login único faz com o e-mail vindo do auth.
+    const achar = async (email: string) => (await auth.findUserForLogin(email))?.id;
 
-    it("usuário novo (gravado em minúsculas) entra digitando maiúsculas e espaços", async () => {
+    it("usuário novo (gravado em minúsculas) é achado com maiúsculas e espaços", async () => {
       const novo = await criarUsuario(`${PREFIXO}novo@exemplo.br`, "OPERATION", senhaHash);
-
-      const logado = await entrar(`  ${PREFIXO.toUpperCase()}Novo@Exemplo.BR `, SENHA);
-      expect(logado?.id).toBe(novo.id);
-
-      await expect(entrar(`${PREFIXO}NOVO@exemplo.br`, "senha-errada")).rejects.toThrow("E-mail ou senha inválidos.");
+      expect(await achar(`  ${PREFIXO.toUpperCase()}Novo@Exemplo.BR `)).toBe(novo.id);
     });
 
-    it("usuário antigo (gravado com maiúscula) entra digitando de qualquer jeito", async () => {
+    it("usuário antigo (gravado com maiúscula) é achado de qualquer jeito", async () => {
       const antigo = await criarUsuario("Teste-Seguranca-Antigo@Exemplo.BR", "OPERATION", senhaHash);
 
-      expect((await entrar("Teste-Seguranca-Antigo@Exemplo.BR", SENHA))?.id).toBe(antigo.id);
-      expect((await entrar("teste-seguranca-antigo@exemplo.br", SENHA))?.id).toBe(antigo.id);
+      expect(await achar("Teste-Seguranca-Antigo@Exemplo.BR")).toBe(antigo.id);
+      expect(await achar("teste-seguranca-antigo@exemplo.br")).toBe(antigo.id);
     });
 
     it("não trata `_` e `%` como curinga, nem acha e-mail vazio", async () => {

@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { sair } from "@/lib/sair";
 import { LayoutDashboard, Package, Receipt, LogOut, Menu, X } from "lucide-react";
 
 const links = [
@@ -78,7 +79,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             </div>
           </div>
           <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => sair()}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-all"
           >
             <LogOut className="w-5 h-5" />

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { sair } from "@/lib/sair";
 import {
   LayoutDashboard,
   Users,
@@ -111,7 +112,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
           <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => sair()}
             className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
           >
             <LogOut className="w-5 h-5" />
