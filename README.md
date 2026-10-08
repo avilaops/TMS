@@ -128,7 +128,17 @@ O preço do frete sai de tabelas cadastradas no painel (`/dashboard/tabelas-fret
 
 - **Frete na coleta** ([src/lib/frete-coleta.ts](src/lib/frete-coleta.ts)): toda coleta, do painel ou do portal, nasce com o frete calculado pela tabela do cliente (ou pela padrão), o prazo e a composição da conta (`freightValue`, `freightDeadlineHours`, `freightDetails`). Mudar destino, peso, volumes ou valor da nota refaz o cálculo. O operador pode fixar o valor à mão na edição (`freightManual`); apagar o campo devolve a conta para a tabela. Sem tabela em vigor, ou com o destino fora dela, a coleta fica "a cotar". O cliente vê no portal só o valor e o prazo.
 
-O faturamento ainda não existe: é a etapa seguinte.
+## Faturamento
+
+Em `/dashboard/faturamento` o administrador cobra de um cliente o frete das cargas entregues.
+
+- **Faturável** é a carga entregue, com frete definido e fora de fatura. Carga entregue "a cotar" aparece à parte, com o campo para informar o frete (`PATCH /api/coletas/[id]/frete`, que vale em qualquer status enquanto a carga não foi faturada).
+- **Emitir** (`POST /api/faturas`) soma os fretes, dá o próximo número da empresa, prende as cargas na fatura e cria o lançamento a receber no financeiro. É esse lançamento que o cliente vê em "Faturas" no portal. A numeração é por empresa e uma emissão por vez (trava do Postgres), então não repete nem pula.
+- **Pagar, reabrir, cancelar** (`PATCH /api/faturas/[id]`): o lançamento acompanha a fatura na mesma transação. Cancelar solta as cargas, que voltam a ser faturáveis; o número cancelado não é reaproveitado, e fatura paga precisa ser reaberta antes de cancelar.
+- **Depois de faturada**, a carga não muda mais de frete: a fatura já saiu com ele.
+- `/dashboard/faturamento/[id]` é a fatura pronta para imprimir ou salvar em PDF.
+
+Ainda não há boleto, Pix nem cobrança automática: a baixa é manual.
 
 ## Portal do cliente
 

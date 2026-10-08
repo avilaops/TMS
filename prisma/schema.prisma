@@ -45,6 +45,7 @@ model Tenant {
   proofs         ProofOfDelivery[]
   quoteLeads     QuoteLead[]
   freightTables  FreightTable[]
+  invoices       Invoice[]
   freightCities  FreightTableCity[]
   articles       Article[]
   socialPosts    SocialPost[]
@@ -97,6 +98,8 @@ model Client {
   users           User[]
   transactions    FinancialTransaction[]
 
+  invoices        Invoice[]
+
   // Tabela de frete negociada com este cliente. Sem ela vale a padrão da transportadora.
   freightTableId  String?
   freightTable    FreightTable? @relation(fields: [freightTableId], references: [id], onDelete: SetNull)
@@ -116,6 +119,38 @@ model Client {
 // (`isDefault`) e pode ter tabelas negociadas, ligadas a clientes. Quem faz a
 // conta é `calcularFrete` (src/lib/frete.ts).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Faturamento
+//
+// A fatura cobra de um cliente o frete de cargas já entregues. O total é a soma
+// dos fretes no momento da emissão e não muda depois. Emitir a fatura cria o
+// lançamento a receber no financeiro (FinancialTransaction.invoiceId), que é o
+// que o cliente vê no portal; pagar e cancelar andam juntos nos dois.
+// ---------------------------------------------------------------------------
+model Invoice {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String    @id @default(uuid())
+  number    Int       // sequencial por empresa
+  clientId  String
+  status    String    @default("OPEN") // OPEN, PAID, CANCELLED
+  total     Float
+  dueDate   DateTime
+  issuedAt  DateTime  @default(now())
+  paidAt    DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  client      Client       @relation(fields: [clientId], references: [id])
+  collections Collection[]
+  transaction FinancialTransaction?
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, number])
+  @@index([clientId])
+}
+
 model FreightTable {
   tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id               String    @id @default(uuid())
@@ -241,6 +276,11 @@ model Collection {
   freightTableId       String?
   freightDetails       Json?
   freightTable         FreightTable? @relation(fields: [freightTableId], references: [id], onDelete: SetNull)
+
+  // Fatura em que o frete desta carga foi cobrado. Uma carga entra em no
+  // máximo uma fatura; cancelar a fatura solta a carga.
+  invoiceId            String?
+  invoice              Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   receiverName String?
 
   // Codigo publico de rastreio: 10 digitos sorteados com CSPRNG (src/lib/tracking.ts).
@@ -271,6 +311,7 @@ model Collection {
   @@index([tenantId, createdAt])
   @@index([manifestId])
   @@index([driverId])
+  @@index([invoiceId])
 }
 
 // Uma linha por status que a coleta assumiu, com quando e quem. `fromStatus`
@@ -326,6 +367,10 @@ model FinancialTransaction {
   clientId    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Lançamento gerado por uma fatura: nasce, é pago e some junto com ela.
+  invoiceId   String?  @unique
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   // Relations
   client      Client?  @relation(fields: [clientId], references: [id])

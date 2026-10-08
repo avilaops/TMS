@@ -348,6 +348,33 @@ suite("isolamento entre empresas", () => {
       }
     });
 
+    it("fatura de uma empresa não existe para a outra, a numeração é de cada uma e não cobra carga alheia", async () => {
+      const daPadrao = banco.paraEmpresa(padrao.tenantId).db;
+      const daOutra = banco.paraEmpresa(outra.tenantId).db;
+      const vencimento = new Date("2026-11-10");
+      try {
+        const f1 = await daPadrao.invoice.create({ data: { number: 990001, clientId: padrao.clienteId, total: 10, dueDate: vencimento } });
+        // O mesmo número existe nas duas empresas sem conflito.
+        const f2 = await daOutra.invoice.create({ data: { number: 990001, clientId: outra.clienteId, total: 20, dueDate: vencimento } });
+        expect(f2.tenantId).toBe(EMPRESA_OUTRA.id);
+
+        expect(await daOutra.invoice.findUnique({ where: { id: f1.id } })).toBeNull();
+        expect((await daOutra.invoice.findMany({ where: { number: 990001 } })).map((f) => f.id)).toEqual([f2.id]);
+
+        // Fatura apontando para cliente de outra empresa: recusada pela empresa e pelo gatilho.
+        await expect(
+          daOutra.invoice.create({ data: { number: 990002, clientId: padrao.clienteId, total: 1, dueDate: vencimento } }),
+        ).rejects.toThrow();
+        await expect(
+          banco.sistema.invoice.create({
+            data: { number: 990003, clientId: padrao.clienteId, total: 1, dueDate: vencimento, tenantId: EMPRESA_OUTRA.id },
+          }),
+        ).rejects.toThrow(/outra empresa/);
+      } finally {
+        await banco.sistema.invoice.deleteMany({ where: { number: { gte: 990001, lte: 990003 } } });
+      }
+    });
+
     it("gravar sem dizer a empresa falha em vez de cair em alguma", async () => {
       await expect(
         banco.sistema.client.create({ data: { cnpj: "99000111000133", companyName: "Sem empresa" } }),
