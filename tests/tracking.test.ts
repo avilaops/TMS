@@ -23,10 +23,14 @@ describe("generateTrackingCode", () => {
     expect(diferencasIguais).toBe(false);
   });
 
-  it("não repete em um volume muito acima do uso real", () => {
+  it("quase não repete em um volume muito acima do uso real", () => {
+    // Em 10^10 valores, 20 mil sorteios honestos repetem uma vez a cada ~50
+    // execuções (paradoxo do aniversário: n²/2N = 2%). Exigir zero repetições
+    // fazia este teste falhar sozinho de vez em quando. Um gerador viciado
+    // repetiria às dezenas; mais de 3 num sorteio honesto é 1 em bilhões.
     const vistos = new Set<string>();
     for (let i = 0; i < 20000; i += 1) vistos.add(generateTrackingCode());
-    expect(vistos.size).toBe(20000);
+    expect(vistos.size).toBeGreaterThanOrEqual(20000 - 3);
   });
 
   it("usa todo o espaço, incluindo zeros à esquerda", () => {
