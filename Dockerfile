@@ -1,6 +1,8 @@
 # TMS — Next 16 (standalone) + Prisma/Postgres.
 # A imagem de producao e construida e publicada no GHCR pelo GitHub Actions.
-FROM node:22-alpine AS base
+# Imagem oficial do Node pelo espelho publico da AWS: o Docker Hub recusa o
+# runner do GitHub por limite de downloads sem login (429).
+FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache openssl libc6-compat
 
 FROM base AS deps
