@@ -203,6 +203,13 @@ suite("detalhe da coleta no portal do cliente", () => {
   });
 
   it("a resposta não carrega dado interno, nem com o comprovante aprovado", async () => {
+    // O caso se basta: aprova aqui o comprovante, com o motivo de uma recusa
+    // anterior ainda gravado, em vez de contar com o que o caso de cima deixou.
+    await prisma.proofOfDelivery.update({
+      where: { collectionId: coletaA },
+      data: { status: "APPROVED", rejectionReason: "Foto ilegível", reviewedById: operador, reviewedAt: new Date() },
+    });
+
     entrar(usuarioA);
     const corpo = await (await ver(coletaA)).json();
     // Com histórico e comprovante de verdade: sem eles, a lista abaixo não provaria nada.
