@@ -141,6 +141,18 @@ Em `/dashboard/faturamento` o administrador cobra de um cliente o frete das carg
 
 Ainda não há boleto, Pix nem cobrança automática: a baixa é manual.
 
+## Financeiro: contas a pagar, a receber e fluxo de caixa
+
+Em `/dashboard/financeiro`, só para o administrador. As regras e as contas ficam em [src/lib/financeiro.ts](src/lib/financeiro.ts).
+
+- **Lançamento** (`FinancialTransaction`): receita ou despesa, valor, vencimento, cliente ou fornecedor, categoria e observação. Quando é pago guarda a data (`paidAt`) e a forma de pagamento.
+- **Situação** é calculada: pago, em aberto ou vencido. Vence no fim do dia do vencimento, no relógio do Brasil; o vencimento em si é um dia do calendário e é lido em UTC, para não aparecer um dia antes.
+- **Rotas:** `GET /api/financeiro` (filtros `tipo`, `situacao`, `de`, `ate`), `POST` com validação, `PATCH /api/financeiro/[id]` (editar, `action: "pagar"` ou `"reabrir"`) e `DELETE`.
+- **Lançamento que veio de fatura** não é pago, editado nem excluído por aqui: responde 409 e manda para o Faturamento, que mantém fatura e lançamento em sincronia. Pagar a fatura grava o `paidAt` do lançamento.
+- **Fluxo de caixa** (`GET /api/financeiro/fluxo?de=AAAA-MM&ate=AAAA-MM`, padrão de três meses para trás e três para a frente, no máximo 36): por mês, o **previsto** (o que vence no mês) e o **realizado** (o que foi pago ou recebido no mês), com saldo e acumulado. O resumo dos cartões é sempre de todos os lançamentos: conta vencida há um ano continua vencida.
+
+Ainda não há conciliação bancária, centro de custo nem lançamento recorrente.
+
 ## Portal do cliente
 
 Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu e consulta faturas. Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.

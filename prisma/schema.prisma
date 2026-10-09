@@ -369,6 +369,14 @@ model FinancialTransaction {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Quando e como foi pago (ou recebido). `paidAt` é o que o fluxo de caixa
+  // realizado usa; nulo enquanto o lançamento está em aberto.
+  paidAt        DateTime?
+  paymentMethod String?  // PIX, BOLETO, DINHEIRO, TRANSFERENCIA, CARTAO, OUTRO
+  category      String?  // livre: combustível, manutenção, pedágio, folha…
+  counterparty  String?  // fornecedor ou pagador que não é cliente cadastrado
+  notes         String?
+
   // Lançamento gerado por uma fatura: nasce, é pago e some junto com ela.
   invoiceId   String?  @unique
   invoice     Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)

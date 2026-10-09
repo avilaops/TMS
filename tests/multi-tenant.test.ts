@@ -442,6 +442,23 @@ suite("isolamento entre empresas", () => {
       }
     });
 
+    it("lançamento do financeiro de uma empresa não é lido, alterado nem apagado pela outra", async () => {
+      const daPadrao = await banco.paraEmpresa(padrao.tenantId).db.financialTransaction.create({
+        data: { type: "EXPENSE", amount: 10, description: `${PREFIXO}lancamento` },
+      });
+      try {
+        const { db } = banco.paraEmpresa(outra.tenantId);
+        expect(await db.financialTransaction.findUnique({ where: { id: daPadrao.id } })).toBeNull();
+        expect((await db.financialTransaction.updateMany({ where: { id: daPadrao.id }, data: { status: "PAID" } })).count).toBe(0);
+        expect((await db.financialTransaction.deleteMany({ where: { description: `${PREFIXO}lancamento` } })).count).toBe(0);
+
+        const intacto = await banco.sistema.financialTransaction.findUniqueOrThrow({ where: { id: daPadrao.id } });
+        expect(intacto.status).toBe("PENDING");
+      } finally {
+        await banco.sistema.financialTransaction.deleteMany({ where: { description: `${PREFIXO}lancamento` } });
+      }
+    });
+
     it("gravar sem dizer a empresa falha em vez de cair em alguma", async () => {
       await expect(
         banco.sistema.client.create({ data: { cnpj: "99000111000133", companyName: "Sem empresa" } }),

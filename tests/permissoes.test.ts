@@ -42,6 +42,8 @@ suite("permissões das rotas internas", () => {
   let coletaHistorico: typeof import("../src/app/api/coletas/[id]/historico/route");
   let dashboard: typeof import("../src/app/api/dashboard/route");
   let financeiro: typeof import("../src/app/api/financeiro/route");
+  let financeiroPorId: typeof import("../src/app/api/financeiro/[id]/route");
+  let financeiroFluxo: typeof import("../src/app/api/financeiro/fluxo/route");
   let fiscal: typeof import("../src/app/api/fiscal/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
@@ -110,6 +112,8 @@ suite("permissões das rotas internas", () => {
     coletaHistorico = await import("../src/app/api/coletas/[id]/historico/route");
     dashboard = await import("../src/app/api/dashboard/route");
     financeiro = await import("../src/app/api/financeiro/route");
+    financeiroPorId = await import("../src/app/api/financeiro/[id]/route");
+    financeiroFluxo = await import("../src/app/api/financeiro/fluxo/route");
     fiscal = await import("../src/app/api/fiscal/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
     manifestos = await import("../src/app/api/manifestos/route");
@@ -185,6 +189,9 @@ suite("permissões das rotas internas", () => {
     rotasAdmin = [
       ["GET /api/financeiro", () => financeiro.GET()],
       ["POST /api/financeiro", () => financeiro.POST(req("POST", {}))],
+      ["PATCH /api/financeiro/[id]", () => financeiroPorId.PATCH(req("PATCH", { action: "pagar" }), ctx(semId))],
+      ["DELETE /api/financeiro/[id]", () => financeiroPorId.DELETE(req("DELETE"), ctx(semId))],
+      ["GET /api/financeiro/fluxo", () => financeiroFluxo.GET()],
       ["GET /api/usuarios", () => usuarios.GET()],
       ["POST /api/usuarios", () => usuarios.POST(req("POST", {}))],
       ["PATCH /api/usuarios/[id]", () => usuario.PATCH(req("PATCH", { name: "Invasor" }), ctx(ids.OPERATION))],

@@ -53,14 +53,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
       if (action === 'pagar') {
         if (atual.status !== 'OPEN') throw new Refusal('Só fatura em aberto pode ser marcada como paga.', 409);
-        await tx.invoice.update({ where: { id }, data: { status: 'PAID', paidAt: new Date() }, select: { id: true } });
-        await tx.financialTransaction.updateMany({ where: { invoiceId: id }, data: { status: 'PAID' } });
+        const pagaEm = new Date();
+        await tx.invoice.update({ where: { id }, data: { status: 'PAID', paidAt: pagaEm }, select: { id: true } });
+        // `paidAt` é o que põe a fatura no fluxo de caixa realizado.
+        await tx.financialTransaction.updateMany({ where: { invoiceId: id }, data: { status: 'PAID', paidAt: pagaEm } });
       }
 
       if (action === 'reabrir') {
         if (atual.status !== 'PAID') throw new Refusal('Só fatura paga pode ser reaberta.', 409);
         await tx.invoice.update({ where: { id }, data: { status: 'OPEN', paidAt: null }, select: { id: true } });
-        await tx.financialTransaction.updateMany({ where: { invoiceId: id }, data: { status: 'PENDING' } });
+        await tx.financialTransaction.updateMany({ where: { invoiceId: id }, data: { status: 'PENDING', paidAt: null, paymentMethod: null } });
       }
 
       if (action === 'cancelar') {
