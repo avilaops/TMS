@@ -440,4 +440,23 @@ describe("tela do funil de cotações", () => {
     expect(alerta(tela)).toBeNull();
     expect(pedidos).toHaveLength(2);
   });
+
+  it("celular: as abas mostram a contagem de cada etapa e trocam a coluna à mostra", async () => {
+    const { tela } = await abrir([lead()]);
+
+    const aba = (status: string) => tela.querySelector<HTMLElement>(`[data-aba="${status}"]`)!;
+    const escondida = (status: string) => tela.querySelector(`[data-coluna="${status}"]`)!.className.includes("hidden md:block");
+
+    expect(aba("NEW").textContent).toBe("Novos1");
+    expect(aba("LOST").textContent).toBe("Perdidos0");
+    expect(aba("NEW").getAttribute("aria-selected")).toBe("true");
+    expect(escondida("NEW")).toBe(false);
+    expect(escondida("LOST")).toBe(true);
+
+    await clicar(aba("LOST"));
+    expect(aba("LOST").getAttribute("aria-selected")).toBe("true");
+    expect(aba("NEW").getAttribute("aria-selected")).toBe("false");
+    expect(escondida("LOST")).toBe(false);
+    expect(escondida("NEW")).toBe(true);
+  });
 });

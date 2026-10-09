@@ -83,6 +83,8 @@ export default function CRMPage() {
   const [enviando, setEnviando] = useState(false);
   // Confirmação da última conversão, quando o frete da coleta não é o valor estimado do lead.
   const [confirmacao, setConfirmacao] = useState<string | null>(null);
+  // No celular aparece uma coluna por vez, escolhida nas abas; no computador, as quatro lado a lado.
+  const [colunaAtiva, setColunaAtiva] = useState<LeadStatus>("NEW");
 
   function receber(res: Resposta<QuoteLead[]>) {
     if (res.ok) setLeads(res.dados);
@@ -174,19 +176,19 @@ export default function CRMPage() {
   }
 
   if (loading) {
-    return <div className="p-8">Carregando CRM...</div>;
+    return <div className="md:p-8">Carregando CRM...</div>;
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="mb-8 flex justify-between items-center">
+    <div className="md:p-8 max-w-7xl mx-auto">
+      <div className="mb-4 md:mb-8 flex justify-between items-center gap-3">
         <div>
-          <h1 className="text-3xl font-black text-gray-900">CRM & Cotações</h1>
-          <p className="text-gray-500 mt-1">Gerencie leads e solicitações de frete</p>
+          <h1 className="text-2xl md:text-3xl font-black text-gray-900">CRM & Cotações</h1>
+          <p className="hidden md:block text-gray-500 mt-1">Gerencie leads e solicitações de frete</p>
         </div>
         <button
           onClick={fetchLeads}
-          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition"
+          className="shrink-0 px-3 py-2 md:px-4 text-sm md:text-base bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition"
         >
           Atualizar Lista
         </button>
@@ -204,31 +206,51 @@ export default function CRMPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-8 md:flex-row md:items-start overflow-x-auto pb-8">
+      <div role="tablist" aria-label="Etapa" className="md:hidden grid grid-cols-4 gap-1 mb-3 p-1 bg-gray-100 rounded-xl">
+        {LEAD_STATUSES.map((status) => {
+          const ativa = colunaAtiva === status;
+          return (
+            <button
+              key={status}
+              type="button"
+              role="tab"
+              aria-selected={ativa}
+              data-aba={status}
+              onClick={() => setColunaAtiva(status)}
+              className={`px-1 py-1.5 rounded-lg text-xs font-semibold leading-tight ${ativa ? "bg-white text-blue-700 shadow-sm" : "text-gray-600"}`}
+            >
+              {LEAD_STATUS_LABELS[status]}
+              <span className="block text-[11px] font-bold">{leads.filter((l) => l.status === status).length}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-col gap-4 md:gap-8 md:flex-row md:items-start md:overflow-x-auto pb-4 md:pb-8">
         {LEAD_STATUSES.map((status) => {
           const columnLeads = leads.filter((l) => l.status === status);
 
           return (
-            <div key={status} data-coluna={status} className="min-w-[320px] w-full md:w-80 flex-shrink-0 bg-gray-50 rounded-2xl p-4 border border-gray-200">
-              <div className="flex justify-between items-center mb-4 px-2">
+            <div key={status} data-coluna={status} className={`${colunaAtiva === status ? "" : "hidden md:block "}min-w-0 w-full md:min-w-[320px] md:w-80 md:flex-shrink-0 md:bg-gray-50 md:rounded-2xl md:p-4 md:border md:border-gray-200`}>
+              <div className="hidden md:flex justify-between items-center mb-4 px-2">
                 <h3 className="font-bold text-gray-700">{LEAD_STATUS_LABELS[status]}</h3>
                 <span className="bg-gray-200 text-gray-600 text-xs font-bold px-2 py-1 rounded-full">
                   {columnLeads.length}
                 </span>
               </div>
 
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 md:gap-4">
                 {columnLeads.map((lead) => {
                   const convertido = lead.status === "CONVERTED";
                   const form = conversao?.leadId === lead.id ? conversao : null;
 
                   return (
                     <div key={lead.id} data-lead={lead.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-bold text-gray-900 text-sm truncate" title={lead.companyName}>
+                      <div className="flex justify-between items-start gap-2 mb-2">
+                        <h4 className="min-w-0 font-bold text-gray-900 text-sm truncate" title={lead.companyName}>
                           {lead.companyName}
                         </h4>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_COLORS[status]}`}>
+                        <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_COLORS[status]}`}>
                           {LEAD_STATUS_LABELS[status]}
                         </span>
                       </div>

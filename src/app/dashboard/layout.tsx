@@ -132,7 +132,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen max-w-full">
+      <main className="flex-1 flex flex-col md:min-h-screen min-w-0 max-w-full">
         {/* Top Header */}
         <header className="hidden md:flex h-20 items-center justify-between px-8 bg-white/50 dark:bg-gray-950/50 backdrop-blur-md sticky top-0 z-30 border-b border-gray-200/50 dark:border-gray-800/50">
           <h2 className="text-xl font-bold font-outfit text-gray-800 dark:text-gray-100 capitalize">
@@ -146,7 +146,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        <div className="p-4 md:p-8 flex-1 animate-fade-in">
+        <div className="p-3 md:p-8 flex-1 animate-fade-in">
           {children}
         </div>
       </main>

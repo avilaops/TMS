@@ -285,7 +285,7 @@ suite("segurança de usuários e motoristas", () => {
       expect(res.status).toBe(200);
       const corpo = await res.json();
       expect(corpo).not.toHaveProperty("receita");
-      expect(Object.keys(corpo).sort()).toEqual(["clientes", "coletas", "manifestos", "veiculos"]);
+      expect(Object.keys(corpo).sort()).toEqual(["clientes", "coletas", "entregasDaSemana", "manifestos", "veiculos"]);
     });
 
     it("ADMIN continua recebendo a receita", async () => {

@@ -73,8 +73,10 @@ const paraForm = (t: Tabela): typeof FORM_VAZIO => ({
 });
 
 const INPUT =
-  "w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white";
-const LABEL = "text-sm font-medium text-gray-700 dark:text-gray-300";
+  "block w-full min-w-0 px-3 py-1.5 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white";
+const LABEL = "text-xs md:text-sm leading-tight font-medium text-gray-700 dark:text-gray-300";
+// No celular os campos vão dois por linha; o rótulo que quebra em duas linhas não desalinha o campo do vizinho.
+const CAMPO = "min-w-0 flex flex-col justify-end gap-0.5 md:gap-1.5";
 const CARD = "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm";
 
 /**
@@ -257,8 +259,9 @@ export default function TabelasDeFrete() {
     else setErroSim(corpo.error ?? "Não foi possível simular.");
   };
 
-  const campo = (rotulo: string, chave: keyof typeof FORM_VAZIO, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
-    <label className="space-y-1.5 block">
+  // `largo`: o campo ocupa a linha inteira no celular (no computador segue uma coluna).
+  const campo = (rotulo: string, chave: keyof typeof FORM_VAZIO, extra: React.InputHTMLAttributes<HTMLInputElement> = {}, largo = false) => (
+    <label className={largo ? `${CAMPO} col-span-2 lg:col-span-1` : CAMPO}>
       <span className={LABEL}>{rotulo}</span>
       <input
         {...extra}
@@ -270,8 +273,9 @@ export default function TabelasDeFrete() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap justify-between items-center gap-4">
+    <div className="space-y-4 md:space-y-6">
+      {/* Com o formulário aberto, o celular fica só com ele: é o que cabe numa tela. */}
+      <div className={`${formAberto ? "hidden md:flex" : "flex"} flex-wrap justify-between items-center gap-3 md:gap-4`}>
         <div>
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Tabelas de frete</h1>
           <p className="text-gray-500 text-sm mt-1">Regras, preço por cidade e simulação de frete</p>
@@ -294,34 +298,34 @@ export default function TabelasDeFrete() {
       )}
 
       {formAberto && (
-        <form onSubmit={salvar} className={`${CARD} p-6 space-y-5`}>
+        <form onSubmit={salvar} className={`${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
           <h2 className="font-semibold text-gray-900 dark:text-white">{editandoId ? "Alterar tabela" : "Nova tabela"}</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {campo("Nome", "name", { required: true })}
-            {campo("Peso coberto pelo frete mínimo (kg)", "includedWeightKg", { required: true, inputMode: "decimal" })}
-            {campo("Valor do kg excedente (R$)", "excessPerKg", { required: true, inputMode: "decimal" })}
-            {campo("Fator de cubagem (kg/m³)", "cubageFactor", { inputMode: "decimal", placeholder: "Em branco = não cubar" })}
-            {campo("Valor de nota coberto (R$)", "invoiceLimit", { inputMode: "decimal", placeholder: "Em branco = sem limite" })}
-            {campo("% sobre a nota acima do limite", "adValoremPct", { inputMode: "decimal", placeholder: "Em branco = consultar o comercial" })}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4 lg:grid-cols-3">
+            {campo("Nome", "name", { required: true }, true)}
+            {campo("Peso do frete mínimo (kg)", "includedWeightKg", { required: true, inputMode: "decimal" })}
+            {campo("Kg excedente (R$)", "excessPerKg", { required: true, inputMode: "decimal" })}
+            {campo("Cubagem (kg/m³)", "cubageFactor", { inputMode: "decimal", placeholder: "Vazio = não cuba" })}
+            {campo("Nota coberta até (R$)", "invoiceLimit", { inputMode: "decimal", placeholder: "Vazio = sem limite" })}
+            {campo("% da nota acima disso", "adValoremPct", { inputMode: "decimal", placeholder: "Vazio = consultar" })}
             {campo("Máximo de volumes", "maxVolumes", { inputMode: "numeric" })}
-            {campo("Reentrega (% do frete)", "redeliveryPct", { inputMode: "decimal" })}
-            {campo("Devolução (% do frete)", "returnPct", { inputMode: "decimal" })}
+            {campo("Reentrega (% frete)", "redeliveryPct", { inputMode: "decimal" })}
+            {campo("Devolução (% frete)", "returnPct", { inputMode: "decimal" })}
             {campo("Vale a partir de", "validFrom", { type: "date" })}
             {campo("Vale até", "validTo", { type: "date" })}
           </div>
-          <label className="space-y-1.5 block">
+          <label className={CAMPO}>
             <span className={LABEL}>Observações</span>
             <textarea
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              rows={2}
+              rows={1}
               className={INPUT}
             />
           </label>
-          <div className="flex flex-wrap gap-6 text-sm text-gray-700 dark:text-gray-300">
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700 dark:text-gray-300">
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />
-              Tabela padrão da transportadora (substitui a atual)
+              Tabela padrão (substitui a atual)
             </label>
             {editandoId && (
               <label className="flex items-center gap-2">
@@ -334,7 +338,7 @@ export default function TabelasDeFrete() {
             <button
               type="submit"
               disabled={salvando}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium disabled:opacity-60 flex items-center gap-2"
+              className="px-4 py-2 md:py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium disabled:opacity-60 flex items-center gap-2"
             >
               {salvando && <Loader2 className="w-4 h-4 animate-spin" />}
               Salvar
@@ -352,7 +356,7 @@ export default function TabelasDeFrete() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : tabelas.length === 0 ? (
-          <div className="p-10 text-center text-gray-500">
+          <div className="p-6 md:p-10 text-center text-gray-500">
             <Calculator className="w-10 h-10 text-gray-300 mx-auto mb-3" />
             <p>Nenhuma tabela de frete cadastrada. Sem tabela padrão, as cotações do site chegam sem valor.</p>
           </div>
@@ -412,7 +416,7 @@ export default function TabelasDeFrete() {
       </div>
 
       {aberta && (
-        <div className={`${CARD} p-6 space-y-5`}>
+        <div className={`${CARD} p-4 md:p-6 space-y-4 md:space-y-5`}>
           <div className="flex items-center justify-between gap-4">
             <h2 className="font-semibold text-gray-900 dark:text-white">Cidades de “{aberta.name}”</h2>
             <button onClick={() => setAberta(null)} className="text-sm text-gray-600 dark:text-gray-300">
@@ -525,33 +529,33 @@ export default function TabelasDeFrete() {
         </div>
       )}
 
-      <form onSubmit={simular} className={`${CARD} p-6 space-y-4`}>
+      <form onSubmit={simular} className={`${CARD} p-4 md:p-6 space-y-3 md:space-y-4`}>
         <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <Calculator className="w-5 h-5 text-blue-600" />
           Simular frete
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-          <label className="space-y-1.5 block lg:col-span-2">
+        <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-6">
+          <label className={`${CAMPO} col-span-2`}>
             <span className={LABEL}>Cidade de destino</span>
             <input required value={sim.city} onChange={(e) => setSim({ ...sim, city: e.target.value })} className={INPUT} />
           </label>
-          <label className="space-y-1.5 block">
+          <label className={CAMPO}>
             <span className={LABEL}>Peso (kg)</span>
             <input required inputMode="decimal" value={sim.weight} onChange={(e) => setSim({ ...sim, weight: e.target.value })} className={INPUT} />
           </label>
-          <label className="space-y-1.5 block">
+          <label className={CAMPO}>
             <span className={LABEL}>Volumes</span>
             <input inputMode="numeric" value={sim.volumes} onChange={(e) => setSim({ ...sim, volumes: e.target.value })} className={INPUT} />
           </label>
-          <label className="space-y-1.5 block">
+          <label className={CAMPO}>
             <span className={LABEL}>Valor da nota (R$)</span>
             <input inputMode="decimal" value={sim.invoiceValue} onChange={(e) => setSim({ ...sim, invoiceValue: e.target.value })} className={INPUT} />
           </label>
-          <label className="space-y-1.5 block">
+          <label className={CAMPO}>
             <span className={LABEL}>Volume (m³)</span>
             <input inputMode="decimal" value={sim.cubicMeters} onChange={(e) => setSim({ ...sim, cubicMeters: e.target.value })} className={INPUT} />
           </label>
-          <label className="space-y-1.5 block lg:col-span-2">
+          <label className={`${CAMPO} col-span-2`}>
             <span className={LABEL}>Tabela</span>
             <select value={sim.tableId} onChange={(e) => setSim({ ...sim, tableId: e.target.value })} className={INPUT}>
               <option value="">A padrão em vigor</option>

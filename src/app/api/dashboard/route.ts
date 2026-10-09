@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
+import { entregasPorDia, semanaCorrente } from '@/lib/relatorios';
 
 export async function GET() {
   const { user, error } = await requireStaff();
@@ -12,11 +13,21 @@ export async function GET() {
     const clientesCount = await prisma.client.count();
     const veiculosCount = await prisma.vehicle.count();
 
-    const stats: Record<string, number> = {
+    // Entregas de cada dia da semana corrente (segunda a domingo), pela hora em
+    // que a carga virou "Entregue" no histórico.
+    const hoje = new Date();
+    const semana = semanaCorrente(hoje);
+    const entregues = await prisma.collectionStatusHistory.findMany({
+      where: { toStatus: 'DELIVERED', createdAt: { gte: semana.inicio, lt: semana.fim } },
+      select: { createdAt: true },
+    });
+
+    const stats: Record<string, number | number[]> = {
       coletas: coletasCount,
       manifestos: manifestosCount,
       clientes: clientesCount,
       veiculos: veiculosCount,
+      entregasDaSemana: entregasPorDia(entregues.map((linha) => linha.createdAt), hoje),
     };
 
     // Receita é dado financeiro: só ADMIN, como em /api/financeiro. Para os

@@ -8,6 +8,8 @@ export type Stats = {
   clientes: number;
   veiculos: number;
   receita?: number;
+  /** Entregas de segunda a domingo da semana corrente. */
+  entregasDaSemana?: number[];
 };
 
 // `expired`: a sessão caiu (401) e tentar de novo não resolve, só entrar de
@@ -38,4 +40,41 @@ export async function loadStats(request: () => Promise<Response>): Promise<Paine
 export function showFinance(state: PainelState, sessionRole: string | undefined): boolean {
   if (state.status === "ready") return state.stats.receita !== undefined;
   return sessionRole === "ADMIN";
+}
+
+/* ----------------------- Receita à mostra ou escondida ----------------------- */
+
+// A escolha fica guardada no aparelho. Lida com `useSyncExternalStore`: no
+// servidor e na primeira pintura a receita está à mostra, e a tela troca
+// sozinha quando o navegador diz o que estava guardado.
+const RECEITA_OCULTA = "tms:receita-oculta";
+const ouvintes = new Set<() => void>();
+// Só é usada quando o navegador recusa o armazenamento (aba privada restrita):
+// aí a escolha vale até recarregar.
+let semArmazenamento: boolean | null = null;
+
+export function assinarReceitaOculta(avisar: () => void): () => void {
+  ouvintes.add(avisar);
+  return () => {
+    ouvintes.delete(avisar);
+  };
+}
+
+export function receitaEstaOculta(): boolean {
+  if (semArmazenamento !== null) return semArmazenamento;
+  try {
+    return localStorage.getItem(RECEITA_OCULTA) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function alternarReceitaOculta(): void {
+  const oculta = !receitaEstaOculta();
+  try {
+    localStorage.setItem(RECEITA_OCULTA, oculta ? "1" : "0");
+  } catch {
+    semArmazenamento = oculta;
+  }
+  for (const avisar of ouvintes) avisar();
 }

@@ -59,6 +59,32 @@ export function periodoDoRelatorio(hoje: Date = new Date()): { de: string; ate: 
   };
 }
 
+const DIA = 86_400_000;
+
+/**
+ * A semana corrente no relógio do Brasil, de segunda a domingo: os instantes
+ * em que começa e acaba (fim exclusivo) e os sete dias, como `AAAA-MM-DD`.
+ */
+export function semanaCorrente(hoje: Date = new Date()): { inicio: Date; fim: Date; dias: string[] } {
+  // Meio-dia do dia de hoje no Brasil: somar dias inteiros a ele não muda de dia em fuso nenhum.
+  const meioDia = new Date(`${diaNoBrasil(hoje)}T12:00:00-03:00`);
+  const desdeSegunda = (meioDia.getUTCDay() + 6) % 7;
+  const dias = Array.from({ length: 7 }, (_, i) => diaNoBrasil(new Date(meioDia.getTime() + (i - desdeSegunda) * DIA)));
+  const inicio = new Date(`${dias[0]}T00:00:00-03:00`);
+  return { inicio, fim: new Date(inicio.getTime() + 7 * DIA), dias };
+}
+
+/** Quantas entregas houve em cada dia da semana corrente, de segunda a domingo. */
+export function entregasPorDia(entregues: readonly (Date | string)[], hoje: Date = new Date()): number[] {
+  const { dias } = semanaCorrente(hoje);
+  const contagem = dias.map(() => 0);
+  for (const instante of entregues) {
+    const posicao = dias.indexOf(diaNoBrasil(instante));
+    if (posicao >= 0) contagem[posicao] += 1;
+  }
+  return contagem;
+}
+
 /* ---------------------------------- Entradas --------------------------------- */
 
 type ClienteDaCarga = { id: string; companyName: string; tradeName: string | null };

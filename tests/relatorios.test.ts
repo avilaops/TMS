@@ -3,9 +3,11 @@ import { getServerSession } from "next-auth";
 import {
   SEM_CATEGORIA,
   SEM_MOTORISTA,
+  entregasPorDia,
   limitesDoPeriodo,
   montarRelatorio,
   periodoDoRelatorio,
+  semanaCorrente,
   type CargaDoPeriodo,
   type DadosDoRelatorio,
   type EntregaDoPeriodo,
@@ -61,6 +63,40 @@ describe("contas do relatório", () => {
     expect(periodoDoRelatorio(new Date("2026-02-10T15:00:00.000Z"))).toEqual({ de: "2025-12", ate: "2026-02" });
     // 01:30 UTC de 1º de novembro ainda é 31 de outubro em Brasília.
     expect(periodoDoRelatorio(new Date("2026-11-01T01:30:00.000Z"))).toEqual({ de: "2026-08", ate: "2026-10" });
+  });
+
+  it("semana corrente: de segunda a domingo no relógio do Brasil, com o fim exclusivo", () => {
+    // 15/10/2026 é quinta-feira.
+    expect(semanaCorrente(HOJE)).toEqual({
+      inicio: new Date("2026-10-12T03:00:00.000Z"),
+      fim: new Date("2026-10-19T03:00:00.000Z"),
+      dias: ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17", "2026-10-18"],
+    });
+    // Segunda e domingo ficam na própria semana; 01:30 UTC de segunda ainda é domingo em Brasília.
+    expect(semanaCorrente(new Date("2026-10-12T15:00:00.000Z")).dias[0]).toBe("2026-10-12");
+    expect(semanaCorrente(new Date("2026-10-18T15:00:00.000Z")).dias[0]).toBe("2026-10-12");
+    expect(semanaCorrente(new Date("2026-10-19T01:30:00.000Z")).dias[0]).toBe("2026-10-12");
+    // Semana que vira o mês e o ano.
+    expect(semanaCorrente(new Date("2027-01-01T15:00:00.000Z")).dias).toEqual([
+      "2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03",
+    ]);
+  });
+
+  it("entregas por dia: cada entrega no dia do Brasil em que aconteceu; fora da semana não conta", () => {
+    expect(entregasPorDia([], HOJE)).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    expect(
+      entregasPorDia(
+        [
+          new Date("2026-10-12T03:00:00.000Z"), // 00:00 de segunda
+          "2026-10-12T20:00:00.000Z",
+          new Date("2026-10-16T02:30:00.000Z"), // 23:30 de quinta
+          new Date("2026-10-19T02:59:00.000Z"), // 23:59 de domingo
+          new Date("2026-10-12T02:59:00.000Z"), // domingo anterior
+          new Date("2026-10-19T03:00:00.000Z"), // segunda seguinte
+        ],
+        HOJE,
+      ),
+    ).toEqual([2, 0, 0, 1, 0, 0, 1]);
   });
 
   it("sem dado nenhum: tudo zero e as taxas sem valor, não 0% nem 100%", () => {
