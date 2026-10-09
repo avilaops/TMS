@@ -26,7 +26,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff(["ADMIN"]);
   if (error) return error;
 
   try {
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
       });
 
       // O cadastro só vale para quem tem conta liberada no login único.
-      const acesso = await liberarAcesso({ email: usuario.email, nome: usuario.name });
+      const acesso = await liberarAcesso({ email: usuario.email, nome: usuario.name }, { convidadoPor: user.name });
       return NextResponse.json({ ...usuario, acesso }, { status: 201 });
     } catch (err) {
       // Duas criações simultâneas com o mesmo e-mail: a segunda bate no índice único.

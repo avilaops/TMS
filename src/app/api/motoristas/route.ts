@@ -25,7 +25,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
 
       // O motorista entra no aplicativo pelo login único: garante a conta lá
       // (com CPF e telefone, que ele pode usar para entrar) e libera o TMS.
-      const acesso = await liberarAcesso({ email: data.email, nome: data.name, cpf: data.cpf, telefone: data.phone });
+      const acesso = await liberarAcesso({ email: data.email, nome: data.name, cpf: data.cpf, telefone: data.phone }, { convidadoPor: user.name });
       return NextResponse.json({ ...newDriver, acesso }, { status: 201 });
     } catch (err) {
       // Duas criações simultâneas: a segunda bate no índice único do CPF ou do

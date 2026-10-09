@@ -260,24 +260,47 @@ describe("liberação de acesso no login único", () => {
     expect(fetchFalso).not.toHaveBeenCalled();
   });
 
-  it("conta nova: manda os dados como o cliente OIDC e devolve o convite", async () => {
-    const chamadas = authResponde(201, { email: "novo@exemplo.br", criada: true, convite: "https://auth.avilaops.com/recuperar/abc" });
+  it("conta nova: pede o convite por e-mail como o cliente OIDC; enviado, o endereço da senha não volta", async () => {
+    vi.stubEnv("NEXTAUTH_URL", "https://tms.avilaops.com/");
+    const chamadas = authResponde(201, { email: "novo@exemplo.br", criada: true, convite: null, envio: "enviado" });
 
-    const acesso = await acessos.liberarAcesso({ email: "novo@exemplo.br", nome: "Novo", cpf: "12345678901", telefone: null });
-    expect(acesso).toEqual({ ok: true, contaNova: true, convite: "https://auth.avilaops.com/recuperar/abc" });
+    const acesso = await acessos.liberarAcesso(
+      { email: "novo@exemplo.br", nome: "Novo", cpf: "12345678901", telefone: null },
+      { empresa: "Mello Transportes", convidadoPor: "Rogério" },
+    );
+    expect(acesso).toEqual({ ok: true, contaNova: true, enviado: true, convite: null });
 
     expect(chamadas).toHaveLength(1);
     expect(chamadas[0].url).toBe("https://auth.avilaops.com/api/provisionamento/acessos");
     expect(chamadas[0].method).toBe("POST");
     expect(chamadas[0].authorization).toBe(`Basic ${Buffer.from(`tms:${SEGREDO}`).toString("base64")}`);
-    expect(chamadas[0].body).toEqual({ email: "novo@exemplo.br", nome: "Novo", cpf: "12345678901" });
+    expect(chamadas[0].body).toEqual({
+      email: "novo@exemplo.br",
+      nome: "Novo",
+      cpf: "12345678901",
+      enviarConvite: true,
+      empresa: "Mello Transportes",
+      convidadoPor: "Rogério",
+      destino: "https://tms.avilaops.com/login",
+    });
   });
 
-  it("conta que já existia: liberada, sem convite", async () => {
-    authResponde(200, { email: "velho@exemplo.br", criada: false, convite: null });
+  it("e-mail do convite não saiu: o endereço da senha volta para alguém entregar à mão", async () => {
+    authResponde(201, { email: "novo@exemplo.br", criada: true, convite: "https://auth.avilaops.com/recuperar/abc", envio: "sem_email" });
+    expect(await acessos.liberarAcesso({ email: "novo@exemplo.br", nome: "Novo" })).toEqual({
+      ok: true,
+      contaNova: true,
+      enviado: false,
+      convite: "https://auth.avilaops.com/recuperar/abc",
+    });
+  });
+
+  it("conta que já existia: liberada, sem endereço de senha", async () => {
+    authResponde(200, { email: "velho@exemplo.br", criada: false, convite: null, envio: "enviado" });
     expect(await acessos.liberarAcesso({ email: "velho@exemplo.br", nome: "Velho" })).toEqual({
       ok: true,
       contaNova: false,
+      enviado: true,
       convite: null,
     });
   });

@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 
-export type Acesso = { ok: true; contaNova: boolean; convite: string | null } | { ok: false; erro: string };
+export type Acesso =
+  | { ok: true; contaNova: boolean; enviado: boolean; convite: string | null }
+  | { ok: false; erro: string };
 
 /**
  * O que aconteceu com o acesso da pessoa no login único depois de um cadastro:
- * convite para enviar (conta nova), nada a fazer (conta que já existia) ou
- * falha, com o caminho para tentar de novo.
+ * convite enviado por e-mail (o caso normal), convite para entregar à mão (o
+ * e-mail não saiu), nada a fazer (conta que já existia) ou falha, com o
+ * caminho para tentar de novo.
  */
 export function AvisoDeAcesso({ nome, acesso, onFechar }: { nome: string; acesso: Acesso; onFechar: () => void }) {
   const [copiado, setCopiado] = useState(false);
@@ -20,6 +23,21 @@ export function AvisoDeAcesso({ nome, acesso, onFechar }: { nome: string; acesso
         <p>
           <strong>{nome}</strong> foi cadastrado, mas ainda não consegue entrar: {acesso.erro} Use “Liberar acesso” na
           lista para tentar de novo.
+        </p>
+        <button type="button" onClick={onFechar} className="underline">
+          Fechar
+        </button>
+      </div>
+    );
+  }
+
+  if (acesso.enviado) {
+    return (
+      <div role="status" className={`${base} bg-green-50 border-green-200 text-green-900`}>
+        <p>
+          Convite enviado por e-mail para <strong>{nome}</strong>. A mensagem leva o endereço para criar a senha (vale
+          por 7 dias); ao salvar, a pessoa já entra no TMS. Quem já tinha senha na conta Ávila Ops recebe só o endereço
+          do sistema. Se a mensagem não chegar, use “Liberar acesso” na lista de usuários para enviar de novo.
         </p>
         <button type="button" onClick={onFechar} className="underline">
           Fechar
@@ -56,7 +74,7 @@ export function AvisoDeAcesso({ nome, acesso, onFechar }: { nome: string; acesso
   return (
     <div role="status" className={`${base} bg-blue-50 border-blue-200 text-blue-950`}>
       <p>
-        Conta criada para <strong>{nome}</strong>. Envie este link para a pessoa definir a senha. Ele vale por 7 dias,
+        O e-mail do convite não saiu. Envie você este link para <strong>{nome}</strong> definir a senha. Ele vale por 7 dias,
         funciona uma vez e <strong>não aparece de novo</strong>.
       </p>
       <input

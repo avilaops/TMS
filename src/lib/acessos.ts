@@ -13,16 +13,25 @@ import { randomBytes } from "node:crypto";
  */
 
 export type Acesso =
-  /** `convite`: link de uso único para a pessoa definir a senha. Só vem para conta criada agora. */
-  | { ok: true; contaNova: boolean; convite: string | null }
+  /**
+   * `enviado`: o login único escreveu para a pessoa (com o endereço de criar a
+   * senha, se a conta é nova). `convite`: o endereço de uso único, que só volta
+   * quando o e-mail não saiu, para alguém entregar à mão.
+   */
+  | { ok: true; contaNova: boolean; enviado: boolean; convite: string | null }
   | { ok: false; erro: string };
+
+/** Quem convida e de qual empresa, para a pessoa reconhecer a mensagem. */
+export type Convidante = { empresa?: string | null; convidadoPor?: string | null };
 
 function configuracao() {
   const base = (process.env.AVILAOPS_ISSUER || "https://auth.avilaops.com").replace(/\/+$/, "");
   const id = process.env.AVILAOPS_CLIENT_ID || "tms";
   const segredo = process.env.AVILAOPS_CLIENT_SECRET;
   if (!segredo) return null;
+  const publico = (process.env.NEXTAUTH_URL || "").replace(/\/+$/, "");
   return {
+    entrada: publico ? `${publico}/login` : null,
     url: `${base}/api/provisionamento/acessos`,
     authorization: `Basic ${Buffer.from(`${encodeURIComponent(id)}:${encodeURIComponent(segredo)}`).toString("base64")}`,
   };
@@ -35,7 +44,7 @@ export async function liberarAcesso(pessoa: {
   nome: string;
   cpf?: string | null;
   telefone?: string | null;
-}): Promise<Acesso> {
+}, convidante: Convidante = {}): Promise<Acesso> {
   const cfg = configuracao();
   if (!cfg) return { ok: false, erro: "Login único não configurado neste ambiente." };
 
@@ -48,12 +57,19 @@ export async function liberarAcesso(pessoa: {
         nome: pessoa.nome,
         ...(pessoa.cpf && { cpf: pessoa.cpf }),
         ...(pessoa.telefone && { telefone: pessoa.telefone }),
+        // O TMS não tem caixa de e-mail: quem escreve para a pessoa é o login
+        // único, e o endereço de criar a senha vai direto à caixa dela.
+        enviarConvite: true,
+        ...(convidante.empresa && { empresa: convidante.empresa }),
+        ...(convidante.convidadoPor && { convidadoPor: convidante.convidadoPor }),
+        // Criada a senha, a pessoa cai na entrada do TMS, que já abre a sessão.
+        ...(cfg.entrada && { destino: cfg.entrada }),
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(8000),
     });
 
-    const corpo = (await res.json().catch(() => ({}))) as { criada?: boolean; convite?: string | null; error?: string };
+    const corpo = (await res.json().catch(() => ({}))) as { criada?: boolean; convite?: string | null; envio?: string; error?: string };
 
     if (!res.ok) {
       console.error(`Login único recusou a liberação (${res.status}):`, corpo.error);
@@ -64,6 +80,7 @@ export async function liberarAcesso(pessoa: {
     return {
       ok: true,
       contaNova: corpo.criada === true,
+      enviado: corpo.envio === "enviado",
       convite: typeof corpo.convite === "string" ? corpo.convite : null,
     };
   } catch (error) {
