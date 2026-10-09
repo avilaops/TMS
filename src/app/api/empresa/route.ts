@@ -1,14 +1,27 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { requireStaff } from '@/lib/staff';
-import prisma, { empresaAtual, sistema } from '@/lib/prisma';
+import prisma, { SemEmpresaError, empresaAtual, sistema } from '@/lib/prisma';
 import { identidadeSchema } from '@/lib/empresa';
 
 const IDENTIDADE = { name: true, logo: true } as const;
 
-/** Nome e símbolo da empresa da sessão, para o cabeçalho do painel. */
+/**
+ * Nome e símbolo da empresa da sessão, para os cabeçalhos do painel, do portal
+ * do cliente e do app do motorista: qualquer perfil lê, desde que a sessão seja
+ * de um usuário que ainda existe na empresa.
+ */
 export async function GET() {
-  const { error } = await requireStaff();
-  if (error) return error;
+  const session = await getServerSession(authOptions);
+  const usuario = session?.user?.id
+    ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } }).catch((erro: unknown) => {
+        // Sessão sem empresa (anterior ao multi-tenant) não chega ao banco.
+        if (erro instanceof SemEmpresaError) return null;
+        throw erro;
+      })
+    : null;
+  if (!usuario) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
   try {
     // A empresa só lê o próprio cadastro (prisma/sql/010-rls.sql).

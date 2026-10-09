@@ -103,17 +103,18 @@ suite("rota da identidade da empresa", () => {
     await banco.sistema.user.deleteMany({ where: { email: { startsWith: PREFIXO } } });
   });
 
-  it("ler: administrador e operação recebem o nome e o símbolo; sem sessão 401; cliente e motorista 403", async () => {
-    for (const perfil of ["ADMIN", "OPERATION"] as const) {
+  it("ler: todo perfil da empresa recebe o nome e o símbolo; sem sessão ou com usuário que não existe mais, 401", async () => {
+    for (const perfil of ["ADMIN", "OPERATION", "CLIENT", "DRIVER"] as const) {
       entrarComo(perfil);
       const res = await empresa.GET();
       expect(res.status, perfil).toBe(200);
       expect(await res.json()).toEqual({ name: EMPRESA_PADRAO.name, logo: null });
     }
-    for (const [perfil, esperado] of [[null, 401], ["CLIENT", 403], ["DRIVER", 403]] as const) {
-      entrarComo(perfil);
-      expect((await empresa.GET()).status, String(perfil)).toBe(esperado);
-    }
+
+    entrarComo(null);
+    expect((await empresa.GET()).status).toBe(401);
+    sessao.mockResolvedValue({ user: { id: "00000000-0000-4000-8000-000000000000", role: "ADMIN", clientId: null } });
+    expect((await empresa.GET()).status).toBe(401);
   });
 
   it("alterar: só o administrador; os demais não mudam nada", async () => {

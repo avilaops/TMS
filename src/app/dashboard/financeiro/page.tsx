@@ -395,8 +395,8 @@ export default function FinanceiroPage() {
 
         {aba === "FLUXO" ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-950 text-gray-500 text-right">
+            <table className="block md:table w-full text-sm">
+              <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-950 text-gray-500 text-right">
                 <tr>
                   <th className="px-4 py-3 font-medium text-left">Mês</th>
                   <th className="px-4 py-3 font-medium">Entradas previstas</th>
@@ -407,18 +407,18 @@ export default function FinanceiroPage() {
                   <th className="px-4 py-3 font-medium">Acumulado</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-right">
+              <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800 text-right">
                 {fluxo.map((m) => (
-                  <tr key={m.mes}>
-                    <td className="px-4 py-3 text-left font-medium text-gray-900 dark:text-white capitalize">{nomeDoMes(m.mes)}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{formatCurrency(m.previsto.entradas)}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{formatCurrency(m.previsto.saidas)}</td>
-                    <td className="px-4 py-3 text-gray-900 dark:text-white">{formatCurrency(m.realizado.entradas)}</td>
-                    <td className="px-4 py-3 text-gray-900 dark:text-white">{formatCurrency(m.realizado.saidas)}</td>
-                    <td className={`px-4 py-3 font-medium ${m.realizado.saldo < 0 ? "text-red-600" : "text-gray-900 dark:text-white"}`}>
+                  <tr key={m.mes} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
+                    <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3 text-left font-medium text-gray-900 dark:text-white capitalize">{nomeDoMes(m.mes)}</td>
+                    <td data-rotulo="Entradas previstas" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(m.previsto.entradas)}</td>
+                    <td data-rotulo="Saídas previstas" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(m.previsto.saidas)}</td>
+                    <td data-rotulo="Entradas realizadas" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(m.realizado.entradas)}</td>
+                    <td data-rotulo="Saídas realizadas" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(m.realizado.saidas)}</td>
+                    <td data-rotulo="Saldo do mês" className={`min-w-0 md:table-cell md:px-4 md:py-3 font-medium before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none ${m.realizado.saldo < 0 ? "text-red-600" : "text-gray-900 dark:text-white"}`}>
                       {formatCurrency(m.realizado.saldo)}
                     </td>
-                    <td className={`px-4 py-3 font-medium ${m.acumulado < 0 ? "text-red-600" : "text-gray-900 dark:text-white"}`}>
+                    <td data-rotulo="Acumulado" className={`min-w-0 md:table-cell md:px-4 md:py-3 font-medium before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none ${m.acumulado < 0 ? "text-red-600" : "text-gray-900 dark:text-white"}`}>
                       {formatCurrency(m.acumulado)}
                     </td>
                   </tr>
@@ -433,8 +433,8 @@ export default function FinanceiroPage() {
           <p className="p-10 text-center text-gray-500">Nenhum lançamento {filtro ? "nesta situação" : "até agora"}.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
+            <table className="block md:table w-full text-sm">
+              <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
                 <tr>
                   <th className="px-4 py-3 font-medium">Descrição</th>
                   <th className="px-4 py-3 font-medium">{aba === "INCOME" ? "Cliente" : "Fornecedor"}</th>
@@ -445,12 +445,12 @@ export default function FinanceiroPage() {
                   <th className="px-4 py-3 font-medium text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
                 {daAba.map((l) => {
                   const situacao = situacaoDoLancamento(l);
                   return (
-                    <tr key={l.id}>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">
+                    <tr key={l.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
+                      <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3 text-gray-900 dark:text-white">
                         {l.description}
                         {l.invoice && (
                           <Link href={`/dashboard/faturamento/${l.invoice.id}`} className="ml-2 text-xs text-blue-600 hover:underline">
@@ -458,13 +458,13 @@ export default function FinanceiroPage() {
                           </Link>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                      <td className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300">
                         {l.client ? l.client.tradeName || l.client.companyName : l.counterparty || "-"}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{l.category || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{formatCalendarDate(l.dueDate)}</td>
-                      <td className="px-4 py-3 text-right text-gray-900 dark:text-white">{formatCurrency(l.amount)}</td>
-                      <td className="px-4 py-3">
+                      <td data-rotulo="Categoria" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{l.category || "-"}</td>
+                      <td data-rotulo="Vencimento" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCalendarDate(l.dueDate)}</td>
+                      <td data-rotulo="Valor" className="min-w-0 md:table-cell md:px-4 md:py-3 md:text-right text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(l.amount)}</td>
+                      <td data-rotulo="Situação" className="min-w-0 md:table-cell md:px-4 md:py-3 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                         <span className={`text-xs px-2.5 py-1 rounded-full ${SITUACAO[situacao].classe}`}>{SITUACAO[situacao].rotulo}</span>
                         {l.paidAt && (
                           <span className="block text-xs text-gray-500 mt-1">
@@ -473,7 +473,7 @@ export default function FinanceiroPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap space-x-3">
+                      <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3 md:text-right whitespace-nowrap space-x-3">
                         {l.type === "INCOME" && l.status === "PAID" && (
                           <Link href={`/dashboard/financeiro/recibo/${l.id}`} className="text-blue-600 hover:underline">
                             Recibo

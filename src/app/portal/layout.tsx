@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { sair } from "@/lib/sair";
+import { SimboloDaEmpresa, useIdentidade } from "@/components/empresa/identidade";
 import { LayoutDashboard, Package, Receipt, LogOut, Menu, X } from "lucide-react";
 
 const links = [
@@ -18,14 +18,16 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   const { data: session } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+  const identidade = useIdentidade();
+  const logo = identidade?.logo ?? null;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Header mobile */}
       <div className="md:hidden flex items-center justify-between p-4 bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="flex items-center gap-2">
-          <Image src="/favicon-96x96.png" alt="Mello Transportes" width={32} height={32} />
-          <span className="font-outfit font-bold text-lg">Portal do cliente</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <SimboloDaEmpresa logo={logo} />
+          <span data-empresa className="font-outfit font-bold text-lg truncate">{identidade?.name ?? "Portal do cliente"}</span>
         </div>
         <button onClick={() => setMenuOpen(!menuOpen)} className="p-2" aria-label="Abrir menu">
           {menuOpen ? <X /> : <Menu />}
@@ -38,9 +40,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         }`}
       >
         <div className="p-6 flex items-center gap-3">
-          <Image src="/favicon-96x96.png" alt="Mello Transportes" width={40} height={40} />
-          <div>
-            <p className="font-outfit font-bold text-lg leading-tight">Mello</p>
+          <SimboloDaEmpresa logo={logo} tamanho="grande" />
+          <div className="min-w-0">
+            <p className="font-outfit font-bold text-lg leading-tight truncate">{identidade?.name ?? "Transportadora"}</p>
             <p className="text-xs text-gray-500 uppercase tracking-wide">Portal do cliente</p>
           </div>
         </div>

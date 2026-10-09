@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { sair } from "@/lib/sair";
+import { SimboloDaEmpresa, useIdentidade } from "@/components/empresa/identidade";
 import { Truck, Map, User, LogOut, CloudOff, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 import {
   type BlockedBaixa,
@@ -167,6 +168,8 @@ export default function DriverShell({ children }: { children: React.ReactNode })
     };
   }, []);
 
+  const identidade = useIdentidade();
+
   const leave = () => {
     // Saída pedida pelo motorista: o próximo a entrar não herda o dono da fila.
     rememberOwner(null);
@@ -182,9 +185,9 @@ export default function DriverShell({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden">
       <header className="bg-blue-600 text-white p-4 flex justify-between items-center z-10 shadow-md">
-        <div className="flex items-center space-x-2">
-          <Truck className="w-5 h-5" />
-          <span className="font-outfit font-bold text-lg">Mello App</span>
+        <div className="flex items-center space-x-2 min-w-0">
+          {identidade?.logo ? <SimboloDaEmpresa logo={identidade.logo} /> : <Truck className="w-5 h-5" />}
+          <span data-empresa className="font-outfit font-bold text-lg truncate">{identidade?.name ?? "App do motorista"}</span>
         </div>
         <button
           onClick={leave}

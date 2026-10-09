@@ -293,8 +293,8 @@ export default function UsuariosPage() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+            <table className="block md:table w-full text-left text-sm">
+              <thead className="hidden md:table-header-group text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
                 <tr>
                   <th className="px-3 py-3 font-medium">Nome</th>
                   <th className="px-3 py-3 font-medium">E-mail</th>
@@ -304,25 +304,25 @@ export default function UsuariosPage() {
                   <th className="px-3 py-3 font-medium text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
                 {usuarios.map((usuario) => {
                   const isEditing = editing?.id === usuario.id;
                   return (
-                    <tr key={usuario.id}>
-                      <td className="px-3 py-3 text-gray-900 dark:text-white">{usuario.name}</td>
-                      <td className="px-3 py-3 text-gray-600 dark:text-gray-300">{usuario.email}</td>
-                      <td className="px-3 py-3">
+                    <tr key={usuario.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
+                      <td className="min-w-0 md:table-cell md:px-3 md:py-3 text-gray-900 dark:text-white">{usuario.name}</td>
+                      <td className="col-span-2 min-w-0 md:table-cell md:px-3 md:py-3 text-gray-600 dark:text-gray-300">{usuario.email}</td>
+                      <td className="min-w-0 md:table-cell md:px-3 md:py-3">
                         <Badge variant={usuario.role === "ADMIN" ? "default" : "secondary"}>
                           {ROLE_LABEL[usuario.role] ?? usuario.role}
                         </Badge>
                       </td>
-                      <td className="px-3 py-3 text-gray-600 dark:text-gray-300">
+                      <td data-rotulo="Empresa" className="min-w-0 md:table-cell md:px-3 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                         {empresaName(usuario.clientId)}
                       </td>
-                      <td className="px-3 py-3 text-gray-600 dark:text-gray-300">
+                      <td data-rotulo="Criado em" className="min-w-0 md:table-cell md:px-3 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                         {new Date(usuario.createdAt).toLocaleDateString("pt-BR")}
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="col-span-2 min-w-0 md:table-cell md:px-3 md:py-3">
                         {isEditing ? (
                           <div className="flex flex-wrap items-center justify-end gap-2">
                               <>

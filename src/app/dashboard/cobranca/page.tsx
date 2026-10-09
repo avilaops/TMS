@@ -134,24 +134,24 @@ export default function CobrancaPage() {
   const { totais, devedores } = posicao;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div>
         <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Cobrança</h1>
-        <p className="text-gray-500 text-sm mt-1">Quem deve, quanto e há quanto tempo</p>
+        <p className="hidden md:block text-gray-500 text-sm mt-1">Quem deve, quanto e há quanto tempo</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 md:gap-4 lg:grid-cols-4">
         <Cartao rotulo="Em aberto" valor={formatCurrency(totais.emAberto)} icone={<Wallet className="w-5 h-5 text-blue-600" />} />
         <Cartao rotulo="Vencido" valor={formatCurrency(totais.vencido)} alerta={totais.vencido > 0} icone={<AlertTriangle className="w-5 h-5 text-red-600" />} />
         <Cartao rotulo="A vencer" valor={formatCurrency(totais.aVencer)} icone={<CalendarClock className="w-5 h-5 text-amber-600" />} />
         <Cartao rotulo="Clientes em atraso" valor={String(totais.devedoresEmAtraso)} alerta={totais.devedoresEmAtraso > 0} icone={<Users className="w-5 h-5 text-red-600" />} />
       </div>
 
-      <dl className={`${CARD} grid gap-4 p-5 sm:grid-cols-3 lg:grid-cols-5`}>
+      <dl className={`${CARD} grid grid-cols-3 gap-x-2 gap-y-2 p-3 md:gap-4 md:p-5 lg:grid-cols-5`}>
         {FAIXAS.map((faixa) => (
           <div key={faixa} data-faixa={faixa}>
-            <dt className="text-xs text-gray-500">{FAIXA_LABEL[faixa]}</dt>
-            <dd className="mt-1 font-semibold text-gray-900 dark:text-white">{formatCurrency(totais.porFaixa[faixa])}</dd>
+            <dt className="text-[11px] md:text-xs leading-tight text-gray-500">{FAIXA_LABEL[faixa]}</dt>
+            <dd className="mt-0.5 md:mt-1 text-sm md:text-base font-semibold text-gray-900 dark:text-white">{formatCurrency(totais.porFaixa[faixa])}</dd>
           </div>
         ))}
       </dl>
@@ -161,8 +161,8 @@ export default function CobrancaPage() {
           <p className="p-10 text-center text-gray-500">Nenhum valor a receber em aberto.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
+            <table className="block md:table w-full text-sm">
+              <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
                 <tr>
                   <th className="px-4 py-3 font-medium">Devedor</th>
                   <th className="px-4 py-3 font-medium text-right">Total</th>
@@ -171,14 +171,14 @@ export default function CobrancaPage() {
                   <th className="px-4 py-3 font-medium text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
                 {devedores.map((devedor) => {
                   const expandido = aberto === devedor.chave;
                   const comAviso = aviso === devedor.chave;
                   return (
                     <Fragment key={devedor.chave}>
-                      <tr data-devedor={devedor.chave}>
-                        <td className="px-4 py-3">
+                      <tr data-devedor={devedor.chave} className="grid grid-cols-3 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
+                        <td className="col-span-3 min-w-0 md:table-cell md:px-4 md:py-3">
                           <button
                             aria-expanded={expandido}
                             onClick={() => setAberto(expandido ? null : devedor.chave)}
@@ -190,14 +190,14 @@ export default function CobrancaPage() {
                             {devedor.titulos.length} {devedor.titulos.length === 1 ? "título" : "títulos"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-900 dark:text-white">{formatCurrency(devedor.total)}</td>
-                        <td className={`px-4 py-3 text-right ${devedor.vencido > 0 ? "text-red-600 font-medium" : "text-gray-600 dark:text-gray-300"}`}>
+                        <td data-rotulo="Total" className="min-w-0 md:table-cell md:px-4 md:py-3 md:text-right text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(devedor.total)}</td>
+                        <td data-rotulo="Vencido" className={`min-w-0 md:table-cell md:px-4 md:py-3 md:text-right before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none ${devedor.vencido > 0 ? "text-red-600 font-medium" : "text-gray-600 dark:text-gray-300"}`}>
                           {formatCurrency(devedor.vencido)}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-300">
+                        <td data-rotulo="Maior atraso" className="min-w-0 md:table-cell md:px-4 md:py-3 md:text-right text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                           {devedor.maiorAtraso === 0 ? "-" : `${devedor.maiorAtraso} ${devedor.maiorAtraso === 1 ? "dia" : "dias"}`}
                         </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <td className="col-span-3 min-w-0 md:table-cell md:px-4 md:py-3 md:text-right whitespace-nowrap">
                           <button
                             onClick={() => {
                               setCopia(null);
@@ -211,8 +211,8 @@ export default function CobrancaPage() {
                       </tr>
 
                       {comAviso && (
-                        <tr data-aviso={devedor.chave}>
-                          <td colSpan={5} className="px-4 py-4 bg-gray-50 dark:bg-gray-950">
+                        <tr data-aviso={devedor.chave} className="block md:table-row">
+                          <td colSpan={5} className="block md:table-cell px-3 py-3 md:px-4 md:py-4 bg-gray-50 dark:bg-gray-950">
                             <Aviso
                               texto={textoDoAviso({ empresa: posicao.empresa, devedor, hoje: meioDiaNoBrasil(posicao.hoje) })}
                               copia={copia}
@@ -223,8 +223,8 @@ export default function CobrancaPage() {
                       )}
 
                       {expandido && (
-                        <tr data-titulos={devedor.chave}>
-                          <td colSpan={5} className="px-4 py-4 bg-gray-50 dark:bg-gray-950">
+                        <tr data-titulos={devedor.chave} className="block md:table-row">
+                          <td colSpan={5} className="block md:table-cell px-3 py-3 md:px-4 md:py-4 overflow-x-auto bg-gray-50 dark:bg-gray-950">
                             <table className="w-full text-sm">
                               <thead className="text-left text-gray-500">
                                 <tr>
@@ -308,12 +308,12 @@ function Aviso({
 
 function Cartao({ rotulo, valor, icone, alerta = false }: { rotulo: string; valor: string; icone: React.ReactNode; alerta?: boolean }) {
   return (
-    <div className={`${CARD} p-5`} data-cartao={rotulo}>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{rotulo}</p>
+    <div className={`${CARD} p-3 md:p-5`} data-cartao={rotulo}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs md:text-sm leading-tight text-gray-500">{rotulo}</p>
         {icone}
       </div>
-      <p className={`mt-2 text-xl font-bold ${alerta ? "text-red-600" : "text-gray-900 dark:text-white"}`}>{valor}</p>
+      <p className={`mt-1 md:mt-2 text-lg md:text-xl font-bold ${alerta ? "text-red-600" : "text-gray-900 dark:text-white"}`}>{valor}</p>
     </div>
   );
 }

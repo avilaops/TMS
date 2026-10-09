@@ -158,7 +158,6 @@ suite("permissões das rotas internas", () => {
     const semId = "00000000-0000-0000-0000-000000000000";
 
     rotasStaff = [
-      ["GET /api/empresa", () => empresa.GET()],
       ["GET /api/clientes", () => clientes.GET()],
       ["POST /api/clientes", () => clientes.POST(req("POST", { cnpj: "1", companyName: "x" }))],
       ["PATCH /api/clientes/[id]", () => clientePorId.PATCH(req("PATCH", { companyName: "Invasor LTDA" }), ctx(clienteId))],

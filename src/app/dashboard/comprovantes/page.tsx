@@ -98,8 +98,8 @@ export default function ComprovantesPage() {
         <div className="py-12 text-center text-gray-500 border rounded-lg bg-gray-50">{EMPTY_MESSAGE[status]}</div>
       ) : (
         <div className="overflow-x-auto border rounded-lg bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-500">
+          <table className="block md:table w-full text-sm">
+            <thead className="hidden md:table-header-group bg-gray-50 text-left text-gray-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Cliente</th>
                 <th className="px-4 py-3 font-medium">Recebedor</th>
@@ -108,13 +108,13 @@ export default function ComprovantesPage() {
                 <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="block md:table-row-group divide-y">
               {carga.itens.map((comprovante) => {
                 const selo = statusBadge(PROOF_STATUS, comprovante.status);
                 const { collection } = comprovante;
                 return (
-                  <tr key={comprovante.id}>
-                    <td className="px-4 py-3">
+                  <tr key={comprovante.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
+                    <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3">
                       <p className="font-semibold">{collection.client.tradeName || collection.client.companyName}</p>
                       <p className="text-gray-500">
                         {collection.receiver} · {collection.destination}
@@ -123,12 +123,12 @@ export default function ComprovantesPage() {
                         <p className="font-mono text-xs text-gray-400">{collection.trackingCode}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-rotulo="Recebedor" className="min-w-0 md:table-cell md:px-4 md:py-3 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                       <p>{comprovante.receiverName}</p>
                       <p className="text-gray-500">{comprovante.receiverDoc}</p>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">{dataHora(comprovante.createdAt)}</td>
-                    <td className="px-4 py-3">
+                    <td data-rotulo="Data da baixa" className="min-w-0 md:table-cell md:px-4 md:py-3 whitespace-nowrap before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{dataHora(comprovante.createdAt)}</td>
+                    <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3">
                       <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full border ${selo.className}`}>
                         {selo.label}
                       </span>
@@ -141,7 +141,7 @@ export default function ComprovantesPage() {
                         <p className="mt-1 text-xs text-gray-500">Motivo: {comprovante.rejectionReason}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3 md:text-right whitespace-nowrap">
                       <Link
                         href={`/dashboard/entregas/${collection.id}/comprovante`}
                         className="text-blue-600 hover:underline font-medium"

@@ -203,3 +203,12 @@ body {
     @apply font-sans;
   }
 }
+/* O Safari do iPhone aproxima a tela quando o campo focado tem letra menor que
+   16px, e não volta sozinho. No celular os campos ficam com 16px. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

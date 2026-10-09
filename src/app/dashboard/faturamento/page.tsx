@@ -232,8 +232,8 @@ export default function Faturamento() {
         {clienteId && cargas.length > 0 && (
           <>
             <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-xl">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
+              <table className="block md:table w-full text-sm">
+                <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
                   <tr>
                     <th className="px-4 py-3 w-10" />
                     <th className="px-4 py-3 font-medium">Data</th>
@@ -243,10 +243,10 @@ export default function Faturamento() {
                     <th className="px-4 py-3 font-medium text-right">Frete</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
                   {cargas.map((c) => (
-                    <tr key={c.id}>
-                      <td className="px-4 py-2">
+                    <tr key={c.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
+                      <td className="min-w-0 md:table-cell md:px-4 md:py-2">
                         <input
                           type="checkbox"
                           aria-label={`Incluir a carga ${c.trackingCode ?? c.id}`}
@@ -254,15 +254,15 @@ export default function Faturamento() {
                           onChange={() => alternar(c.id)}
                         />
                       </td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{formatDate(c.createdAt)}</td>
-                      <td className="px-4 py-2 text-gray-900 dark:text-white">
+                      <td className="min-w-0 md:table-cell md:px-4 md:py-2 text-gray-600 dark:text-gray-300">{formatDate(c.createdAt)}</td>
+                      <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-2 text-gray-900 dark:text-white">
                         {c.origin} → {c.destination}
                       </td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{c.receiver}</td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                      <td data-rotulo="Destinatário" className="min-w-0 md:table-cell md:px-4 md:py-2 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{c.receiver}</td>
+                      <td data-rotulo="Volumes / Peso" className="min-w-0 md:table-cell md:px-4 md:py-2 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                         {c.volumes} · {formatWeight(c.weight)}
                       </td>
-                      <td className="px-4 py-2 text-right text-gray-900 dark:text-white">{formatCurrency(c.freightValue)}</td>
+                      <td data-rotulo="Frete" className="min-w-0 md:table-cell md:px-4 md:py-2 md:text-right text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(c.freightValue)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -340,8 +340,8 @@ export default function Faturamento() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
+            <table className="block md:table w-full text-sm">
+              <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
                 <tr>
                   <th className="px-6 py-4 font-medium">Nº</th>
                   <th className="px-6 py-4 font-medium">Cliente</th>
@@ -353,23 +353,23 @@ export default function Faturamento() {
                   <th className="px-6 py-4 font-medium text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
                 {faturas.map((f) => (
-                  <tr key={f.id}>
-                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                  <tr key={f.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
+                    <td data-rotulo="Fatura nº" className="min-w-0 md:table-cell md:px-6 md:py-4 font-medium text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                       <Link href={`/dashboard/faturamento/${f.id}`} className="text-blue-600 hover:underline">
                         {f.number}
                       </Link>
                     </td>
-                    <td className="px-6 py-4 text-gray-700 dark:text-gray-300">{f.client.tradeName || f.client.companyName}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{formatDate(f.issuedAt)}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{formatCalendarDate(f.dueDate)}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{f._count.collections}</td>
-                    <td className="px-6 py-4 text-right text-gray-900 dark:text-white">{formatCurrency(f.total)}</td>
-                    <td className="px-6 py-4">
+                    <td className="min-w-0 md:table-cell md:px-6 md:py-4 text-gray-700 dark:text-gray-300">{f.client.tradeName || f.client.companyName}</td>
+                    <td data-rotulo="Emissão" className="min-w-0 md:table-cell md:px-6 md:py-4 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatDate(f.issuedAt)}</td>
+                    <td data-rotulo="Vencimento" className="min-w-0 md:table-cell md:px-6 md:py-4 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCalendarDate(f.dueDate)}</td>
+                    <td data-rotulo="Cargas" className="min-w-0 md:table-cell md:px-6 md:py-4 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{f._count.collections}</td>
+                    <td data-rotulo="Total" className="min-w-0 md:table-cell md:px-6 md:py-4 md:text-right text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(f.total)}</td>
+                    <td className="min-w-0 md:table-cell md:px-6 md:py-4">
                       <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS[f.status].classe}`}>{STATUS[f.status].rotulo}</span>
                     </td>
-                    <td className="px-6 py-4 text-right whitespace-nowrap space-x-4">
+                    <td className="col-span-2 min-w-0 md:table-cell md:px-6 md:py-4 md:text-right whitespace-nowrap space-x-4">
                       {f.status === "OPEN" && (
                         <>
                           <button disabled={ocupado} onClick={() => void agir(f, "pagar")} className="text-blue-600 hover:underline">
