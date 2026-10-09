@@ -221,6 +221,8 @@ Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook d
 
 O aviso de título vencido sai uma vez por título e por vencimento; a procura roda a cada 10 minutos. Ao cadastrar o endereço, os títulos que já estavam vencidos são avisados nessa primeira procura.
 
+**Exemplo de destino:** [n8n/avisos-por-whatsapp.js](n8n/avisos-por-whatsapp.js) é o fluxo do n8n em uso na Mello, que transforma cada aviso num resumo de WhatsApp para o responsável.
+
 Ainda não há escolha de quais tipos receber, nem repetição do aviso de título vencido (o lembrete periódico fica por conta do fluxo no destino).
 
 ## Portal do cliente
