@@ -221,6 +221,165 @@ export default function EmpresaPage() {
           Salvar
         </button>
       </form>
+
+      <Integracao />
     </div>
+  );
+}
+
+type Entrega = { id: string; type: string; createdAt: string; deliveredAt: string | null; attempts: number; lastError: string | null };
+type Webhook = { url: string | null; entregas: Entrega[] };
+
+const TIPO: Record<string, string> = { "coleta.status": "Status de carga", teste: "Teste" };
+
+const quando = (instante: string) =>
+  new Date(instante).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+function situacao(entrega: Entrega): { texto: string; classe: string } {
+  if (entrega.deliveredAt) return { texto: "Entregue", classe: "text-green-700 dark:text-green-400" };
+  if (entrega.attempts === 0) return { texto: "Na fila", classe: "text-gray-500" };
+  return { texto: entrega.lastError ?? "Falhou", classe: "text-red-600 dark:text-red-400" };
+}
+
+/**
+ * Endereço que recebe os eventos da empresa (um fluxo do n8n, por exemplo). A
+ * cada troca de status de carga o TMS manda um aviso assinado para lá.
+ */
+function Integracao() {
+  const [webhook, setWebhook] = useState<Webhook | null>(null);
+  const [url, setUrl] = useState("");
+  const [segredo, setSegredo] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
+
+  const ler = () =>
+    fetch("/api/empresa/webhook")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((corpo: Webhook | null) => {
+        if (!corpo) return;
+        setWebhook(corpo);
+        setUrl(corpo.url ?? "");
+      })
+      .catch(() => {
+        // Sem a leitura a seção fica só com o campo vazio.
+      });
+
+  useEffect(() => {
+    void ler();
+  }, []);
+
+  const gravar = async (corpo: { url: string | null; novoSegredo?: boolean }, sucesso: string) => {
+    setOcupado(true);
+    setMensagem(null);
+    setSegredo(null);
+    try {
+      const res = await fetch("/api/empresa/webhook", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+      const resposta = (await res.json().catch(() => null)) as { url?: string | null; segredo?: string; error?: string } | null;
+      if (!res.ok || !resposta) return setMensagem({ ok: false, texto: resposta?.error ?? FALHA_AO_SALVAR });
+      if (resposta.segredo) setSegredo(resposta.segredo);
+      setMensagem({ ok: true, texto: sucesso });
+      await ler();
+    } catch {
+      setMensagem({ ok: false, texto: FALHA_AO_SALVAR });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const testar = async () => {
+    setOcupado(true);
+    setMensagem(null);
+    try {
+      const res = await fetch("/api/empresa/webhook/teste", { method: "POST" });
+      const resposta = (await res.json().catch(() => null)) as { error?: string } | null;
+      setMensagem(res.ok ? { ok: true, texto: "Teste na fila. Ele sai em até 15 segundos; atualize para ver o resultado." } : { ok: false, texto: resposta?.error ?? "Não foi possível enviar o teste." });
+      await ler();
+    } catch {
+      setMensagem({ ok: false, texto: "Não foi possível enviar o teste." });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const cadastrado = Boolean(webhook?.url);
+
+  return (
+    <section aria-label="Integração" className={`${CARD} p-3 md:p-6 space-y-3`}>
+      <div>
+        <h2 className="font-semibold text-gray-900 dark:text-white">Integração</h2>
+        <p className="text-xs md:text-sm text-gray-500 mt-0.5">
+          A cada troca de status de carga, o TMS avisa este endereço (um fluxo do n8n, por exemplo).
+        </p>
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void gravar({ url: url.trim() }, cadastrado ? "Endereço atualizado." : "Endereço cadastrado.");
+        }}
+        className="space-y-2"
+      >
+        <label className="block space-y-1">
+          <span className={LABEL}>Endereço que recebe os avisos</span>
+          <input type="url" required placeholder="https://n8n.suaempresa.com/webhook/tms" value={url} onChange={(e) => setUrl(e.target.value)} className={INPUT} />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" disabled={ocupado} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium disabled:opacity-60">
+            {cadastrado ? "Salvar endereço" : "Cadastrar"}
+          </button>
+          {cadastrado && (
+            <>
+              <button type="button" disabled={ocupado} onClick={() => void testar()} className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-60">
+                Enviar teste
+              </button>
+              <button type="button" disabled={ocupado} onClick={() => void gravar({ url: url.trim(), novoSegredo: true }, "Segredo trocado.")} className="px-3 py-2 text-sm rounded-xl text-gray-600 dark:text-gray-300 disabled:opacity-60">
+                Trocar segredo
+              </button>
+              <button type="button" disabled={ocupado} onClick={() => void gravar({ url: null }, "Integração removida.")} className="px-3 py-2 text-sm rounded-xl text-red-600 disabled:opacity-60">
+                Remover
+              </button>
+            </>
+          )}
+        </div>
+      </form>
+
+      {segredo && (
+        <div data-segredo className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-900 space-y-1">
+          <p className="font-medium">Guarde este segredo agora: ele não aparece de novo.</p>
+          <code className="block break-all font-mono text-xs">{segredo}</code>
+          <p className="text-xs">É com ele que o destino confere a assinatura do cabeçalho X-TMS-Assinatura.</p>
+        </div>
+      )}
+
+      {mensagem && (
+        <p role={mensagem.ok ? "status" : "alert"} className={`text-sm ${mensagem.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+          {mensagem.texto}
+        </p>
+      )}
+
+      {webhook && webhook.entregas.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between">
+            <h3 className={LABEL}>Últimos avisos</h3>
+            <button type="button" onClick={() => void ler()} className="text-xs text-blue-600 hover:underline">
+              Atualizar
+            </button>
+          </div>
+          <ul className="mt-1 divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+            {webhook.entregas.map((entrega) => {
+              const estado = situacao(entrega);
+              return (
+                <li key={entrega.id} data-entrega={entrega.id} className="flex items-center justify-between gap-2 py-1.5">
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {TIPO[entrega.type] ?? entrega.type} <span className="text-xs text-gray-500">· {quando(entrega.createdAt)}</span>
+                  </span>
+                  <span className={`text-xs text-right ${estado.classe}`}>{estado.texto}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }

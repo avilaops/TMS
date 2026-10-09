@@ -48,6 +48,8 @@ suite("permissões das rotas internas", () => {
   let financeiroRecibo: typeof import("../src/app/api/financeiro/[id]/recibo/route");
   let relatorios: typeof import("../src/app/api/relatorios/route");
   let empresa: typeof import("../src/app/api/empresa/route");
+  let empresaWebhook: typeof import("../src/app/api/empresa/webhook/route");
+  let empresaWebhookTeste: typeof import("../src/app/api/empresa/webhook/teste/route");
   let fiscal: typeof import("../src/app/api/fiscal/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
@@ -122,6 +124,8 @@ suite("permissões das rotas internas", () => {
     financeiroRecibo = await import("../src/app/api/financeiro/[id]/recibo/route");
     relatorios = await import("../src/app/api/relatorios/route");
     empresa = await import("../src/app/api/empresa/route");
+    empresaWebhook = await import("../src/app/api/empresa/webhook/route");
+    empresaWebhookTeste = await import("../src/app/api/empresa/webhook/teste/route");
     fiscal = await import("../src/app/api/fiscal/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
     manifestos = await import("../src/app/api/manifestos/route");
@@ -204,6 +208,9 @@ suite("permissões das rotas internas", () => {
       ["GET /api/financeiro/[id]/recibo", () => financeiroRecibo.GET(req(), ctx(semId))],
       ["GET /api/relatorios", () => relatorios.GET()],
       ["PATCH /api/empresa", () => empresa.PATCH(req("PATCH", { name: "Invasora" }))],
+      ["GET /api/empresa/webhook", () => empresaWebhook.GET()],
+      ["PUT /api/empresa/webhook", () => empresaWebhook.PUT(req("PUT", { url: "https://invasor.exemplo.com/x" }))],
+      ["POST /api/empresa/webhook/teste", () => empresaWebhookTeste.POST()],
       ["GET /api/usuarios", () => usuarios.GET()],
       ["POST /api/usuarios", () => usuarios.POST(req("POST", {}))],
       ["PATCH /api/usuarios/[id]", () => usuario.PATCH(req("PATCH", { name: "Invasor" }), ctx(ids.OPERATION))],

@@ -128,3 +128,34 @@ CREATE POLICY tms_tenant ON "Tenant" FOR SELECT TO tms_app
   USING (id = current_setting('app.tenant_id', true));
 REVOKE ALL ON "Tenant" FROM tms_app;
 GRANT SELECT ON "Tenant" TO tms_app;
+
+-- Eventos para sistemas de fora: cada linha nova do historico de status vira um
+-- evento a entregar, se a empresa tem endereco cadastrado ("Webhook"). O
+-- gatilho roda como dono do banco (SECURITY DEFINER), na mesma transacao da
+-- troca de status. Quem entrega e src/lib/eventos.ts.
+DO $$
+BEGIN
+  IF to_regclass('public."OutboxEvent"') IS NULL OR to_regclass('public."Webhook"') IS NULL THEN
+    RETURN;
+  END IF;
+
+  CREATE OR REPLACE FUNCTION tms_evento_de_status() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+  BEGIN
+    IF EXISTS (SELECT 1 FROM "Webhook" w WHERE w."tenantId" = NEW."tenantId") THEN
+      INSERT INTO "OutboxEvent" (id, "tenantId", type, payload, "createdAt", "nextAttemptAt", attempts)
+      VALUES (
+        gen_random_uuid()::text, NEW."tenantId", 'coleta.status',
+        jsonb_build_object('collectionId', NEW."collectionId", 'de', NEW."fromStatus", 'para', NEW."toStatus"),
+        now(), now(), 0
+      );
+    END IF;
+    RETURN NEW;
+  END
+  $f$;
+
+  DROP TRIGGER IF EXISTS tms_evento_de_status ON "CollectionStatusHistory";
+  CREATE TRIGGER tms_evento_de_status AFTER INSERT ON "CollectionStatusHistory"
+    FOR EACH ROW EXECUTE FUNCTION tms_evento_de_status();
+END
+$$;

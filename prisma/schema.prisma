@@ -52,6 +52,8 @@ model Tenant {
   articles       Article[]
   socialPosts    SocialPost[]
   contentMetrics ContentMetric[]
+  webhook        Webhook?
+  outboxEvents   OutboxEvent[]
 }
 
 model User {
@@ -585,4 +587,43 @@ model ContentMetric {
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// Eventos para sistemas de fora (n8n e afins)
+//
+// A empresa cadastra um endereço (Webhook). A partir daí, cada troca de status
+// de carga vira uma linha em OutboxEvent, gravada por gatilho na mesma
+// transação da troca (prisma/sql/010-rls.sql): evento não se perde nem sai sem
+// a troca ter acontecido. Quem entrega é src/lib/eventos.ts, com assinatura e
+// novas tentativas. Empresa sem Webhook não gera evento.
+// ---------------------------------------------------------------------------
+
+model Webhook {
+  tenantId  String   @unique @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  url       String
+  // Segredo da assinatura (HMAC-SHA256 do corpo). Mostrado uma vez, ao ser criado.
+  secret    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+}
+
+model OutboxEvent {
+  tenantId      String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String    @id @default(uuid())
+  type          String    // coleta.status, teste
+  payload       Json
+  createdAt     DateTime  @default(now())
+  // Próxima tentativa de entrega. Cada tentativa empurra para a frente (1, 2, 4... minutos).
+  nextAttemptAt DateTime  @default(now())
+  attempts      Int       @default(0)
+  deliveredAt   DateTime?
+  lastError     String?
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId, createdAt])
+  @@index([deliveredAt, nextAttemptAt])
 }

@@ -180,6 +180,38 @@ Em `/dashboard/empresa`, só para o administrador: o **nome** e o **símbolo** q
 
 A aplicação só lê a tabela de empresas; a gravação vai pelo dono do banco, presa ao id da empresa da sessão. O portal do cliente e o app do motorista mostram o mesmo nome e símbolo (a leitura é liberada a todo perfil da empresa).
 
+## Integração (eventos para n8n e outros sistemas)
+
+Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook do n8n, por exemplo). A partir daí, cada troca de status de carga — inclusive a criação — é avisada nesse endereço por `POST`, em até 15 segundos. Empresa sem endereço não gera evento.
+
+```json
+{
+  "id": "…",
+  "tipo": "coleta.status",
+  "criadoEm": "2026-10-09T18:00:00.000Z",
+  "empresa": { "id": "…", "slug": "mello", "nome": "Mello Transportes" },
+  "dados": {
+    "de": "ROUTE",
+    "para": "DELIVERED",
+    "coleta": {
+      "id": "…", "status": "DELIVERED", "remetente": "…", "destinatario": "…", "origem": "…", "destino": "…",
+      "volumes": 3, "peso": 63.5, "frete": 180,
+      "rastreio": { "codigo": "1234567890", "link": "https://tms.avilaops.com/rastreio?cnpj=…&codigo=…" },
+      "cliente": { "id": "…", "nome": "…", "cnpj": "…", "contato": "…", "email": "…", "telefone": "…" },
+      "motorista": { "id": "…", "nome": "…", "telefone": "…" }
+    }
+  }
+}
+```
+
+- **Cabeçalhos:** `X-TMS-Evento` (o tipo), `X-TMS-Entrega` (o id, para o destino descartar repetição) e `X-TMS-Assinatura` (`sha256=` + HMAC-SHA256 do corpo com o segredo). O segredo aparece uma vez, ao cadastrar ou trocar.
+- **Garantia de entrega:** o evento é gravado pelo banco na mesma transação da troca de status (gatilho em [prisma/sql/010-rls.sql](prisma/sql/010-rls.sql), tabela `OutboxEvent`). Resposta fora de 2xx ou sem resposta em 8 segundos é tentada de novo em 1, 2, 4… minutos, até 8 vezes. O mesmo evento pode chegar mais de uma vez; use o id.
+- **Endereço:** só `https` e só endereço público. O servidor recusa IP interno ao salvar e de novo a cada entrega ([src/lib/url-publica.ts](src/lib/url-publica.ts)).
+- **Quem entrega:** o próprio servidor, a cada 15 segundos ([src/instrumentation.ts](src/instrumentation.ts), [src/lib/eventos.ts](src/lib/eventos.ts)). `TMS_EVENTOS=off` desliga.
+- **Rotas:** `GET`/`PUT /api/empresa/webhook` e `POST /api/empresa/webhook/teste`, só para o administrador.
+
+Ainda não há evento de fatura nem de cobrança, nem escolha de quais eventos receber.
+
 ## Portal do cliente
 
 Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu e consulta faturas. Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
