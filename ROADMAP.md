@@ -154,7 +154,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Tabelas de frete.
 - [x] Faturamento do transporte.
 - [x] Contas a pagar e receber, e fluxo de caixa.
-- [ ] Cobranças e relatórios básicos.
+- [x] Cobranças e relatórios básicos.
 
 ### Fase 3: Frota e Depósito
 - [ ] Conferência via bipagem e localização de volumes.

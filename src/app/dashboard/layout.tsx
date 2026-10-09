@@ -23,7 +23,8 @@ import {
   ClipboardCheck,
   Calculator,
   Receipt,
-  Banknote
+  Banknote,
+  BarChart3
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -41,6 +42,7 @@ const sidebarLinks: { href: string; icon: typeof Truck; label: string; roles?: s
   { href: "/dashboard/faturamento", icon: Receipt, label: "Faturamento", roles: ["ADMIN"] },
   { href: "/dashboard/cobranca", icon: Banknote, label: "Cobrança", roles: ["ADMIN"] },
   { href: "/dashboard/financeiro", icon: DollarSign, label: "Financeiro", roles: ["ADMIN"] },
+  { href: "/dashboard/relatorios", icon: BarChart3, label: "Relatórios", roles: ["ADMIN"] },
   { href: "/dashboard/motoristas", icon: CarFront, label: "Motoristas" },
   { href: "/dashboard/veiculos", icon: Truck, label: "Veículos" },
   { href: "/dashboard/mensagens", icon: Bell, label: "Mensageria" },

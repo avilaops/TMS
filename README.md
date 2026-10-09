@@ -164,6 +164,16 @@ Em `/dashboard/cobranca`, só para o administrador. As contas ficam em [src/lib/
 
 A baixa continua no Faturamento e no Financeiro; título pago sai da posição. Juros, multa, parcelas e o registro de que o aviso foi mandado não existem.
 
+## Relatórios
+
+Em `/dashboard/relatorios`, só para o administrador. Um período em meses (`GET /api/relatorios?de=AAAA-MM&ate=AAAA-MM`, padrão do mês corrente e os dois anteriores, no máximo 36), no relógio do Brasil. As contas ficam em [src/lib/relatorios.ts](src/lib/relatorios.ts) e não mudam o banco: a tela só lê.
+
+- **Operação:** cargas criadas no período, por status; e as entregas feitas no período, com quantas chegaram no prazo, o tempo médio e a conta por motorista. O prazo é o da tabela de frete e corre de "Coletado" a "Entregue" no histórico da carga. Entrega sem prazo ou sem as duas datas fica como "sem medição", fora da taxa.
+- **Comercial:** cotações recebidas no período por status, a conversão (as que viraram coleta sobre todas) e o frete das cargas criadas no período, por cliente. Carga cancelada ou recusada não entra no frete; carga a cotar conta à parte.
+- **Financeiro:** recebido, pago e resultado pela data do pagamento, despesas pagas por categoria, e a inadimplência (quanto do que há a receber em aberto já venceu), que é a posição de hoje e não a do período.
+
+Ainda não há exportação para planilha ou PDF, DRE, nem margem por rota ou por veículo.
+
 ## Portal do cliente
 
 Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu e consulta faturas. Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
