@@ -72,6 +72,7 @@ export async function registrarCotacao(corpo: unknown, opcoes: { volumesPadrao?:
       volumes,
       weight: pedido.weight,
       estimatedValue,
+      invoiceValue: pedido.invoiceValue ?? null,
       status: "NEW",
     },
   });

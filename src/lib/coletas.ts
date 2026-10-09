@@ -70,7 +70,7 @@ export const INACTIVE_DRIVER_MESSAGE = "Motorista não encontrado ou inativo.";
 // quando o operador digita sem o zero, então um dos lados pode faltar.
 const FORM_NUMBER = /^(\d+([.,]\d*)?|[.,]\d+)$/;
 
-const fromFormNumber = (value: unknown) => {
+export const fromFormNumber = (value: unknown) => {
   if (typeof value !== "string") return value;
   const text = value.trim();
   if (text === "") return null;
@@ -123,9 +123,14 @@ const driverId = z
   .transform((value) => (value === "" ? null : value))
   .nullish();
 
+const clientId = z.string("Informe o cliente.").trim().min(1, "Informe o cliente.").max(64, "Cliente inválido.");
+
+/** Campos que a conversão de cotação em coleta (src/lib/crm.ts) valida do mesmo jeito. */
+export const COLLECTION_FIELDS = { clientId, sender, receiver, invoiceKey, invoiceValue } as const;
+
 export const createCollectionSchema = z.object(
   {
-    clientId: z.string("Informe o cliente.").trim().min(1, "Informe o cliente.").max(64, "Cliente inválido."),
+    clientId,
     sender,
     receiver,
     origin,

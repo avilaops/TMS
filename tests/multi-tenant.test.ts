@@ -36,6 +36,7 @@ suite("isolamento entre empresas", () => {
   let clientePorId: typeof import("../src/app/api/clientes/[id]/route");
   let leads: typeof import("../src/app/api/leads/route");
   let crm: typeof import("../src/app/api/dashboard/crm/route");
+  let crmConverter: typeof import("../src/app/api/dashboard/crm/[id]/converter/route");
   let comprovantes: typeof import("../src/app/api/comprovantes/route");
   let conferir: typeof import("../src/app/api/comprovantes/[id]/conferir/route");
 
@@ -97,6 +98,16 @@ suite("isolamento entre empresas", () => {
     lado.clienteId = cliente.id;
   }
 
+  const leadDeTeste = () => ({
+    companyName: "Interessado",
+    email: `${PREFIXO}lead-crm@exemplo.br`,
+    phone: "",
+    origin: "A",
+    destination: "B",
+    volumes: 1,
+    weight: 1,
+  });
+
   // Carga entregue com comprovante aguardando conferência, na empresa dada.
   async function comprovanteDe(lado: typeof padrao) {
     const { db } = banco.paraEmpresa(lado.tenantId);
@@ -125,6 +136,7 @@ suite("isolamento entre empresas", () => {
     clientePorId = await import("../src/app/api/clientes/[id]/route");
     leads = await import("../src/app/api/leads/route");
     crm = await import("../src/app/api/dashboard/crm/route");
+    crmConverter = await import("../src/app/api/dashboard/crm/[id]/converter/route");
     comprovantes = await import("../src/app/api/comprovantes/route");
     conferir = await import("../src/app/api/comprovantes/[id]/conferir/route");
     await limpar();
@@ -209,6 +221,37 @@ suite("isolamento entre empresas", () => {
       entrar(outra);
       const daOutra = (await (await crm.GET()).json()) as { email: string }[];
       expect(daOutra.map((l) => l.email)).toContain(email);
+    });
+
+    it("converter cotação com cliente de outra empresa responde 400; o lead não muda e nenhuma coleta nasce", async () => {
+      const lead = await banco.paraEmpresa(padrao.tenantId).db.quoteLead.create({ data: leadDeTeste() });
+      const corpo = { sender: `${PREFIXO}remetente da conversão`, receiver: "Destinatário" };
+
+      entrar(padrao);
+      const res = await crmConverter.POST(req("POST", { ...corpo, clientId: outra.clienteId }), ctx(lead.id));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Cliente não encontrado ou inativo." });
+
+      // Quem é da outra empresa nem enxerga o lead.
+      entrar(outra);
+      expect((await crmConverter.POST(req("POST", { ...corpo, clientId: outra.clienteId }), ctx(lead.id))).status).toBe(404);
+
+      expect(await banco.sistema.quoteLead.findUniqueOrThrow({ where: { id: lead.id } })).toMatchObject({
+        status: "NEW",
+        collectionId: null,
+        tenantId: EMPRESA_PADRAO.id,
+      });
+      expect(await banco.sistema.collection.count({ where: { sender: corpo.sender } })).toBe(0);
+
+      // Na própria empresa, com o cliente dela, a conversão vale e fica nela.
+      entrar(padrao);
+      const ok = await crmConverter.POST(req("POST", { ...corpo, clientId: padrao.clienteId }), ctx(lead.id));
+      expect(ok.status).toBe(201);
+      const { collection } = (await ok.json()) as { collection: { id: string } };
+      expect(await banco.sistema.collection.findUniqueOrThrow({ where: { id: collection.id } })).toMatchObject({
+        tenantId: EMPRESA_PADRAO.id,
+        clientId: padrao.clienteId,
+      });
     });
 
     it("a fila de comprovantes só traz os da empresa de quem está logado", async () => {
@@ -305,6 +348,30 @@ suite("isolamento entre empresas", () => {
       ).rejects.toThrow(/outra empresa/);
 
       expect(await banco.sistema.collection.count({ where: { sender: coleta.sender } })).toBe(0);
+    });
+
+    it("lead não aponta para coleta de outra empresa, mesmo sabendo o id", async () => {
+      const lead = await banco.paraEmpresa(padrao.tenantId).db.quoteLead.create({ data: leadDeTeste() });
+      const daOutra = await comprovanteDe(outra);
+      const ligacao = { status: "CONVERTED", collectionId: daOutra.collectionId };
+
+      // Pela empresa e pelo caminho de sistema: o gatilho recusa nos dois.
+      await expect(
+        banco.paraEmpresa(padrao.tenantId).db.quoteLead.update({ where: { id: lead.id }, data: ligacao }),
+      ).rejects.toThrow();
+      await expect(banco.sistema.quoteLead.update({ where: { id: lead.id }, data: ligacao })).rejects.toThrow(
+        /outra empresa/,
+      );
+
+      const intacto = await banco.sistema.quoteLead.findUniqueOrThrow({ where: { id: lead.id } });
+      expect(intacto).toMatchObject({ status: "NEW", collectionId: null });
+
+      // Com coleta da própria empresa a ligação é aceita.
+      const daPadrao = await comprovanteDe(padrao);
+      await banco.paraEmpresa(padrao.tenantId).db.quoteLead.update({
+        where: { id: lead.id },
+        data: { collectionId: daPadrao.collectionId },
+      });
     });
 
     it("comprovante não aponta para conferente de outra empresa, mesmo sabendo o id", async () => {

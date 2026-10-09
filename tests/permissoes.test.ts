@@ -59,6 +59,7 @@ suite("permissões das rotas internas", () => {
   let coletaStatus: typeof import("../src/app/api/dashboard/coletas/[id]/status/route");
   let crm: typeof import("../src/app/api/dashboard/crm/route");
   let crmLead: typeof import("../src/app/api/dashboard/crm/[id]/route");
+  let crmConverter: typeof import("../src/app/api/dashboard/crm/[id]/converter/route");
   let usuarios: typeof import("../src/app/api/usuarios/route");
   let usuario: typeof import("../src/app/api/usuarios/[id]/route");
 
@@ -126,6 +127,7 @@ suite("permissões das rotas internas", () => {
     coletaStatus = await import("../src/app/api/dashboard/coletas/[id]/status/route");
     crm = await import("../src/app/api/dashboard/crm/route");
     crmLead = await import("../src/app/api/dashboard/crm/[id]/route");
+    crmConverter = await import("../src/app/api/dashboard/crm/[id]/converter/route");
     usuarios = await import("../src/app/api/usuarios/route");
     usuario = await import("../src/app/api/usuarios/[id]/route");
 
@@ -177,6 +179,7 @@ suite("permissões das rotas internas", () => {
       ["POST /api/dashboard/coletas/[id]/status", () => coletaStatus.POST(req("POST", {}), ctx(semId))],
       ["GET /api/dashboard/crm", () => crm.GET()],
       ["PATCH /api/dashboard/crm/[id]", () => crmLead.PATCH(req("PATCH", {}), ctx(semId))],
+      ["POST /api/dashboard/crm/[id]/converter", () => crmConverter.POST(req("POST", {}), ctx(semId))],
     ];
 
     rotasAdmin = [

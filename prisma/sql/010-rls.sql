@@ -82,6 +82,7 @@ DECLARE
     "FinancialTransaction": ["clientId", "Client", "invoiceId", "Invoice"],
     "Invoice": ["clientId", "Client"],
     "Maintenance": ["vehicleId", "Vehicle"],
+    "QuoteLead": ["collectionId", "Collection"],
     "ProofOfDelivery": ["collectionId", "Collection", "reviewedById", "User"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]

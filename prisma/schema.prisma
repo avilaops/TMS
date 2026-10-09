@@ -303,6 +303,7 @@ model Collection {
   manifest    Manifest? @relation(fields: [manifestId], references: [id])
   statusHistory CollectionStatusHistory[]
   proof       ProofOfDelivery?
+  quoteLead   QuoteLead?
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -440,7 +441,12 @@ model QuoteLead {
   volumes         Int
   weight          Float
   estimatedValue  Float?
+  // Valor da nota informado no pedido de cotação; segue para a coleta na conversão.
+  invoiceValue    Float?
   status          String   @default("NEW") // NEW, CONTACTED, CONVERTED, LOST
+  // Coleta criada na conversão do lead (src/lib/crm.ts). Uma coleta por lead.
+  collectionId    String?  @unique
+  collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
