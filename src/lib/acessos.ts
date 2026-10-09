@@ -36,6 +36,33 @@ function envioDe(valor: unknown): Envio {
   return (ENVIOS as readonly unknown[]).includes(valor) ? (valor as Envio) : "falhou";
 }
 
+export type SituacaoDoConvite = "ENVIADO" | "FALHOU" | "PENDENTE";
+
+/**
+ * O que fica no cadastro da pessoa depois de pedir o acesso: a situação do
+ * convite, o motivo em uma frase e quando. Nunca o endereço de criar a senha.
+ */
+export function dadosDoConvite(acesso: Acesso, agora: Date = new Date()): { inviteStatus: SituacaoDoConvite; inviteDetail: string; inviteAt: Date } {
+  const base = { inviteAt: agora };
+  if (!acesso.ok) return { ...base, inviteStatus: "FALHOU", inviteDetail: acesso.erro.slice(0, 300) };
+  if (acesso.envio === "enviado") {
+    return {
+      ...base,
+      inviteStatus: "ENVIADO",
+      inviteDetail: acesso.contaNova ? "com o endereço para criar a senha" : "a pessoa já tinha conta Ávila Ops e entra com a senha que já usa",
+    };
+  }
+  // O acesso foi liberado; o que falta é a pessoa ficar sabendo.
+  return { ...base, inviteStatus: "PENDENTE", inviteDetail: `acesso liberado, mas o e-mail não saiu: ${POR_QUE_NAO_SAIU[acesso.envio]}` };
+}
+
+const POR_QUE_NAO_SAIU: Record<Exclude<Envio, "enviado">, string> = {
+  nao_pedido: "o envio não foi pedido",
+  sem_email: "o login único está sem envio de e-mail configurado",
+  limite: "muitos convites para este e-mail na última hora",
+  falhou: "o envio do e-mail falhou",
+};
+
 /** Quem convida e de qual empresa, para a pessoa reconhecer a mensagem. */
 export type Convidante = { empresa?: string | null; convidadoPor?: string | null };
 

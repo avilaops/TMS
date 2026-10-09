@@ -316,7 +316,7 @@ suite("permissões das rotas internas", () => {
       expect(lista.length).toBeGreaterThanOrEqual(4);
       for (const item of lista) {
         expect(item).not.toHaveProperty("password");
-        expect(Object.keys(item).sort()).toEqual(["clientId", "createdAt", "email", "id", "name", "role"]);
+        expect(Object.keys(item).sort()).toEqual(["clientId", "createdAt", "email", "id", "inviteAt", "inviteDetail", "inviteStatus", "name", "role"]);
       }
       expect(JSON.stringify(lista)).not.toContain(HASH_FALSO);
     });

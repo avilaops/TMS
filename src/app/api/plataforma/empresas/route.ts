@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sistema } from "@/lib/prisma";
 import { criarEmpresaSchema, EMPRESA_SELECT, requireEquipe } from "@/lib/plataforma";
-import { liberarAcesso, senhaSemUso } from "@/lib/acessos";
+import { dadosDoConvite, liberarAcesso, senhaSemUso } from "@/lib/acessos";
 
 // Cadastro de empresas (tenants). Roda pelo caminho de sistema porque é
 // justamente o que existe acima das empresas; quem protege é `requireEquipe`.
@@ -51,6 +51,7 @@ export async function POST(req: Request) {
 
     // O administrador entra pelo login único: garante a conta lá e libera o TMS.
     const acesso = await liberarAcesso({ email: data.adminEmail, nome: data.adminName }, { empresa: data.name, convidadoPor: conta.nome });
+    await sistema.user.updateMany({ where: { tenantId: empresa.id, email: data.adminEmail }, data: dadosDoConvite(acesso) });
     return NextResponse.json({ ...empresa, acesso }, { status: 201 });
   } catch (err) {
     if ((err as { code?: string }).code === "P2002") {

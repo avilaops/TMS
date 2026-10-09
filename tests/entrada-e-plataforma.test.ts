@@ -285,6 +285,27 @@ describe("liberação de acesso no login único", () => {
     });
   });
 
+  it("o que fica no cadastro: situação, motivo e data; nunca o endereço de criar a senha", () => {
+    const agora = new Date("2026-10-09T12:00:00Z");
+    expect(acessos.dadosDoConvite({ ok: true, contaNova: true, envio: "enviado", convite: null, entrada: null }, agora)).toEqual({
+      inviteStatus: "ENVIADO",
+      inviteDetail: "com o endereço para criar a senha",
+      inviteAt: agora,
+    });
+    expect(acessos.dadosDoConvite({ ok: true, contaNova: false, envio: "enviado", convite: null, entrada: null }, agora).inviteDetail).toContain("já tinha conta");
+
+    const naoSaiu = acessos.dadosDoConvite({ ok: true, contaNova: true, envio: "sem_email", convite: "https://auth.avilaops.com/recuperar/abc", entrada: null }, agora);
+    expect(naoSaiu.inviteStatus).toBe("PENDENTE");
+    expect(naoSaiu.inviteDetail).toContain("sem envio de e-mail configurado");
+    expect(JSON.stringify(naoSaiu)).not.toContain("recuperar");
+
+    expect(acessos.dadosDoConvite({ ok: false, erro: "Esta conta está desligada no login único." }, agora)).toEqual({
+      inviteStatus: "FALHOU",
+      inviteDetail: "Esta conta está desligada no login único.",
+      inviteAt: agora,
+    });
+  });
+
   it("e-mail do convite não saiu: o endereço da senha volta para alguém entregar à mão", async () => {
     authResponde(201, { email: "novo@exemplo.br", criada: true, convite: "https://auth.avilaops.com/recuperar/abc", envio: "sem_email" });
     expect(await acessos.liberarAcesso({ email: "novo@exemplo.br", nome: "Novo" })).toEqual({

@@ -66,6 +66,12 @@ model User {
   clientId  String?  // Empresa que este usuário representa (obrigatório na prática quando role = CLIENT)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // O que aconteceu com o convite por e-mail pedido ao login único
+  // (ENVIADO | FALHOU | PENDENTE), o motivo e quando. O endereço de criar a
+  // senha nunca é guardado. Ver src/lib/acessos.ts.
+  inviteStatus String?
+  inviteDetail String?
+  inviteAt     DateTime?
 
   // Relations
   driver    Driver?

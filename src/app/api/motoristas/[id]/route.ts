@@ -3,7 +3,7 @@ import { requireStaff } from '@/lib/staff';
 import { sistema, transacao } from '@/lib/prisma';
 import { DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
-import { liberarAcesso, revogarAcesso } from '@/lib/acessos';
+import { dadosDoConvite, liberarAcesso, revogarAcesso } from '@/lib/acessos';
 
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
 
@@ -86,6 +86,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         cpf: motorista.cpf,
         telefone: motorista.phone,
       }, { convidadoPor: user.name });
+      await sistema.user.update({ where: { id: motorista.userId }, data: dadosDoConvite(acesso), select: { id: true } });
       const aindaUsado = await sistema.user.count({
         where: { email: { equals: emailAnterior, mode: 'insensitive' } },
       });
