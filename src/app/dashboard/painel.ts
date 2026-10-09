@@ -8,9 +8,40 @@ export type Stats = {
   clientes: number;
   veiculos: number;
   receita?: number;
+  /** Recebido no mês corrente; só para ADMIN, como `receita`. */
+  receitaDoMes?: number;
   /** Entregas de segunda a domingo da semana corrente. */
   entregasDaSemana?: number[];
+  detalhe?: Detalhe;
 };
+
+/** O que cada cartão mostra em destaque e em segundo plano. */
+export type Detalhe = {
+  coletasAtivas: number;
+  coletasEntregues: number;
+  viagensEmRota: number;
+  viagensEmMontagem: number;
+  viagensFinalizadas: number;
+  clientesAtivos: number;
+  clientesInativos: number;
+  motoristas: number;
+};
+
+export type Passo = { titulo: string; href: string; feito: boolean };
+
+/**
+ * Primeiros passos de uma transportadora nova, na ordem em que um depende do
+ * outro. A lista some do painel quando todos estão feitos.
+ */
+export function primeirosPassos(stats: Stats): Passo[] {
+  return [
+    { titulo: "Cadastre o primeiro cliente", href: "/dashboard/clientes", feito: stats.clientes > 0 },
+    { titulo: "Cadastre um motorista", href: "/dashboard/motoristas", feito: (stats.detalhe?.motoristas ?? 0) > 0 },
+    { titulo: "Cadastre um veículo", href: "/dashboard/veiculos", feito: stats.veiculos > 0 },
+    { titulo: "Emita a primeira minuta", href: "/dashboard/coletas", feito: stats.coletas > 0 },
+    { titulo: "Monte a primeira viagem", href: "/dashboard/manifestos", feito: stats.manifestos > 0 },
+  ];
+}
 
 // `expired`: a sessão caiu (401) e tentar de novo não resolve, só entrar de
 // novo. `cause` é o que vai para o console: o status HTTP ou a exceção.

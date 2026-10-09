@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { entregasPorDia, semanaCorrente } from '@/lib/relatorios';
+import { diaNoBrasil } from '@/lib/financeiro';
 
 export async function GET() {
   const { user, error } = await requireStaff();
@@ -22,21 +23,46 @@ export async function GET() {
       select: { createdAt: true },
     });
 
-    const stats: Record<string, number | number[]> = {
+    // O que os cartões mostram em destaque e em segundo plano. Carga ativa é a
+    // que ainda não terminou: nem entregue, nem cancelada, nem recusada.
+    const coletasPorStatus = await prisma.collection.groupBy({ by: ['status'], _count: { _all: true } });
+    const viagensPorStatus = await prisma.manifest.groupBy({ by: ['status'], _count: { _all: true } });
+    const clientesAtivos = await prisma.client.count({ where: { active: true } });
+    const motoristasCount = await prisma.driver.count();
+    const quantas = (linhas: { status: string; _count: { _all: number } }[], ...status: string[]) =>
+      linhas.filter((linha) => status.includes(linha.status)).reduce((soma, linha) => soma + linha._count._all, 0);
+    const coletasEntregues = quantas(coletasPorStatus, 'DELIVERED');
+
+    const stats: Record<string, number | number[] | Record<string, number>> = {
       coletas: coletasCount,
       manifestos: manifestosCount,
       clientes: clientesCount,
       veiculos: veiculosCount,
       entregasDaSemana: entregasPorDia(entregues.map((linha) => linha.createdAt), hoje),
+      detalhe: {
+        coletasAtivas: coletasCount - coletasEntregues - quantas(coletasPorStatus, 'CANCELLED', 'REJECTED'),
+        coletasEntregues,
+        viagensEmRota: quantas(viagensPorStatus, 'ROUTE'),
+        viagensEmMontagem: quantas(viagensPorStatus, 'ASSEMBLING'),
+        viagensFinalizadas: quantas(viagensPorStatus, 'FINISHED'),
+        clientesAtivos,
+        clientesInativos: clientesCount - clientesAtivos,
+        motoristas: motoristasCount,
+      },
     };
 
     // Receita é dado financeiro: só ADMIN, como em /api/financeiro. Para os
     // demais o campo nem vai na resposta.
     if (user.role === 'ADMIN') {
       const transacoes = await prisma.financialTransaction.findMany({
-        where: { type: 'INCOME', status: 'PAID' }
+        where: { type: 'INCOME', status: 'PAID' },
+        select: { amount: true, paidAt: true },
       });
+      const mes = diaNoBrasil(hoje).slice(0, 7);
       stats.receita = transacoes.reduce((acc, t) => acc + t.amount, 0);
+      stats.receitaDoMes = transacoes
+        .filter((t) => t.paidAt && diaNoBrasil(t.paidAt).slice(0, 7) === mes)
+        .reduce((acc, t) => acc + t.amount, 0);
     }
 
     return NextResponse.json(stats);
