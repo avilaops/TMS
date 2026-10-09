@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     console.info(`Plataforma: empresa ${data.slug} criada por ${conta.email}.`);
 
     // O administrador entra pelo login único: garante a conta lá e libera o TMS.
-    const acesso = await liberarAcesso({ email: data.adminEmail, nome: data.adminName });
+    const acesso = await liberarAcesso({ email: data.adminEmail, nome: data.adminName }, { empresa: data.name, convidadoPor: conta.nome });
     return NextResponse.json({ ...empresa, acesso }, { status: 201 });
   } catch (err) {
     if ((err as { code?: string }).code === "P2002") {

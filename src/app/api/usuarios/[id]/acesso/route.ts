@@ -6,10 +6,12 @@ import { liberarAcesso } from "@/lib/acessos";
 /**
  * Libera (de novo) o acesso da pessoa no login único. Serve para quem foi
  * cadastrado quando o auth estava fora do ar e para quem perdeu a liberação.
- * Pode ser repetido à vontade: conta que já existe não recebe convite novo.
+ * É também o "enviar convite de novo": o login único escreve outra vez para a
+ * pessoa, com o endereço de criar a senha enquanto ela não tiver criado uma (o
+ * login único limita a cinco mensagens por hora para a mesma caixa).
  */
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff(["ADMIN"]);
   if (error) return error;
 
   const { id } = await params;
@@ -24,7 +26,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     nome: usuario.name,
     cpf: usuario.driver?.cpf,
     telefone: usuario.driver?.phone,
-  });
+  }, { convidadoPor: user.name });
 
   return NextResponse.json({ acesso }, { status: acesso.ok ? 200 : 502 });
 }

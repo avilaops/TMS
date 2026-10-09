@@ -8,7 +8,7 @@ import { liberarAcesso, revogarAcesso } from '@/lib/acessos';
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -85,7 +85,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         nome: motorista.user.name,
         cpf: motorista.cpf,
         telefone: motorista.phone,
-      });
+      }, { convidadoPor: user.name });
       const aindaUsado = await sistema.user.count({
         where: { email: { equals: emailAnterior, mode: 'insensitive' } },
       });
