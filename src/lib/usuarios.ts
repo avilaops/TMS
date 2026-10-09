@@ -8,6 +8,9 @@ export const USER_PUBLIC_SELECT = {
   role: true,
   clientId: true,
   createdAt: true,
+  inviteStatus: true,
+  inviteDetail: true,
+  inviteAt: true,
 } as const;
 
 // O que as rotas operacionais devolvem do usuário de um motorista. Usar isto no

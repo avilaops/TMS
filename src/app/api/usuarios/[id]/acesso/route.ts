@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireStaff } from "@/lib/staff";
-import { liberarAcesso } from "@/lib/acessos";
+import { dadosDoConvite, liberarAcesso } from "@/lib/acessos";
+import { USER_PUBLIC_SELECT } from "@/lib/usuarios";
 
 /**
  * Libera (de novo) o acesso da pessoa no login único. Serve para quem foi
@@ -28,5 +29,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     telefone: usuario.driver?.phone,
   }, { convidadoPor: user.name });
 
-  return NextResponse.json({ acesso }, { status: acesso.ok ? 200 : 502 });
+  const usuarioAtualizado = await prisma.user.update({ where: { id }, data: dadosDoConvite(acesso), select: USER_PUBLIC_SELECT });
+
+  return NextResponse.json({ acesso, usuario: usuarioAtualizado }, { status: acesso.ok ? 200 : 502 });
 }

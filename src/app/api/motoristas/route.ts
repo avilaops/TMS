@@ -3,7 +3,7 @@ import { requireStaff } from '@/lib/staff';
 import prisma, { transacao } from '@/lib/prisma';
 import { DRIVER_PUBLIC_INCLUDE, createDriverSchema, isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
-import { liberarAcesso, senhaSemUso } from '@/lib/acessos';
+import { dadosDoConvite, liberarAcesso, senhaSemUso } from '@/lib/acessos';
 
 const DUPLICATE_CPF = 'Já existe um motorista com este CPF.';
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
@@ -82,6 +82,7 @@ export async function POST(req: Request) {
       // O motorista entra no aplicativo pelo login único: garante a conta lá
       // (com CPF e telefone, que ele pode usar para entrar) e libera o TMS.
       const acesso = await liberarAcesso({ email: data.email, nome: data.name, cpf: data.cpf, telefone: data.phone }, { convidadoPor: user.name });
+      await prisma.user.update({ where: { id: newDriver.userId }, data: dadosDoConvite(acesso), select: { id: true } });
       return NextResponse.json({ ...newDriver, acesso }, { status: 201 });
     } catch (err) {
       // Duas criações simultâneas: a segunda bate no índice único do CPF ou do

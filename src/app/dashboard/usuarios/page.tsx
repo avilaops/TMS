@@ -16,6 +16,21 @@ interface Usuario {
   role: string;
   clientId: string | null;
   createdAt: string;
+  /** Convite por e-mail: ENVIADO | FALHOU | PENDENTE; nulo para quem nunca foi convidado. */
+  inviteStatus: string | null;
+  inviteDetail: string | null;
+  inviteAt: string | null;
+}
+
+const CONVITE: Record<string, string> = { ENVIADO: "Convite enviado", FALHOU: "Convite não enviado", PENDENTE: "Convite pendente" };
+
+/** A linha do convite sob o e-mail; `null` para quem nunca foi convidado. */
+function linhaDoConvite(usuario: Pick<Usuario, "inviteStatus" | "inviteDetail" | "inviteAt">): string | null {
+  if (!usuario.inviteStatus) return null;
+  const em = usuario.inviteAt
+    ? ` em ${new Date(usuario.inviteAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
+    : "";
+  return `${CONVITE[usuario.inviteStatus] ?? usuario.inviteStatus}${em}${usuario.inviteDetail ? `: ${usuario.inviteDetail}` : ""}`;
 }
 
 interface Empresa {
@@ -135,7 +150,10 @@ export default function UsuariosPage() {
     setIsSaving(true);
     try {
       const res = await fetch(`/api/usuarios/${usuario.id}/acesso`, { method: "POST" });
-      const corpo = (await res.json().catch(() => ({}))) as { acesso?: Acesso; error?: string };
+      const corpo = (await res.json().catch(() => ({}))) as { acesso?: Acesso; usuario?: Usuario; error?: string };
+      // A linha da lista mostra o convite que acabou de ser pedido, sem recarregar tudo.
+      const atualizado = corpo.usuario;
+      if (atualizado) setUsuarios((atuais) => atuais.map((u) => (u.id === atualizado.id ? atualizado : u)));
       if (corpo.acesso) setAcesso({ nome: usuario.name, acesso: corpo.acesso });
       else setFeedback({ ok: false, text: corpo.error ?? "Erro ao liberar o acesso." });
     } catch {
@@ -310,7 +328,12 @@ export default function UsuariosPage() {
                   return (
                     <tr key={usuario.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
                       <td className="min-w-0 md:table-cell md:px-3 md:py-3 text-gray-900 dark:text-white">{usuario.name}</td>
-                      <td className="col-span-2 min-w-0 md:table-cell md:px-3 md:py-3 text-gray-600 dark:text-gray-300">{usuario.email}</td>
+                      <td className="col-span-2 min-w-0 md:table-cell md:px-3 md:py-3 text-gray-600 dark:text-gray-300">
+                        <span className="block break-all">{usuario.email}</span>
+                        {linhaDoConvite(usuario) && (
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">{linhaDoConvite(usuario)}</span>
+                        )}
+                      </td>
                       <td className="min-w-0 md:table-cell md:px-3 md:py-3">
                         <Badge variant={usuario.role === "ADMIN" ? "default" : "secondary"}>
                           {ROLE_LABEL[usuario.role] ?? usuario.role}

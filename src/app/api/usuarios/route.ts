@@ -7,7 +7,7 @@ import {
   createUserSchema,
   firstIssue,
 } from "@/lib/usuarios";
-import { liberarAcesso, senhaSemUso } from "@/lib/acessos";
+import { dadosDoConvite, liberarAcesso, senhaSemUso } from "@/lib/acessos";
 
 export async function GET() {
   const { error } = await requireStaff(["ADMIN"]);
@@ -77,7 +77,9 @@ export async function POST(req: Request) {
 
       // O cadastro só vale para quem tem conta liberada no login único.
       const acesso = await liberarAcesso({ email: usuario.email, nome: usuario.name }, { convidadoPor: user.name });
-      return NextResponse.json({ ...usuario, acesso }, { status: 201 });
+      // O resultado do convite fica no cadastro, para a lista mostrar depois.
+      const salvo = await prisma.user.update({ where: { id: usuario.id }, data: dadosDoConvite(acesso), select: USER_PUBLIC_SELECT });
+      return NextResponse.json({ ...salvo, acesso }, { status: 201 });
     } catch (err) {
       // Duas criações simultâneas com o mesmo e-mail: a segunda bate no índice único.
       if ((err as { code?: string }).code === "P2002") {
