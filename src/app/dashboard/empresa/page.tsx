@@ -48,6 +48,8 @@ export default function EmpresaPage() {
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
   const arquivo = useRef<HTMLInputElement>(null);
+  // No celular aparece uma parte por vez; no computador, as duas.
+  const [aba, setAba] = useState<"identidade" | "integracao">("identidade");
 
   useEffect(() => {
     let ativo = true;
@@ -166,10 +168,31 @@ export default function EmpresaPage() {
     <div className="space-y-3 md:space-y-6 max-w-xl">
       <div>
         <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Empresa</h1>
-        <p className="text-gray-500 text-sm mt-1">Nome e símbolo que aparecem no topo do painel</p>
+        <p className="hidden md:block text-gray-500 text-sm mt-1">Nome e símbolo que aparecem no topo do painel</p>
       </div>
 
-      <form onSubmit={salvar} className={`${CARD} p-3 md:p-6 space-y-4`}>
+      <div role="tablist" aria-label="Parte" className="md:hidden grid grid-cols-2 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+        {(
+          [
+            ["identidade", "Nome e símbolo"],
+            ["integracao", "Integração"],
+          ] as const
+        ).map(([chave, rotulo]) => (
+          <button
+            key={chave}
+            type="button"
+            role="tab"
+            aria-selected={aba === chave}
+            data-aba={chave}
+            onClick={() => setAba(chave)}
+            className={`py-1.5 rounded-lg text-sm font-semibold ${aba === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
+      <form onSubmit={salvar} className={`${aba === "identidade" ? "" : "hidden md:block "}${CARD} p-3 md:p-6 space-y-4`}>
         <label className="block space-y-1">
           <span className={LABEL}>Nome da empresa</span>
           <input required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
@@ -222,7 +245,7 @@ export default function EmpresaPage() {
         </button>
       </form>
 
-      <Integracao />
+      <Integracao escondida={aba !== "integracao"} />
     </div>
   );
 }
@@ -230,7 +253,15 @@ export default function EmpresaPage() {
 type Entrega = { id: string; type: string; createdAt: string; deliveredAt: string | null; attempts: number; lastError: string | null };
 type Webhook = { url: string | null; entregas: Entrega[] };
 
-const TIPO: Record<string, string> = { "coleta.status": "Status de carga", teste: "Teste" };
+const TIPO: Record<string, string> = {
+  "coleta.status": "Status de carga",
+  "fatura.emitida": "Fatura emitida",
+  "fatura.paga": "Fatura paga",
+  "fatura.reaberta": "Fatura reaberta",
+  "fatura.cancelada": "Fatura cancelada",
+  "cobranca.vencida": "Título vencido",
+  teste: "Teste",
+};
 
 const quando = (instante: string) =>
   new Date(instante).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -245,7 +276,7 @@ function situacao(entrega: Entrega): { texto: string; classe: string } {
  * Endereço que recebe os eventos da empresa (um fluxo do n8n, por exemplo). A
  * cada troca de status de carga o TMS manda um aviso assinado para lá.
  */
-function Integracao() {
+function Integracao({ escondida }: { escondida: boolean }) {
   const [webhook, setWebhook] = useState<Webhook | null>(null);
   const [url, setUrl] = useState("");
   const [segredo, setSegredo] = useState<string | null>(null);
@@ -304,11 +335,11 @@ function Integracao() {
   const cadastrado = Boolean(webhook?.url);
 
   return (
-    <section aria-label="Integração" className={`${CARD} p-3 md:p-6 space-y-3`}>
+    <section aria-label="Integração" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
       <div>
         <h2 className="font-semibold text-gray-900 dark:text-white">Integração</h2>
         <p className="text-xs md:text-sm text-gray-500 mt-0.5">
-          A cada troca de status de carga, o TMS avisa este endereço (um fluxo do n8n, por exemplo).
+          O TMS avisa este endereço (um fluxo do n8n, por exemplo) a cada troca de status de carga, fatura emitida, paga ou cancelada, e título que venceu.
         </p>
       </div>
 

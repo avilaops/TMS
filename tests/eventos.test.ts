@@ -121,7 +121,9 @@ suite("eventos para sistemas de fora", () => {
     const empresas = { tenantId: { in: [EMPRESA_PADRAO.id, EMPRESA_OUTRA.id] } };
     await banco.sistema.outboxEvent.deleteMany({ where: empresas });
     await banco.sistema.webhook.deleteMany({ where: empresas });
+    await banco.sistema.financialTransaction.deleteMany({ where: { OR: [{ description: { startsWith: PREFIXO } }, { client: { cnpj: { in: [CNPJ, CNPJ_DA_OUTRA] } } }] } });
     await banco.sistema.collection.deleteMany({ where: { client: { cnpj: { in: [CNPJ, CNPJ_DA_OUTRA] } } } });
+    await banco.sistema.invoice.deleteMany({ where: { client: { cnpj: { in: [CNPJ, CNPJ_DA_OUTRA] } } } });
   }
 
   async function limpar() {
@@ -338,6 +340,82 @@ suite("eventos para sistemas de fora", () => {
     expect(await eventos.despacharPendentes()).toEqual({ entregues: 0, falhas: 1 });
     expect((await pendentes(EMPRESA_PADRAO.id))[0].lastError).toBe("Endereço removido.");
     expect(recebidos).toHaveLength(0);
+  });
+
+  it("fatura: emitida ao nascer; paga, reaberta e cancelada quando o status muda; alterar outro campo não avisa", async () => {
+    await cadastrar();
+    const fatura = await banco.default.invoice.create({
+      data: { number: 9001, clientId: clienteId, total: 480.5, dueDate: new Date("2026-11-10T00:00:00.000Z") },
+    });
+    await banco.default.invoice.update({ where: { id: fatura.id }, data: { notes: "só uma observação" } });
+    await banco.default.invoice.update({ where: { id: fatura.id }, data: { status: "PAID", paidAt: new Date() } });
+    await banco.default.invoice.update({ where: { id: fatura.id }, data: { status: "OPEN", paidAt: null } });
+    await banco.default.invoice.update({ where: { id: fatura.id }, data: { status: "CANCELLED" } });
+
+    expect((await pendentes(EMPRESA_PADRAO.id)).map((e) => e.type)).toEqual(["fatura.emitida", "fatura.paga", "fatura.reaberta", "fatura.cancelada"]);
+
+    expect(await eventos.despacharPendentes()).toEqual({ entregues: 4, falhas: 0 });
+    expect(recebidos.map((r) => r.json.tipo)).toEqual(["fatura.emitida", "fatura.paga", "fatura.reaberta", "fatura.cancelada"]);
+    // Os detalhes são lidos na hora da entrega: todos trazem a fatura como está agora.
+    expect(recebidos[0].json.dados).toMatchObject({
+      fatura: {
+        id: fatura.id,
+        numero: 9001,
+        status: "CANCELLED",
+        total: 480.5,
+        vencimento: "2026-11-10",
+        cargas: 0,
+        cliente: { nome: `${PREFIXO}fantasia`, cnpj: CNPJ, telefone: "1733330000" },
+      },
+    });
+    expect(String((recebidos[0].json.dados as { fatura: { portal: string } }).fatura.portal)).toMatch(/\/portal\/faturas$/);
+  });
+
+  it("título vencido: um aviso por título, só de receita em aberto que já venceu, e rodar de novo não repete", async () => {
+    await cadastrar();
+    const ontem = new Date(Date.now() - 2 * 86_400_000);
+    const vencimento = new Date(`${ontem.toISOString().slice(0, 10)}T00:00:00.000Z`);
+    const amanha = new Date(Date.now() + 2 * 86_400_000);
+    const titulo = (dados: Record<string, unknown>) =>
+      banco.default.financialTransaction.create({ data: { description: `${PREFIXO}título`, type: "INCOME", amount: 300, status: "PENDING", dueDate: vencimento, ...dados } });
+
+    const vencido = await titulo({ clientId: clienteId });
+    const avulso = await titulo({ counterparty: "Zé da Esquina", amount: 50 });
+    await titulo({ dueDate: amanha }); // ainda não venceu
+    await titulo({ dueDate: null }); // sem vencimento
+    await titulo({ status: "PAID", paidAt: new Date() }); // já recebido
+    await titulo({ type: "EXPENSE" }); // conta a pagar
+
+    expect(await eventos.avisarTitulosVencidos()).toBe(2);
+    expect(await eventos.avisarTitulosVencidos()).toBe(0);
+    expect((await pendentes(EMPRESA_PADRAO.id)).map((e) => e.type)).toEqual(["cobranca.vencida", "cobranca.vencida"]);
+
+    expect(await eventos.despacharPendentes()).toEqual({ entregues: 2, falhas: 0 });
+    const porId = new Map(recebidos.map((r) => [(r.json.dados as { titulo: { id: string } }).titulo.id, r.json.dados as { titulo: Record<string, unknown> }]));
+    expect(porId.get(vencido.id)!.titulo).toMatchObject({
+      descricao: `${PREFIXO}título`,
+      valor: 300,
+      vencimento: vencimento.toISOString().slice(0, 10),
+      emAberto: true,
+      fatura: null,
+      pagador: null,
+      cliente: { nome: `${PREFIXO}fantasia`, telefone: "1733330000" },
+    });
+    expect(Number(porId.get(vencido.id)!.titulo.diasDeAtraso)).toBeGreaterThanOrEqual(1);
+    expect(porId.get(avulso.id)!.titulo).toMatchObject({ valor: 50, cliente: null, pagador: "Zé da Esquina" });
+
+    // Vencimento alterado que vence de novo gera outro aviso; o mesmo vencimento, não.
+    await banco.default.financialTransaction.update({ where: { id: vencido.id }, data: { dueDate: new Date(vencimento.getTime() - 86_400_000) } });
+    expect(await eventos.avisarTitulosVencidos()).toBe(1);
+  });
+
+  it("empresa sem endereço não recebe aviso de fatura nem de título vencido", async () => {
+    await banco.default.invoice.create({ data: { number: 9002, clientId: clienteId, total: 10, dueDate: new Date("2026-11-10T00:00:00.000Z") } });
+    await banco.default.financialTransaction.create({
+      data: { description: `${PREFIXO}título`, type: "INCOME", amount: 300, status: "PENDING", dueDate: new Date("2020-01-10T00:00:00.000Z") },
+    });
+    expect(await eventos.avisarTitulosVencidos()).toBe(0);
+    expect(await pendentes(EMPRESA_PADRAO.id)).toHaveLength(0);
   });
 
   it("isolamento: carga de outra empresa não gera evento para o endereço desta, e uma não lê as entregas da outra", async () => {

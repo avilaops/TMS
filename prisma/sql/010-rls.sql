@@ -157,5 +157,35 @@ BEGIN
   DROP TRIGGER IF EXISTS tms_evento_de_status ON "CollectionStatusHistory";
   CREATE TRIGGER tms_evento_de_status AFTER INSERT ON "CollectionStatusHistory"
     FOR EACH ROW EXECUTE FUNCTION tms_evento_de_status();
+
+  -- Fatura: emitida ao nascer; paga, reaberta ou cancelada quando o status muda.
+  CREATE OR REPLACE FUNCTION tms_evento_de_fatura() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+  DECLARE
+    tipo text;
+  BEGIN
+    IF TG_OP = 'INSERT' THEN
+      tipo := 'fatura.emitida';
+    ELSIF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+      RETURN NEW;
+    ELSE
+      tipo := CASE NEW.status
+        WHEN 'PAID' THEN 'fatura.paga'
+        WHEN 'CANCELLED' THEN 'fatura.cancelada'
+        WHEN 'OPEN' THEN 'fatura.reaberta'
+      END;
+    END IF;
+
+    IF tipo IS NOT NULL AND EXISTS (SELECT 1 FROM "Webhook" w WHERE w."tenantId" = NEW."tenantId") THEN
+      INSERT INTO "OutboxEvent" (id, "tenantId", type, payload, "createdAt", "nextAttemptAt", attempts)
+      VALUES (gen_random_uuid()::text, NEW."tenantId", tipo, jsonb_build_object('invoiceId', NEW.id), now(), now(), 0);
+    END IF;
+    RETURN NEW;
+  END
+  $f$;
+
+  DROP TRIGGER IF EXISTS tms_evento_de_fatura ON "Invoice";
+  CREATE TRIGGER tms_evento_de_fatura AFTER INSERT OR UPDATE OF status ON "Invoice"
+    FOR EACH ROW EXECUTE FUNCTION tms_evento_de_fatura();
 END
 $$;

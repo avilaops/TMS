@@ -182,7 +182,7 @@ A aplicação só lê a tabela de empresas; a gravação vai pelo dono do banco,
 
 ## Integração (eventos para n8n e outros sistemas)
 
-Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook do n8n, por exemplo). A partir daí, cada troca de status de carga — inclusive a criação — é avisada nesse endereço por `POST`, em até 15 segundos. Empresa sem endereço não gera evento.
+Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook do n8n, por exemplo). A partir daí, cada troca de status de carga (inclusive a criação), cada fatura emitida, paga, reaberta ou cancelada e cada título que vence é avisado nesse endereço por `POST`, em até 15 segundos. Empresa sem endereço não gera evento.
 
 ```json
 {
@@ -210,7 +210,18 @@ Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook d
 - **Quem entrega:** o próprio servidor, a cada 15 segundos ([src/instrumentation.ts](src/instrumentation.ts), [src/lib/eventos.ts](src/lib/eventos.ts)). `TMS_EVENTOS=off` desliga.
 - **Rotas:** `GET`/`PUT /api/empresa/webhook` e `POST /api/empresa/webhook/teste`, só para o administrador.
 
-Ainda não há evento de fatura nem de cobrança, nem escolha de quais eventos receber.
+**Tipos de aviso** (o `tipo` do corpo e o cabeçalho `X-TMS-Evento`):
+
+| Tipo | Quando | `dados` |
+| --- | --- | --- |
+| `coleta.status` | Carga criada ou com status trocado | `de`, `para`, `coleta` |
+| `fatura.emitida`, `fatura.paga`, `fatura.reaberta`, `fatura.cancelada` | Fatura criada ou com status trocado | `fatura` (número, total, vencimento, cliente, link do portal) |
+| `cobranca.vencida` | Título a receber venceu e segue em aberto | `titulo` (valor, vencimento, dias de atraso, cliente ou pagador, fatura) |
+| `teste` | Botão "Enviar teste" | mensagem fixa |
+
+O aviso de título vencido sai uma vez por título e por vencimento; a procura roda a cada 10 minutos. Ao cadastrar o endereço, os títulos que já estavam vencidos são avisados nessa primeira procura.
+
+Ainda não há escolha de quais tipos receber, nem repetição do aviso de título vencido (o lembrete periódico fica por conta do fluxo no destino).
 
 ## Portal do cliente
 

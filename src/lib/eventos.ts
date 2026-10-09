@@ -32,8 +32,71 @@ const texto = (valor: unknown) => (typeof valor === "string" ? valor : null);
  * O que vai em `dados`. O evento de status guarda só os ids; os detalhes são
  * lidos na hora da entrega, para o destino não precisar consultar o TMS.
  */
+const CLIENTE = { id: true, companyName: true, tradeName: true, cnpj: true, contactName: true, email: true, phone: true } as const;
+
+type ClienteDoEvento = { id: string; companyName: string; tradeName: string | null; cnpj: string; contactName: string | null; email: string | null; phone: string | null };
+
+const cliente = (c: ClienteDoEvento | null) =>
+  c && { id: c.id, nome: c.tradeName || c.companyName, cnpj: c.cnpj, contato: c.contactName, email: c.email, telefone: c.phone };
+
+// Vencimento é um dia do calendário, gravado à meia-noite UTC.
+const dia = (data: Date | null) => (data ? data.toISOString().slice(0, 10) : null);
+
+const enderecoPublico = () => (process.env.NEXTAUTH_URL || "").replace(/\/+$/, "");
+
+async function dadosDaFatura(evento: Pendente, payload: Record<string, unknown>) {
+  const invoiceId = texto(payload.invoiceId);
+  const fatura = invoiceId
+    ? await sistema.invoice.findFirst({
+        where: { id: invoiceId, tenantId: evento.tenantId },
+        select: { id: true, number: true, status: true, total: true, dueDate: true, issuedAt: true, paidAt: true, client: { select: CLIENTE }, _count: { select: { collections: true } } },
+      })
+    : null;
+  return {
+    fatura: fatura && {
+      id: fatura.id,
+      numero: fatura.number,
+      status: fatura.status,
+      total: fatura.total,
+      vencimento: dia(fatura.dueDate),
+      emitidaEm: fatura.issuedAt.toISOString(),
+      pagaEm: fatura.paidAt?.toISOString() ?? null,
+      cargas: fatura._count.collections,
+      cliente: cliente(fatura.client),
+      // Onde o cliente consulta as faturas dele, depois de entrar.
+      portal: `${enderecoPublico()}/portal/faturas`,
+    },
+  };
+}
+
+async function dadosDoTituloVencido(evento: Pendente, payload: Record<string, unknown>) {
+  const transactionId = texto(payload.transactionId);
+  const titulo = transactionId
+    ? await sistema.financialTransaction.findFirst({
+        where: { id: transactionId, tenantId: evento.tenantId },
+        select: { id: true, description: true, amount: true, dueDate: true, status: true, counterparty: true, client: { select: CLIENTE }, invoice: { select: { id: true, number: true } } },
+      })
+    : null;
+  return {
+    titulo: titulo && {
+      id: titulo.id,
+      descricao: titulo.description,
+      valor: titulo.amount,
+      vencimento: dia(titulo.dueDate),
+      // Dias de atraso na hora da entrega; o título pode ter sido pago entre o aviso nascer e sair.
+      diasDeAtraso: titulo.dueDate ? Math.max(0, Math.floor((Date.now() - titulo.dueDate.getTime()) / 86_400_000)) : 0,
+      emAberto: titulo.status === "PENDING",
+      fatura: titulo.invoice && { id: titulo.invoice.id, numero: titulo.invoice.number },
+      cliente: cliente(titulo.client),
+      pagador: titulo.client ? null : titulo.counterparty,
+    },
+  };
+}
+
 async function dadosDoEvento(evento: Pendente): Promise<Record<string, unknown>> {
   const payload = (evento.payload ?? {}) as Record<string, unknown>;
+  if (evento.type.startsWith("fatura.")) return dadosDaFatura(evento, payload);
+  if (evento.type === "cobranca.vencida") return dadosDoTituloVencido(evento, payload);
   if (evento.type !== "coleta.status") return payload;
 
   const collectionId = texto(payload.collectionId);
@@ -51,13 +114,13 @@ async function dadosDoEvento(evento: Pendente): Promise<Record<string, unknown>>
           volumes: true,
           weight: true,
           freightValue: true,
-          client: { select: { id: true, companyName: true, tradeName: true, cnpj: true, contactName: true, email: true, phone: true } },
+          client: { select: CLIENTE },
           driver: { select: { id: true, phone: true, user: { select: { name: true } } } },
         },
       })
     : null;
 
-  const base = (process.env.NEXTAUTH_URL || "").replace(/\/+$/, "");
+  const base = enderecoPublico();
   return {
     de: texto(payload.de),
     para: texto(payload.para),
@@ -75,14 +138,7 @@ async function dadosDoEvento(evento: Pendente): Promise<Record<string, unknown>>
         codigo: coleta.trackingCode,
         link: `${base}/rastreio?cnpj=${coleta.client.cnpj}&codigo=${coleta.trackingCode}`,
       },
-      cliente: {
-        id: coleta.client.id,
-        nome: coleta.client.tradeName || coleta.client.companyName,
-        cnpj: coleta.client.cnpj,
-        contato: coleta.client.contactName,
-        email: coleta.client.email,
-        telefone: coleta.client.phone,
-      },
+      cliente: cliente(coleta.client),
       motorista: coleta.driver && { id: coleta.driver.id, nome: coleta.driver.user.name, telefone: coleta.driver.phone },
     },
   };
@@ -163,7 +219,28 @@ export async function despacharPendentes(): Promise<{ entregues: number; falhas:
   return { entregues, falhas };
 }
 
+/**
+ * Põe na fila um aviso para cada título a receber que venceu e segue em
+ * aberto, nas empresas com endereço cadastrado. Um aviso por título e por
+ * vencimento: a chave repetida é ignorada, então rodar de novo não repete. Se o
+ * vencimento for alterado e vencer outra vez, sai um aviso novo.
+ */
+export async function avisarTitulosVencidos(): Promise<number> {
+  return sistema.$executeRaw(Prisma.sql`
+    INSERT INTO "OutboxEvent" (id, "tenantId", type, payload, "createdAt", "nextAttemptAt", attempts, "dedupeKey")
+    SELECT gen_random_uuid()::text, t."tenantId", 'cobranca.vencida', jsonb_build_object('transactionId', t.id), now(), now(), 0,
+           'cobranca.vencida:' || t.id || ':' || to_char(t."dueDate", 'YYYY-MM-DD')
+      FROM "FinancialTransaction" t
+      JOIN "Webhook" w ON w."tenantId" = t."tenantId"
+     WHERE t.type = 'INCOME' AND t.status = 'PENDING' AND t."dueDate" IS NOT NULL
+       -- Vence no fim do dia, pelo relógio do Brasil; o vencimento é um dia do calendário.
+       AND t."dueDate"::date < (now() AT TIME ZONE 'America/Sao_Paulo')::date
+    ON CONFLICT ("dedupeKey") DO NOTHING`);
+}
+
 const INTERVALO_MS = 15_000;
+// A procura por título vencido roda a cada 40 voltas do despachante (10 minutos).
+const VOLTAS_ENTRE_VARREDURAS = 40;
 // O Next recarrega módulos em desenvolvimento: o relógio fica no global para não duplicar.
 const global = globalThis as { tmsDespachante?: ReturnType<typeof setInterval> };
 
@@ -171,10 +248,14 @@ const global = globalThis as { tmsDespachante?: ReturnType<typeof setInterval> }
 export function iniciarDespacho(): void {
   if (global.tmsDespachante) return;
   let rodando = false;
+  let voltas = 0;
   global.tmsDespachante = setInterval(() => {
     if (rodando) return;
     rodando = true;
-    despacharPendentes()
+    const varrer = voltas % VOLTAS_ENTRE_VARREDURAS === 0;
+    voltas += 1;
+    (varrer ? avisarTitulosVencidos() : Promise.resolve(0))
+      .then(() => despacharPendentes())
       .catch((erro) => console.error("Erro ao despachar eventos:", erro))
       .finally(() => {
         rodando = false;

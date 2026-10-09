@@ -614,7 +614,7 @@ model Webhook {
 model OutboxEvent {
   tenantId      String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id            String    @id @default(uuid())
-  type          String    // coleta.status, teste
+  type          String    // coleta.status, fatura.emitida|paga|reaberta|cancelada, cobranca.vencida, teste
   payload       Json
   createdAt     DateTime  @default(now())
   // Próxima tentativa de entrega. Cada tentativa empurra para a frente (1, 2, 4... minutos).
@@ -622,6 +622,8 @@ model OutboxEvent {
   attempts      Int       @default(0)
   deliveredAt   DateTime?
   lastError     String?
+  // Evento que só pode existir uma vez (o aviso de um título vencido): a chave repetida é ignorada.
+  dedupeKey     String?   @unique
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId, createdAt])
