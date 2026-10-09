@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
-import { formatCalendarDate, formatCurrency, formatDate, formatWeight } from "@/lib/format";
+import { formatCalendarDate, formatCurrency, formatDate, formatDocument, formatWeight } from "@/lib/format";
 
 /** A fatura como vai para o cliente: cabeçalho, cargas cobradas e total. Imprime ou salva em PDF. */
 
@@ -16,6 +16,8 @@ type Fatura = {
   paidAt: string | null;
   notes: string | null;
   client: { companyName: string; tradeName: string | null; cnpj: string };
+  /** O lançamento a receber da fatura; é dele o recibo. */
+  transaction: { id: string } | null;
   collections: {
     id: string;
     trackingCode: string | null;
@@ -30,11 +32,6 @@ type Fatura = {
 };
 
 const SITUACAO = { OPEN: "Em aberto", PAID: "Paga", CANCELLED: "Cancelada" } as const;
-
-const documento = (digitos: string) =>
-  digitos.length === 14
-    ? digitos.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
-    : digitos.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
 
 export default function FaturaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -78,10 +75,17 @@ export default function FaturaPage({ params }: { params: Promise<{ id: string }>
           <ArrowLeft className="w-4 h-4" />
           Faturamento
         </Link>
-        <button onClick={() => window.print()} className="inline-flex items-center gap-2 text-sm text-blue-600 hover:underline">
-          <Printer className="w-4 h-4" />
-          Imprimir ou salvar em PDF
-        </button>
+        <div className="flex items-center gap-5">
+          {fatura.status === "PAID" && fatura.transaction && (
+            <Link href={`/dashboard/financeiro/recibo/${fatura.transaction.id}`} className="text-sm text-blue-600 hover:underline">
+              Recibo
+            </Link>
+          )}
+          <button onClick={() => window.print()} className="inline-flex items-center gap-2 text-sm text-blue-600 hover:underline">
+            <Printer className="w-4 h-4" />
+            Imprimir ou salvar em PDF
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 p-8 text-gray-900">
@@ -105,7 +109,7 @@ export default function FaturaPage({ params }: { params: Promise<{ id: string }>
           <p className="text-xs text-gray-500">Cliente</p>
           <p className="font-medium">{fatura.client.companyName}</p>
           {fatura.client.tradeName && <p className="text-gray-600">{fatura.client.tradeName}</p>}
-          <p className="text-gray-600">{documento(fatura.client.cnpj)}</p>
+          <p className="text-gray-600">{formatDocument(fatura.client.cnpj)}</p>
         </div>
 
         <div className="mt-6 overflow-x-auto">

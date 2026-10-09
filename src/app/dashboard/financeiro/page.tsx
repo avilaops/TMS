@@ -473,6 +473,11 @@ export default function FinanceiroPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap space-x-3">
+                        {l.type === "INCOME" && l.status === "PAID" && (
+                          <Link href={`/dashboard/financeiro/recibo/${l.id}`} className="text-blue-600 hover:underline">
+                            Recibo
+                          </Link>
+                        )}
                         {l.invoice ? (
                           <span className="text-xs text-gray-500">pelo Faturamento</span>
                         ) : (

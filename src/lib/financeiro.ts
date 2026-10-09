@@ -42,7 +42,7 @@ const FUSO = "America/Sao_Paulo";
 const centavos = (valor: number) => Math.round((valor + Number.EPSILON) * 100) / 100;
 
 /** Dia do calendário do vencimento, como `AAAA-MM-DD` (lido em UTC). */
-function diaDoVencimento(valor: Date | string): string {
+export function diaDoVencimento(valor: Date | string): string {
   return new Date(valor).toISOString().slice(0, 10);
 }
 

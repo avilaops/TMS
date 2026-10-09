@@ -18,6 +18,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       select: {
         ...INVOICE_SELECT,
         collections: { select: INVOICE_COLLECTION_SELECT, orderBy: { createdAt: 'asc' } },
+        // O lançamento a receber da fatura: é por ele que a tela chega ao recibo.
+        transaction: { select: { id: true } },
       },
     });
     if (!fatura) return NextResponse.json({ error: NOT_FOUND }, { status: 404 });

@@ -22,7 +22,8 @@ import {
   UserCog,
   ClipboardCheck,
   Calculator,
-  Receipt
+  Receipt,
+  Banknote
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -38,6 +39,7 @@ const sidebarLinks: { href: string; icon: typeof Truck; label: string; roles?: s
   { href: "/dashboard/comprovantes", icon: ClipboardCheck, label: "Comprovantes" },
   { href: "/dashboard/fiscal/cte", icon: FileText, label: "Emissão CT-e" },
   { href: "/dashboard/faturamento", icon: Receipt, label: "Faturamento", roles: ["ADMIN"] },
+  { href: "/dashboard/cobranca", icon: Banknote, label: "Cobrança", roles: ["ADMIN"] },
   { href: "/dashboard/financeiro", icon: DollarSign, label: "Financeiro", roles: ["ADMIN"] },
   { href: "/dashboard/motoristas", icon: CarFront, label: "Motoristas" },
   { href: "/dashboard/veiculos", icon: Truck, label: "Veículos" },

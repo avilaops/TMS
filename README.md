@@ -139,7 +139,7 @@ Em `/dashboard/faturamento` o administrador cobra de um cliente o frete das carg
 - **Depois de faturada**, a carga não muda mais de frete: a fatura já saiu com ele.
 - `/dashboard/faturamento/[id]` é a fatura pronta para imprimir ou salvar em PDF.
 
-Ainda não há boleto, Pix nem cobrança automática: a baixa é manual.
+Ainda não há boleto, Pix nem envio automático do aviso de cobrança: a baixa é manual. A posição do que está em aberto, o aviso para copiar e o recibo ficam em [Cobrança](#cobrança).
 
 ## Financeiro: contas a pagar, a receber e fluxo de caixa
 
@@ -152,6 +152,17 @@ Em `/dashboard/financeiro`, só para o administrador. As regras e as contas fica
 - **Fluxo de caixa** (`GET /api/financeiro/fluxo?de=AAAA-MM&ate=AAAA-MM`, padrão de três meses para trás e três para a frente, no máximo 36): por mês, o **previsto** (o que vence no mês) e o **realizado** (o que foi pago ou recebido no mês), com saldo e acumulado. O resumo dos cartões é sempre de todos os lançamentos: conta vencida há um ano continua vencida.
 
 Ainda não há conciliação bancária, centro de custo nem lançamento recorrente.
+
+## Cobrança
+
+Em `/dashboard/cobranca`, só para o administrador. As contas ficam em [src/lib/cobranca.ts](src/lib/cobranca.ts) e não mudam o banco: a tela só lê.
+
+- **Posição por cliente** (`GET /api/financeiro/cobranca`): os lançamentos a receber em aberto, agrupados por quem deve (o cliente; sem cliente, o pagador digitado; sem nenhum, "Sem cliente informado"), com total, vencido e o maior atraso em dias. Quem mais deve em atraso aparece primeiro.
+- **Faixas de atraso:** a vencer, 1 a 30, 31 a 60, 61 a 90 e mais de 90 dias, contados do vencimento até hoje no relógio do Brasil. Título sem vencimento conta em "a vencer".
+- **Aviso de cobrança:** o texto já redigido com os títulos do cliente (lembrete quando nada venceu, atraso quando algo venceu), para copiar e mandar pelo canal de costume. O sistema não envia nada e o texto não traz dado de pagamento.
+- **Recibo** (`GET /api/financeiro/[id]/recibo`, tela `/dashboard/financeiro/recibo/[id]`): só de receita já recebida, para imprimir ou salvar em PDF. Chega-se a ele pelo link "Recibo" no Financeiro e na fatura paga.
+
+A baixa continua no Faturamento e no Financeiro; título pago sai da posição. Juros, multa, parcelas e o registro de que o aviso foi mandado não existem.
 
 ## Portal do cliente
 

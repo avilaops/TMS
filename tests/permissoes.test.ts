@@ -44,6 +44,8 @@ suite("permissões das rotas internas", () => {
   let financeiro: typeof import("../src/app/api/financeiro/route");
   let financeiroPorId: typeof import("../src/app/api/financeiro/[id]/route");
   let financeiroFluxo: typeof import("../src/app/api/financeiro/fluxo/route");
+  let financeiroCobranca: typeof import("../src/app/api/financeiro/cobranca/route");
+  let financeiroRecibo: typeof import("../src/app/api/financeiro/[id]/recibo/route");
   let fiscal: typeof import("../src/app/api/fiscal/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
@@ -114,6 +116,8 @@ suite("permissões das rotas internas", () => {
     financeiro = await import("../src/app/api/financeiro/route");
     financeiroPorId = await import("../src/app/api/financeiro/[id]/route");
     financeiroFluxo = await import("../src/app/api/financeiro/fluxo/route");
+    financeiroCobranca = await import("../src/app/api/financeiro/cobranca/route");
+    financeiroRecibo = await import("../src/app/api/financeiro/[id]/recibo/route");
     fiscal = await import("../src/app/api/fiscal/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
     manifestos = await import("../src/app/api/manifestos/route");
@@ -192,6 +196,8 @@ suite("permissões das rotas internas", () => {
       ["PATCH /api/financeiro/[id]", () => financeiroPorId.PATCH(req("PATCH", { action: "pagar" }), ctx(semId))],
       ["DELETE /api/financeiro/[id]", () => financeiroPorId.DELETE(req("DELETE"), ctx(semId))],
       ["GET /api/financeiro/fluxo", () => financeiroFluxo.GET()],
+      ["GET /api/financeiro/cobranca", () => financeiroCobranca.GET()],
+      ["GET /api/financeiro/[id]/recibo", () => financeiroRecibo.GET(req(), ctx(semId))],
       ["GET /api/usuarios", () => usuarios.GET()],
       ["POST /api/usuarios", () => usuarios.POST(req("POST", {}))],
       ["PATCH /api/usuarios/[id]", () => usuario.PATCH(req("PATCH", { name: "Invasor" }), ctx(ids.OPERATION))],

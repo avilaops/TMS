@@ -39,6 +39,8 @@ suite("isolamento entre empresas", () => {
   let crmConverter: typeof import("../src/app/api/dashboard/crm/[id]/converter/route");
   let comprovantes: typeof import("../src/app/api/comprovantes/route");
   let conferir: typeof import("../src/app/api/comprovantes/[id]/conferir/route");
+  let cobranca: typeof import("../src/app/api/financeiro/cobranca/route");
+  let recibo: typeof import("../src/app/api/financeiro/[id]/recibo/route");
 
   const sessao = vi.mocked(getServerSession);
 
@@ -139,6 +141,8 @@ suite("isolamento entre empresas", () => {
     crmConverter = await import("../src/app/api/dashboard/crm/[id]/converter/route");
     comprovantes = await import("../src/app/api/comprovantes/route");
     conferir = await import("../src/app/api/comprovantes/[id]/conferir/route");
+    cobranca = await import("../src/app/api/financeiro/cobranca/route");
+    recibo = await import("../src/app/api/financeiro/[id]/recibo/route");
     await limpar();
     await montar(padrao, SENHA);
     await montar(outra, SENHA_OUTRA);
@@ -456,6 +460,50 @@ suite("isolamento entre empresas", () => {
         expect(intacto.status).toBe("PENDING");
       } finally {
         await banco.sistema.financialTransaction.deleteMany({ where: { description: `${PREFIXO}lancamento` } });
+      }
+    });
+
+    it("cobrança e recibo de uma empresa não enxergam os lançamentos da outra, e cada um assina com a sua", async () => {
+      const receita = (lado: typeof padrao, extra: Record<string, unknown>) =>
+        banco.paraEmpresa(lado.tenantId).db.financialTransaction.create({
+          data: { type: "INCOME", amount: 10, description: `${PREFIXO}cobranca`, clientId: lado.clienteId, ...extra },
+        });
+      try {
+        const emAbertoDaPadrao = await receita(padrao, { dueDate: new Date("2020-01-01") });
+        const pagoDaPadrao = await receita(padrao, { status: "PAID", paidAt: new Date() });
+        const emAbertoDaOutra = await receita(outra, {});
+
+        const posicaoDe = async (lado: typeof padrao) => {
+          entrar(lado);
+          const res = await cobranca.GET();
+          expect(res.status).toBe(200);
+          return (await res.json()) as { empresa: { name: string }; devedores: { clientId: string | null; titulos: { id: string }[] }[] };
+        };
+
+        const daOutra = await posicaoDe(outra);
+        expect(daOutra.empresa).toEqual({ name: EMPRESA_OUTRA.name });
+        expect(daOutra.devedores.flatMap((d) => d.titulos.map((t) => t.id))).toEqual([emAbertoDaOutra.id]);
+        expect(daOutra.devedores.map((d) => d.clientId)).toEqual([outra.clienteId]);
+        expect(JSON.stringify(daOutra)).not.toContain(padrao.clienteId);
+
+        const daPadrao = await posicaoDe(padrao);
+        expect(daPadrao.empresa).toEqual({ name: EMPRESA_PADRAO.name });
+        const titulosDaPadrao = daPadrao.devedores.flatMap((d) => d.titulos.map((t) => t.id));
+        expect(titulosDaPadrao).toContain(emAbertoDaPadrao.id);
+        expect(titulosDaPadrao).not.toContain(emAbertoDaOutra.id);
+
+        // O recibo existe para a dona e é "não encontrado" para a outra, como o id que não existe.
+        entrar(outra);
+        const alheio = await recibo.GET(req(), ctx(pagoDaPadrao.id));
+        expect(alheio.status).toBe(404);
+        expect(await alheio.json()).toEqual({ error: "Lançamento não encontrado." });
+
+        entrar(padrao);
+        const proprio = await recibo.GET(req(), ctx(pagoDaPadrao.id));
+        expect(proprio.status).toBe(200);
+        expect(await proprio.json()).toMatchObject({ id: pagoDaPadrao.id, empresa: { name: EMPRESA_PADRAO.name } });
+      } finally {
+        await banco.sistema.financialTransaction.deleteMany({ where: { description: `${PREFIXO}cobranca` } });
       }
     });
 

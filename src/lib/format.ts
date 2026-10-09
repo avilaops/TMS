@@ -39,6 +39,13 @@ export function daysUntil(value: string | Date) {
   return Math.round((alvoUTC - hojeUTC) / DIA_EM_MS);
 }
 
+/** CNPJ ou CPF com a pontuação. Com outro tamanho, devolve como veio. */
+export function formatDocument(digitos: string) {
+  return digitos.length === 14
+    ? digitos.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+    : digitos.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+}
+
 export function formatWeight(value: number | null | undefined) {
   if (value === null || value === undefined) return "-";
   return `${value.toLocaleString("pt-BR")} kg`;
