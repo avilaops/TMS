@@ -19,8 +19,10 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        # Mesma versao do PostgreSQL do servidor de producao.
-        image: postgres:18-alpine
+        # Mesma versao do PostgreSQL do servidor de producao. Vem do espelho
+        # publico da AWS: o Docker Hub recusa o runner por limite de downloads
+        # sem login ("toomanyrequests"), e a publicacao parava aqui.
+        image: public.ecr.aws/docker/library/postgres:18-alpine
         env:
           POSTGRES_USER: tms
           POSTGRES_PASSWORD: tms
