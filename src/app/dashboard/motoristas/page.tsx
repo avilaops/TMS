@@ -28,8 +28,8 @@ const FORM_VAZIO = {
 };
 
 const INPUT =
-  "w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500";
-const LABEL = "text-sm font-medium text-gray-700 dark:text-gray-300";
+  "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500";
+const LABEL = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
 
 // A validade é só o dia: lida em UTC para não voltar um dia no fuso do Brasil.
 const diaDaValidade = (iso: string) => iso.slice(0, 10);
@@ -162,7 +162,7 @@ export default function MotoristasPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Motoristas</h1>
@@ -179,20 +179,20 @@ export default function MotoristasPage() {
 
       {acesso && <AvisoDeAcesso nome={acesso.nome} acesso={acesso.acesso} onFechar={() => setAcesso(null)} />}
 
-      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
+      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden md:min-h-[400px]">
         {isLoading ? (
-          <div className="flex items-center justify-center h-[400px]">
+          <div className="flex items-center justify-center h-[200px] md:h-[400px]">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : motoristas.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[400px] text-center">
+          <div className="flex flex-col items-center justify-center h-[200px] md:h-[400px] text-center">
             <CarFront className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
             <h3 className="text-gray-500 dark:text-gray-400 font-medium">Nenhum motorista cadastrado</h3>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 text-sm font-medium border-b border-gray-100 dark:border-gray-800">
+            <table className="block md:table w-full text-left">
+              <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 text-sm font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
                   <th className="px-6 py-4">Nome</th>
                   <th className="px-6 py-4">CPF</th>
@@ -203,12 +203,12 @@ export default function MotoristasPage() {
                   <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
                 {motoristas.map(motorista => {
                   const vencida = cnhVencida(motorista.cnhExpiry);
                   return (
-                    <tr key={motorista.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                      <td className="px-6 py-4">
+                    <tr key={motorista.id} className="grid grid-cols-2 gap-x-3 gap-y-1 px-3 py-2.5 md:table-row hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                      <td className="col-span-2 min-w-0 md:table-cell md:px-6 md:py-4">
                         <div className="flex items-center space-x-3">
                           <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
                             <User className="w-5 h-5" />
@@ -219,11 +219,11 @@ export default function MotoristasPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{motorista.cpf}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
+                      <td className="min-w-0 md:table-cell md:px-6 md:py-4 text-sm text-gray-600 dark:text-gray-300">{motorista.cpf}</td>
+                      <td className="min-w-0 md:table-cell md:px-6 md:py-4 text-sm text-gray-600 dark:text-gray-300">
                         {motorista.cnh || '-'} <span className="font-semibold">({motorista.category})</span>
                       </td>
-                      <td className="px-6 py-4 text-sm">
+                      <td className="min-w-0 md:table-cell md:px-6 md:py-4 text-sm">
                         {vencida ? (
                           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                             {formatarValidade(motorista.cnhExpiry)} · vencida
@@ -232,8 +232,8 @@ export default function MotoristasPage() {
                           <span className="text-gray-600 dark:text-gray-300">{formatarValidade(motorista.cnhExpiry)}</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{motorista.phone || '-'}</td>
-                      <td className="px-6 py-4">
+                      <td className="min-w-0 md:table-cell md:px-6 md:py-4 text-sm text-gray-600 dark:text-gray-300">{motorista.phone || '-'}</td>
+                      <td className="min-w-0 md:table-cell md:px-6 md:py-4">
                         <span
                           className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
                             motorista.active
@@ -244,7 +244,7 @@ export default function MotoristasPage() {
                           {motorista.active ? "Ativo" : "Inativo"}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap space-x-4">
+                      <td className="col-span-2 min-w-0 md:table-cell md:px-6 md:py-4 md:text-right whitespace-nowrap space-x-4">
                         <button onClick={() => openEdit(motorista)} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
                           Editar
                         </button>
@@ -266,10 +266,10 @@ export default function MotoristasPage() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800">
-            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center md:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 md:rounded-2xl w-full max-w-2xl md:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800">
+            <div className="p-3 md:p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+              <h2 className="text-base md:text-xl font-bold font-outfit text-gray-900 dark:text-white">
                 {editingId ? "Editar Motorista" : "Cadastrar Motorista"}
               </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
@@ -277,8 +277,8 @@ export default function MotoristasPage() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4 overflow-y-auto">
-              <div className="space-y-1.5">
+            <div className="p-3 md:p-6 space-y-2 md:space-y-4 overflow-y-auto">
+              <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                 <label className={LABEL}>Nome Completo</label>
                 <input
                   type="text"
@@ -289,8 +289,8 @@ export default function MotoristasPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>CPF</label>
                   <input
                     type="text"
@@ -301,7 +301,7 @@ export default function MotoristasPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Telefone</label>
                   <input
                     type="text"
@@ -313,8 +313,8 @@ export default function MotoristasPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>E-mail de acesso</label>
                   <input
                     type="email"
@@ -328,8 +328,8 @@ export default function MotoristasPage() {
               </div>
               <p className="text-xs text-gray-500">O motorista entra no aplicativo com a conta Ávila Ops deste e-mail (ou do CPF). Se ele ainda não tem conta, você recebe um link para enviar a ele.</p>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-2 md:gap-4">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>CNH</label>
                   <input
                     type="text"
@@ -339,12 +339,12 @@ export default function MotoristasPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Categoria</label>
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({...formData, category: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                   >
                     {/* Cadastro antigo pode ter categoria fora da lista: aparece para ser corrigida. */}
                     {!CATEGORIAS.includes(formData.category) && (
@@ -355,7 +355,7 @@ export default function MotoristasPage() {
                     ))}
                   </select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Validade da CNH</label>
                   <input
                     type="date"
@@ -367,17 +367,17 @@ export default function MotoristasPage() {
               </div>
             </div>
 
-            <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">
+            <div className="p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="px-6 py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"
+                className="px-4 py-2 md:px-6 md:py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center space-x-2"
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 md:px-6 md:py-2.5 rounded-xl font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center space-x-2"
               >
                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                 <span>Salvar Motorista</span>

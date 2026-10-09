@@ -195,7 +195,7 @@ export default function ManifestosPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Manifestos Operacionais</h1>
@@ -250,7 +250,7 @@ export default function ManifestosPage() {
               const total = manifesto.collections?.length || 0;
               const pendentes = manifesto.collections?.filter(col => col.status === "ROUTE").length || 0;
               return (
-              <div key={manifesto.id} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+              <div key={manifesto.id} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-3 md:p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                 
                 <div className="flex justify-between items-start mb-4">
@@ -372,10 +372,10 @@ export default function ManifestosPage() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100 dark:border-gray-800">
-            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-gray-900 z-10">
-              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center md:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 md:rounded-2xl w-full max-w-5xl md:max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-100 dark:border-gray-800">
+            <div className="p-3 md:p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-white dark:bg-gray-900 z-10">
+              <h2 className="text-base md:text-xl font-bold font-outfit text-gray-900 dark:text-white">
                 {editing ? `Alterar Viagem #${editing.id.substring(0,6).toUpperCase()}` : "Montar Manifesto de Viagem"}
               </h2>
               <button onClick={closeModal} aria-label="Fechar" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
@@ -383,20 +383,20 @@ export default function ManifestosPage() {
               </button>
             </div>
             
-            <div className="p-6 flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="p-3 md:p-6 flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-6">
               
               {/* Esquerda: Seleção de Veículo e Motorista */}
-              <div className="space-y-6 lg:border-r lg:border-gray-100 dark:lg:border-gray-800 lg:pr-6">
+              <div className="space-y-2 md:space-y-6 lg:border-r lg:border-gray-100 dark:lg:border-gray-800 lg:pr-6">
                 <div>
-                  <h3 className="font-medium text-gray-900 dark:text-white mb-3">1. Equipe e Transporte</h3>
+                  <h3 className="text-sm md:text-base font-medium text-gray-900 dark:text-white mb-1 md:mb-3">1. Equipe e Transporte</h3>
                   
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Motorista</label>
+                  <div className="grid grid-cols-2 gap-3 md:block md:space-y-4">
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Motorista</label>
                       <select 
                         value={formData.driverId}
                         onChange={(e) => setFormData({...formData, driverId: e.target.value})}
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                        className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                       >
                         <option value="">Selecione um motorista...</option>
                         {motoristas.map(m => (
@@ -405,12 +405,12 @@ export default function ManifestosPage() {
                       </select>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Veículo</label>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Veículo</label>
                       <select 
                         value={formData.vehicleId}
                         onChange={(e) => setFormData({...formData, vehicleId: e.target.value})}
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white uppercase"
+                        className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white uppercase"
                       >
                         <option value="">Selecione um veículo...</option>
                         {veiculos.map(v => (
@@ -423,9 +423,9 @@ export default function ManifestosPage() {
                   </div>
                 </div>
 
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30">
-                  <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-400 mb-2">Resumo da Rota</h4>
-                  <div className="space-y-2 text-sm text-blue-700 dark:text-blue-300">
+                <div className="bg-blue-50 dark:bg-blue-900/20 px-3 py-2 md:p-4 rounded-xl border border-blue-100 dark:border-blue-800/30">
+                  <h4 className="hidden md:block text-sm font-semibold text-blue-800 dark:text-blue-400 mb-2">Resumo da Rota</h4>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 md:block md:space-y-2 text-sm text-blue-700 dark:text-blue-300">
                     {editing && <p>Já na viagem: <span className="font-bold">{editing.collections.length}</span></p>}
                     <p>{editing ? "A acrescentar" : "Entregas"}: <span className="font-bold">{formData.collectionIds.length}</span></p>
                     <p>{editing ? "Peso a acrescentar" : "Peso Total"}: <span className="font-bold">
@@ -434,17 +434,17 @@ export default function ManifestosPage() {
                   </div>
                 </div>
 
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="hidden md:block text-xs text-gray-500 dark:text-gray-400">
                   A viagem nasce em montagem, com as cargas reservadas. Elas só passam para &quot;Em rota de entrega&quot; quando você liberar a saída.
                 </p>
               </div>
 
               {/* Direita: Seleção de Minutas */}
               <div className="lg:col-span-2 flex flex-col h-full">
-                <h3 className="font-medium text-gray-900 dark:text-white mb-3">2. {editing ? "Acrescente Minutas" : "Selecione as Minutas"} (Cargas Coletadas)</h3>
+                <h3 className="text-sm md:text-base font-medium text-gray-900 dark:text-white mb-1 md:mb-3">2. {editing ? "Acrescente Minutas" : "Selecione as Minutas"} (Cargas Coletadas)</h3>
                 
                 {minutas.length === 0 ? (
-                  <div className="flex-1 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl flex flex-col items-center justify-center text-center p-6">
+                  <div className="flex-1 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl flex flex-col items-center justify-center text-center p-3 md:p-6">
                     <Package className="w-10 h-10 text-gray-300 mb-2" />
                     <p className="text-gray-500 font-medium">Não há carga livre para embarque. Só carga coletada entra na viagem: registre a coleta antes de montar.</p>
                   </div>
@@ -481,7 +481,7 @@ export default function ManifestosPage() {
                               </div>
                             </div>
                             <div className="text-right">
-                              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{minuta.weight} kg</p>
+                              <p className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">{minuta.weight} kg</p>
                               <p className="text-xs text-gray-500">{minuta.volumes} vol</p>
                             </div>
                           </div>
@@ -493,17 +493,17 @@ export default function ManifestosPage() {
               </div>
             </div>
             
-            <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">
+            <div className="p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">
               <button
                 onClick={closeModal}
-                className="px-6 py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"
+                className="px-4 py-2 md:px-6 md:py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"
               >
                 Cancelar
               </button>
               <button 
                 onClick={handleSave}
                 disabled={isSaving || (!editing && formData.collectionIds.length === 0)}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center space-x-2"
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white px-4 py-2 md:px-6 md:py-2.5 rounded-xl font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center space-x-2"
               >
                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                 <span>{editing ? "Salvar alterações" : `Montar viagem (${formData.collectionIds.length})`}</span>

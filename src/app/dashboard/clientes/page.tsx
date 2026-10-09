@@ -51,8 +51,8 @@ const toForm = (cliente: Cliente): Form => ({
 });
 
 const INPUT =
-  "w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
-const LABEL = "text-sm font-medium text-gray-700 dark:text-gray-300";
+  "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
+const LABEL = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
 
 export default function ClientesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -207,7 +207,7 @@ export default function ClientesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Clientes</h1>
@@ -222,20 +222,20 @@ export default function ClientesPage() {
         </button>
       </div>
 
-      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
+      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden md:min-h-[400px]">
         {isLoading ? (
-          <div className="flex items-center justify-center h-[400px]">
+          <div className="flex items-center justify-center h-[200px] md:h-[400px]">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : clientes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[400px] text-center">
+          <div className="flex flex-col items-center justify-center h-[200px] md:h-[400px] text-center">
             <Search className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
             <h3 className="text-gray-500 dark:text-gray-400 font-medium">Nenhum cliente cadastrado</h3>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 text-sm font-medium border-b border-gray-100 dark:border-gray-800">
+            <table className="block md:table w-full text-left">
+              <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 text-sm font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
                   <th className="px-6 py-4">Empresa</th>
                   <th className="px-6 py-4">CNPJ</th>
@@ -245,10 +245,10 @@ export default function ClientesPage() {
                   <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
                 {clientes.map(cliente => (
-                  <tr key={cliente.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                    <td className="px-6 py-4">
+                  <tr key={cliente.id} className="grid grid-cols-2 gap-x-3 gap-y-1 px-3 py-2.5 md:table-row hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                    <td className="col-span-2 min-w-0 md:table-cell md:px-6 md:py-4">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
                           <Users className="w-5 h-5" />
@@ -259,10 +259,10 @@ export default function ClientesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.cnpj}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.email || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.phone || '-'}</td>
-                    <td className="px-6 py-4">
+                    <td className="min-w-0 md:table-cell md:px-6 md:py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.cnpj}</td>
+                    <td className="min-w-0 md:table-cell md:px-6 md:py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.email || '-'}</td>
+                    <td className="min-w-0 md:table-cell md:px-6 md:py-4 text-sm text-gray-600 dark:text-gray-300">{cliente.phone || '-'}</td>
+                    <td className="min-w-0 md:table-cell md:px-6 md:py-4">
                       <span
                         className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
                           cliente.active
@@ -273,7 +273,7 @@ export default function ClientesPage() {
                         {cliente.active ? "Ativo" : "Inativo"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right whitespace-nowrap space-x-4">
+                    <td className="col-span-2 min-w-0 md:table-cell md:px-6 md:py-4 md:text-right whitespace-nowrap space-x-4">
                       <button onClick={() => openEdit(cliente)} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
                         Editar
                       </button>
@@ -294,10 +294,10 @@ export default function ClientesPage() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800">
-            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-              <h2 className="text-xl font-bold font-outfit text-gray-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center md:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 md:rounded-2xl w-full max-w-2xl md:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800">
+            <div className="p-3 md:p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+              <h2 className="text-base md:text-xl font-bold font-outfit text-gray-900 dark:text-white">
                 {editingId ? "Editar Cliente" : "Cadastrar Cliente"}
               </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
@@ -305,7 +305,7 @@ export default function ClientesPage() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4 overflow-y-auto">
+            <div className="p-3 md:p-6 space-y-2 md:space-y-4 overflow-y-auto">
               <div className="flex space-x-2">
                 <div className="flex-1 space-y-1.5">
                   <label className={LABEL}>CNPJ / CPF</label>
@@ -321,15 +321,15 @@ export default function ClientesPage() {
                   <button
                     onClick={handleCnpjSearch}
                     disabled={loadingCnpj}
-                    className="h-[46px] px-6 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors flex items-center justify-center"
+                    className="h-[34px] md:h-[46px] px-4 md:px-6 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl font-medium transition-colors flex items-center justify-center"
                   >
                     {loadingCnpj ? <Loader2 className="w-5 h-5 animate-spin" /> : "Buscar"}
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4 mt-4">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Razão Social</label>
                   <input
                     type="text"
@@ -338,7 +338,7 @@ export default function ClientesPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Nome Fantasia</label>
                   <input
                     type="text"
@@ -347,7 +347,7 @@ export default function ClientesPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Inscrição Estadual</label>
                   <input
                     type="text"
@@ -356,7 +356,7 @@ export default function ClientesPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Contato</label>
                   <input
                     type="text"
@@ -366,7 +366,7 @@ export default function ClientesPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>E-mail</label>
                   <input
                     type="email"
@@ -375,7 +375,7 @@ export default function ClientesPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Telefone</label>
                   <input
                     type="text"
@@ -386,7 +386,7 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                 <label className={LABEL}>Endereço Completo</label>
                 <input
                   type="text"
@@ -396,8 +396,8 @@ export default function ClientesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Condição de Pagamento</label>
                   <input
                     type="text"
@@ -407,7 +407,7 @@ export default function ClientesPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Limite de Crédito (R$)</label>
                   <input
                     type="number"
@@ -418,7 +418,7 @@ export default function ClientesPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label htmlFor="cliente-tabela-frete" className={LABEL}>Tabela de frete</label>
                   <select
                     id="cliente-tabela-frete"
@@ -441,17 +441,17 @@ export default function ClientesPage() {
 
             </div>
 
-            <div className="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">
+            <div className="p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="px-6 py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"
+                className="px-4 py-2 md:px-6 md:py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center space-x-2"
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 md:px-6 md:py-2.5 rounded-xl font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center space-x-2"
               >
                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                 <span>Salvar Cliente</span>

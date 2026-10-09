@@ -196,7 +196,7 @@ export default function Faturamento() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div>
         <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Faturamento</h1>
         <p className="text-gray-500 text-sm mt-1">Fature o frete das cargas entregues e acompanhe o recebimento</p>
@@ -208,7 +208,7 @@ export default function Faturamento() {
         </p>
       )}
 
-      <div className={`${CARD} p-6 space-y-5`}>
+      <div className={`${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
         <h2 className="font-semibold text-gray-900 dark:text-white">Nova fatura</h2>
 
         {resumo.length === 0 && !clienteId ? (
@@ -217,7 +217,7 @@ export default function Faturamento() {
           </p>
         ) : (
           <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Cliente</span>
+            <span className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Cliente</span>
             <select value={clienteId} onChange={(e) => void abrirCliente(e.target.value)} className={`${INPUT} w-full sm:w-96`}>
               <option value="">Escolha o cliente</option>
               {resumo.map((r) => (
@@ -270,12 +270,12 @@ export default function Faturamento() {
             </div>
 
             <div className="flex flex-wrap items-end gap-4">
-              <label className="space-y-1.5 block">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Vencimento</span>
+              <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
+                <span className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Vencimento</span>
                 <input type="date" required value={vencimento} onChange={(e) => setVencimento(e.target.value)} className={INPUT} />
               </label>
               <label className="space-y-1.5 block flex-1 min-w-[12rem]">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Observação (opcional)</span>
+                <span className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Observação (opcional)</span>
                 <input value={observacao} onChange={(e) => setObservacao(e.target.value)} className={`${INPUT} w-full`} />
               </label>
               <div className="text-right">

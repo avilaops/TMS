@@ -198,7 +198,7 @@ export default function UsuariosPage() {
     empresas.find((empresa) => empresa.id === id)?.companyName ?? "-";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div>
         <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Usuários</h1>
         <p className="text-gray-500 text-sm mt-1">Quem entra no sistema e com qual perfil</p>
@@ -223,8 +223,8 @@ export default function UsuariosPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleCreate} className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
+          <form onSubmit={handleCreate} className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+            <div className="space-y-0.5 md:space-y-1.5 min-w-0">
               <Label htmlFor="usuario-nome">Nome</Label>
               <Input
                 id="usuario-nome"
@@ -233,7 +233,7 @@ export default function UsuariosPage() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-0.5 md:space-y-1.5 min-w-0">
               <Label htmlFor="usuario-email">E-mail</Label>
               <Input
                 id="usuario-email"
@@ -244,7 +244,7 @@ export default function UsuariosPage() {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-0.5 md:space-y-1.5 min-w-0">
               <Label htmlFor="usuario-perfil">Perfil</Label>
               <select
                 id="usuario-perfil"

@@ -61,8 +61,8 @@ const SITUACAO: Record<Situacao, { rotulo: string; classe: string }> = {
 };
 
 const INPUT =
-  "w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white";
-const LABEL = "text-sm font-medium text-gray-700 dark:text-gray-300";
+  "block w-full min-w-0 px-3 py-1.5 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white";
+const LABEL = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
 const CARD = "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm";
 
 const nomeDoMes = (mes: string) => {
@@ -245,22 +245,23 @@ export default function FinanceiroPage() {
   const pagoOuRecebido = aba === "INCOME" ? "Marcar recebido" : "Marcar pago";
 
   const campo = (rotulo: string, chave: keyof typeof FORM_VAZIO, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
-    <label className="space-y-1.5 block">
+    <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
       <span className={LABEL}>{rotulo}</span>
       <input {...extra} value={form[chave]} onChange={(e) => setForm({ ...form, [chave]: e.target.value })} className={INPUT} />
     </label>
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap justify-between items-center gap-4">
+    <div className="space-y-3 md:space-y-6">
+      {/* Com o formulário aberto, o celular fica só com ele: é o que cabe numa tela. */}
+      <div className={`${formAberto ? "hidden md:flex" : "flex"} flex-wrap justify-between items-center gap-2 md:gap-4`}>
         <div>
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Financeiro</h1>
-          <p className="text-gray-500 text-sm mt-1">Contas a receber, contas a pagar e fluxo de caixa</p>
+          <p className="hidden md:block text-gray-500 text-sm mt-1">Contas a receber, contas a pagar e fluxo de caixa</p>
         </div>
         <button
           onClick={abrirNovo}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 md:px-4 md:py-2.5 text-sm md:text-base rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
         >
           <Plus className="w-4 h-4" />
           <span>Novo lançamento</span>
@@ -273,7 +274,7 @@ export default function FinanceiroPage() {
         </p>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className={`${formAberto ? "hidden md:grid" : "grid"} grid-cols-2 gap-2 md:gap-4 lg:grid-cols-5`}>
         <Cartao rotulo="A receber em aberto" valor={resumo.aReceber.aberto} icone={<ArrowUpRight className="w-5 h-5 text-green-600" />} />
         <Cartao rotulo="A receber vencido" valor={resumo.aReceber.vencido} alerta={resumo.aReceber.vencido > 0} icone={<AlertTriangle className="w-5 h-5 text-red-600" />} />
         <Cartao rotulo="A pagar em aberto" valor={resumo.aPagar.aberto} icone={<ArrowDownRight className="w-5 h-5 text-amber-600" />} />
@@ -282,10 +283,10 @@ export default function FinanceiroPage() {
       </div>
 
       {formAberto && (
-        <form onSubmit={salvar} className={`${CARD} p-6 space-y-5`}>
+        <form onSubmit={salvar} className={`${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
           <h2 className="font-semibold text-gray-900 dark:text-white">{editandoId ? "Alterar lançamento" : "Novo lançamento"}</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="space-y-1.5 block">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4 lg:grid-cols-3">
+            <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
               <span className={LABEL}>Tipo</span>
               <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as "INCOME" | "EXPENSE" })} className={INPUT}>
                 <option value="INCOME">Receita (a receber)</option>
@@ -296,7 +297,7 @@ export default function FinanceiroPage() {
             {campo("Valor (R$)", "amount", { required: true, inputMode: "decimal" })}
             {campo("Vencimento", "dueDate", { type: "date" })}
             {campo("Categoria", "category", { placeholder: "Combustível, manutenção, pedágio…", list: "categorias" })}
-            <label className="space-y-1.5 block">
+            <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
               <span className={LABEL}>Cliente</span>
               <select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className={INPUT}>
                 <option value="">Nenhum</option>
@@ -307,9 +308,9 @@ export default function FinanceiroPage() {
                 ))}
               </select>
             </label>
-            {campo(form.type === "INCOME" ? "Pagador (se não for cliente)" : "Fornecedor", "counterparty")}
+            {campo(form.type === "INCOME" ? "Pagador avulso" : "Fornecedor", "counterparty")}
             {!editandoId && (
-              <label className="space-y-1.5 block">
+              <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
                 <span className={LABEL}>Situação</span>
                 <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className={INPUT}>
                   <option value="PENDING">Em aberto</option>
@@ -318,7 +319,7 @@ export default function FinanceiroPage() {
               </label>
             )}
             {!editandoId && form.status === "PAID" && (
-              <label className="space-y-1.5 block">
+              <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
                 <span className={LABEL}>Forma de pagamento</span>
                 <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })} className={INPUT}>
                   <option value="">Não informada</option>
@@ -336,7 +337,7 @@ export default function FinanceiroPage() {
               <option key={c} value={c as string} />
             ))}
           </datalist>
-          <label className="space-y-1.5 block">
+          <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
             <span className={LABEL}>Observação</span>
             <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className={INPUT} />
           </label>
@@ -514,12 +515,12 @@ export default function FinanceiroPage() {
 
 function Cartao({ rotulo, valor, icone, alerta = false }: { rotulo: string; valor: number; icone: React.ReactNode; alerta?: boolean }) {
   return (
-    <div className={`${CARD} p-5`}>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{rotulo}</p>
+    <div className={`${CARD} p-3 md:p-5 last:odd:col-span-2 lg:last:odd:col-span-1`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs md:text-sm leading-tight text-gray-500">{rotulo}</p>
         {icone}
       </div>
-      <p className={`mt-2 text-xl font-bold ${alerta ? "text-red-600" : "text-gray-900 dark:text-white"}`}>{formatCurrency(valor)}</p>
+      <p className={`mt-1 md:mt-2 text-lg md:text-xl font-bold ${alerta ? "text-red-600" : "text-gray-900 dark:text-white"}`}>{formatCurrency(valor)}</p>
     </div>
   );
 }

@@ -129,7 +129,7 @@ describe("tela dos relatórios", () => {
     expect(cartao(tela, "Entregas no prazo")?.textContent).toMatch(/-$/);
     expect(cartao(tela, "Conversão de cotações")?.textContent).toMatch(/-$/);
     expect(tela.textContent).not.toContain("%");
-    expect(linha(tela, "Tempo médio da coleta à entrega")).toBe("-");
+    expect(linha(tela, "Tempo médio")).toBe("-");
     expect(linha(tela, "Inadimplência")).toBe("-");
     for (const aviso of ["Nenhuma entrega no período.", "Nenhuma carga no período.", "Nenhuma despesa paga no período."]) {
       expect(tela.textContent).toContain(aviso);
@@ -153,7 +153,7 @@ describe("tela dos relatórios", () => {
     expect(linha(tela, "No prazo")).toBe("6");
     expect(linha(tela, "Fora do prazo")).toBe("2");
     expect(linha(tela, "Sem medição")).toBe("1");
-    expect(linha(tela, "Tempo médio da coleta à entrega")).toBe("18,5 h");
+    expect(linha(tela, "Tempo médio")).toBe("18,5 h");
     expect(tela.querySelector('[data-status="DELIVERED"]')?.textContent).toBe("Entregue: 9");
     expect(tela.querySelector('[data-status="CANCELLED"]')?.textContent).toBe("Cancelada: 1");
 

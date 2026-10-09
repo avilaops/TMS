@@ -21,7 +21,7 @@ type Carga = { denied: DeniedReason } | { denied: null; erro: string } | { denie
 const FALHA = "Não foi possível carregar os relatórios.";
 
 const CARD = "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm";
-const CAMPO = "px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-950";
+const CAMPO = "min-w-0 w-full px-2 py-1.5 md:px-3 md:py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-950";
 
 async function carregar(de: string, ate: string): Promise<Carga> {
   try {
@@ -94,18 +94,18 @@ export default function RelatoriosPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="space-y-3 md:space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-2 md:gap-4">
         <div>
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Relatórios</h1>
-          <p className="text-gray-500 text-sm mt-1">Operação, comercial e financeiro do período</p>
+          <p className="hidden md:block text-gray-500 text-sm mt-1">Operação, comercial e financeiro do período</p>
         </div>
-        <div className="flex items-end gap-3">
-          <label className="text-xs text-gray-500">
+        <div className="flex items-end gap-2 md:gap-3">
+          <label className="min-w-0 text-xs text-gray-500">
             De
             <input type="month" value={periodo.de} onChange={(e) => mudarPeriodo("de", e.target.value)} className={`${CAMPO} block mt-1`} />
           </label>
-          <label className="text-xs text-gray-500">
+          <label className="min-w-0 text-xs text-gray-500">
             Até
             <input type="month" value={periodo.ate} onChange={(e) => mudarPeriodo("ate", e.target.value)} className={`${CAMPO} block mt-1`} />
           </label>
@@ -129,13 +129,17 @@ export default function RelatoriosPage() {
   );
 }
 
+const SECOES = ["Operação", "Comercial", "Financeiro"] as const;
+
 function Conteudo({ relatorio }: { relatorio: Resposta }) {
   const { operacional, comercial, financeiro } = relatorio;
   const { prazo } = operacional;
+  // No celular aparece uma seção por vez, escolhida nas abas; no computador, as três em sequência.
+  const [secao, setSecao] = useState<(typeof SECOES)[number]>("Operação");
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 md:gap-4 lg:grid-cols-4">
         <Cartao rotulo="Cargas no período" valor={String(operacional.cargas)} icone={<Package className="w-5 h-5 text-blue-600" />} />
         <Cartao rotulo="Entregas no prazo" valor={porcento(prazo.taxaNoPrazo)} icone={<CheckCircle2 className="w-5 h-5 text-emerald-600" />} />
         <Cartao rotulo="Conversão de cotações" valor={porcento(comercial.conversao)} icone={<TrendingUp className="w-5 h-5 text-violet-600" />} />
@@ -147,17 +151,33 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
         />
       </div>
 
-      <Secao titulo="Operação" descricao="Cargas criadas no período e entregas feitas nele. O prazo corre da coleta à entrega.">
+      <div role="tablist" aria-label="Seção" className="md:hidden grid grid-cols-3 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+        {SECOES.map((nome) => (
+          <button
+            key={nome}
+            type="button"
+            role="tab"
+            aria-selected={secao === nome}
+            data-aba={nome}
+            onClick={() => setSecao(nome)}
+            className={`py-1.5 rounded-lg text-sm font-semibold ${secao === nome ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+          >
+            {nome}
+          </button>
+        ))}
+      </div>
+
+      <Secao ativa={secao} titulo="Operação" descricao="Cargas criadas no período e entregas feitas nele. O prazo corre da coleta à entrega.">
         <Linhas
           itens={[
             ["Entregas", String(prazo.entregas)],
             ["No prazo", String(prazo.noPrazo)],
             ["Fora do prazo", String(prazo.foraDoPrazo)],
             ["Sem medição", String(prazo.semMedicao)],
-            ["Tempo médio da coleta à entrega", horas(prazo.tempoMedioHoras)],
+            ["Tempo médio", horas(prazo.tempoMedioHoras)],
           ]}
         />
-        <div className="flex flex-wrap gap-2 px-5 pb-5">
+        <div className="flex flex-wrap gap-1.5 md:gap-2 px-3 pb-3 md:px-5 md:pb-5">
           {Object.entries(operacional.porStatus).map(([status, quantidade]) => {
             const selo = statusBadge(COLLECTION_STATUS, status);
             return (
@@ -177,7 +197,7 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
         />
       </Secao>
 
-      <Secao titulo="Comercial" descricao="Cotações recebidas no período e frete das cargas criadas nele, por cliente.">
+      <Secao ativa={secao} titulo="Comercial" descricao="Cotações recebidas no período e frete das cargas criadas nele, por cliente.">
         <Linhas
           itens={[
             ["Cotações recebidas", String(comercial.cotacoes)],
@@ -195,7 +215,7 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
         />
       </Secao>
 
-      <Secao titulo="Financeiro" descricao="Recebido e pago no período, pela data do pagamento. A inadimplência é a posição de hoje.">
+      <Secao ativa={secao} titulo="Financeiro" descricao="Recebido e pago no período, pela data do pagamento. A inadimplência é a posição de hoje.">
         <Linhas
           itens={[
             ["Recebido", formatCurrency(financeiro.recebido)],
@@ -207,7 +227,7 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
           ]}
         />
         {financeiro.vencido > 0 && (
-          <p className="flex items-center gap-2 px-5 pb-4 text-sm text-red-600">
+          <p className="flex items-center gap-2 px-3 pb-3 md:px-5 md:pb-4 text-sm text-red-600">
             <AlertTriangle className="w-4 h-4" />
             <span>
               Há valores vencidos.{" "}
@@ -229,22 +249,22 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
 
 function Cartao({ rotulo, valor, icone, alerta = false }: { rotulo: string; valor: string; icone: React.ReactNode; alerta?: boolean }) {
   return (
-    <div className={`${CARD} p-5`} data-cartao={rotulo}>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{rotulo}</p>
+    <div className={`${CARD} p-3 md:p-5`} data-cartao={rotulo}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs md:text-sm leading-tight text-gray-500">{rotulo}</p>
         {icone}
       </div>
-      <p className={`mt-2 text-xl font-bold ${alerta ? "text-red-600" : "text-gray-900 dark:text-white"}`}>{valor}</p>
+      <p className={`mt-1 md:mt-2 text-lg md:text-xl font-bold ${alerta ? "text-red-600" : "text-gray-900 dark:text-white"}`}>{valor}</p>
     </div>
   );
 }
 
-function Secao({ titulo, descricao, children }: { titulo: string; descricao: string; children: React.ReactNode }) {
+function Secao({ ativa, titulo, descricao, children }: { ativa: string; titulo: string; descricao: string; children: React.ReactNode }) {
   return (
-    <section className={`${CARD} overflow-hidden`} aria-label={titulo}>
-      <div className="px-5 pt-5">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{titulo}</h2>
-        <p className="mt-1 text-sm text-gray-500">{descricao}</p>
+    <section className={`${ativa === titulo ? "" : "hidden md:block "}${CARD} overflow-hidden`} aria-label={titulo}>
+      <div className="px-3 pt-3 md:px-5 md:pt-5">
+        <h2 className="hidden md:block text-lg font-semibold text-gray-900 dark:text-white">{titulo}</h2>
+        <p className="md:mt-1 text-xs md:text-sm text-gray-500">{descricao}</p>
       </div>
       {children}
     </section>
@@ -253,11 +273,11 @@ function Secao({ titulo, descricao, children }: { titulo: string; descricao: str
 
 function Linhas({ itens }: { itens: [string, string][] }) {
   return (
-    <dl className="grid gap-4 p-5 sm:grid-cols-3 lg:grid-cols-6">
+    <dl className="grid grid-cols-3 gap-x-2 gap-y-3 p-3 md:gap-4 md:p-5 lg:grid-cols-6">
       {itens.map(([rotulo, valor]) => (
         <div key={rotulo} data-linha={rotulo}>
-          <dt className="text-xs text-gray-500">{rotulo}</dt>
-          <dd className="mt-1 font-semibold text-gray-900 dark:text-white">{valor}</dd>
+          <dt className="text-[11px] md:text-xs leading-tight text-gray-500">{rotulo}</dt>
+          <dd className="mt-0.5 md:mt-1 text-sm md:text-base font-semibold text-gray-900 dark:text-white">{valor}</dd>
         </div>
       ))}
     </dl>
@@ -265,7 +285,7 @@ function Linhas({ itens }: { itens: [string, string][] }) {
 }
 
 function Tabela({ colunas, linhas, vazio }: { colunas: string[]; linhas: { chave: string; celulas: string[] }[]; vazio: string }) {
-  if (linhas.length === 0) return <p className="px-5 pb-6 text-sm text-gray-500">{vazio}</p>;
+  if (linhas.length === 0) return <p className="px-3 pb-3 md:px-5 md:pb-6 text-sm text-gray-500">{vazio}</p>;
 
   return (
     <div className="overflow-x-auto border-t border-gray-100 dark:border-gray-800">
@@ -273,7 +293,7 @@ function Tabela({ colunas, linhas, vazio }: { colunas: string[]; linhas: { chave
         <thead className="bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
           <tr>
             {colunas.map((coluna, i) => (
-              <th key={coluna} className={`px-4 py-3 font-medium ${i === 0 ? "" : "text-right"}`}>
+              <th key={coluna} className={`px-2 py-2 md:px-4 md:py-3 text-xs md:text-sm font-medium ${i === 0 ? "" : "text-right"}`}>
                 {coluna}
               </th>
             ))}
@@ -283,7 +303,7 @@ function Tabela({ colunas, linhas, vazio }: { colunas: string[]; linhas: { chave
           {linhas.map((linha) => (
             <tr key={linha.chave} data-linha-da-tabela={linha.chave}>
               {linha.celulas.map((celula, i) => (
-                <td key={i} className={`px-4 py-3 ${i === 0 ? "font-medium text-gray-900 dark:text-white" : "text-right text-gray-600 dark:text-gray-300"}`}>
+                <td key={i} className={`px-2 py-2 md:px-4 md:py-3 ${i === 0 ? "font-medium text-gray-900 dark:text-white" : "text-right text-gray-600 dark:text-gray-300"}`}>
                   {celula}
                 </td>
               ))}
