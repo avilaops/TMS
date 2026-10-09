@@ -5,6 +5,7 @@ import {
   LEAD_MANUAL_STATUSES,
   LEAD_STATUSES,
   LEAD_STATUS_LABELS,
+  divergenciaDeFrete,
   isConvertible,
   type LeadStatus,
 } from "@/lib/crm";
@@ -80,6 +81,8 @@ export default function CRMPage() {
   const [clientes, setClientes] = useState<Cliente[] | null>(null);
   const [conversao, setConversao] = useState<Conversao | null>(null);
   const [enviando, setEnviando] = useState(false);
+  // Confirmação da última conversão, quando o frete da coleta não é o valor estimado do lead.
+  const [confirmacao, setConfirmacao] = useState<string | null>(null);
 
   function receber(res: Resposta<QuoteLead[]>) {
     if (res.ok) setLeads(res.dados);
@@ -123,6 +126,7 @@ export default function CRMPage() {
 
   async function abrirConversao(lead: QuoteLead) {
     setEditingLead(null);
+    setConfirmacao(null);
     setConversao({
       leadId: lead.id,
       clientId: "",
@@ -141,7 +145,7 @@ export default function CRMPage() {
 
   async function converter(form: Conversao) {
     setEnviando(true);
-    const res = await chamar<{ lead: QuoteLead }>(
+    const res = await chamar<{ lead: QuoteLead; collection?: { freightValue?: number | null } }>(
       `/api/dashboard/crm/${form.leadId}/converter`,
       json("POST", {
         clientId: form.clientId,
@@ -154,6 +158,19 @@ export default function CRMPage() {
     if (!res.ok) return setErro(res.erro);
     setConversao(null);
     trocar(res.dados.lead);
+
+    // A coleta nasce com o frete da tabela, não com o valor da cotação. Quando
+    // os dois não batem, o operador precisa saber antes de a carga ser faturada.
+    const { lead } = res.dados;
+    const divergencia = divergenciaDeFrete(lead.estimatedValue, res.dados.collection?.freightValue);
+    setConfirmacao(
+      divergencia &&
+        `Cotação de ${lead.companyName} convertida em coleta. Valor estimado na cotação: ${formatCurrency(divergencia.estimado)}. ` +
+          (divergencia.frete === null
+            ? "A coleta nasceu sem frete (a cotar): não há tabela para este destino. "
+            : `Frete da coleta pela tabela: ${formatCurrency(divergencia.frete)}. `) +
+          "É o frete da coleta que vai para a fatura: para cobrar o valor da cotação, edite o frete na coleta.",
+    );
   }
 
   if (loading) {
@@ -178,6 +195,12 @@ export default function CRMPage() {
       {erro && (
         <div role="alert" className="mb-6 px-4 py-3 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50">
           {erro}
+        </div>
+      )}
+
+      {confirmacao && (
+        <div role="status" className="mb-6 px-4 py-3 text-sm text-amber-800 border border-amber-200 rounded-lg bg-amber-50">
+          {confirmacao}
         </div>
       )}
 
@@ -341,6 +364,7 @@ export default function CRMPage() {
                                   onChange={(e) => setConversao({ ...form, invoiceValue: e.target.value })}
                                   className="px-2 py-1 border rounded"
                                 />
+                                <span className="text-gray-400">Vazio: a coleta nasce sem valor de nota.</span>
                               </label>
                               <p data-carga className="text-gray-500">
                                 Carga do pedido: {lead.origin} ➔ {lead.destination}, {lead.volumes} vol, {lead.weight} kg

@@ -38,6 +38,7 @@ export const LEAD_INCLUDE = {
 } as const;
 
 // O que a conversão devolve da coleta criada. Sem o cadastro do cliente.
+// `freightValue` vai junto para a tela comparar com o valor estimado do lead.
 export const CONVERTED_COLLECTION_SELECT = {
   id: true,
   trackingCode: true,
@@ -50,7 +51,24 @@ export const CONVERTED_COLLECTION_SELECT = {
   volumes: true,
   weight: true,
   invoiceValue: true,
+  freightValue: true,
 } as const;
+
+/**
+ * O valor estimado no lead e o frete com que a coleta nasceu são números
+ * diferentes: o primeiro é o que o comercial combinou no funil, o segundo sai
+ * da tabela de frete e é o que o faturamento cobra. A conversão não troca um
+ * pelo outro; quando divergem, a tela mostra os dois para o operador decidir
+ * se ajusta o frete na coleta. Sem valor estimado não há o que comparar.
+ */
+export function divergenciaDeFrete(
+  estimatedValue: number | null | undefined,
+  freightValue: number | null | undefined,
+): { estimado: number; frete: number | null } | null {
+  if (estimatedValue === null || estimatedValue === undefined || freightValue === undefined) return null;
+  if (freightValue !== null && Math.round(estimatedValue * 100) === Math.round(freightValue * 100)) return null;
+  return { estimado: estimatedValue, frete: freightValue };
+}
 
 const INVALID_BODY = "Dados inválidos.";
 const NOTHING_TO_CHANGE = "Informe ao menos um campo para alterar.";

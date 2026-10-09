@@ -68,9 +68,15 @@ export async function POST(
         if (!client) throw new Recusa(400, INACTIVE_CLIENT_MESSAGE);
 
         const lead = await tx.quoteLead.findUniqueOrThrow({ where: { id } });
-        const invoiceValue = data.invoiceValue ?? lead.invoiceValue;
+        // Ausente (`undefined`) herda o valor informado no pedido de cotação.
+        // Apagado (`null`, o campo vazio do formulário) grava a coleta sem valor de nota.
+        const invoiceValue = data.invoiceValue === undefined ? lead.invoiceValue : data.invoiceValue;
 
-        // Como toda coleta: o frete sai da tabela do cliente (ou da padrão).
+        // Como toda coleta: o frete sai da tabela do cliente (ou da padrão). O
+        // valor estimado do lead não entra aqui de propósito: é o `freightValue`
+        // que o faturamento cobra, e trocá-lo por um número digitado no funil
+        // tiraria a coleta da tabela sem ninguém decidir isso. A resposta leva o
+        // frete para a tela mostrar a diferença quando houver.
         const frete = await freteDaColeta(tx, {
           clientId: data.clientId,
           destination: lead.destination,

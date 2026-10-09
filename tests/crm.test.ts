@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { getServerSession } from "next-auth";
 import { randomInt } from "node:crypto";
 import { EMPRESA_OUTRA, EMPRESA_PADRAO } from "./empresas-de-teste";
+import { divergenciaDeFrete } from "../src/lib/crm";
 
 /**
  * Funil de cotações (CRM) e conversão da cotação em coleta, contra um
@@ -22,6 +23,25 @@ if (!temBanco) {
 }
 
 const suite = temBanco ? describe : describe.skip;
+
+/** Sem banco: quando a tela avisa que o frete da coleta não é o valor da cotação. */
+describe("divergência entre o valor estimado do lead e o frete da coleta", () => {
+  it("avisa quando os valores diferem ou a coleta nasceu a cotar; cala quando batem ou não há o que comparar", () => {
+    expect(divergenciaDeFrete(150, 50)).toEqual({ estimado: 150, frete: 50 });
+    expect(divergenciaDeFrete(0, 50)).toEqual({ estimado: 0, frete: 50 });
+    expect(divergenciaDeFrete(150, null)).toEqual({ estimado: 150, frete: null });
+    expect(divergenciaDeFrete(150, 0)).toEqual({ estimado: 150, frete: 0 });
+
+    expect(divergenciaDeFrete(150, 150)).toBeNull();
+    // Diferença menor que um centavo é a mesma conta com outro arredondamento.
+    expect(divergenciaDeFrete(0.1 + 0.2, 0.3)).toBeNull();
+    // Lead sem valor estimado: não há preço combinado para divergir.
+    expect(divergenciaDeFrete(null, 50)).toBeNull();
+    expect(divergenciaDeFrete(null, null)).toBeNull();
+    // Resposta sem o frete (rota antiga): a tela não inventa um aviso.
+    expect(divergenciaDeFrete(150, undefined)).toBeNull();
+  });
+});
 
 // Tudo o que esta suite cria usa estes marcadores, e só isso é apagado.
 const PREFIXO = "teste-crm-";
@@ -164,6 +184,40 @@ suite("CRM e cotações", () => {
       const semNota = await leads.POST(req("POST", pedido()));
       const semNotaId = ((await semNota.json()) as { lead: { id: string } }).lead.id;
       expect(await noBanco(semNotaId)).toMatchObject({ invoiceValue: null, collectionId: null, status: "NEW" });
+    });
+
+    it("a resposta pública tem o formato de antes: sem valor da nota e sem a coleta da conversão", async () => {
+      sessao.mockResolvedValue(null);
+      const CHAVES = [
+        "companyName",
+        "createdAt",
+        "destination",
+        "email",
+        "estimatedValue",
+        "id",
+        "origin",
+        "phone",
+        "status",
+        "tenantId",
+        "updatedAt",
+        "volumes",
+        "weight",
+      ];
+
+      const doSite = await leads.POST(req("POST", pedido({ invoiceValue: "1500,50", phone: "17999990000" })));
+      expect(doSite.status).toBe(200);
+      const corpo = (await doSite.json()) as { lead: Record<string, unknown> };
+      expect(Object.keys(corpo).sort()).toEqual(["estimatedValue", "lead", "message", "prazoHoras"]);
+      expect(Object.keys(corpo.lead).sort()).toEqual(CHAVES);
+      expect(corpo.lead).toMatchObject({ companyName: "Interessado", phone: "17999990000", volumes: 2, weight: 100, status: "NEW" });
+
+      const cotacao = await cotacoes.POST(req("POST", pedido({ invoiceValue: 800 })));
+      expect(cotacao.status).toBe(201);
+      const lead = (await cotacao.json()) as Record<string, unknown>;
+      expect(Object.keys(lead).sort()).toEqual(CHAVES);
+
+      // O valor da nota foi gravado; só não volta na resposta.
+      expect((await noBanco(String(lead.id))).invoiceValue).toBe(800);
     });
   });
 
@@ -361,7 +415,7 @@ suite("CRM e cotações", () => {
 
       expect(Object.keys(corpo).sort()).toEqual(["collection", "lead"]);
       expect(Object.keys(corpo.collection).sort()).toEqual(
-        ["clientId", "destination", "id", "invoiceValue", "origin", "receiver", "sender", "status", "trackingCode", "volumes", "weight"],
+        ["clientId", "destination", "freightValue", "id", "invoiceValue", "origin", "receiver", "sender", "status", "trackingCode", "volumes", "weight"],
       );
       expect(corpo.collection).toMatchObject({
         clientId: clientes.ativo,
@@ -408,7 +462,7 @@ suite("CRM e cotações", () => {
       expect(await noBanco(lead.id)).toMatchObject({ status: "CONVERTED", collectionId: coleta.id, estimatedValue: 150 });
     });
 
-    it("valor da nota: o do corpo vale; sem ele, o do lead; sem nenhum, nulo", async () => {
+    it("valor da nota: o do corpo vale; ausente herda o do lead; apagado grava sem valor", async () => {
       const convertida = async (lead: { id: string }, extra: Record<string, unknown>) => {
         const res = await converterLead(lead.id, conversao(extra));
         expect(res.status).toBe(201);
@@ -416,9 +470,58 @@ suite("CRM e cotações", () => {
       };
 
       expect(await convertida(await criarLead(), { invoiceValue: "3500,75" })).toBe(3500.75);
-      expect(await convertida(await criarLead(), { invoiceValue: "" })).toBe(2000);
+      expect(await convertida(await criarLead(), { invoiceValue: 0 })).toBe(0);
+      // Ausente: a chave não veio, vale o valor informado no pedido de cotação.
       expect(await convertida(await criarLead(), {})).toBe(2000);
       expect(await convertida(await criarLead({ invoiceValue: null }), {})).toBeNull();
+      // Apagado: o operador limpou o campo (a tela manda "") ou mandou `null`.
+      // A coleta nasce sem valor de nota, e o lead guarda o que o cliente informou.
+      const apagado = await criarLead();
+      expect(await convertida(apagado, { invoiceValue: "" })).toBeNull();
+      expect(await convertida(await criarLead(), { invoiceValue: "   " })).toBeNull();
+      expect(await convertida(await criarLead(), { invoiceValue: null })).toBeNull();
+      expect((await noBanco(apagado.id)).invoiceValue).toBe(2000);
+      const coleta = await banco.sistema.collection.findFirstOrThrow({ where: { quoteLead: { id: apagado.id } } });
+      expect(coleta.invoiceValue).toBeNull();
+    });
+
+    it("o frete da coleta é o da tabela mesmo com outro valor estimado no lead, e a resposta leva o frete", async () => {
+      const tabela = await banco.default.freightTable.create({
+        data: {
+          name: `${PREFIXO}tabela do valor estimado`,
+          includedWeightKg: 200,
+          cities: { create: [{ city: "Mirassol", cityKey: "mirassol", minimum: 50, deadlineHours: 24 }] },
+        },
+      });
+      await banco.default.client.update({ where: { id: clientes.ativo }, data: { freightTableId: tabela.id } });
+      try {
+        // O comercial fechou 150 no funil; a tabela do cliente dá 50.
+        const lead = await criarLead({ estimatedValue: 150 });
+        const res = await converterLead(lead.id);
+        expect(res.status).toBe(201);
+        const corpo = (await res.json()) as {
+          lead: { estimatedValue: number | null };
+          collection: { id: string; freightValue: number | null };
+        };
+
+        // Os dois valores saem na resposta: é com eles que a tela avisa a diferença.
+        expect(corpo.lead.estimatedValue).toBe(150);
+        expect(corpo.collection.freightValue).toBe(50);
+        // O valor do lead não vira frete: a coleta segue na tabela, sem frete manual.
+        expect(await banco.sistema.collection.findUniqueOrThrow({ where: { id: corpo.collection.id } })).toMatchObject({
+          freightValue: 50,
+          freightManual: false,
+          freightTableId: tabela.id,
+        });
+        expect((await noBanco(lead.id)).estimatedValue).toBe(150);
+      } finally {
+        await banco.default.client.update({ where: { id: clientes.ativo }, data: { freightTableId: null } });
+        await banco.default.freightTable.delete({ where: { id: tabela.id } });
+      }
+
+      // Sem tabela para o destino a coleta nasce a cotar, e a resposta diz isso com `null`.
+      const semTabela = await converterLead((await criarLead()).id);
+      expect(((await semTabela.json()) as { collection: { freightValue: number | null } }).collection.freightValue).toBeNull();
     });
 
     it("a coleta convertida nasce com o frete da tabela do cliente, como toda coleta", async () => {

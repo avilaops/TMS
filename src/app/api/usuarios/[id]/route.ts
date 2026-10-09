@@ -33,9 +33,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const usuario = await transacao(async (tx) => {
       // Trava as linhas de ADMIN: sem isto, dois administradores rebaixando um
       // ao outro ao mesmo tempo passariam os dois pela contagem abaixo.
-      if (data.role !== undefined) {
-        await tx.$queryRaw`SELECT id FROM "User" WHERE role = 'ADMIN' FOR UPDATE`;
-      }
+      //
+      // Vale também para a troca só de nome. Sem a trava, a releitura do autor
+      // logo abaixo seria um retrato solto: um administrador rebaixado entre
+      // ela e o `update` ainda trocaria um nome. É a mesma consulta nos dois
+      // casos, e não só a linha do autor, para que toda alteração de usuário
+      // pegue as travas na mesma ordem (ADMIN primeiro, alvo depois) e uma não
+      // fique esperando a outra em círculo.
+      await tx.$queryRaw`SELECT id FROM "User" WHERE role = 'ADMIN' FOR UPDATE`;
 
       // `requireStaff` conferiu o perfil antes da transação. Quem ficou parado
       // na trava acima pode ter sido rebaixado nesse meio-tempo: aqui a

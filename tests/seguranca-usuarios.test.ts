@@ -469,12 +469,69 @@ suite("segurança de usuários e motoristas", () => {
         expect((await prisma.user.findUniqueOrThrow({ where: { id: c.id } })).role).toBe("ADMIN");
         expect((await prisma.user.findUniqueOrThrow({ where: { id: b.id } })).role).toBe("OPERATION");
 
-        // Trocar só o nome não passa pela trava, mas a conferência vale igual.
+        // Já rebaixado, sem corrida nenhuma: trocar só o nome também é recusado.
         const soNome = await usuario.PATCH(req("PATCH", { name: "Nome trocado por ex-admin" }), ctx(c.id));
         expect(soNome.status).toBe(403);
       } finally {
         await prisma.user.updateMany({ where: { id: { in: [b.id, c.id] } }, data: { role: "OPERATION" } });
       }
+    });
+
+    it("troca só de nome também espera a trava: autor rebaixado nesse meio-tempo leva 403 e o nome não muda", async () => {
+      // B (autor) troca o nome de C. Enquanto isso, outro administrador rebaixa B.
+      // Sem a trava na troca de nome, a rota relia o perfil de B antes do
+      // rebaixamento valer e gravava o nome com um autor que já não era ADMIN.
+      const b = await criarUsuario(`${PREFIXO}nome-autor-b@exemplo.br`, "ADMIN");
+      const c = await criarUsuario(`${PREFIXO}nome-alvo-c@exemplo.br`, "OPERATION");
+      const NOME_ANTES = c.name;
+      try {
+        sessao.mockResolvedValue(sessaoDe(b.id));
+
+        const resposta = await sistema.$transaction(
+          async (tx) => {
+            // Só a linha de B fica presa: C é OPERATION e está livre, então quem
+            // parar aqui parou na trava das linhas de ADMIN, não no `update` do alvo.
+            await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${b.id} FOR UPDATE`;
+
+            const chamada = usuario.PATCH(req("PATCH", { name: "Nome trocado por ex-admin" }), ctx(c.id));
+
+            await vi.waitFor(
+              async () => {
+                const [{ parados }] = await tx.$queryRaw<{ parados: number }[]>`
+                  SELECT count(DISTINCT pid)::int AS parados FROM pg_locks WHERE NOT granted`;
+                expect(parados, "PATCH de nome parado na trava").toBe(1);
+              },
+              { timeout: 4000, interval: 20 },
+            );
+
+            await tx.user.update({ where: { id: b.id }, data: { role: "OPERATION" } });
+            return [chamada];
+          },
+          { timeout: 15000 },
+        ).then(([chamada]) => chamada);
+
+        expect(resposta.status).toBe(403);
+        expect(await resposta.json()).toEqual({ error: "Acesso negado" });
+        expect((await prisma.user.findUniqueOrThrow({ where: { id: c.id } })).name).toBe(NOME_ANTES);
+      } finally {
+        await prisma.user.updateMany({ where: { id: { in: [b.id, c.id] } }, data: { role: "OPERATION" } });
+      }
+    });
+
+    it("administrador em dia troca o nome de outro usuário normalmente, e de dois ao mesmo tempo", async () => {
+      const c = await criarUsuario(`${PREFIXO}nome-livre-c@exemplo.br`, "OPERATION");
+      const d = await criarUsuario(`${PREFIXO}nome-livre-d@exemplo.br`, "OPERATION");
+      entrarComo("ADMIN");
+
+      // Duas trocas de nome juntas pegam a mesma trava, uma depois da outra: nenhuma falha.
+      const respostas = await Promise.all([
+        usuario.PATCH(req("PATCH", { name: "Nome novo de C" }), ctx(c.id)),
+        usuario.PATCH(req("PATCH", { name: "Nome novo de D" }), ctx(d.id)),
+      ]);
+      expect(respostas.map((r) => r.status)).toEqual([200, 200]);
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: c.id } })).name).toBe("Nome novo de C");
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: d.id } })).name).toBe("Nome novo de D");
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: ids.ADMIN } })).role).toBe("ADMIN");
     });
   });
 });

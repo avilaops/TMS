@@ -32,6 +32,25 @@ const pedidoSchema = z.object({
   invoiceValue: z.preprocess(numeroDoFormulario, z.number().min(0).max(1000000000)).optional(),
 });
 
+// O que as duas rotas públicas devolvem do lead gravado. A lista é fechada de
+// propósito: o site consome este formato, e coluna nova do funil (valor da
+// nota, coleta da conversão) não sai para fora por acréscimo.
+const LEAD_PUBLICO_SELECT = {
+  tenantId: true,
+  id: true,
+  companyName: true,
+  email: true,
+  phone: true,
+  origin: true,
+  destination: true,
+  volumes: true,
+  weight: true,
+  estimatedValue: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export type ResultadoDaCotacao =
   | { ok: false; status: 400 | 404; erro: string }
   | {
@@ -75,6 +94,7 @@ export async function registrarCotacao(corpo: unknown, opcoes: { volumesPadrao?:
       invoiceValue: pedido.invoiceValue ?? null,
       status: "NEW",
     },
+    select: LEAD_PUBLICO_SELECT,
   });
 
   return {

@@ -263,6 +263,103 @@ describe("tela do funil de cotações", () => {
     expect(alerta(tela)).toBeNull();
   });
 
+  const aviso = (tela: HTMLElement) => tela.querySelector<HTMLElement>('[role="status"]');
+  const semNbsp = (texto: string | null | undefined) => (texto ?? "").replace(/\s/g, " ");
+
+  /** Converte o lead da tela com a resposta dada e devolve a tela já com o cartão em Convertidos. */
+  async function converterCom(collection: Record<string, unknown>, doLead: Record<string, unknown> = {}) {
+    const convertido = lead({
+      status: "CONVERTED",
+      collection: { id: "c-9", trackingCode: "0000000123", status: "CONFIRMED" },
+      ...doLead,
+    });
+    const resultado = await abrir([lead(doLead)], {
+      "GET /api/clientes": [{ body: CLIENTES }],
+      "POST /api/dashboard/crm/lead-1/converter": [{ status: 201, body: { lead: convertido, collection: { id: "c-9", ...collection } } }],
+    });
+    const { tela } = resultado;
+    await clicar(botao(cartao(tela), "Converter em coleta"));
+    const form = cartao(tela).querySelector("form")!;
+    await ate(() => expect(form.querySelectorAll('select[name="clientId"] option')).toHaveLength(3));
+    return { ...resultado, form };
+  }
+
+  async function confirmar(tela: HTMLElement, form: HTMLFormElement) {
+    await clicar(botao(form, "Confirmar conversão"));
+    await ate(() => expect(coluna(tela, "CONVERTED").contains(cartao(tela))).toBe(true));
+  }
+
+  it("frete da tabela diferente do valor estimado: a confirmação mostra os dois valores, sem ser erro", async () => {
+    const { tela, form } = await converterCom({ freightValue: 50 });
+    expect(aviso(tela)).toBeNull();
+    await confirmar(tela, form);
+
+    await ate(() => expect(aviso(tela)).not.toBeNull());
+    expect(semNbsp(aviso(tela)!.textContent)).toBe(
+      "Cotação de Indústria Interessada convertida em coleta. Valor estimado na cotação: R$ 150,00. " +
+        "Frete da coleta pela tabela: R$ 50,00. " +
+        "É o frete da coleta que vai para a fatura: para cobrar o valor da cotação, edite o frete na coleta.",
+    );
+    expect(aviso(tela)!.className).toContain("text-amber-800");
+    expect(alerta(tela)).toBeNull();
+    // O cartão convertido continua mostrando o valor da cotação, que não foi trocado.
+    expect(semNbsp(cartao(tela).textContent)).toContain("Preço: R$ 150,00");
+  });
+
+  it("coleta que nasceu a cotar, com valor estimado no lead: a confirmação diz que não há frete da tabela", async () => {
+    const { tela, form } = await converterCom({ freightValue: null });
+    await confirmar(tela, form);
+
+    await ate(() => expect(aviso(tela)).not.toBeNull());
+    const texto = semNbsp(aviso(tela)!.textContent);
+    expect(texto).toContain("Valor estimado na cotação: R$ 150,00.");
+    expect(texto).toContain("A coleta nasceu sem frete (a cotar)");
+    expect(texto).not.toContain("Frete da coleta pela tabela");
+  });
+
+  it.each([
+    ["o frete é igual ao valor estimado", { freightValue: 150 }, {}],
+    ["o lead não tem valor estimado", { freightValue: 50 }, { estimatedValue: null }],
+  ])("quando %s, a conversão não mostra aviso de valores", async (_caso, collection, doLead) => {
+    const { tela, form } = await converterCom(collection, doLead);
+    await confirmar(tela, form);
+
+    expect(aviso(tela)).toBeNull();
+    expect(alerta(tela)).toBeNull();
+  });
+
+  it("o aviso de valores some quando o operador abre outra conversão", async () => {
+    const outro = lead({ id: "lead-2", companyName: "Outra Indústria" });
+    const convertido = lead({ status: "CONVERTED", collection: { id: "c-9", trackingCode: "0000000123", status: "CONFIRMED" } });
+    const { tela } = await abrir([lead(), outro], {
+      "GET /api/clientes": [{ body: CLIENTES }],
+      "POST /api/dashboard/crm/lead-1/converter": [{ status: 201, body: { lead: convertido, collection: { id: "c-9", freightValue: 50 } } }],
+    });
+
+    await clicar(botao(cartao(tela), "Converter em coleta"));
+    await ate(() => expect(cartao(tela).querySelectorAll('select[name="clientId"] option')).toHaveLength(3));
+    await confirmar(tela, cartao(tela).querySelector("form")!);
+    await ate(() => expect(aviso(tela)).not.toBeNull());
+
+    await clicar(botao(cartao(tela, "lead-2"), "Converter em coleta"));
+    expect(aviso(tela)).toBeNull();
+  });
+
+  it("campo do valor da nota apagado vai vazio para a rota, que grava a coleta sem valor de nota", async () => {
+    const { tela, form, pedidos } = await converterCom({ freightValue: 150, invoiceValue: null });
+    const campo = form.querySelector<HTMLInputElement>('input[name="invoiceValue"]')!;
+    expect(campo.value).toBe("2000");
+    expect(form.textContent).toContain("Vazio: a coleta nasce sem valor de nota.");
+
+    await preencher(campo, "");
+    await preencher(form.querySelector<HTMLSelectElement>('select[name="clientId"]')!, "cli-1");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="receiver"]')!, "Loja Centro");
+    await confirmar(tela, form);
+
+    // A chave vai, vazia: é o que separa "apagado" de "não informado" na rota.
+    expect(pedidos.at(-1)!.corpo).toEqual({ clientId: "cli-1", sender: "Indústria Interessada", receiver: "Loja Centro", invoiceValue: "" });
+  });
+
   it.each([
     [400, "Informe o destinatário."],
     [404, "Cotação não encontrada."],
