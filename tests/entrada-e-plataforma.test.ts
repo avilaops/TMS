@@ -268,7 +268,7 @@ describe("liberação de acesso no login único", () => {
       { email: "novo@exemplo.br", nome: "Novo", cpf: "12345678901", telefone: null },
       { empresa: "Mello Transportes", convidadoPor: "Rogério" },
     );
-    expect(acesso).toEqual({ ok: true, contaNova: true, enviado: true, convite: null });
+    expect(acesso).toEqual({ ok: true, contaNova: true, envio: "enviado", convite: null, entrada: "https://tms.avilaops.com/login" });
 
     expect(chamadas).toHaveLength(1);
     expect(chamadas[0].url).toBe("https://auth.avilaops.com/api/provisionamento/acessos");
@@ -290,8 +290,9 @@ describe("liberação de acesso no login único", () => {
     expect(await acessos.liberarAcesso({ email: "novo@exemplo.br", nome: "Novo" })).toEqual({
       ok: true,
       contaNova: true,
-      enviado: false,
+      envio: "sem_email",
       convite: "https://auth.avilaops.com/recuperar/abc",
+      entrada: null,
     });
   });
 
@@ -300,9 +301,32 @@ describe("liberação de acesso no login único", () => {
     expect(await acessos.liberarAcesso({ email: "velho@exemplo.br", nome: "Velho" })).toEqual({
       ok: true,
       contaNova: false,
-      enviado: true,
+      envio: "enviado",
       convite: null,
+      entrada: null,
     });
+  });
+
+  it("conta que já existia e e-mail que não saiu: o motivo e a entrada do TMS chegam inteiros", async () => {
+    vi.stubEnv("NEXTAUTH_URL", "https://tms.avilaops.com");
+    for (const envio of ["falhou", "limite", "sem_email", "nao_pedido"] as const) {
+      authResponde(200, { email: "velho@exemplo.br", criada: false, convite: null, envio });
+      expect(await acessos.liberarAcesso({ email: "velho@exemplo.br", nome: "Velho" }), envio).toEqual({
+        ok: true,
+        contaNova: false,
+        envio,
+        convite: null,
+        entrada: "https://tms.avilaops.com/login",
+      });
+    }
+  });
+
+  it("resposta sem `envio`, ou com valor desconhecido, nunca conta como enviado", async () => {
+    for (const corpo of [{ criada: false, convite: null }, { criada: false, convite: null, envio: "entregue" }, { criada: false, convite: null, envio: true }]) {
+      authResponde(200, corpo);
+      const acesso = await acessos.liberarAcesso({ email: "velho@exemplo.br", nome: "Velho" });
+      expect(acesso, JSON.stringify(corpo)).toMatchObject({ ok: true, envio: "falhou" });
+    }
   });
 
   it("recusa do auth: 409 leva a mensagem ao operador; os demais erros, não", async () => {

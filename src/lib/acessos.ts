@@ -12,14 +12,29 @@ import { randomBytes } from "node:crypto";
  * avisado e pode tentar de novo em "Liberar acesso".
  */
 
+/**
+ * O que aconteceu com o e-mail do convite, como o login único contou. Só
+ * `enviado` é sucesso; os outros dizem por que a mensagem não saiu, e a tela
+ * precisa mostrar cada um: reduzir a "não enviado" esconderia a falha de quem
+ * clicou em "Liberar acesso" justamente para reenviar.
+ */
+export const ENVIOS = ["enviado", "nao_pedido", "sem_email", "limite", "falhou"] as const;
+export type Envio = (typeof ENVIOS)[number];
+
 export type Acesso =
   /**
-   * `enviado`: o login único escreveu para a pessoa (com o endereço de criar a
-   * senha, se a conta é nova). `convite`: o endereço de uso único, que só volta
-   * quando o e-mail não saiu, para alguém entregar à mão.
+   * `envio`: o resultado do e-mail (ver `Envio`). `convite`: o endereço de uso
+   * único para criar a senha, que só volta quando o e-mail não saiu e a conta é
+   * nova. `entrada`: o endereço público do TMS, para alguém mandar à mão quando
+   * o e-mail não saiu e não há endereço de senha (conta que já existia).
    */
-  | { ok: true; contaNova: boolean; enviado: boolean; convite: string | null }
+  | { ok: true; contaNova: boolean; envio: Envio; convite: string | null; entrada: string | null }
   | { ok: false; erro: string };
+
+/** Resposta sem `envio`, ou com valor que este código não conhece, conta como falha: nunca como enviado. */
+function envioDe(valor: unknown): Envio {
+  return (ENVIOS as readonly unknown[]).includes(valor) ? (valor as Envio) : "falhou";
+}
 
 /** Quem convida e de qual empresa, para a pessoa reconhecer a mensagem. */
 export type Convidante = { empresa?: string | null; convidadoPor?: string | null };
@@ -80,8 +95,9 @@ export async function liberarAcesso(pessoa: {
     return {
       ok: true,
       contaNova: corpo.criada === true,
-      enviado: corpo.envio === "enviado",
+      envio: envioDe(corpo.envio),
       convite: typeof corpo.convite === "string" ? corpo.convite : null,
+      entrada: cfg.entrada,
     };
   } catch (error) {
     console.error("Login único: falha ao liberar acesso:", error);
