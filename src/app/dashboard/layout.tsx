@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { sair } from "@/lib/sair";
+import { IDENTIDADE_ALTERADA, type Identidade } from "@/lib/empresa";
 import {
   LayoutDashboard,
   Users,
@@ -20,6 +22,7 @@ import {
   DollarSign,
   UserPlus,
   UserCog,
+  Building2,
   ClipboardCheck,
   Calculator,
   Receipt,
@@ -47,12 +50,62 @@ const sidebarLinks: { href: string; icon: typeof Truck; label: string; roles?: s
   { href: "/dashboard/veiculos", icon: Truck, label: "Veículos" },
   { href: "/dashboard/mensagens", icon: Bell, label: "Mensageria" },
   { href: "/dashboard/usuarios", icon: UserCog, label: "Usuários", roles: ["ADMIN"] },
+  { href: "/dashboard/empresa", icon: Building2, label: "Empresa", roles: ["ADMIN"] },
 ];
+
+// Enquanto o nome da empresa não chega (ou se a leitura falhar), o cabeçalho mostra o do sistema.
+const NOME_PADRAO = "TMS";
+
+/** Símbolo da empresa; sem símbolo cadastrado, o caminhão do sistema. */
+function Simbolo({ logo, grande = false }: { logo: string | null; grande?: boolean }) {
+  const lado = grande ? 40 : 32;
+  if (logo) {
+    return (
+      <Image
+        src={logo}
+        alt=""
+        width={lado}
+        height={lado}
+        unoptimized
+        className={`${grande ? "w-10 h-10 rounded-xl" : "w-8 h-8 rounded-lg"} object-contain bg-white`}
+      />
+    );
+  }
+  return (
+    <div className={`${grande ? "w-10 h-10 rounded-xl shadow-lg shadow-blue-500/20" : "w-8 h-8 rounded-lg"} bg-blue-600 flex items-center justify-center`}>
+      <Truck className={`text-white ${grande ? "w-5 h-5" : "w-4 h-4"}`} />
+    </div>
+  );
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [identidade, setIdentidade] = useState<Identidade | null>(null);
+
+  useEffect(() => {
+    let ativo = true;
+    const ler = () =>
+      fetch("/api/empresa")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((corpo: Identidade | null) => {
+          if (ativo && corpo) setIdentidade(corpo);
+        })
+        .catch(() => {
+          // Sem a identidade o cabeçalho segue com o nome e o símbolo do sistema.
+        });
+    void ler();
+    // A tela /dashboard/empresa avisa quando o administrador salva.
+    window.addEventListener(IDENTIDADE_ALTERADA, ler);
+    return () => {
+      ativo = false;
+      window.removeEventListener(IDENTIDADE_ALTERADA, ler);
+    };
+  }, []);
+
+  const nome = identidade?.name ?? NOME_PADRAO;
+  const logo = identidade?.logo ?? null;
   const role = session?.user?.role;
   const visibleLinks = sidebarLinks.filter((link) => !link.roles || (role && link.roles.includes(role)));
 
@@ -60,11 +113,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col md:flex-row">
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-50">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Truck className="text-white w-4 h-4" />
-          </div>
-          <span className="font-outfit font-bold text-lg dark:text-white">Mello</span>
+        <div className="flex items-center space-x-2 min-w-0">
+          <Simbolo logo={logo} />
+          <span data-empresa className="font-outfit font-bold text-lg dark:text-white truncate">{nome}</span>
         </div>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2">
           {isMobileMenuOpen ? <X /> : <Menu />}
@@ -80,10 +131,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }`}
       >
         <div className="p-6 flex items-center space-x-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Truck className="text-white w-5 h-5" />
-          </div>
-          <span className="font-outfit font-bold text-xl dark:text-white">Mello Gestão</span>
+          <Simbolo logo={logo} grande />
+          <span className="font-outfit font-bold text-xl dark:text-white truncate">{nome}</span>
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">

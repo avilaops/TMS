@@ -29,6 +29,8 @@ model Tenant {
   slug      String   @unique
   name      String
   cnpj      String?  @unique
+  // Símbolo da empresa: data URL de imagem pequena. Nulo = símbolo padrão. Ver src/lib/empresa.ts.
+  logo      String?  @db.Text
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -47,6 +47,7 @@ suite("permissões das rotas internas", () => {
   let financeiroCobranca: typeof import("../src/app/api/financeiro/cobranca/route");
   let financeiroRecibo: typeof import("../src/app/api/financeiro/[id]/recibo/route");
   let relatorios: typeof import("../src/app/api/relatorios/route");
+  let empresa: typeof import("../src/app/api/empresa/route");
   let fiscal: typeof import("../src/app/api/fiscal/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
@@ -120,6 +121,7 @@ suite("permissões das rotas internas", () => {
     financeiroCobranca = await import("../src/app/api/financeiro/cobranca/route");
     financeiroRecibo = await import("../src/app/api/financeiro/[id]/recibo/route");
     relatorios = await import("../src/app/api/relatorios/route");
+    empresa = await import("../src/app/api/empresa/route");
     fiscal = await import("../src/app/api/fiscal/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
     manifestos = await import("../src/app/api/manifestos/route");
@@ -156,6 +158,7 @@ suite("permissões das rotas internas", () => {
     const semId = "00000000-0000-0000-0000-000000000000";
 
     rotasStaff = [
+      ["GET /api/empresa", () => empresa.GET()],
       ["GET /api/clientes", () => clientes.GET()],
       ["POST /api/clientes", () => clientes.POST(req("POST", { cnpj: "1", companyName: "x" }))],
       ["PATCH /api/clientes/[id]", () => clientePorId.PATCH(req("PATCH", { companyName: "Invasor LTDA" }), ctx(clienteId))],
@@ -201,6 +204,7 @@ suite("permissões das rotas internas", () => {
       ["GET /api/financeiro/cobranca", () => financeiroCobranca.GET()],
       ["GET /api/financeiro/[id]/recibo", () => financeiroRecibo.GET(req(), ctx(semId))],
       ["GET /api/relatorios", () => relatorios.GET()],
+      ["PATCH /api/empresa", () => empresa.PATCH(req("PATCH", { name: "Invasora" }))],
       ["GET /api/usuarios", () => usuarios.GET()],
       ["POST /api/usuarios", () => usuarios.POST(req("POST", {}))],
       ["PATCH /api/usuarios/[id]", () => usuario.PATCH(req("PATCH", { name: "Invasor" }), ctx(ids.OPERATION))],

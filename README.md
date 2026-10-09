@@ -174,6 +174,12 @@ Em `/dashboard/relatorios`, só para o administrador. Um período em meses (`GET
 
 Ainda não há exportação para planilha ou PDF, DRE, nem margem por rota ou por veículo.
 
+## Empresa
+
+Em `/dashboard/empresa`, só para o administrador: o **nome** e o **símbolo** que aparecem no topo do painel (`GET` e `PATCH /api/empresa`). O símbolo é uma imagem PNG, JPEG ou WebP, reduzida no navegador para 192 pixels antes de enviar e guardada no cadastro da empresa (`Tenant.logo`); sem símbolo, aparece o caminhão. As regras ficam em [src/lib/empresa.ts](src/lib/empresa.ts).
+
+A aplicação só lê a tabela de empresas; a gravação vai pelo dono do banco, presa ao id da empresa da sessão. O portal do cliente e o app do motorista ainda mostram o nome fixo.
+
 ## Portal do cliente
 
 Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu e consulta faturas. Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
