@@ -37,6 +37,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         await tx.$queryRaw`SELECT id FROM "User" WHERE role = 'ADMIN' FOR UPDATE`;
       }
 
+      // `requireStaff` conferiu o perfil antes da transação. Quem ficou parado
+      // na trava acima pode ter sido rebaixado nesse meio-tempo: aqui a
+      // conferência vale de novo, já com as linhas de ADMIN seguras.
+      const autor = await tx.user.findUnique({ where: { id: admin.id }, select: { role: true } });
+      if (autor?.role !== "ADMIN") throw new Refusal("Acesso negado", 403);
+
       const target = await tx.user.findUnique({
         where: { id },
         select: { id: true, role: true, clientId: true },

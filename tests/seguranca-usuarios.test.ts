@@ -415,12 +415,65 @@ suite("segurança de usuários e motoristas", () => {
             { timeout: 15000 },
           ).then((chamadas) => Promise.all(chamadas));
 
-          expect(respostas.map((r) => r.status).sort(), `rodada ${rodada}`).toEqual([200, 409]);
+          // Quem perde a corrida já foi rebaixado quando a trava solta: a rota
+          // relê o perfil do autor dentro da transação e responde 403.
+          expect(respostas.map((r) => r.status).sort(), `rodada ${rodada}`).toEqual([200, 403]);
           expect(await prisma.user.count({ where: { role: "ADMIN" } }), `rodada ${rodada}`).toBe(1);
         }
       } finally {
         await prisma.user.updateMany({ where: dupla, data: { role: "OPERATION" } });
         await prisma.user.update({ where: { id: ids.ADMIN }, data: { role: "ADMIN" } });
+      }
+    });
+
+    it("autor rebaixado enquanto esperava a trava: 403, e o alvo continua ADMIN", async () => {
+      // Três ADMIN: o da suite, B (o autor) e C (o alvo). Sobra ADMIN de qualquer
+      // jeito, então a trava do último ADMIN não barra nada aqui: quem tem de
+      // barrar é a conferência do perfil do autor dentro da transação.
+      const b = await criarUsuario(`${PREFIXO}autor-b@exemplo.br`, "ADMIN");
+      const c = await criarUsuario(`${PREFIXO}alvo-c@exemplo.br`, "ADMIN");
+      try {
+        sessao.mockResolvedValue(sessaoDe(b.id));
+
+        // O teste segura as linhas de ADMIN até o PATCH de B estar parado na
+        // trava da rota, já com o perfil conferido por `requireStaff`. Com ele
+        // parado, B é rebaixado (o que outro administrador faria), e só então
+        // a trava solta.
+        const resposta = await sistema.$transaction(
+          async (tx) => {
+            await tx.$queryRaw`SELECT id FROM "User" WHERE id IN (${b.id}, ${c.id}) FOR UPDATE`;
+
+            const chamada = usuario.PATCH(req("PATCH", { role: "OPERATION" }), ctx(c.id));
+
+            await vi.waitFor(
+              async () => {
+                // Sem filtro por banco: quem espera linha travada aparece em
+                // `pg_locks` como espera de `transactionid`, que não tem banco.
+                const [{ parados }] = await tx.$queryRaw<{ parados: number }[]>`
+                  SELECT count(DISTINCT pid)::int AS parados FROM pg_locks WHERE NOT granted`;
+                expect(parados, "PATCH parado na trava").toBe(1);
+              },
+              { timeout: 4000, interval: 20 },
+            );
+
+            await tx.user.update({ where: { id: b.id }, data: { role: "OPERATION" } });
+            // Dentro de uma lista: devolver a promessa solta faria a transação
+            // esperar o PATCH, que espera a transação.
+            return [chamada];
+          },
+          { timeout: 15000 },
+        ).then(([chamada]) => chamada);
+
+        expect(resposta.status).toBe(403);
+        expect(await resposta.json()).toEqual({ error: "Acesso negado" });
+        expect((await prisma.user.findUniqueOrThrow({ where: { id: c.id } })).role).toBe("ADMIN");
+        expect((await prisma.user.findUniqueOrThrow({ where: { id: b.id } })).role).toBe("OPERATION");
+
+        // Trocar só o nome não passa pela trava, mas a conferência vale igual.
+        const soNome = await usuario.PATCH(req("PATCH", { name: "Nome trocado por ex-admin" }), ctx(c.id));
+        expect(soNome.status).toBe(403);
+      } finally {
+        await prisma.user.updateMany({ where: { id: { in: [b.id, c.id] } }, data: { role: "OPERATION" } });
       }
     });
   });
