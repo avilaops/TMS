@@ -7,6 +7,7 @@ import { INVOICE_COLLECTION_SELECT, INVOICE_SELECT, invoiceActionSchema } from '
 import { INVOICE_NOT_FOUND as NOT_FOUND, alterarFatura } from '@/lib/faturas-db';
 import { origemDaRequisicao } from '@/lib/auditoria';
 import { RECEBEDOR_SELECT, pixCopiaECola, recebedorDaEmpresa, txidDaFatura } from '@/lib/pix';
+import { cobrancasDaFatura, empresaDaSessao, gatewayLigado } from '@/lib/cobranca-gateway-db';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { error } = await requireStaff({ pode: 'faturamentoVer' });
@@ -25,16 +26,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     });
     if (!fatura) return NextResponse.json({ error: NOT_FOUND }, { status: 404 });
 
+    // As cobranças do Mercado Pago desta fatura (Pix dinâmico e boleto), e se a
+    // empresa tem a conta ligada: é o que mostra os botões de gerar.
+    const cobrancas = await cobrancasDaFatura(prisma, id);
+    const gateway = await gatewayLigado(await empresaDaSessao());
+    const temPixDinamico = cobrancas.some((cobranca) => cobranca.tipo === 'PIX' && cobranca.situacao === 'PENDING');
+
     // Pix Copia e Cola (estático) da fatura em aberto, se a empresa cadastrou a
-    // chave em Empresa > Cobrança. A empresa só lê o próprio cadastro.
+    // chave em Empresa > Cobrança. A empresa só lê o próprio cadastro. Com um Pix
+    // dinâmico em aberto, é ele que vale: o estático não dá baixa sozinho.
     let pix: string | null = null;
-    if (fatura.status === 'OPEN' && fatura.total > 0) {
+    if (fatura.status === 'OPEN' && fatura.total > 0 && !temPixDinamico) {
       const empresa = await prisma.tenant.findUnique({ where: { id: await empresaAtual() }, select: RECEBEDOR_SELECT });
       const recebedor = recebedorDaEmpresa(empresa);
       if (recebedor) pix = pixCopiaECola({ ...recebedor, valor: fatura.total, txid: txidDaFatura(fatura.number) });
     }
 
-    return NextResponse.json({ ...fatura, pix });
+    return NextResponse.json({ ...fatura, pix, cobrancas, gateway });
   } catch (error) {
     console.error('Erro ao buscar fatura:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

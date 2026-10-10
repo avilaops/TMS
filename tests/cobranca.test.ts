@@ -636,7 +636,8 @@ suite("rotas da cobrança", () => {
       // O que a fatura já devolvia continua lá.
       expect(Object.keys(aberta).sort()).toEqual(
         // `pix`: o Pix Copia e Cola da fatura em aberto (nulo sem chave cadastrada). Ver tests/pix.test.ts.
-        ["_count", "client", "collections", "dueDate", "id", "issuedAt", "notes", "number", "paidAt", "pix", "status", "total", "transaction"],
+        // `cobrancas` e `gateway`: as cobranças do Mercado Pago da fatura e se a empresa ligou a conta. Ver tests/gateway.test.ts.
+        ["_count", "client", "cobrancas", "collections", "dueDate", "gateway", "id", "issuedAt", "notes", "number", "paidAt", "pix", "status", "total", "transaction"],
       );
       expect((await lerRecibo(lancamento.id)).status).toBe(409);
 

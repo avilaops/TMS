@@ -125,6 +125,8 @@ Todas estão documentadas em [.env.example](.env.example). As essenciais:
 | `FISCAL_MCP_URL` | Endereço do serviço fiscal que gera o DANFE em PDF (`https://fiscal.avilaops.com/mcp`). Opcional: sem ela o recurso fica desligado e o botão não aparece |
 | `FISCAL_MCP_TOKEN` | Opcional: enviado como `Authorization: Bearer` ao serviço fiscal, para quando ele exigir autenticação |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Opcionais: chaves do push no navegador (`npx web-push generate-vapid-keys`) e o contato de quem opera (`mailto:`). Sem as três o push fica desligado e só o sininho funciona: [Notificações](#notificações-sininho-e-push) |
+| `TMS_CHAVE_DE_DADOS` | Opcional: chave (32 caracteres ou mais, `openssl rand -base64 48`) que cifra as credenciais do Mercado Pago de cada empresa. Sem ela a cobrança pelo Mercado Pago fica desligada: [Cobrança pelo Mercado Pago](#cobrança-pelo-mercado-pago) |
+| `MERCADO_PAGO_API` | Opcional: endereço da API do Mercado Pago (padrão `https://api.mercadopago.com`). Só os testes mudam |
 | `TENANT_SLUG`, `TENANT_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed: cria a empresa e o administrador dela |
 
 ## Várias empresas no mesmo sistema (multi-tenant)
@@ -239,7 +241,37 @@ Onde aparece, com botão de copiar: na fatura do painel (`/dashboard/faturamento
 
 **É Pix estático: o pagamento NÃO dá baixa sozinho.** O sistema não fala com banco nenhum e não sabe se o cliente pagou; quem recebe confere o extrato (o identificador aparece nele) e dá a baixa à mão, ou envia o extrato em OFX para a [conciliação](#conciliação-bancária-por-extrato-ofx), que reconhece o identificador e sugere a fatura. As telas dizem isso ao lado do código. O valor é o original do título, sem juros nem multa.
 
-Ainda não existe: **QR Code** (o projeto não tem gerador de QR e não se acrescentou dependência: sai só o código para copiar e colar), boleto, Pix dinâmico com confirmação automática e mais de uma chave por empresa.
+Ainda não existe no Pix estático: **QR Code** (o projeto não tem gerador de QR e não se acrescentou dependência: sai só o código para copiar e colar) e mais de uma chave por empresa. QR Code, boleto e baixa automática existem pela cobrança do Mercado Pago, abaixo.
+
+### Cobrança pelo Mercado Pago
+
+Pix dinâmico (com QR Code) e boleto, com **baixa automática**: cada transportadora liga a **própria** conta do Mercado Pago, o TMS cria a cobrança lá e paga a fatura sozinho quando o Mercado Pago avisa. Regras em [src/lib/cobranca-gateway.ts](src/lib/cobranca-gateway.ts), gravação em [src/lib/cobranca-gateway-db.ts](src/lib/cobranca-gateway-db.ts), cliente HTTP (só `fetch`) em [src/lib/mercado-pago.ts](src/lib/mercado-pago.ts), cifra em [src/lib/cifra.ts](src/lib/cifra.ts).
+
+**Passo a passo para a transportadora ligar a conta** (só o administrador):
+
+1. No [painel de desenvolvedores do Mercado Pago](https://www.mercadopago.com.br/developers/panel/app), crie uma aplicação e copie o **Access Token de produção** (começa com `APP_USR-`).
+2. No TMS, abra **Empresa > Cobrança > Mercado Pago** e copie o **endereço de webhook** mostrado ali (`<NEXTAUTH_URL>/api/pagamentos/mercado-pago/<slug da empresa>`).
+3. Na aplicação do Mercado Pago, em **Webhooks**, cadastre esse endereço em modo produção, marque o evento **Pagamentos** e copie a **assinatura secreta** que o painel gera.
+4. De volta ao TMS, cole o Access Token e a assinatura secreta e clique em **Ligar conta**. Depois, **Testar conexão**: a tela mostra o nome da conta.
+5. Para o **boleto**, a conta precisa ter o meio de pagamento habilitado, e o cadastro do cliente precisa de e-mail, CNPJ ou CPF e o endereço escrito como `Rua, número - Bairro, Cidade - UF, CEP 00000-000` (é o formato que a busca por CNPJ preenche). O **Pix** pede só e-mail e CNPJ ou CPF. Dado que falta vira erro dizendo o que completar.
+
+**Credenciais.** O Access Token e a assinatura secreta ficam **cifrados** no banco (AES-256-GCM, chave derivada de `TMS_CHAVE_DE_DADOS`, amarrada à empresa e ao campo) e **não voltam** para a tela, para log nem para a auditoria: a leitura devolve só "configurado" e os 4 últimos caracteres de cada um. Sem `TMS_CHAVE_DE_DADOS` o recurso fica desligado e a tela explica. Trocar a variável torna ilegível o que já foi gravado: cada empresa cadastra de novo.
+
+**Gerar a cobrança.** Na fatura em aberto do painel, **Gerar Pix** e **Gerar boleto** (quem tem `faturamento`): o valor é o total da fatura, a referência (`external_reference`) é o id da fatura, e o vencimento é o fim do dia do vencimento da fatura, dentro do que o Mercado Pago aceita (Pix: no mínimo 1 dia; boleto: no mínimo 3; os dois: no máximo 29 dias à frente). A fatura pode ter várias cobranças (gerou de novo depois de vencer), mas **só uma em aberto por tipo**. Cada tentativa tem chave de idempotência: se o Mercado Pago não responder, a cobrança fica "em criação" e gerar de novo repete o mesmo pedido, sem nascer pagamento em dobro.
+
+**Onde aparece.** Na fatura do painel e nas faturas do portal do cliente: o Pix Copia e Cola com botão de copiar, a **imagem do QR Code** que o Mercado Pago devolve, e o boleto com link e linha digitável (quando ele a devolve). Com Pix dinâmico em aberto, ele entra no lugar do estático. O aviso `fatura.emitida` da integração leva o copia-e-cola (em `pixCopiaECola`) e `cobranca` (`pix` e `boleto`, com `link` e `venceEm`) quando a cobrança já existe na hora da entrega.
+
+**Baixa automática.** O webhook (`POST /api/pagamentos/mercado-pago/[empresa]`, público) acha a empresa pelo slug, confere a assinatura do aviso com o segredo **dela** (`x-signature`: HMAC-SHA256 de `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, comparado em tempo constante; não confere, 401) e **não confia no corpo**: busca o pagamento no Mercado Pago com o token da empresa e usa o que a API responde. Aprovado, em reais, com a referência da fatura, do valor da cobrança, e a fatura em aberto: paga pelo mesmo caminho do Faturamento, com a data do pagamento do gateway e a forma Pix ou Boleto; a diferença entre o valor e o que foi pago vira juros ou desconto, como na conciliação. O ator na auditoria é "Mercado Pago", e quem tem `financeiro` recebe o aviso no sininho. Aviso repetido não paga duas vezes. Cancelado e vencido encerram a cobrança.
+
+**Na dúvida não paga.** Pagamento de outro valor, em outra moeda, com outra referência, de fatura já paga por fora (possível recebimento em dobro) ou cancelada, estorno depois da baixa, e pagamento aprovado sem cobrança correspondente: a fatura não é mexida, a cobrança fica **"a conferir"** com o motivo, e o financeiro é avisado. Fatura paga pelo Mercado Pago **não é reaberta** pelo sistema.
+
+**Quando o aviso não chega.** **Atualizar situação**, na cobrança, consulta o Mercado Pago na hora; e o servidor confere a cada 10 minutos as cobranças em aberto criadas nas últimas 72 horas.
+
+Rotas: `GET`, `PUT` e `DELETE /api/empresa/gateway` e `POST /api/empresa/gateway/teste` (`empresa`); `POST /api/faturas/[id]/cobrancas` e `POST /api/faturas/[id]/cobrancas/[cobrancaId]` (`faturamento`); `GET /api/faturas/[id]` passa a trazer `cobrancas` e `gateway`; `POST /api/pagamentos/mercado-pago/[empresa]` (público, com assinatura e limite de 120 avisos por minuto por empresa). Tabelas `PaymentGateway` e `PaymentCharge`, criadas por [prisma/sql/025-gateway.sql](prisma/sql/025-gateway.sql); rode `npm run db:rls` depois dela.
+
+**Limites.** O limite de avisos é em memória, por processo. A conferência periódica olha 50 cobranças por volta. O boleto sai como `bolbradesco`, o meio de boleto do Mercado Pago no Brasil. O endereço do pagador é lido do texto do cadastro: fora do formato, o boleto é recusado com o que falta. O `notification_url` de cada cobrança só é enviado quando `NEXTAUTH_URL` é https público; o endereço cadastrado no painel do Mercado Pago vale de qualquer forma. Nenhum teste automatizado chama o Mercado Pago: eles apontam `MERCADO_PAGO_API` para um servidor local que imita a API.
+
+Ainda não existe: cartão, assinatura ou recorrência, split, **estorno pelo TMS**, outros gateways, cancelar no Mercado Pago a cobrança de uma fatura paga por fora ou cancelada (ela segue pagável lá até vencer; se for paga, fica "a conferir"), o cliente gerar o próprio Pix pelo portal (quem gera é a transportadora) e juros e multa embutidos na cobrança de fatura vencida (o valor é o total da fatura).
 
 ## Relatórios
 
@@ -462,7 +494,7 @@ Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook d
 
 Nos avisos de chamado, `status` é o de agora (lido na entrega, como nos de fatura), `tipo` é `DELAY`, `DAMAGE`, `LOSS`, `BILLING`, `REDELIVERY` ou `OTHER`, e `abertaPor` é `CLIENT` (portal) ou `STAFF` (equipe ou motorista). No chamado do motorista, `cliente` é o dono da carga. A descrição e a conversa não saem no aviso. Trocar prioridade ou responsável e escrever mensagem não avisam.
 
-O campo `pixCopiaECola` (texto do Pix Copia e Cola estático, com o valor do título) só vai quando a empresa tem chave Pix cadastrada e a fatura ou o título segue em aberto na hora da entrega; sem chave, os avisos saem sem o campo. O destino pode mandá-lo ao cliente, mas pagar não dá baixa no TMS: a baixa é manual.
+O campo `pixCopiaECola` (texto do Pix Copia e Cola estático, com o valor do título) só vai quando a empresa tem chave Pix cadastrada e a fatura ou o título segue em aberto na hora da entrega; sem chave, os avisos saem sem o campo. O destino pode mandá-lo ao cliente, mas pagar não dá baixa no TMS: a baixa é manual. Em `fatura.emitida`, quando a fatura já tem cobrança do Mercado Pago em aberto, `pixCopiaECola` é o do Pix dinâmico (pagar dá baixa sozinho) e vem junto `cobranca`, com `pix` (`copiaECola`, `link`, `venceEm`) e `boleto` (`link`, `linhaDigitavel`, `venceEm`): [Cobrança pelo Mercado Pago](#cobrança-pelo-mercado-pago).
 
 O aviso de título vencido sai uma vez por título e por vencimento; a procura roda a cada 10 minutos. Ao cadastrar o endereço, os títulos que já estavam vencidos são avisados nessa primeira procura.
 
@@ -563,11 +595,11 @@ Além disso, o cliente tem (regras em [src/lib/portal-cliente.ts](src/lib/portal
 - **Destinatários frequentes** (`/portal/destinatarios`; `GET` e `POST /api/portal/destinatarios`, `PATCH` e `DELETE /api/portal/destinatarios/[id]`; tabela `ClientReceiver`): nome, CNPJ/CPF opcional, cidade-UF, endereço e contato, até 200 por cliente. No pedido de coleta, escolher um deles preenche o destinatário e a cidade de destino.
 - **Pedido de coleta** (`POST /api/portal/coletas`): além dos dados da carga, aceita, tudo opcional, a **data** e a **janela de horário** da coleta, a **prioridade** (normal ou urgente), a **cubagem** em m³ e uma **observação**. Os mesmos campos existem na minuta do painel (criação e edição, com auditoria) e aparecem na lista de minutas, nas solicitações pendentes e na viagem do motorista. A cubagem entra no frete quando a tabela tem fator de cubagem; sem ela, a conta é a de sempre.
 - **Baixar** (`GET /api/portal/coletas/exportar?de=AAAA-MM-DD&ate=AAAA-MM-DD`): as cargas pedidas no período (padrão: últimos 30 dias; no máximo 366 dias e 5.000 linhas) em CSV montado no servidor, com `;`, vírgula decimal e marca de UTF-8 para abrir no Excel: código, data, destino, destinatário, volumes, peso, frete e situação. Texto que começa com `=`, `+`, `-` ou `@` sai com apóstrofo na frente, para a planilha não o executar como fórmula.
-- **Pix nas faturas**: com a chave cadastrada pela transportadora, cada título em aberto traz o Pix Copia e Cola (ver "Cobrança por Pix").
+- **Pix nas faturas**: com a chave cadastrada pela transportadora, cada título em aberto traz o Pix Copia e Cola (ver "Cobrança por Pix"). Quando a transportadora gerou a cobrança pelo Mercado Pago, a fatura traz no lugar o Pix dinâmico, com QR Code e baixa automática, e o boleto (ver "Cobrança pelo Mercado Pago").
 
 Cada rota do portal filtra pelo cliente da sessão: destinatário, carga ou título de outro cliente da mesma transportadora responde 404 ou simplesmente não aparece, e o `clientId` que vier no corpo é ignorado. Entre transportadoras, quem separa é o banco.
 
-Ainda não existe no portal: QR Code do Pix, exportação em PDF ou XLSX, o cliente alterar ou cancelar um pedido já enviado, endereço e contato do destinatário gravados na carga (o destinatário frequente preenche só o nome e a cidade), cotação gravada como histórico e registro, na trilha de auditoria, das mensagens de atendimento e dos destinatários frequentes (pedir coleta e abrir atendimento já são registrados).
+Ainda não existe no portal: QR Code do Pix estático, o cliente gerar a própria cobrança do Mercado Pago, exportação em PDF ou XLSX, o cliente alterar ou cancelar um pedido já enviado, endereço e contato do destinatário gravados na carga (o destinatário frequente preenche só o nome e a cidade), cotação gravada como histórico e registro, na trilha de auditoria, das mensagens de atendimento e dos destinatários frequentes (pedir coleta e abrir atendimento já são registrados).
 
 As colunas e a tabela deste módulo (pedido de coleta, destinatários e chave Pix) são criadas por [prisma/sql/021-portal-pix.sql](prisma/sql/021-portal-pix.sql); rode `npm run db:rls` depois dela.
 

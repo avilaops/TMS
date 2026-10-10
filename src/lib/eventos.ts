@@ -5,6 +5,8 @@ import { conferirEnderecoPublico } from "@/lib/url-publica";
 import { TENTATIVAS } from "@/lib/mensageria";
 import { RECEBEDOR_SELECT, pixCopiaECola, pixDoTitulo, recebedorDaEmpresa, txidDaFatura } from "@/lib/pix";
 import { enviarPushPendentes } from "@/lib/notificacoes-push";
+import { cobrancasEmAberto } from "@/lib/cobranca-gateway";
+import { conferirCobrancasEmAberto } from "@/lib/cobranca-gateway-db";
 
 /**
  * Entrega dos eventos (OutboxEvent) no endereço que cada empresa cadastrou.
@@ -64,7 +66,20 @@ async function dadosDaFatura(evento: Pendente, payload: Record<string, unknown>)
       })
     : null;
   // Só no aviso de emissão, com a fatura ainda em aberto, e se a empresa tem chave.
-  const recebedor = fatura && evento.type === "fatura.emitida" && fatura.status === "OPEN" && fatura.total > 0 ? await recebedorDoEvento(evento) : null;
+  const emitidaEmAberto = fatura && evento.type === "fatura.emitida" && fatura.status === "OPEN" && fatura.total > 0;
+  const recebedor = emitidaEmAberto ? await recebedorDoEvento(evento) : null;
+  // Cobrança do Mercado Pago em aberto (Pix dinâmico e boleto), quando já foi gerada.
+  const emAberto = emitidaEmAberto
+    ? cobrancasEmAberto(
+        await sistema.paymentCharge.findMany({
+          where: { invoiceId: fatura.id, tenantId: evento.tenantId, status: "PENDING" },
+          select: { kind: true, status: true, createdAt: true, pixCode: true, ticketUrl: true, digitableLine: true, expiresAt: true },
+        }),
+      )
+    : null;
+  const estatico = recebedor && fatura ? pixCopiaECola({ ...recebedor, valor: fatura.total, txid: txidDaFatura(fatura.number) }) : null;
+  // O Pix dinâmico, quando existe, entra no lugar do estático: é o que dá baixa sozinho.
+  const copiaECola = emAberto?.pix?.pixCode ?? estatico;
   return {
     fatura: fatura && {
       id: fatura.id,
@@ -78,8 +93,16 @@ async function dadosDaFatura(evento: Pendente, payload: Record<string, unknown>)
       cliente: cliente(fatura.client),
       // Onde o cliente consulta as faturas dele, depois de entrar.
       portal: `${enderecoPublico()}/portal/faturas`,
-      // Pix Copia e Cola estático: pagar não dá baixa no TMS, a baixa é manual.
-      ...(recebedor && { pixCopiaECola: pixCopiaECola({ ...recebedor, valor: fatura.total, txid: txidDaFatura(fatura.number) }) }),
+      // Pix Copia e Cola: o dinâmico do Mercado Pago (pagar dá baixa sozinho) quando há
+      // cobrança em aberto; senão o estático da chave da empresa (a baixa é manual).
+      ...(copiaECola && { pixCopiaECola: copiaECola }),
+      // A cobrança em aberto no Mercado Pago, com o link de cada meio.
+      ...((emAberto?.pix || emAberto?.boleto) && {
+        cobranca: {
+          pix: emAberto.pix && { copiaECola: emAberto.pix.pixCode, link: emAberto.pix.ticketUrl, venceEm: emAberto.pix.expiresAt.toISOString() },
+          boleto: emAberto.boleto && { link: emAberto.boleto.ticketUrl, linhaDigitavel: emAberto.boleto.digitableLine, venceEm: emAberto.boleto.expiresAt.toISOString() },
+        },
+      }),
     },
   };
 }
@@ -310,7 +333,7 @@ export async function avisarTitulosVencidos(): Promise<number> {
 }
 
 const INTERVALO_MS = 15_000;
-// A procura por título vencido roda a cada 40 voltas do despachante (10 minutos).
+// A procura por título vencido e a conferência das cobranças do Mercado Pago rodam a cada 40 voltas do despachante (10 minutos).
 const VOLTAS_ENTRE_VARREDURAS = 40;
 // O Next recarrega módulos em desenvolvimento: o relógio fica no global para não duplicar.
 const global = globalThis as { tmsDespachante?: ReturnType<typeof setInterval> };
@@ -332,6 +355,10 @@ export function iniciarDespacho(): void {
     (varrer ? avisarTitulosVencidos() : Promise.resolve(0))
       .then(() => despacharPendentes())
       .catch((erro) => console.error("Erro ao despachar eventos:", erro))
+      // Na mesma cadência da varredura de vencidos (10 minutos): as cobranças em aberto
+      // no Mercado Pago são conferidas, para o caso de um aviso de pagamento não ter chegado.
+      .then(() => (varrer ? conferirCobrancasEmAberto() : 0))
+      .catch((erro) => console.error("Erro ao conferir cobranças no Mercado Pago:", erro instanceof Error ? erro.message : "erro desconhecido"))
       // Os avisos das pessoas (sininho) saem por push na mesma volta; um erro
       // nos eventos de fora não segura o push, nem o contrário.
       .then(() => enviarPushPendentes())

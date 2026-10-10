@@ -91,6 +91,8 @@ model Tenant {
   notifications      Notification[]
   pushSubscriptions  PushSubscription[]
   bankStatementLines BankStatementLine[]
+  paymentGateway     PaymentGateway?
+  paymentCharges     PaymentCharge[]
 }
 
 model User {
@@ -205,6 +207,7 @@ model Invoice {
   client      Client       @relation(fields: [clientId], references: [id])
   collections Collection[]
   transaction FinancialTransaction?
+  charges     PaymentCharge[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -1318,4 +1321,68 @@ model BankStatementLine {
   @@unique([tenantId, accountKey, fitId])
   @@index([tenantId])
   @@index([tenantId, status, postedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Cobrança pelo Mercado Pago (Pix dinâmico e boleto com baixa automática)
+//
+// Cada empresa liga a PRÓPRIA conta: o Access Token e o segredo de assinatura
+// do webhook ficam cifrados (AES-256-GCM, src/lib/cifra.ts) e nunca voltam para
+// a tela; os 4 últimos caracteres ficam ao lado só para a pessoa reconhecer
+// qual credencial está cadastrada. Ver src/lib/cobranca-gateway-db.ts.
+// ---------------------------------------------------------------------------
+model PaymentGateway {
+  tenantId  String   @unique @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  provider  String   @default("MERCADO_PAGO")
+  accessTokenEnc    String @db.Text
+  accessTokenEnd    String // 4 últimos caracteres
+  webhookSecretEnc  String @db.Text
+  webhookSecretEnd  String // 4 últimos caracteres
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+}
+
+// Uma cobrança criada no gateway para uma fatura. A fatura pode ter várias
+// (gerou de novo depois de vencer), mas só uma em aberto por tipo: quem garante
+// é a criação, que trava a fatura antes de conferir.
+model PaymentCharge {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  invoiceId String
+  provider  String   @default("MERCADO_PAGO")
+  kind      String   // PIX, BOLETO
+  // CREATING (pedido enviado, sem resposta ainda), PENDING (em aberto), PAID,
+  // CANCELLED, EXPIRED, FAILED (o gateway recusou criar), REVIEW (a conferir:
+  // o gateway disse algo que o sistema não aplica sozinho).
+  status    String   @default("CREATING")
+  // Id do pagamento no gateway. Nulo enquanto a criação não foi confirmada.
+  gatewayId String?
+  // Chave de idempotência da tentativa: repetir o pedido com ela não cria outro pagamento.
+  idempotencyKey String
+  amount    Float
+  // Quanto o gateway diz que foi pago (pode diferir do valor: juros ou desconto).
+  paidAmount Float?
+  pixCode    String? @db.Text // Pix Copia e Cola
+  qrCodeBase64 String? @db.Text // imagem do QR Code, como o gateway devolve
+  ticketUrl  String? @db.Text // página do Pix ou do boleto no gateway
+  digitableLine String? // linha digitável do boleto, se o gateway devolver
+  expiresAt DateTime // vencimento da cobrança no gateway
+  paidAt    DateTime?
+  // Por que está "a conferir" ou não foi criada: texto para a tela, sem dado sensível.
+  note      String?
+  checkedAt DateTime? // última consulta ao gateway
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@unique([tenantId, gatewayId])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@index([status, createdAt])
 }

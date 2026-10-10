@@ -93,6 +93,10 @@ export const ACOES = {
   "empresa.criar": "Empresa criada",
   "empresa.alterar": "Empresa alterada",
   "empresa.cobranca": "Parâmetros de cobrança alterados",
+  "empresa.gateway": "Conta do Mercado Pago alterada",
+  "cobranca.gerar": "Cobrança gerada no Mercado Pago",
+  "cobranca.conferir": "Pagamento do Mercado Pago a conferir",
+  "cobranca.encerrar": "Cobrança encerrada no Mercado Pago",
   "integracao.alterar": "Endereço de integração gravado",
   "integracao.remover": "Endereço de integração removido",
   "tabela-frete.criar": "Tabela de frete criada",
@@ -135,6 +139,7 @@ export const ENTIDADES = {
   fatura: "Fatura",
   lancamento: "Lançamento",
   extrato: "Extrato bancário",
+  cobranca: "Cobrança no Mercado Pago",
   comprovante: "Comprovante",
   empresa: "Empresa",
   integracao: "Integração",
@@ -393,8 +398,20 @@ export const atorDaPlataforma = (conta: { nome: string; email: string }): AtorDa
   role: PERFIL_DA_PLATAFORMA,
 });
 
+/** O perfil gravado na linha quando quem fez foi um sistema de fora avisando o TMS (o gateway de pagamento). */
+export const PERFIL_DE_INTEGRACAO = "INTEGRACAO";
+
+/** Quem fez, quando não foi uma pessoa: a linha fica sem `userId`, com o nome do sistema. */
+export type AtorDeIntegracao = { id: null; name: string; role: typeof PERFIL_DE_INTEGRACAO };
+
+/** O Mercado Pago avisando um pagamento: é ele o ator da baixa automática. */
+export const ATOR_MERCADO_PAGO: AtorDeIntegracao = { id: null, name: "Mercado Pago", role: PERFIL_DE_INTEGRACAO };
+
+/** Todo ator que uma linha da auditoria aceita. */
+export type QualquerAtor = Ator | AtorDaPlataforma | AtorDeIntegracao;
+
 export type Registro = {
-  ator: Ator | AtorDaPlataforma;
+  ator: QualquerAtor;
   origem: Origem;
   acao: Acao;
   entidade: Entidade;

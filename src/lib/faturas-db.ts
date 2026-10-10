@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { Refusal } from "@/lib/cadastros";
-import { registrarAuditoria, type Ator, type Origem } from "@/lib/auditoria";
+import { registrarAuditoria, type Origem, type QualquerAtor } from "@/lib/auditoria";
+import { PAGA_PELO_GATEWAY } from "@/lib/cobranca-gateway";
 import { INVOICE_SELECT } from "@/lib/faturas";
 import { DESCONTO_MAIOR_QUE_O_VALOR, temEncargos, valorRecebido, type Encargos } from "@/lib/financeiro";
 import { recusarSeConciliado } from "@/lib/financeiro-db";
@@ -26,7 +27,7 @@ export const INVOICE_NOT_FOUND = "Fatura não encontrada.";
 const SEM_ENCARGOS = { interest: null, fine: null, discount: null, paidAmount: null };
 
 export type OpcoesDaFatura = {
-  ator: Ator;
+  ator: QualquerAtor;
   origem: Origem;
   /** Juros, multa e desconto da baixa (só em `pagar`). */
   encargos?: Encargos;
@@ -48,6 +49,8 @@ export type OpcoesDaFatura = {
  *
  * Fatura cujo lançamento está conciliado com o extrato não é reaberta por aqui
  * (409): desfaz-se a conciliação, que reabre a fatura.
+ * Fatura paga pelo Mercado Pago (cobrança com situação `PAID`) não é reaberta
+ * por caminho nenhum (409): o estorno pelo sistema ainda não existe.
  */
 export async function alterarFatura(tx: Tx, id: string, action: AcaoDaFatura, { ator, origem, encargos = {}, pagaEm, formaDePagamento, daConciliacao = false }: OpcoesDaFatura) {
   await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${id} FOR UPDATE`;
@@ -75,6 +78,10 @@ export async function alterarFatura(tx: Tx, id: string, action: AcaoDaFatura, { 
   if (action === "reabrir") {
     if (atual.status !== "PAID") throw new Refusal("Só fatura paga pode ser reaberta.", 409);
     if (!daConciliacao && atual.transaction) await recusarSeConciliado(tx, atual.transaction.id);
+    // Paga pelo gateway: o dinheiro entrou na conta do Mercado Pago, e reabrir aqui deixaria a
+    // fatura em aberto com o pagamento feito. Vale também para quem vem da conciliação.
+    const pagaPeloGateway = await tx.paymentCharge.findFirst({ where: { invoiceId: id, status: "PAID" }, select: { id: true } });
+    if (pagaPeloGateway) throw new Refusal(PAGA_PELO_GATEWAY, 409);
     await tx.invoice.update({ where: { id }, data: { status: "OPEN", paidAt: null }, select: { id: true } });
     await tx.financialTransaction.updateMany({
       where: { invoiceId: id },

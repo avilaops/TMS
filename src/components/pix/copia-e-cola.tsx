@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Check, Copy } from "lucide-react";
 import { AVISO_PIX_ESTATICO } from "@/lib/pix";
 
@@ -9,10 +10,12 @@ import { AVISO_PIX_ESTATICO } from "@/lib/pix";
  * Pix estático (pagar não dá baixa). Usado na fatura do painel e nas faturas
  * do portal do cliente.
  *
- * Não há QR Code: o projeto não tem gerador de QR e não se acrescentou
- * dependência para isso. O código abaixo é o mesmo conteúdo que o QR levaria.
+ * O Pix estático não tem QR Code: o projeto não tem gerador de QR e não se
+ * acrescentou dependência para isso. O Pix dinâmico (cobrança do Mercado Pago)
+ * traz a imagem do QR pronta (`qrCodeBase64`) e um aviso próprio (`aviso`):
+ * pagar dá baixa sozinho.
  */
-export function PixCopiaECola({ codigo, className = "" }: { codigo: string; className?: string }) {
+export function PixCopiaECola({ codigo, className = "", qrCodeBase64 = null, aviso = AVISO_PIX_ESTATICO }: { codigo: string; className?: string; qrCodeBase64?: string | null; aviso?: string }) {
   const [copia, setCopia] = useState<"copiado" | "falhou" | null>(null);
 
   const copiar = async () => {
@@ -28,6 +31,10 @@ export function PixCopiaECola({ codigo, className = "" }: { codigo: string; clas
   return (
     <div data-pix className={`rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2 print:hidden ${className}`}>
       <p className="text-sm font-semibold text-emerald-900">Pix Copia e Cola</p>
+      {/* Só base64 de verdade vira imagem: o conteúdo vem de fora. */}
+      {qrCodeBase64 && /^[A-Za-z0-9+/]+={0,2}$/.test(qrCodeBase64) && (
+        <Image data-qr src={`data:image/png;base64,${qrCodeBase64}`} alt="QR Code do Pix" width={160} height={160} unoptimized className="w-40 h-40 rounded-lg bg-white border border-emerald-200" />
+      )}
       <textarea
         readOnly
         aria-label="Código Pix Copia e Cola"
@@ -51,7 +58,7 @@ export function PixCopiaECola({ codigo, className = "" }: { codigo: string; clas
           </p>
         )}
       </div>
-      <p className="text-xs text-emerald-900/80">{AVISO_PIX_ESTATICO}</p>
+      <p className="text-xs text-emerald-900/80">{aviso}</p>
     </div>
   );
 }

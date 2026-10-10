@@ -140,7 +140,7 @@ export const CAPACIDADES = {
 
   /** Ler faturas e o que há para faturar. */
   faturamentoVer: ["ADMIN", "DIRECTOR", "FINANCE"],
-  /** Emitir, alterar e cancelar fatura. */
+  /** Emitir, alterar e cancelar fatura; gerar Pix e boleto no Mercado Pago e atualizar a situação da cobrança. */
   faturamento: ["ADMIN", "FINANCE"],
 
   /** Painel de cobrança (títulos vencidos e a vencer). Só leitura. */
@@ -160,7 +160,7 @@ export const CAPACIDADES = {
   /** Usuários: listar, criar, trocar perfil e liberar acesso. */
   usuarios: ["ADMIN"],
 
-  /** Empresa: identidade, webhook e configuração de cobrança (multa, juros, chave Pix). */
+  /** Empresa: identidade, webhook e configuração de cobrança (multa, juros, chave Pix e a conta do Mercado Pago). */
   empresa: ["ADMIN"],
 } as const satisfies Record<string, readonly PerfilInterno[]>;
 

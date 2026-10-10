@@ -30,6 +30,11 @@ export type PortalInvoice = {
   createdAt: string;
   /** Pix Copia e Cola do título em aberto; nulo se a transportadora não cadastrou chave. */
   pix: string | null;
+  /** Cobrança do Mercado Pago em aberto (Pix dinâmico com QR Code e boleto): pagar dá baixa sozinho. */
+  cobranca?: {
+    pix: { copiaECola: string | null; qrCodeBase64: string | null; link: string | null; venceEm: string } | null;
+    boleto: { link: string | null; linhaDigitavel: string | null; venceEm: string } | null;
+  } | null;
 };
 
 /** Lê a resposta da API do portal e transforma erro em mensagem legível. */

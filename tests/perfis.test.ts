@@ -167,6 +167,10 @@ const ROTAS: Record<string, Capacidade> = {
   "GET /api/deposito/posicoes": "deposito",
   "POST /api/deposito/posicoes": "deposito",
   "GET /api/deposito": "deposito",
+  "GET /api/empresa/gateway": "empresa",
+  "PUT /api/empresa/gateway": "empresa",
+  "DELETE /api/empresa/gateway": "empresa",
+  "POST /api/empresa/gateway/teste": "empresa",
   "GET /api/empresa/cobranca": "empresa",
   "PATCH /api/empresa/cobranca": "empresa",
   "PATCH /api/empresa": "empresa",
@@ -190,6 +194,8 @@ const ROTAS: Record<string, Capacidade> = {
   "GET /api/faturas/faturaveis": "faturamentoVer",
   "GET /api/faturas/[id]": "faturamentoVer",
   "PATCH /api/faturas/[id]": "faturamento",
+  "POST /api/faturas/[id]/cobrancas": "faturamento",
+  "POST /api/faturas/[id]/cobrancas/[cobrancaId]": "faturamento",
   "GET /api/faturas": "faturamentoVer",
   "POST /api/faturas": "faturamento",
   "GET /api/financeiro/cobranca": "cobranca",
@@ -269,7 +275,8 @@ const ROTAS: Record<string, Capacidade> = {
   "POST /api/veiculos": "frota",
 };
 
-// Arquivos de rota que não passam por `requireStaff`: públicos, do portal do
+// Arquivos de rota que não passam por `requireStaff`: públicos (entre eles o
+// webhook do gateway de pagamento, protegido por assinatura), do portal do
 // cliente (`requirePortalClient`), do motorista (`requireDriver`), da
 // plataforma, do login e do sininho (`requireUsuario`: qualquer perfil, sempre
 // só os avisos da própria pessoa). Rota nova sem guarda da equipe precisa
@@ -290,6 +297,10 @@ const FORA_DA_MATRIZ = [
   "/api/notificacoes/aparelho",
   "/api/notificacoes/chave",
   "/api/notificacoes/lidas",
+  // Webhook do Mercado Pago: público, sem sessão. Quem o protege é a assinatura do aviso,
+  // conferida com o segredo da empresa do endereço, e nada do corpo vale: o pagamento é
+  // buscado na API do Mercado Pago com o token dessa empresa.
+  "/api/pagamentos/mercado-pago/[empresa]",
   "/api/plataforma/empresas",
   "/api/plataforma/empresas/[id]",
   "/api/portal/atendimento",

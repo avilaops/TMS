@@ -120,7 +120,8 @@ export default function ClientesPage() {
           tradeName: data.nome_fantasia || "",
           email: data.email || "",
           phone: data.ddd_telefone_1 || "",
-          address: `${data.logradouro}, ${data.numero} - ${data.bairro}, ${data.municipio} - ${data.uf}`,
+          // Neste formato, com o CEP, o endereço serve para gerar boleto (src/lib/cobranca-gateway.ts).
+          address: `${data.logradouro}, ${data.numero} - ${data.bairro}, ${data.municipio} - ${data.uf}${data.cep ? `, CEP ${String(data.cep).replace(/\D/g, "").replace(/^(\d{5})(\d{3})$/, "$1-$2")}` : ""}`,
         }));
       } else {
         alert("CNPJ não encontrado");

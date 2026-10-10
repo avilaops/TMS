@@ -8,6 +8,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { IDENTIDADE_ALTERADA, LADO_DO_SIMBOLO, TAMANHO_MAXIMO_DO_SIMBOLO, type Identidade, type PixDaEmpresa } from "@/lib/empresa";
 import type { ParametrosDeCobranca } from "@/lib/cobranca";
 import { AVISO_PIX_ESTATICO, LIMITE_DA_CIDADE, LIMITE_DO_NOME, TIPOS_DE_CHAVE, TIPO_DE_CHAVE_LABEL, type TipoDeChave } from "@/lib/pix";
+import { GATEWAY_INDISPONIVEL, type GatewayDaEmpresa } from "@/lib/cobranca-gateway";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
 
 /**
@@ -52,6 +53,7 @@ export default function EmpresaPage() {
   const arquivo = useRef<HTMLInputElement>(null);
   // No celular aparece uma parte por vez; no computador, as três.
   const [aba, setAba] = useState<"identidade" | "cobranca" | "integracao">("identidade");
+  const [parteDaCobranca, setParteDaCobranca] = useState<"encargos" | "mercado-pago">("encargos");
 
   useEffect(() => {
     let ativo = true;
@@ -248,7 +250,33 @@ export default function EmpresaPage() {
         </button>
       </form>
 
-      <Cobranca escondida={aba !== "cobranca"} />
+      {/* No celular a aba Cobrança tem duas partes, para cada uma caber na tela. */}
+      {aba === "cobranca" && (
+        <div role="tablist" aria-label="Parte da cobrança" className="md:hidden grid grid-cols-2 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+          {(
+            [
+              ["encargos", "Encargos e Pix"],
+              ["mercado-pago", "Mercado Pago"],
+            ] as const
+          ).map(([chave, rotulo]) => (
+            <button
+              key={chave}
+              type="button"
+              role="tab"
+              aria-selected={parteDaCobranca === chave}
+              data-parte={chave}
+              onClick={() => setParteDaCobranca(chave)}
+              className={`py-1 rounded-lg text-xs font-semibold ${parteDaCobranca === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Cobranca escondida={aba !== "cobranca" || parteDaCobranca !== "encargos"} />
+
+      <MercadoPago escondida={aba !== "cobranca" || parteDaCobranca !== "mercado-pago"} />
 
       <Integracao escondida={aba !== "integracao"} />
     </div>
@@ -391,6 +419,127 @@ function Cobranca({ escondida }: { escondida: boolean }) {
         Salvar
       </button>
     </form>
+  );
+}
+
+/**
+ * A conta do Mercado Pago da empresa: com ela ligada, a fatura ganha "Gerar
+ * Pix" e "Gerar boleto", e o pagamento dá baixa sozinho. O Access Token e a
+ * assinatura secreta entram por aqui e não voltam: a tela só mostra que estão
+ * configurados e os 4 últimos caracteres.
+ */
+function MercadoPago({ escondida }: { escondida: boolean }) {
+  const [gateway, setGateway] = useState<GatewayDaEmpresa | null>(null);
+  const [accessToken, setAccessToken] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
+
+  useEffect(() => {
+    let ativo = true;
+    fetch("/api/empresa/gateway")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((corpo: GatewayDaEmpresa | null) => {
+        if (ativo && corpo) setGateway(corpo);
+      })
+      .catch(() => {
+        // Sem a leitura a seção não aparece.
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  const chamar = async (caminho: string, method: string, corpo: unknown, sucesso: (resposta: GatewayDaEmpresa & { conta?: string }) => string) => {
+    setOcupado(true);
+    setMensagem(null);
+    try {
+      const res = await fetch(caminho, { method, headers: { "Content-Type": "application/json" }, body: corpo === undefined ? undefined : JSON.stringify(corpo) });
+      const resposta = (await res.json().catch(() => null)) as (GatewayDaEmpresa & { conta?: string; error?: string }) | null;
+      if (!res.ok || !resposta) return setMensagem({ ok: false, texto: resposta?.error ?? FALHA_AO_SALVAR });
+      if (typeof resposta.configurado === "boolean") setGateway(resposta);
+      // As credenciais saem da tela assim que são guardadas.
+      setAccessToken("");
+      setWebhookSecret("");
+      setMensagem({ ok: true, texto: sucesso(resposta) });
+    } catch {
+      setMensagem({ ok: false, texto: FALHA_AO_SALVAR });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  if (!gateway) return null;
+
+  return (
+    <section aria-label="Mercado Pago" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
+      <div>
+        <h2 className="font-semibold text-gray-900 dark:text-white">Mercado Pago</h2>
+        <p className="text-xs md:text-sm text-gray-500 mt-0.5">
+          Pix com QR Code e boleto gerados na fatura, com baixa automática quando o Mercado Pago avisa o pagamento.
+        </p>
+      </div>
+
+      {!gateway.disponivel ? (
+        <p data-gateway-indisponivel className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+          {GATEWAY_INDISPONIVEL}
+        </p>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void chamar("/api/empresa/gateway", "PUT", { accessToken, webhookSecret }, () => "Conta do Mercado Pago ligada. Use Testar conexão para conferir.");
+          }}
+          className="space-y-2"
+        >
+          {gateway.configurado && (
+            <p data-gateway-configurado className="text-sm text-green-700 dark:text-green-400">
+              Configurado: Access Token final {gateway.accessTokenFinal}, assinatura final {gateway.webhookSecretFinal}.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+            <label className="block space-y-1 min-w-0">
+              <span className={LABEL}>Access Token</span>
+              <input required type="password" autoComplete="off" data-campo="accessToken" placeholder="APP_USR-…" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} className={INPUT} />
+            </label>
+            <label className="block space-y-1 min-w-0">
+              <span className={LABEL}>Assinatura secreta</span>
+              <input required type="password" autoComplete="off" data-campo="webhookSecret" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} className={INPUT} />
+            </label>
+          </div>
+          <div className="space-y-1">
+            <span className={LABEL}>Endereço de webhook (cadastre no painel do Mercado Pago, evento Pagamentos)</span>
+            <code data-webhook className="block break-all font-mono text-xs p-2 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200">{gateway.webhook}</code>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={ocupado} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium disabled:opacity-60">
+              {gateway.configurado ? "Trocar credenciais" : "Ligar conta"}
+            </button>
+            {gateway.configurado && (
+              <>
+                <button
+                  type="button"
+                  disabled={ocupado}
+                  onClick={() => void chamar("/api/empresa/gateway/teste", "POST", undefined, (resposta) => `Conexão certa: conta ${resposta.conta ?? ""}.`)}
+                  className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-60"
+                >
+                  Testar conexão
+                </button>
+                <button type="button" disabled={ocupado} onClick={() => void chamar("/api/empresa/gateway", "DELETE", undefined, () => "Conta do Mercado Pago desligada.")} className="px-3 py-2 text-sm rounded-xl text-red-600 disabled:opacity-60">
+                  Desligar
+                </button>
+              </>
+            )}
+          </div>
+        </form>
+      )}
+
+      {mensagem && (
+        <p role={mensagem.ok ? "status" : "alert"} className={`text-sm ${mensagem.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+          {mensagem.texto}
+        </p>
+      )}
+    </section>
   );
 }
 

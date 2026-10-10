@@ -99,6 +99,10 @@ suite("permissões das rotas internas", () => {
   let eventos: typeof import("../src/app/api/eventos/route");
   let eventoReenviar: typeof import("../src/app/api/eventos/[id]/reenviar/route");
   let empresaCobranca: typeof import("../src/app/api/empresa/cobranca/route");
+  let empresaGateway: typeof import("../src/app/api/empresa/gateway/route");
+  let empresaGatewayTeste: typeof import("../src/app/api/empresa/gateway/teste/route");
+  let faturaCobrancas: typeof import("../src/app/api/faturas/[id]/cobrancas/route");
+  let faturaCobranca: typeof import("../src/app/api/faturas/[id]/cobrancas/[cobrancaId]/route");
   let equipe: typeof import("../src/app/api/equipe/route");
   let equipeAjudantes: typeof import("../src/app/api/equipe/ajudantes/route");
   let equipeAjudante: typeof import("../src/app/api/equipe/ajudantes/[id]/route");
@@ -221,6 +225,10 @@ suite("permissões das rotas internas", () => {
     eventos = await import("../src/app/api/eventos/route");
     eventoReenviar = await import("../src/app/api/eventos/[id]/reenviar/route");
     empresaCobranca = await import("../src/app/api/empresa/cobranca/route");
+    empresaGateway = await import("../src/app/api/empresa/gateway/route");
+    empresaGatewayTeste = await import("../src/app/api/empresa/gateway/teste/route");
+    faturaCobrancas = await import("../src/app/api/faturas/[id]/cobrancas/route");
+    faturaCobranca = await import("../src/app/api/faturas/[id]/cobrancas/[cobrancaId]/route");
     equipe = await import("../src/app/api/equipe/route");
     equipeAjudantes = await import("../src/app/api/equipe/ajudantes/route");
     equipeAjudante = await import("../src/app/api/equipe/ajudantes/[id]/route");
@@ -375,6 +383,12 @@ suite("permissões das rotas internas", () => {
       ["POST /api/eventos/[id]/reenviar", () => eventoReenviar.POST(req("POST"), ctx(semId))],
       ["GET /api/empresa/cobranca", () => empresaCobranca.GET()],
       ["PATCH /api/empresa/cobranca", () => empresaCobranca.PATCH(req("PATCH", { multaPct: 50, jurosPct: 50 }))],
+      ["GET /api/empresa/gateway", () => empresaGateway.GET()],
+      ["PUT /api/empresa/gateway", () => empresaGateway.PUT(req("PUT", { accessToken: "APP_USR-invasor-0000000000000000", webhookSecret: "segredo-invasor" }))],
+      ["DELETE /api/empresa/gateway", () => empresaGateway.DELETE(req("DELETE"))],
+      ["POST /api/empresa/gateway/teste", () => empresaGatewayTeste.POST()],
+      ["POST /api/faturas/[id]/cobrancas", () => faturaCobrancas.POST(req("POST", { tipo: "PIX" }), ctx(semId))],
+      ["POST /api/faturas/[id]/cobrancas/[cobrancaId]", () => faturaCobranca.POST(req("POST"), { params: Promise.resolve({ id: semId, cobrancaId: semId }) })],
       ["GET /api/equipe/adiantamentos", () => equipeAdiantamentos.GET()],
       [
         "POST /api/equipe/adiantamentos",

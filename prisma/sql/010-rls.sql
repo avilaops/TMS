@@ -101,6 +101,7 @@ DECLARE
     "Notification": ["userId", "User"],
     "PushSubscription": ["userId", "User"],
     "BankStatementLine": ["transactionId", "FinancialTransaction"],
+    "PaymentCharge": ["invoiceId", "Invoice"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

@@ -494,8 +494,10 @@ suite("cobrança por Pix: rotas", () => {
       expect(deA).toHaveLength(2);
       expect(deA.find((titulo) => titulo.id === tituloDaFatura)?.pix).toBe(esperado());
       expect(deA.find((titulo) => titulo.status === "PAID")?.pix).toBeNull();
-      // A resposta não ganha o número da fatura nem outro dado além do código.
-      expect(Object.keys(deA[0]).sort()).toEqual(["amount", "createdAt", "description", "dueDate", "id", "pix", "status"]);
+      // A resposta não ganha o número da fatura nem outro dado além do código (e da cobrança do
+      // Mercado Pago em aberto, nula aqui: tests/gateway.test.ts).
+      expect(Object.keys(deA[0]).sort()).toEqual(["amount", "cobranca", "createdAt", "description", "dueDate", "id", "pix", "status"]);
+      expect(deA.every((titulo) => (titulo as { cobranca?: unknown }).cobranca === null)).toBe(true);
 
       const deB = await verPortal("CLIENTE_B");
       expect(deB.map((titulo) => titulo.id)).toEqual([tituloAvulsoB]);

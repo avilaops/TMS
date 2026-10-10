@@ -42,6 +42,8 @@ export const TIPOS_DE_AVISO = [
   "chamado.resposta-do-cliente",
   "comprovante.enviado",
   "despesa.lancada",
+  "fatura.paga-pelo-gateway",
+  "cobranca.a-conferir",
 ] as const;
 export type TipoDeAviso = (typeof TIPOS_DE_AVISO)[number];
 
@@ -255,6 +257,22 @@ export const avisoDeDespesa = (despesa: { type: string; amount: number }, motori
   titulo: "Despesa de viagem para aprovar",
   texto: `${motorista} lançou ${rotuloDaDespesa(despesa.type).toLowerCase()} de ${despesa.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`,
   url: "/dashboard/manifestos",
+});
+
+/** Equipe (financeiro): o Mercado Pago avisou o pagamento e a fatura recebeu a baixa sozinha. */
+export const avisoDeFaturaPagaPeloGateway = (fatura: { id: string; number: number }, tipo: "PIX" | "BOLETO"): Conteudo => ({
+  tipo: "fatura.paga-pelo-gateway",
+  titulo: `Fatura nº ${fatura.number} paga por ${tipo === "PIX" ? "Pix" : "boleto"}`,
+  texto: "O Mercado Pago avisou o pagamento e a baixa foi dada.",
+  url: `/dashboard/faturamento/${fatura.id}`,
+});
+
+/** Equipe (financeiro): o Mercado Pago disse algo que o sistema não aplica sozinho. */
+export const avisoDeCobrancaAConferir = (fatura: { id: string; number: number }, motivo: string): Conteudo => ({
+  tipo: "cobranca.a-conferir",
+  titulo: `Fatura nº ${fatura.number}: cobrança a conferir`,
+  texto: motivo,
+  url: `/dashboard/faturamento/${fatura.id}`,
 });
 
 /* ----------------------- Avisos que as rotas compartilham ---------------------- */

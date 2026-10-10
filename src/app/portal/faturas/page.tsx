@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Receipt, AlertCircle } from "lucide-react";
 import { PixCopiaECola } from "@/components/pix/copia-e-cola";
+import { Boleto, PixDinamico } from "@/components/pix/cobranca-do-gateway";
 import {
   INVOICE_STATUS,
   formatCalendarDate,
@@ -21,6 +22,8 @@ export default function PortalFaturasPage() {
   const [error, setError] = useState("");
   // O título com o Pix Copia e Cola aberto.
   const [pixAberto, setPixAberto] = useState<string | null>(null);
+  // O título com o boleto aberto.
+  const [boletoAberto, setBoletoAberto] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/portal/faturas")
@@ -78,6 +81,10 @@ export default function PortalFaturasPage() {
               {faturas.map((fatura) => {
                 const badge = statusBadge(INVOICE_STATUS, fatura.status);
                 const aberto = pixAberto === fatura.id;
+                // O Pix dinâmico do Mercado Pago, quando há, entra no lugar do estático.
+                const pixDinamico = fatura.cobranca?.pix ?? null;
+                const boleto = fatura.cobranca?.boleto ?? null;
+                const boletoVisivel = boletoAberto === fatura.id;
                 return (
                   <Fragment key={fatura.id}>
                     <tr data-fatura={fatura.id} className="grid grid-cols-3 gap-x-3 gap-y-1 px-3 py-2.5 md:table-row hover:bg-gray-50/60">
@@ -88,7 +95,7 @@ export default function PortalFaturasPage() {
                       <td className="col-span-3 min-w-0 md:table-cell md:px-6 md:py-4">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className={`text-xs px-3 py-1 rounded-full border whitespace-nowrap ${badge.className}`}>{badge.label}</span>
-                          {fatura.pix && (
+                          {(pixDinamico || fatura.pix) && (
                             <button
                               type="button"
                               aria-expanded={aberto}
@@ -98,13 +105,25 @@ export default function PortalFaturasPage() {
                               {aberto ? "Fechar Pix" : "Pagar com Pix"}
                             </button>
                           )}
+                          {boleto && (
+                            <button type="button" aria-expanded={boletoVisivel} onClick={() => setBoletoAberto(boletoVisivel ? null : fatura.id)} className="text-sm font-medium text-blue-700 hover:underline">
+                              {boletoVisivel ? "Fechar boleto" : "Pagar com boleto"}
+                            </button>
+                          )}
                         </span>
                       </td>
                     </tr>
-                    {aberto && fatura.pix && (
+                    {aberto && (pixDinamico || fatura.pix) && (
                       <tr data-pix-de={fatura.id} className="block md:table-row">
                         <td colSpan={5} className="block md:table-cell px-3 pb-3 md:px-6 md:pb-4">
-                          <PixCopiaECola codigo={fatura.pix} />
+                          {pixDinamico ? <PixDinamico pix={pixDinamico} /> : fatura.pix && <PixCopiaECola codigo={fatura.pix} />}
+                        </td>
+                      </tr>
+                    )}
+                    {boletoVisivel && boleto && (
+                      <tr data-boleto-de={fatura.id} className="block md:table-row">
+                        <td colSpan={5} className="block md:table-cell px-3 pb-3 md:px-6 md:pb-4">
+                          <Boleto boleto={boleto} />
                         </td>
                       </tr>
                     )}
