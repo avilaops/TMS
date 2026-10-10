@@ -8,6 +8,7 @@ import {
   firstIssue,
 } from "@/lib/usuarios";
 import { dadosDoConvite, liberarAcesso, senhaSemUso } from "@/lib/acessos";
+import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from "@/lib/auditoria";
 
 export async function GET() {
   const { error } = await requireStaff(["ADMIN"]);
@@ -75,10 +76,31 @@ export async function POST(req: Request) {
         select: USER_PUBLIC_SELECT,
       });
 
+      const origem = origemDaRequisicao(req);
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem,
+        acao: "usuario.criar",
+        entidade: "usuario",
+        entidadeId: usuario.id,
+        resumo: `Usuário ${usuario.name} criado com perfil ${usuario.role}`,
+        depois: escolher(usuario, ["name", "email", "role", "clientId"]),
+      });
+
       // O cadastro só vale para quem tem conta liberada no login único.
       const acesso = await liberarAcesso({ email: usuario.email, nome: usuario.name }, { convidadoPor: user.name });
       // O resultado do convite fica no cadastro, para a lista mostrar depois.
-      const salvo = await prisma.user.update({ where: { id: usuario.id }, data: dadosDoConvite(acesso), select: USER_PUBLIC_SELECT });
+      const convite = dadosDoConvite(acesso);
+      const salvo = await prisma.user.update({ where: { id: usuario.id }, data: convite, select: USER_PUBLIC_SELECT });
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem,
+        acao: "usuario.acesso.liberar",
+        entidade: "usuario",
+        entidadeId: usuario.id,
+        resumo: `Acesso de ${usuario.name} pedido ao login único: ${convite.inviteDetail}`,
+        depois: { email: usuario.email, inviteStatus: convite.inviteStatus },
+      });
       return NextResponse.json({ ...salvo, acesso }, { status: 201 });
     } catch (err) {
       // Duas criações simultâneas com o mesmo e-mail: a segunda bate no índice único.

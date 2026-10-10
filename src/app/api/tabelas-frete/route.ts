@@ -3,6 +3,7 @@ import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { FREIGHT_TABLE_SELECT, createFreightTableSchema, isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 const DUPLICATE_MESSAGE = 'Já existe uma tabela de frete com este nome.';
 
@@ -24,7 +25,7 @@ export async function GET() {
 
 // Preço é decisão de quem administra a transportadora: criar e alterar tabela é só ADMIN.
 export async function POST(req: Request) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff(['ADMIN']);
   if (error) return error;
 
   try {
@@ -37,11 +38,22 @@ export async function POST(req: Request) {
     const existing = await prisma.freightTable.findFirst({ where: { name: data.name }, select: { id: true } });
     if (existing) return NextResponse.json({ error: DUPLICATE_MESSAGE }, { status: 409 });
 
+    const origem = origemDaRequisicao(req);
     try {
       const tabela = await transacao(async (tx) => {
         // Só uma padrão por empresa: a nova toma o lugar da anterior na mesma transação.
         if (isDefault) await tx.freightTable.updateMany({ where: { isDefault: true }, data: { isDefault: false } });
-        return tx.freightTable.create({ data: { ...data, isDefault: isDefault ?? false }, select: FREIGHT_TABLE_SELECT });
+        const criada = await tx.freightTable.create({ data: { ...data, isDefault: isDefault ?? false }, select: FREIGHT_TABLE_SELECT });
+        await registrarAuditoria(tx, {
+          ator: user,
+          origem,
+          acao: 'tabela-frete.criar',
+          entidade: 'tabela-frete',
+          entidadeId: criada.id,
+          resumo: `Tabela de frete ${criada.name} criada`,
+          depois: criada,
+        });
+        return criada;
       });
       return NextResponse.json(tabela, { status: 201 });
     } catch (err) {

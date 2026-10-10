@@ -14,6 +14,7 @@ import {
   updateOccurrenceSchema,
 } from '@/lib/ocorrencias';
 import { avisarOcorrencia } from '@/lib/ocorrencias-db';
+import { nadaMudou, origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 const NOT_FOUND = 'Chamado não encontrado.';
 
@@ -53,7 +54,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
  * mesma transação.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -63,11 +64,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const { status, priority, assigneeId } = parsed.data;
+    const origem = origemDaRequisicao(req);
 
     const ocorrencia = await transacao(async (tx) => {
       // Trava o chamado: duas trocas de status simultâneas decidem em fila.
       await tx.$queryRaw`SELECT id FROM "Occurrence" WHERE id = ${id} FOR UPDATE`;
-      const atual = await tx.occurrence.findUnique({ where: { id }, select: { status: true } });
+      // Prioridade e responsável vêm junto só para o "antes" da auditoria.
+      const atual = await tx.occurrence.findUnique({ where: { id }, select: { status: true, priority: true, assigneeId: true } });
       if (!atual) throw new Refusal(NOT_FOUND, 404);
 
       if (status !== undefined && !podeMudarStatus(atual.status, status)) {
@@ -91,7 +94,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
       if (status !== undefined) await avisarOcorrencia(tx, 'ocorrencia.status', id);
 
-      return tx.occurrence.findUniqueOrThrow({ where: { id }, select: OCCURRENCE_SELECT });
+      const alterada = await tx.occurrence.findUniqueOrThrow({ where: { id }, select: OCCURRENCE_SELECT });
+
+      const depois = { status: alterada.status, priority: alterada.priority, assigneeId: alterada.assignee?.id ?? null };
+      if (!nadaMudou(atual, depois)) {
+        const mudouStatus = atual.status !== depois.status;
+        await registrarAuditoria(tx, {
+          ator: user,
+          origem,
+          acao: mudouStatus ? 'ocorrencia.status' : 'ocorrencia.alterar',
+          entidade: 'ocorrencia',
+          entidadeId: id,
+          resumo: mudouStatus
+            ? `Chamado nº ${alterada.number} passou de ${atual.status} para ${depois.status}`
+            : `Chamado nº ${alterada.number} alterado`,
+          antes: atual,
+          depois,
+        });
+      }
+
+      return alterada;
     });
 
     return NextResponse.json({ ...ocorrencia, proximosStatus: proximosStatus(ocorrencia.status) });

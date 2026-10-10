@@ -4,6 +4,7 @@ import prisma, { transacao } from '@/lib/prisma';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { FROM_INVOICE_MESSAGE, TRANSACTION_SELECT, updateTransactionSchema } from '@/lib/financeiro';
+import { CAMPOS_DO_LANCAMENTO, escolher, nadaMudou, origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const NOT_FOUND = 'Lançamento não encontrado.';
 
@@ -15,7 +16,7 @@ const NOT_FOUND = 'Lançamento não encontrado.';
  * com o lançamento "pago" (ou o contrário).
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff(["ADMIN"]);
   if (error) return error;
 
   try {
@@ -25,10 +26,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const { action, paidAt, paymentMethod, ...campos } = parsed.data;
+    const origem = origemDaRequisicao(req);
 
     const lancamento = await transacao(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "FinancialTransaction" WHERE id = ${id} FOR UPDATE`;
-      const atual = await tx.financialTransaction.findUnique({ where: { id }, select: { status: true, invoiceId: true } });
+      // O lançamento inteiro, como estava: é o "antes" da auditoria.
+      const atual = await tx.financialTransaction.findUnique({ where: { id }, select: TRANSACTION_SELECT });
       if (!atual) throw new Refusal(NOT_FOUND, 404);
       if (atual.invoiceId) throw new Refusal(FROM_INVOICE_MESSAGE, 409);
 
@@ -47,7 +50,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         situacao = { status: 'PENDING', paidAt: null, paymentMethod: null };
       }
 
-      return tx.financialTransaction.update({
+      const atualizado = await tx.financialTransaction.update({
         where: { id },
         data: {
           ...campos,
@@ -58,6 +61,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         },
         select: TRANSACTION_SELECT,
       });
+
+      const antes = escolher(atual, CAMPOS_DO_LANCAMENTO);
+      const depois = escolher(atualizado, CAMPOS_DO_LANCAMENTO);
+      if (!nadaMudou(antes, depois)) {
+        await registrarAuditoria(tx, {
+          ator: user,
+          origem,
+          acao: action === 'pagar' ? 'lancamento.pagar' : action === 'reabrir' ? 'lancamento.reabrir' : 'lancamento.alterar',
+          entidade: 'lancamento',
+          entidadeId: id,
+          resumo: `Lançamento "${atualizado.description}" ${action === 'pagar' ? 'pago' : action === 'reabrir' ? 'reaberto' : 'alterado'}`,
+          antes,
+          depois,
+        });
+      }
+
+      return atualizado;
     });
 
     return NextResponse.json(lancamento);
@@ -69,12 +89,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /** Exclui um lançamento manual. O de fatura sai quando a fatura é cancelada. */
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(["ADMIN"]);
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { user, error } = await requireStaff(["ADMIN"]);
   if (error) return error;
 
   try {
     const { id } = await params;
+
+    // O lançamento que vai sumir: depois de apagado, só a auditoria sabe o que ele era.
+    const apagado = await prisma.financialTransaction.findUnique({ where: { id }, select: TRANSACTION_SELECT });
 
     const { count } = await prisma.financialTransaction.deleteMany({ where: { id, invoiceId: null } });
     if (count === 0) {
@@ -83,6 +106,16 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         ? NextResponse.json({ error: FROM_INVOICE_MESSAGE }, { status: 409 })
         : NextResponse.json({ error: NOT_FOUND }, { status: 404 });
     }
+
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'lancamento.excluir',
+      entidade: 'lancamento',
+      entidadeId: id,
+      resumo: `Lançamento "${apagado?.description ?? id}" excluído`,
+      antes: apagado ? escolher(apagado, CAMPOS_DO_LANCAMENTO) : null,
+    });
 
     return NextResponse.json({ id, excluido: true });
   } catch (error) {

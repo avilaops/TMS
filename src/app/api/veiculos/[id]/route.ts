@@ -3,6 +3,10 @@ import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { INACTIVE_DRIVER_MESSAGE, VEHICLE_PUBLIC_INCLUDE, updateVehicleSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
+import { escolher, nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
+
+// O que entra no "antes" e no "depois" da auditoria.
+const CAMPOS_AUDITADOS = ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'status'] as const;
 
 /** O veículo, para o cabeçalho da tela de frota (`/dashboard/veiculos/[id]`). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -23,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -35,7 +39,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     const data = parsed.data;
 
-    const target = await prisma.vehicle.findUnique({ where: { id }, select: { id: true, driverId: true } });
+    // O cadastro inteiro, como estava: é o "antes" da auditoria.
+    const target = await prisma.vehicle.findUnique({ where: { id } });
     if (!target) {
       return NextResponse.json({ error: 'Veículo não encontrado.' }, { status: 404 });
     }
@@ -70,6 +75,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
       include: VEHICLE_PUBLIC_INCLUDE,
     });
+
+    const antes = escolher(target, CAMPOS_AUDITADOS);
+    const depois = escolher(veiculo, CAMPOS_AUDITADOS);
+    if (!nadaMudou(antes, depois)) {
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem: origemDaRequisicao(req),
+        acao: 'veiculo.alterar',
+        entidade: 'veiculo',
+        entidadeId: id,
+        resumo: `Veículo ${veiculo.plate} alterado`,
+        antes,
+        depois,
+      });
+    }
 
     return NextResponse.json(veiculo);
   } catch (error) {

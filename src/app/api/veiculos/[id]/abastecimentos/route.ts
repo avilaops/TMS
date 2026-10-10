@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { firstIssue } from '@/lib/usuarios';
 import { FUELING_SELECT, consumoDosAbastecimentos, createFuelingSchema } from '@/lib/frota';
 import { acharVeiculo, veiculoNaoEncontrado } from '@/lib/frota-db';
+import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 /**
  * Abastecimentos do veículo, do mais novo para o mais antigo, cada um com o
@@ -27,7 +28,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -57,6 +58,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         driverId: data.driverId ?? null,
       },
       select: FUELING_SELECT,
+    });
+
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'abastecimento.registrar',
+      entidade: 'veiculo',
+      entidadeId: id,
+      resumo: `Abastecimento de ${abastecimento.liters.toLocaleString('pt-BR')} l registrado`,
+      depois: escolher(abastecimento, ['date', 'liters', 'totalCost', 'odometer', 'station', 'driverId']),
     });
 
     return NextResponse.json(abastecimento, { status: 201 });

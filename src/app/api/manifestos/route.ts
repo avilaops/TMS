@@ -12,6 +12,7 @@ import {
   cannotEmbarkMessage,
   createManifestSchema,
 } from '@/lib/manifestos';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /** Desfaz a transação quando alguma carga deixou de estar apta entre a conferência e a gravação. */
 class CannotEmbark extends Error {
@@ -78,7 +79,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -105,6 +106,7 @@ export async function POST(req: Request) {
       );
     }
 
+    const origem = origemDaRequisicao(req);
     const newManifest = await transacao(async (tx) => {
       // Segura veículo e motorista, sempre nesta ordem, e confere de novo: quem
       // desativa o motorista ou põe o veículo em manutenção durante a montagem
@@ -133,6 +135,16 @@ export async function POST(req: Request) {
       if (count !== collectionIds.length) {
         throw new CannotEmbark(collectionIds.length - count);
       }
+
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'manifesto.criar',
+        entidade: 'manifesto',
+        entidadeId: manifest.id,
+        resumo: `Manifesto criado com ${collectionIds.length} carga(s)`,
+        depois: { status: manifest.status, driverId, vehicleId, cargas: collectionIds.length },
+      });
 
       return manifest;
     });

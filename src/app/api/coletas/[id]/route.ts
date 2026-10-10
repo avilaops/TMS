@@ -11,6 +11,7 @@ import {
 import { firstIssue } from '@/lib/usuarios';
 import { freteDaColeta, type FreteDaColeta } from '@/lib/frete-coleta';
 import { Prisma } from '@prisma/client';
+import { CAMPOS_DA_COLETA, escolher, nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const NOT_FOUND = 'Coleta não encontrada.';
 const IN_MANIFEST = 'Esta coleta já está em um manifesto e não pode mais ser alterada.';
@@ -39,7 +40,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -63,6 +64,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         volumes: true,
         invoiceValue: true,
         freightManual: true,
+        // Só para o "antes" da auditoria.
+        trackingCode: true,
+        sender: true,
+        receiver: true,
+        origin: true,
+        invoiceKey: true,
+        freightValue: true,
       }
     });
     if (!target) {
@@ -141,6 +149,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const coleta = await prisma.collection.findUnique({ where: { id }, include: COLLECTION_INCLUDE });
+
+    if (coleta) {
+      const antes = escolher(target, CAMPOS_DA_COLETA);
+      const depois = escolher(coleta, CAMPOS_DA_COLETA);
+      if (!nadaMudou(antes, depois)) {
+        await registrarAuditoriaDepois(prisma, {
+          ator: user,
+          origem: origemDaRequisicao(req),
+          acao: 'coleta.alterar',
+          entidade: 'coleta',
+          entidadeId: id,
+          resumo: `Carga ${coleta.trackingCode ?? ''} alterada`,
+          antes,
+          depois,
+        });
+      }
+    }
+
     return NextResponse.json(coleta);
   } catch (error) {
     console.error('Error updating collection:', error);

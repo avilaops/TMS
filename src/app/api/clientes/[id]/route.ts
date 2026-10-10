@@ -3,11 +3,12 @@ import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { CLIENT_PUBLIC_SELECT, isUniqueViolation, updateClientSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
+import { nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const DUPLICATE_MESSAGE = 'Já existe outro cliente cadastrado com este CNPJ/CPF.';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -19,7 +20,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     const data = parsed.data;
 
-    const target = await prisma.client.findUnique({ where: { id }, select: { id: true } });
+    // O cadastro como estava: é o "antes" da auditoria.
+    const target = await prisma.client.findUnique({ where: { id }, select: CLIENT_PUBLIC_SELECT });
     if (!target) {
       return NextResponse.json({ error: 'Cliente não encontrado.' }, { status: 404 });
     }
@@ -60,6 +62,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         },
         select: CLIENT_PUBLIC_SELECT,
       });
+
+      if (!nadaMudou(target, cliente)) {
+        const nome = cliente.tradeName || cliente.companyName;
+        const desativou = target.active && !cliente.active;
+        const reativou = !target.active && cliente.active;
+        await registrarAuditoriaDepois(prisma, {
+          ator: user,
+          origem: origemDaRequisicao(req),
+          acao: desativou ? 'cliente.desativar' : reativou ? 'cliente.reativar' : 'cliente.alterar',
+          entidade: 'cliente',
+          entidadeId: id,
+          resumo: `Cliente ${nome} ${desativou ? 'desativado' : reativou ? 'reativado' : 'alterado'}`,
+          antes: target,
+          depois: cliente,
+        });
+      }
 
       return NextResponse.json(cliente);
     } catch (err) {

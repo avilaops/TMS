@@ -5,6 +5,7 @@ import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { OCCURRENCE_SELECT, contadoresPorStatus, createOccurrenceSchema, filtrosDaLista } from '@/lib/ocorrencias';
 import { abrirOcorrencia } from '@/lib/ocorrencias-db';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /**
  * Chamados da empresa, do mais novo para o mais antigo, com os contadores por
@@ -48,6 +49,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const data = parsed.data;
+    const origem = origemDaRequisicao(req);
 
     const ocorrencia = await transacao(async (tx) => {
       const carga = data.trackingCode
@@ -72,6 +74,23 @@ export async function POST(req: Request) {
         clientId: carga?.clientId ?? data.clientId ?? null,
         openedById: user.id,
         origin: 'STAFF',
+      });
+
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'ocorrencia.abrir',
+        entidade: 'ocorrencia',
+        entidadeId: criada.id,
+        resumo: `Chamado nº ${criada.number} aberto: ${data.title}`,
+        depois: {
+          number: criada.number,
+          type: data.type,
+          title: data.title,
+          priority: data.priority,
+          clientId: carga?.clientId ?? data.clientId ?? null,
+          trackingCode: data.trackingCode ?? null,
+        },
       });
       return tx.occurrence.findUniqueOrThrow({ where: { id: criada.id }, select: OCCURRENCE_SELECT });
     });

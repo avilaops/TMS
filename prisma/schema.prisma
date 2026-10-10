@@ -64,6 +64,7 @@ model Tenant {
   collectionVolumes  CollectionVolume[]
   warehouseReceipts  WarehouseReceipt[]
   fiscalDocuments    FiscalDocument[]
+  auditLogs          AuditLog[]
 }
 
 model User {
@@ -95,6 +96,7 @@ model User {
   volumesChecked      CollectionVolume[]
   warehouseReceipts   WarehouseReceipt[]
   fiscalDocuments     FiscalDocument[]
+  auditLogs           AuditLog[]
 
   @@index([clientId])
 
@@ -962,4 +964,37 @@ model OutboxEvent {
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId, createdAt])
   @@index([deliveredAt, nextAttemptAt])
+}
+
+// ---------------------------------------------------------------------------
+// Auditoria
+//
+// Uma linha por ação importante (quem, quando, de onde, o que mudou). Só
+// inserção: o papel da aplicação não tem UPDATE nem DELETE nesta tabela
+// (prisma/sql/010-rls.sql). O nome e o perfil de quem fez ficam copiados na
+// linha, porque o usuário pode ser apagado depois. Ver src/lib/auditoria.ts.
+// ---------------------------------------------------------------------------
+model AuditLog {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  userId    String?  // nulo se o usuário foi apagado depois
+  userName  String
+  userRole  String?
+  action    String   // texto curto e estável: cliente.criar, fatura.pagar, usuario.perfil...
+  entity    String   // cliente, fatura, usuario...
+  entityId  String?
+  summary   String   // frase em português, para a lista
+  before    Json?    // só os campos que mudaram, sem segredo nem imagem
+  after     Json?
+  ip        String?
+  device    String?  // resumo do navegador e do aparelho
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entity, entityId])
+  @@index([userId])
 }

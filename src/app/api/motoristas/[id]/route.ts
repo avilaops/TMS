@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
-import { sistema, transacao } from '@/lib/prisma';
+import prisma, { sistema, transacao } from '@/lib/prisma';
 import { DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { dadosDoConvite, liberarAcesso, revogarAcesso } from '@/lib/acessos';
+import { nadaMudou, origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
 
@@ -23,11 +24,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Nome e e-mail ficam no User; o resto, no Driver. Uma transação só:
     // ou muda tudo, ou não muda nada.
     let emailAnterior: string | null = null;
+    const origem = origemDaRequisicao(req);
 
     const motorista = await transacao(async (tx) => {
+      // Além do que a regra precisa, o cadastro como estava: é o "antes" da auditoria.
       const target = await tx.driver.findUnique({
         where: { id },
-        select: { id: true, userId: true, user: { select: { role: true, email: true } } }
+        select: {
+          id: true,
+          userId: true,
+          cnh: true,
+          category: true,
+          cnhExpiry: true,
+          phone: true,
+          active: true,
+          user: { select: { role: true, email: true, name: true } },
+        }
       });
       if (!target) throw new Refusal('Motorista não encontrado.', 404);
       // Cadastro antigo pode ligar o motorista a um usuário de outro perfil:
@@ -64,7 +76,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
 
       // `active: false` é o que barra o acesso: `requireDriver` recusa inativo.
-      return tx.driver.update({
+      const atualizado = await tx.driver.update({
         where: { id },
         data: {
           cnh: data.cnh,
@@ -75,6 +87,34 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         },
         include: DRIVER_PUBLIC_INCLUDE,
       });
+
+      const campos = (m: { cnh: string | null; category: string | null; cnhExpiry: Date | null; phone: string | null; active: boolean }, u: { name: string; email: string }) => ({
+        name: u.name,
+        email: u.email,
+        cnh: m.cnh,
+        category: m.category,
+        cnhExpiry: m.cnhExpiry,
+        phone: m.phone,
+        active: m.active,
+      });
+      const antes = campos(target, target.user);
+      const depois = campos(atualizado, atualizado.user);
+      if (!nadaMudou(antes, depois)) {
+        const desativou = antes.active && !depois.active;
+        const reativou = !antes.active && depois.active;
+        await registrarAuditoria(tx, {
+          ator: user,
+          origem,
+          acao: desativou ? 'motorista.desativar' : reativou ? 'motorista.reativar' : 'motorista.alterar',
+          entidade: 'motorista',
+          entidadeId: id,
+          resumo: `Motorista ${depois.name} ${desativou ? 'desativado' : reativou ? 'reativado' : 'alterado'}`,
+          antes,
+          depois,
+        });
+      }
+
+      return atualizado;
     });
 
     // E-mail novo é outra conta no login único: libera a nova e revoga a
@@ -86,11 +126,34 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         cpf: motorista.cpf,
         telefone: motorista.phone,
       }, { convidadoPor: user.name });
-      await sistema.user.update({ where: { id: motorista.userId }, data: dadosDoConvite(acesso), select: { id: true } });
+      const convite = dadosDoConvite(acesso);
+      await sistema.user.update({ where: { id: motorista.userId }, data: convite, select: { id: true } });
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem,
+        acao: 'usuario.acesso.liberar',
+        entidade: 'usuario',
+        entidadeId: motorista.userId,
+        resumo: `Acesso de ${motorista.user.name} pedido ao login único: ${convite.inviteDetail}`,
+        depois: { email: motorista.user.email, inviteStatus: convite.inviteStatus },
+      });
       const aindaUsado = await sistema.user.count({
         where: { email: { equals: emailAnterior, mode: 'insensitive' } },
       });
-      if (aindaUsado === 0) await revogarAcesso(emailAnterior);
+      if (aindaUsado === 0) {
+        const revogado = await revogarAcesso(emailAnterior);
+        await registrarAuditoriaDepois(prisma, {
+          ator: user,
+          origem,
+          acao: 'usuario.acesso.revogar',
+          entidade: 'usuario',
+          entidadeId: motorista.userId,
+          resumo: revogado
+            ? `Acesso do e-mail anterior de ${motorista.user.name} revogado no login único`
+            : `Revogação do e-mail anterior de ${motorista.user.name} pedida ao login único, sem confirmação`,
+          antes: { email: emailAnterior },
+        });
+      }
       return NextResponse.json({ ...motorista, acesso });
     }
 

@@ -5,6 +5,7 @@ import { canTransition, statusChangeSchema } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
 import { COLLECTION_STATUS, statusBadge } from '@/lib/format';
 import { mudarStatusDaColeta } from '@/lib/coletas-db';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 const NOT_FOUND = 'Coleta não encontrada.';
 const IN_MANIFEST = 'Esta coleta está em um manifesto: retire a carga do manifesto antes de cancelar.';
@@ -30,7 +31,7 @@ export async function POST(
 
     const current = await prisma.collection.findUnique({
       where: { id: collectionId },
-      select: { status: true, manifestId: true }
+      select: { status: true, manifestId: true, trackingCode: true }
     });
     if (!current) {
       return NextResponse.json({ error: NOT_FOUND }, { status: 404 });
@@ -52,9 +53,23 @@ export async function POST(
     // simultâneas, uma encontra zero linhas e recebe 409. A linha do histórico
     // vai na mesma transação (`mudarStatusDaColeta`, que a conferência do
     // depósito também usa).
-    const changed = await transacao((tx) =>
-      mudarStatusDaColeta(tx, { collectionId, de: current.status, para: status, userId: user.id, receiverName })
-    );
+    const origem = origemDaRequisicao(req);
+    const changed = await transacao(async (tx) => {
+      const mudou = await mudarStatusDaColeta(tx, { collectionId, de: current.status, para: status, userId: user.id, receiverName });
+      if (mudou) {
+        await registrarAuditoria(tx, {
+          ator: user,
+          origem,
+          acao: 'coleta.status',
+          entidade: 'coleta',
+          entidadeId: collectionId,
+          resumo: `Carga ${current.trackingCode ?? ''} passou de "${label(current.status)}" para "${label(status)}"`,
+          antes: { status: current.status },
+          depois: { status, ...(status === 'DELIVERED' ? { receiverName } : {}) },
+        });
+      }
+      return mudou;
+    });
     if (!changed) {
       return NextResponse.json({ error: CHANGED_MEANWHILE }, { status: 409 });
     }

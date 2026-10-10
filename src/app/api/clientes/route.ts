@@ -3,6 +3,7 @@ import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { CLIENT_PUBLIC_SELECT, createClientSchema, isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
+import { origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const DUPLICATE_MESSAGE = 'Já existe um cliente cadastrado com este CNPJ/CPF.';
 
@@ -24,7 +25,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -66,6 +67,16 @@ export async function POST(req: Request) {
           freightTableId: data.freightTableId,
         },
         select: CLIENT_PUBLIC_SELECT,
+      });
+
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem: origemDaRequisicao(req),
+        acao: 'cliente.criar',
+        entidade: 'cliente',
+        entidadeId: newClient.id,
+        resumo: `Cliente ${newClient.tradeName || newClient.companyName} criado`,
+        depois: newClient,
       });
 
       return NextResponse.json(newClient, { status: 201 });

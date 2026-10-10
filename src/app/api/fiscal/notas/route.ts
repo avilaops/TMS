@@ -14,6 +14,7 @@ import {
   lerNfe,
 } from '@/lib/nfe';
 import { sugestaoDaNota } from '@/lib/nfe-db';
+import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 // O XML viaja dentro de um JSON: aspas e quebras de linha escapadas aumentam o
 // corpo. O dobro do limite do arquivo cobre isso com folga.
@@ -96,6 +97,17 @@ export async function POST(req: Request) {
       if (isUniqueViolation(err)) return jaImportada(leitura.nota.accessKey);
       throw err;
     }
+
+    // Sem o XML: ele fica na própria nota, e a auditoria guarda só o que identifica.
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'nota.importar',
+      entidade: 'nota',
+      entidadeId: nota.id,
+      resumo: `NF-e nº ${nota.number} de ${nota.issuerName} importada`,
+      depois: escolher(nota, ['accessKey', 'number', 'series', 'issuerName', 'recipientName', 'totalValue']),
+    });
 
     return NextResponse.json({ nota, ...(await sugestaoDaNota(prisma, nota)) }, { status: 201 });
   } catch (err) {

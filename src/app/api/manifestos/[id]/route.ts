@@ -13,6 +13,7 @@ import {
   updateManifestSchema,
 } from '@/lib/manifestos';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /** Troca motorista ou veículo e acrescenta carga a uma viagem em montagem. */
 export async function PATCH(
@@ -20,10 +21,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireStaff();
+    const { user, error } = await requireStaff();
     if (error) return error;
 
     const manifestId = (await params).id;
+    const origem = origemDaRequisicao(req);
 
     const parsed = updateManifestSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -71,6 +73,27 @@ export async function PATCH(
         where: { id: manifestId },
         data: { driverId: driverId ?? manifest.driverId, vehicleId: vehicleId ?? manifest.vehicleId },
       });
+
+      const trocou = (driverId ?? manifest.driverId) !== manifest.driverId || (vehicleId ?? manifest.vehicleId) !== manifest.vehicleId;
+      if (trocou || addCollectionIds.length > 0) {
+        await registrarAuditoria(tx, {
+          ator: user,
+          origem,
+          acao: 'manifesto.alterar',
+          entidade: 'manifesto',
+          entidadeId: manifestId,
+          resumo:
+            addCollectionIds.length > 0
+              ? `Manifesto alterado: ${addCollectionIds.length} carga(s) acrescentada(s)`
+              : 'Manifesto alterado: motorista ou veículo trocado',
+          antes: { driverId: manifest.driverId, vehicleId: manifest.vehicleId, cargasAcrescentadas: 0 },
+          depois: {
+            driverId: driverId ?? manifest.driverId,
+            vehicleId: vehicleId ?? manifest.vehicleId,
+            cargasAcrescentadas: addCollectionIds.length,
+          },
+        });
+      }
     });
 
     const manifest = await prisma.manifest.findUnique({ where: { id: manifestId } });

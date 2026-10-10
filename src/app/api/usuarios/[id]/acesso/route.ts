@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { requireStaff } from "@/lib/staff";
 import { dadosDoConvite, liberarAcesso } from "@/lib/acessos";
 import { USER_PUBLIC_SELECT } from "@/lib/usuarios";
+import { origemDaRequisicao, registrarAuditoriaDepois } from "@/lib/auditoria";
 
 /**
  * Libera (de novo) o acesso da pessoa no login único. Serve para quem foi
@@ -11,7 +12,7 @@ import { USER_PUBLIC_SELECT } from "@/lib/usuarios";
  * pessoa, com o endereço de criar a senha enquanto ela não tiver criado uma (o
  * login único limita a cinco mensagens por hora para a mesma caixa).
  */
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, error } = await requireStaff(["ADMIN"]);
   if (error) return error;
 
@@ -29,7 +30,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     telefone: usuario.driver?.phone,
   }, { convidadoPor: user.name });
 
-  const usuarioAtualizado = await prisma.user.update({ where: { id }, data: dadosDoConvite(acesso), select: USER_PUBLIC_SELECT });
+  const convite = dadosDoConvite(acesso);
+  const usuarioAtualizado = await prisma.user.update({ where: { id }, data: convite, select: USER_PUBLIC_SELECT });
+  await registrarAuditoriaDepois(prisma, {
+    ator: user,
+    origem: origemDaRequisicao(req),
+    acao: "usuario.acesso.liberar",
+    entidade: "usuario",
+    entidadeId: id,
+    resumo: `Acesso de ${usuario.name} pedido ao login único: ${convite.inviteDetail}`,
+    depois: { email: usuario.email, inviteStatus: convite.inviteStatus },
+  });
 
   return NextResponse.json({ acesso, usuario: usuarioAtualizado }, { status: acesso.ok ? 200 : 502 });
 }

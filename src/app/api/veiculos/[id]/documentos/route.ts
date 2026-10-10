@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { firstIssue } from '@/lib/usuarios';
 import { DOCUMENT_SELECT, createDocumentSchema, diasAteVencer, situacaoDoVencimento } from '@/lib/frota';
 import { acharVeiculo, veiculoNaoEncontrado } from '@/lib/frota-db';
+import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 /**
  * Documentos do veículo, do que vence primeiro para o que vence por último,
@@ -37,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -53,6 +54,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const documento = await prisma.vehicleDocument.create({
       data: { vehicleId: id, type: data.type, number: data.number ?? null, expiresAt: data.expiresAt, notes: data.notes ?? null },
       select: DOCUMENT_SELECT,
+    });
+
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'documento-veiculo.registrar',
+      entidade: 'veiculo',
+      entidadeId: id,
+      resumo: `Documento ${documento.type} do veículo registrado`,
+      depois: escolher(documento, ['type', 'number', 'expiresAt', 'notes']),
     });
 
     return NextResponse.json(documento, { status: 201 });

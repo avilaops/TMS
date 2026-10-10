@@ -93,6 +93,7 @@ DECLARE
     "CollectionVolume": ["collectionId", "Collection", "locationId", "WarehouseLocation", "checkedById", "User"],
     "WarehouseReceipt": ["collectionId", "Collection", "userId", "User"],
     "FiscalDocument": ["collectionId", "Collection", "importedById", "User"],
+    "AuditLog": ["userId", "User"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';
@@ -137,6 +138,17 @@ CREATE POLICY tms_tenant ON "Tenant" FOR SELECT TO tms_app
   USING (id = current_setting('app.tenant_id', true));
 REVOKE ALL ON "Tenant" FROM tms_app;
 GRANT SELECT ON "Tenant" TO tms_app;
+
+-- Auditoria: a aplicacao so acrescenta e le. Alterar ou apagar uma linha da
+-- trilha nao e trabalho de ninguem na empresa; o que sobra (apagar o usuario
+-- esvazia `userId`, limpeza de teste) vai pelo dono do banco.
+DO $$
+BEGIN
+  IF to_regclass('public."AuditLog"') IS NOT NULL THEN
+    REVOKE UPDATE, DELETE ON "AuditLog" FROM tms_app;
+  END IF;
+END
+$$;
 
 -- Eventos para sistemas de fora: cada linha nova do historico de status vira um
 -- evento a entregar, se a empresa tem endereco cadastrado ("Webhook"). O

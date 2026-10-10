@@ -3,6 +3,7 @@ import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { INACTIVE_DRIVER_MESSAGE, VEHICLE_PUBLIC_INCLUDE, createVehicleSchema, isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
+import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const DUPLICATE_MESSAGE = 'Já existe um veículo com esta placa.';
 
@@ -23,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -69,6 +70,16 @@ export async function POST(req: Request) {
           driverId: data.defaultDriverId ?? null,
         },
         include: VEHICLE_PUBLIC_INCLUDE,
+      });
+
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem: origemDaRequisicao(req),
+        acao: 'veiculo.criar',
+        entidade: 'veiculo',
+        entidadeId: newVehicle.id,
+        resumo: `Veículo ${newVehicle.plate} criado`,
+        depois: escolher(newVehicle, ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'status']),
       });
 
       return NextResponse.json(newVehicle, { status: 201 });

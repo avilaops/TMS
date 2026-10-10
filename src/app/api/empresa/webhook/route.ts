@@ -3,6 +3,23 @@ import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { novoSegredo } from '@/lib/eventos';
 import { conferirEnderecoPublico } from '@/lib/url-publica';
+import { origemDaRequisicao, registrarAuditoriaDepois, type Ator, type Origem } from '@/lib/auditoria';
+
+/** A linha da auditoria da integração. Só o endereço: o segredo nunca entra, nem como "antes". */
+function auditar(ator: Ator, origem: Origem, antes: string | null, depois: string | null, segredoNovo: boolean) {
+  return registrarAuditoriaDepois(prisma, {
+    ator,
+    origem,
+    acao: depois === null ? 'integracao.remover' : 'integracao.alterar',
+    entidade: 'integracao',
+    resumo:
+      depois === null
+        ? 'Endereço de integração removido'
+        : `Endereço de integração ${antes === null ? 'cadastrado' : 'gravado'}${segredoNovo ? ', com segredo novo' : ''}`,
+    antes: antes === null ? null : { url: antes },
+    depois: depois === null ? null : { url: depois },
+  });
+}
 
 const ENTREGA = { id: true, type: true, createdAt: true, deliveredAt: true, attempts: true, lastError: true } as const;
 
@@ -31,8 +48,9 @@ export async function GET() {
  * A resposta traz `segredo` só quando ele acabou de ser gerado.
  */
 export async function PUT(req: Request) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff(["ADMIN"]);
   if (error) return error;
+  const origem = origemDaRequisicao(req);
 
   const corpo = (await req.json().catch(() => null)) as { url?: unknown; novoSegredo?: unknown } | null;
   if (!corpo || typeof corpo !== 'object' || !('url' in corpo)) {
@@ -41,7 +59,10 @@ export async function PUT(req: Request) {
 
   try {
     if (corpo.url === null || corpo.url === '') {
+      const removido = await prisma.webhook.findFirst({ select: { url: true } });
       await prisma.webhook.deleteMany({});
+      // Remover o que não existe não é uma ação: nada a registrar.
+      if (removido) await auditar(user, origem, removido.url, null, false);
       return NextResponse.json({ url: null });
     }
     if (typeof corpo.url !== 'string') return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 });
@@ -50,15 +71,17 @@ export async function PUT(req: Request) {
     if (!destino.ok) return NextResponse.json({ error: destino.erro }, { status: 400 });
     const url = destino.url.toString();
 
-    const atual = await prisma.webhook.findFirst({ select: { id: true } });
+    const atual = await prisma.webhook.findFirst({ select: { id: true, url: true } });
     if (atual && corpo.novoSegredo !== true) {
       await prisma.webhook.update({ where: { id: atual.id }, data: { url } });
+      if (atual.url !== url) await auditar(user, origem, atual.url, url, false);
       return NextResponse.json({ url });
     }
 
     const segredo = novoSegredo();
     if (atual) await prisma.webhook.update({ where: { id: atual.id }, data: { url, secret: segredo } });
     else await prisma.webhook.create({ data: { url, secret: segredo } });
+    await auditar(user, origem, atual?.url ?? null, url, true);
     return NextResponse.json({ url, segredo }, { status: atual ? 200 : 201 });
   } catch (error) {
     console.error('Erro ao gravar a integração:', error);

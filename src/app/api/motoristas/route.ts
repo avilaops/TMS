@@ -4,6 +4,7 @@ import prisma, { transacao } from '@/lib/prisma';
 import { DRIVER_PUBLIC_INCLUDE, createDriverSchema, isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { dadosDoConvite, liberarAcesso, senhaSemUso } from '@/lib/acessos';
+import { origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const DUPLICATE_CPF = 'Já existe um motorista com este CPF.';
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
@@ -52,6 +53,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: DUPLICATE_EMAIL }, { status: 409 });
     }
 
+    const origem = origemDaRequisicao(req);
+
     try {
       // O Driver exige um User. Os dois nascem na mesma transação: se o Driver
       // falhar, o User não fica órfão ocupando o e-mail.
@@ -66,7 +69,7 @@ export async function POST(req: Request) {
           select: { id: true }
         });
 
-        return tx.driver.create({
+        const criado = await tx.driver.create({
           data: {
             userId: newUser.id,
             cpf: data.cpf,
@@ -77,12 +80,34 @@ export async function POST(req: Request) {
           },
           include: DRIVER_PUBLIC_INCLUDE,
         });
+
+        await registrarAuditoria(tx, {
+          ator: user,
+          origem,
+          acao: 'motorista.criar',
+          entidade: 'motorista',
+          entidadeId: criado.id,
+          resumo: `Motorista ${data.name} criado`,
+          depois: { name: data.name, email: data.email, cpf: criado.cpf, cnh: criado.cnh, cnhExpiry: criado.cnhExpiry, category: criado.category, phone: criado.phone },
+        });
+
+        return criado;
       });
 
       // O motorista entra no aplicativo pelo login único: garante a conta lá
       // (com CPF e telefone, que ele pode usar para entrar) e libera o TMS.
       const acesso = await liberarAcesso({ email: data.email, nome: data.name, cpf: data.cpf, telefone: data.phone }, { convidadoPor: user.name });
-      await prisma.user.update({ where: { id: newDriver.userId }, data: dadosDoConvite(acesso), select: { id: true } });
+      const convite = dadosDoConvite(acesso);
+      await prisma.user.update({ where: { id: newDriver.userId }, data: convite, select: { id: true } });
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem,
+        acao: 'usuario.acesso.liberar',
+        entidade: 'usuario',
+        entidadeId: newDriver.userId,
+        resumo: `Acesso de ${data.name} pedido ao login único: ${convite.inviteDetail}`,
+        depois: { email: data.email, inviteStatus: convite.inviteStatus },
+      });
       return NextResponse.json({ ...newDriver, acesso }, { status: 201 });
     } catch (err) {
       // Duas criações simultâneas: a segunda bate no índice único do CPF ou do

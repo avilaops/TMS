@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { firstIssue } from '@/lib/usuarios';
+import { origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const MESSAGE = 'O frete precisa ser um número maior ou igual a zero.';
 
@@ -25,7 +26,7 @@ const schema = z.object(
  * frete não muda mais: a fatura já saiu com ele.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
@@ -34,6 +35,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!parsed.success) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
+
+    // O frete como estava: é o "antes" da auditoria.
+    const anterior = await prisma.collection.findUnique({
+      where: { id },
+      select: { trackingCode: true, freightValue: true, freightManual: true },
+    });
 
     const { count } = await prisma.collection.updateMany({
       where: { id, invoiceId: null },
@@ -51,6 +58,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ? NextResponse.json({ error: 'Esta carga já está em uma fatura. Cancele a fatura para mudar o frete.' }, { status: 409 })
         : NextResponse.json({ error: 'Coleta não encontrada.' }, { status: 404 });
     }
+
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'coleta.frete',
+      entidade: 'coleta',
+      entidadeId: id,
+      resumo: `Frete da carga ${anterior?.trackingCode ?? ''} informado à mão`,
+      antes: { freightValue: anterior?.freightValue ?? null, freightManual: anterior?.freightManual ?? null },
+      depois: { freightValue: parsed.data.freightValue, freightManual: true },
+    });
 
     return NextResponse.json({ id, freightValue: parsed.data.freightValue, freightManual: true });
   } catch (error) {

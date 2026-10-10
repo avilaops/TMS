@@ -4,6 +4,11 @@ import { authOptions } from '@/lib/auth';
 import { requireStaff } from '@/lib/staff';
 import prisma, { SemEmpresaError, empresaAtual, sistema } from '@/lib/prisma';
 import { identidadeSchema } from '@/lib/empresa';
+import { nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
+
+// O símbolo é uma imagem: na auditoria entra só se há um, nunca a imagem.
+const SIMBOLO_PADRAO = 'padrão';
+const SIMBOLO_PROPRIO = 'próprio';
 
 const IDENTIDADE = { name: true, logo: true } as const;
 
@@ -36,7 +41,7 @@ export async function GET() {
 
 /** Troca o nome e o símbolo da empresa da sessão. Só o administrador. */
 export async function PATCH(req: Request) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff(["ADMIN"]);
   if (error) return error;
 
   const dados = identidadeSchema.safeParse(await req.json().catch(() => null));
@@ -47,11 +52,30 @@ export async function PATCH(req: Request) {
   try {
     // O papel da aplicação só lê a tabela de empresas. A gravação vai pelo
     // dono do banco, presa ao id da empresa da sessão: nunca ao que veio no corpo.
+    const tenantId = await empresaAtual();
+    const anterior = await sistema.tenant.findUnique({ where: { id: tenantId }, select: IDENTIDADE });
     const empresa = await sistema.tenant.update({
-      where: { id: await empresaAtual() },
+      where: { id: tenantId },
       data: dados.data,
       select: IDENTIDADE,
     });
+
+    const antes = { name: anterior?.name ?? null, simbolo: anterior?.logo ? SIMBOLO_PROPRIO : SIMBOLO_PADRAO };
+    const trocouDeImagem = Boolean(anterior?.logo && empresa.logo && anterior.logo !== empresa.logo);
+    const depois = { name: empresa.name, simbolo: empresa.logo ? (trocouDeImagem ? `${SIMBOLO_PROPRIO} (imagem nova)` : SIMBOLO_PROPRIO) : SIMBOLO_PADRAO };
+    if (!nadaMudou(antes, depois)) {
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem: origemDaRequisicao(req),
+        acao: 'empresa.alterar',
+        entidade: 'empresa',
+        entidadeId: tenantId,
+        resumo: antes.name !== depois.name ? `Nome da empresa trocado para ${empresa.name}` : 'Símbolo da empresa trocado',
+        antes,
+        depois,
+      });
+    }
+
     return NextResponse.json(empresa);
   } catch (error) {
     console.error('Erro ao alterar a identidade da empresa:', error);

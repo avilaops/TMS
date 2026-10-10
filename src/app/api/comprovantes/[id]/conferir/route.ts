@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { ALREADY_REVIEWED_MESSAGE, PROOF_NOT_FOUND_MESSAGE, conferenciaSchema } from '@/lib/entregas';
 import { firstIssue } from '@/lib/usuarios';
+import { origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 /**
  * Aprova ou recusa o comprovante de uma entrega. O `[id]` é o da coleta, como
@@ -49,6 +50,18 @@ export async function POST(
     if (count === 0) {
       return NextResponse.json({ error: ALREADY_REVIEWED_MESSAGE }, { status: 409 });
     }
+
+    const aprovou = decision === 'APPROVED';
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: aprovou ? 'comprovante.aprovar' : 'comprovante.recusar',
+      entidade: 'comprovante',
+      entidadeId: proof.id,
+      resumo: `Comprovante de entrega ${aprovou ? 'aprovado' : 'recusado'}`,
+      antes: { status: 'SUBMITTED' },
+      depois: { status: decision, rejectionReason: reason ?? null, cargaId: collectionId },
+    });
 
     return NextResponse.json({ success: true, collectionId, proofId: proof.id, status: decision });
   } catch (error) {

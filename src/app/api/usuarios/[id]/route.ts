@@ -7,6 +7,10 @@ import {
   firstIssue,
   updateUserSchema,
 } from "@/lib/usuarios";
+import { escolher, nadaMudou, origemDaRequisicao, registrarAuditoria } from "@/lib/auditoria";
+
+// O que entra no "antes" e no "depois" da auditoria.
+const CAMPOS_AUDITADOS = ["name", "role", "clientId"] as const;
 
 class Refusal extends Error {
   constructor(
@@ -29,6 +33,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const data = parsed.data;
+    const origem = origemDaRequisicao(req);
 
     const usuario = await transacao(async (tx) => {
       // Trava as linhas de ADMIN: sem isto, dois administradores rebaixando um
@@ -50,7 +55,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
       const target = await tx.user.findUnique({
         where: { id },
-        select: { id: true, role: true, clientId: true },
+        select: { id: true, name: true, role: true, clientId: true },
       });
       if (!target) throw new Refusal("Usuário não encontrado.", 404);
 
@@ -89,7 +94,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }
       }
 
-      return tx.user.update({
+      const atualizado = await tx.user.update({
         where: { id },
         data: {
           ...(data.name !== undefined && { name: data.name }),
@@ -98,6 +103,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         },
         select: USER_PUBLIC_SELECT,
       });
+
+      // Na mesma transação da troca: perfil que mudou sem linha na auditoria não existe.
+      const antes = escolher(target, CAMPOS_AUDITADOS);
+      const depois = escolher(atualizado, CAMPOS_AUDITADOS);
+      if (!nadaMudou(antes, depois)) {
+        await registrarAuditoria(tx, {
+          ator: admin,
+          origem,
+          acao: roleChange ? "usuario.perfil" : "usuario.alterar",
+          entidade: "usuario",
+          entidadeId: id,
+          resumo: roleChange
+            ? `Perfil de ${atualizado.name} trocado de ${target.role} para ${roleChange}`
+            : `Usuário ${atualizado.name} alterado`,
+          antes,
+          depois,
+        });
+      }
+
+      return atualizado;
     });
 
     return NextResponse.json(usuario);

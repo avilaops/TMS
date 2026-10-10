@@ -5,6 +5,7 @@ import { COLLECTION_INCLUDE, createCollectionSchema } from '@/lib/coletas';
 import { criarColetaConfirmada, recusaDaColetaNova } from '@/lib/coletas-db';
 import { firstIssue } from '@/lib/usuarios';
 import { withTrackingCode } from '@/lib/tracking';
+import { CAMPOS_DA_COLETA, escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 export async function GET() {
   const { error } = await requireStaff();
@@ -41,6 +42,16 @@ export async function POST(req: Request) {
     // O frete, o status e o histórico ficam em `criarColetaConfirmada`, que é o
     // mesmo caminho da carga criada a partir de uma NF-e.
     const newCollection = await withTrackingCode((trackingCode) => criarColetaConfirmada(prisma, data, user.id, trackingCode));
+
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'coleta.criar',
+      entidade: 'coleta',
+      entidadeId: newCollection.id,
+      resumo: `Carga ${newCollection.trackingCode ?? ''} criada para ${newCollection.receiver}`,
+      depois: escolher(newCollection, CAMPOS_DA_COLETA),
+    });
 
     return NextResponse.json(newCollection, { status: 201 });
   } catch (error) {

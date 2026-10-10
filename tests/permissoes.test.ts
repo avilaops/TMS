@@ -94,6 +94,9 @@ suite("permissões das rotas internas", () => {
   let depositoPosicaoPorId: typeof import("../src/app/api/deposito/posicoes/[id]/route");
   let usuarios: typeof import("../src/app/api/usuarios/route");
   let usuario: typeof import("../src/app/api/usuarios/[id]/route");
+  let auditoria: typeof import("../src/app/api/auditoria/route");
+  let eventos: typeof import("../src/app/api/eventos/route");
+  let eventoReenviar: typeof import("../src/app/api/eventos/[id]/reenviar/route");
 
   const ids = {} as Record<Perfil, string>;
   let clienteId: string;
@@ -194,6 +197,9 @@ suite("permissões das rotas internas", () => {
     depositoPosicaoPorId = await import("../src/app/api/deposito/posicoes/[id]/route");
     usuarios = await import("../src/app/api/usuarios/route");
     usuario = await import("../src/app/api/usuarios/[id]/route");
+    auditoria = await import("../src/app/api/auditoria/route");
+    eventos = await import("../src/app/api/eventos/route");
+    eventoReenviar = await import("../src/app/api/eventos/[id]/reenviar/route");
 
     await limpar();
 
@@ -299,6 +305,9 @@ suite("permissões das rotas internas", () => {
       ["GET /api/usuarios", () => usuarios.GET()],
       ["POST /api/usuarios", () => usuarios.POST(req("POST", {}))],
       ["PATCH /api/usuarios/[id]", () => usuario.PATCH(req("PATCH", { name: "Invasor" }), ctx(ids.OPERATION))],
+      ["GET /api/auditoria", () => auditoria.GET(req())],
+      ["GET /api/eventos", () => eventos.GET(req())],
+      ["POST /api/eventos/[id]/reenviar", () => eventoReenviar.POST(req("POST"), ctx(semId))],
     ];
   });
 

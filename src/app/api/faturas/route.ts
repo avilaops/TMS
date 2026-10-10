@@ -4,6 +4,7 @@ import { requireStaff } from '@/lib/staff';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { FATURAVEL, INVOICE_SELECT, centavos, createInvoiceSchema, descricaoDoLancamento } from '@/lib/faturas';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 // Faturamento é financeiro: só o administrador, como em /api/financeiro.
 
@@ -21,7 +22,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff(['ADMIN']);
   if (error) return error;
 
   try {
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
     const data = parsed.data;
     const ids = [...new Set(data.collectionIds)];
     const tenantId = await empresaAtual();
+    const origem = origemDaRequisicao(req);
 
     const fatura = await transacao(async (tx) => {
       const cliente = await tx.client.findUnique({ where: { id: data.clientId }, select: { id: true } });
@@ -79,6 +81,16 @@ export async function POST(req: Request) {
           clientId: data.clientId,
           invoiceId: criada.id,
         },
+      });
+
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'fatura.emitir',
+        entidade: 'fatura',
+        entidadeId: criada.id,
+        resumo: `Fatura nº ${number} emitida com ${cargas.length} carga(s)`,
+        depois: { number, status: 'OPEN', clientId: data.clientId, total, dueDate: data.dueDate, notes: data.notes ?? null, cargas: cargas.length },
       });
 
       return tx.invoice.findUniqueOrThrow({ where: { id: criada.id }, select: INVOICE_SELECT });

@@ -2,6 +2,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { sistema } from "@/lib/prisma";
 import { conferirEnderecoPublico } from "@/lib/url-publica";
+import { TENTATIVAS } from "@/lib/mensageria";
 
 /**
  * Entrega dos eventos (OutboxEvent) no endereço que cada empresa cadastrou.
@@ -16,7 +17,8 @@ import { conferirEnderecoPublico } from "@/lib/url-publica";
  * Roda com o cliente de sistema: o despachante atende todas as empresas.
  */
 
-export const TENTATIVAS = 8;
+// O limite de tentativas mora em src/lib/mensageria.ts, que a tela também lê.
+export { TENTATIVAS };
 const LOTE = 20;
 const TEMPO_LIMITE_MS = 8_000;
 

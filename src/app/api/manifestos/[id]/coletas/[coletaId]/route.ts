@@ -3,6 +3,7 @@ import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { COLLECTION_STATUS, statusBadge } from '@/lib/format';
 import { recordStatusChanges } from '@/lib/historico';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 const MANIFEST_NOT_FOUND = 'Manifesto não encontrado.';
 const COLLECTION_NOT_FOUND = 'Esta carga não está neste manifesto.';
@@ -12,7 +13,7 @@ const CHANGED_MEANWHILE = 'A carga mudou de status enquanto você decidia. Atual
 
 /** Retira a carga da viagem: ela volta a "Coletado", livre para outro manifesto ou para cancelar. */
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string; coletaId: string }> }
 ) {
   try {
@@ -20,6 +21,7 @@ export async function DELETE(
     if (error) return error;
 
     const { id: manifestId, coletaId } = await params;
+    const origem = origemDaRequisicao(req);
 
     const manifest = await prisma.manifest.findUnique({
       where: { id: manifestId },
@@ -71,6 +73,17 @@ export async function DELETE(
           { collectionId: coletaId, fromStatus: 'ROUTE', toStatus: 'COLLECTED', userId: user.id },
         ]);
       }
+
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'manifesto.retirar-carga',
+        entidade: 'manifesto',
+        entidadeId: manifestId,
+        resumo: 'Carga retirada do manifesto',
+        antes: { cargaId: coletaId, statusDaCarga: expected },
+        depois: { cargaId: null, statusDaCarga: 'COLLECTED' },
+      });
       return true;
     });
     if (!changed) {

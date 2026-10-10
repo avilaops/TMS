@@ -4,6 +4,7 @@ import { requireStaff } from '@/lib/staff';
 import { FREIGHT_CITY_SELECT, Refusal, freightCitiesSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { chaveDaCidade } from '@/lib/frete';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /**
  * Substitui a lista de cidades da tabela pela lista enviada. É o que a tela usa
@@ -13,8 +14,9 @@ import { chaveDaCidade } from '@/lib/frete';
  * Tudo numa transação: lista com erro não apaga a que estava valendo.
  */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff(['ADMIN']);
   if (error) return error;
+  const origem = origemDaRequisicao(req);
 
   try {
     const { id } = await params;
@@ -36,15 +38,27 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     });
 
     const cidades = await transacao(async (tx) => {
-      const tabela = await tx.freightTable.findUnique({ where: { id }, select: { id: true } });
+      const tabela = await tx.freightTable.findUnique({ where: { id }, select: { id: true, name: true } });
       if (!tabela) throw new Refusal('Tabela de frete não encontrada.', 404);
 
-      await tx.freightTableCity.deleteMany({ where: { tableId: id } });
+      const { count: antigas } = await tx.freightTableCity.deleteMany({ where: { tableId: id } });
       if (linhas.length > 0) {
         await tx.freightTableCity.createMany({ data: linhas.map((linha) => ({ ...linha, tableId: id })) });
       }
       // Marca a alteração na própria tabela, para a lista mostrar quando o preço mudou.
       await tx.freightTable.update({ where: { id }, data: { updatedAt: new Date() }, select: { id: true } });
+
+      // A lista inteira é trocada: a auditoria guarda quantas cidades havia e quantas ficaram, não cada preço.
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'tabela-frete.cidades',
+        entidade: 'tabela-frete',
+        entidadeId: id,
+        resumo: `Cidades da tabela de frete ${tabela.name} trocadas: ${antigas} → ${linhas.length}`,
+        antes: { cidades: antigas },
+        depois: { cidades: linhas.length },
+      });
 
       return tx.freightTableCity.findMany({ where: { tableId: id }, select: FREIGHT_CITY_SELECT, orderBy: { city: 'asc' } });
     });

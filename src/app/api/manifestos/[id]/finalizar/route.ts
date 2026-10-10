@@ -4,19 +4,21 @@ import { requireStaff } from '@/lib/staff';
 import { pendingDeliveriesMessage } from '@/lib/manifestos';
 import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 const CHANGED_MEANWHILE = 'A viagem mudou enquanto você decidia. Atualize a página e tente de novo.';
 
 /** Encerra a viagem. Só com todas as cargas entregues ou retiradas. */
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireStaff();
+    const { user, error } = await requireStaff();
     if (error) return error;
 
     const manifestId = (await params).id;
+    const origem = origemDaRequisicao(req);
 
     await transacao(async (tx) => {
       const current = await lockManifest(tx, manifestId);
@@ -47,6 +49,17 @@ export async function POST(
       await tx.vehicle.updateMany({
         where: { id: current.vehicleId, status: 'ON_ROUTE', manifests: { none: { status: 'ROUTE' } } },
         data: { status: 'AVAILABLE' },
+      });
+
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'manifesto.finalizar',
+        entidade: 'manifesto',
+        entidadeId: manifestId,
+        resumo: 'Manifesto finalizado',
+        antes: { status: current.status },
+        depois: { status: 'FINISHED' },
       });
     });
 

@@ -29,7 +29,8 @@ import {
   BarChart3,
   Wrench,
   Headset,
-  Warehouse
+  Warehouse,
+  History
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -78,7 +79,8 @@ const SECOES: { titulo: string | null; links: LinkDoMenu[] }[] = [
     titulo: "Sistema",
     links: [
       { href: "/dashboard/relatorios", icon: BarChart3, label: "Relatórios", roles: ["ADMIN"] },
-      { href: "/dashboard/mensagens", icon: Bell, label: "Mensageria" },
+      { href: "/dashboard/mensagens", icon: Bell, label: "Mensageria", roles: ["ADMIN"] },
+      { href: "/dashboard/auditoria", icon: History, label: "Auditoria", roles: ["ADMIN"] },
       { href: "/dashboard/usuarios", icon: UserCog, label: "Usuários", roles: ["ADMIN"] },
       { href: "/dashboard/empresa", icon: Building2, label: "Empresa", roles: ["ADMIN"] },
     ],

@@ -3,6 +3,7 @@ import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { firstIssue } from '@/lib/usuarios';
 import { TRANSACTION_SELECT, createTransactionSchema, situacaoDoLancamento, type Situacao } from '@/lib/financeiro';
+import { CAMPOS_DO_LANCAMENTO, escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const SITUACOES: readonly Situacao[] = ['pago', 'vencido', 'aberto'];
 
@@ -50,7 +51,7 @@ export async function GET(req?: Request) {
 }
 
 export async function POST(req: Request) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff(["ADMIN"]);
   if (error) return error;
 
   try {
@@ -77,6 +78,16 @@ export async function POST(req: Request) {
         paymentMethod: pago ? (paymentMethod ?? null) : null,
       },
       select: TRANSACTION_SELECT,
+    });
+
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'lancamento.criar',
+      entidade: 'lancamento',
+      entidadeId: newTransaction.id,
+      resumo: `Lançamento "${newTransaction.description}" criado (${newTransaction.type === 'INCOME' ? 'a receber' : 'a pagar'})`,
+      depois: escolher(newTransaction, CAMPOS_DO_LANCAMENTO),
     });
 
     return NextResponse.json(newTransaction, { status: 201 });

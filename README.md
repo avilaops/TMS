@@ -12,7 +12,7 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 
 | Área | Rota | Quem acessa | O que faz |
 | --- | --- | --- | --- |
-| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e; CT-e só com registro manual, sem emissão), mensagens, usuários |
+| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e; CT-e só com registro manual, sem emissão), mensageria (histórico dos avisos para sistemas de fora), auditoria, usuários |
 | Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline, checklist do veículo da viagem e registro de ocorrência na entrega |
 | Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas, minutas e atendimento (chamados) da própria empresa |
 | API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
@@ -336,6 +336,41 @@ O aviso de título vencido sai uma vez por título e por vencimento; a procura r
 **Exemplo de destino:** [n8n/avisos-por-whatsapp.js](n8n/avisos-por-whatsapp.js) é o fluxo do n8n em uso na Mello, que transforma cada aviso num resumo de WhatsApp para o responsável.
 
 Ainda não há escolha de quais tipos receber, nem repetição do aviso de título vencido (o lembrete periódico fica por conta do fluxo no destino).
+
+## Mensageria
+
+Em `/dashboard/mensagens` (menu Sistema, só `ADMIN`) fica o histórico dos avisos acima: o que o TMS gerou para o endereço da Integração, do mais novo para o mais antigo. Cada linha traz o tipo com rótulo em português, quando foi gerado e a situação: **entregue**, **na fila**, **falhou** (com o motivo e a próxima tentativa) ou **desistiu** (gastou as 8 tentativas). Filtros por tipo e por situação, e uma página de 30 por vez. As regras ficam em [src/lib/mensageria.ts](src/lib/mensageria.ts).
+
+- **Tentar de novo:** no aviso que falhou ou de que o despachante desistiu, o botão zera as tentativas e marca a próxima para agora; ele sai na volta seguinte do despachante (até 15 segundos). Aviso entregue ou ainda na fila não é reenviado.
+- **Sem endereço cadastrado** a tela diz isso e aponta para Empresa → Integração: sem endereço o TMS não gera aviso nenhum.
+- A tela mostra se o aviso **chegou ao endereço**, não se alguém leu uma mensagem. O TMS não manda WhatsApp, SMS nem e-mail por conta própria: quem escreve para a pessoa é o sistema que recebe o aviso (o fluxo do n8n, por exemplo).
+
+| Rota | Quem | O que faz |
+| --- | --- | --- |
+| `GET /api/eventos?tipo=&situacao=&cursor=` | administrador | Avisos da empresa e o endereço da integração; `proximo` é o cursor da página seguinte |
+| `POST /api/eventos/[id]/reenviar` | administrador | Devolve à fila um aviso que falhou; 409 se entregue, na fila ou sem endereço cadastrado |
+
+Ainda não existe: ver o conteúdo que foi enviado em cada aviso, reenviar vários de uma vez, apagar aviso antigo, notificação push e mensagem direta do TMS para cliente ou motorista.
+
+## Auditoria
+
+Toda ação importante grava uma linha em `AuditLog`: quem fez (o id e, guardados na hora, o nome e o perfil, porque o usuário pode ser apagado depois), quando, de onde (IP e um resumo do aparelho, como "Safari no iPhone"), a ação (`cliente.criar`, `fatura.pagar`, `usuario.perfil`…), o registro alterado e, quando há, o **antes** e o **depois** só dos campos que mudaram. O helper e as regras ficam em [src/lib/auditoria.ts](src/lib/auditoria.ts).
+
+- **Só inserção.** O papel da aplicação não tem `UPDATE` nem `DELETE` na tabela ([prisma/sql/010-rls.sql](prisma/sql/010-rls.sql)): nem uma rota com defeito consegue alterar ou apagar a trilha. Não há rota de alteração.
+- **Na mesma transação da mudança** quando a rota tem uma (`registrarAuditoria`): ação recusada pela regra não deixa linha, e linha que não pôde ser gravada desfaz a mudança. Rota que grava sem transação registra logo depois (`registrarAuditoriaDepois`); ali, se a linha falhar, o erro vai para o log do servidor e a resposta segue a mesma.
+- **O que nunca entra** no antes e depois: senha, hash, segredo da integração, token, o símbolo da empresa, foto e assinatura de comprovante e XML de nota (lista `CAMPOS_PROIBIDOS`, que vale em qualquer profundidade). Imagem embutida é omitida mesmo num campo de outro nome, e texto longo é cortado em 500 caracteres.
+- **IP:** o primeiro valor de `x-forwarded-for` (o proxy na frente do sistema precisa preenchê-lo); sem cabeçalho, fica vazio.
+- **Tela** `/dashboard/auditoria` (menu Sistema, só `ADMIN`): da mais recente para a mais antiga, 30 por vez ("Carregar mais"), com filtro por período, usuário, tipo de registro, ação e id do registro. Abrir uma linha mostra antes e depois lado a lado.
+
+O que é registrado: criar, alterar, desativar e reativar **cliente** e **motorista**; criar e alterar **veículo**, e registrar abastecimento e documento dele; criar e alterar **usuário**, trocar perfil, pedir a liberação de acesso e revogar o do e-mail antigo de um motorista; criar, alterar e mudar status de **carga**, e informar frete à mão; criar, alterar, liberar, cancelar e finalizar **manifesto**, e retirar carga dele; emitir, pagar, reabrir e cancelar **fatura**; criar, alterar, pagar, reabrir e excluir **lançamento**; aprovar e recusar **comprovante**; nome e símbolo da **empresa** e o endereço da **integração**; criar e alterar **tabela de frete** e trocar as cidades dela (quantas havia e quantas ficaram, não cada preço); abrir **chamado** e mudar status, prioridade ou responsável; concluir **conferência** no depósito; importar **nota fiscal** e criar carga a partir dela; e reenviar aviso.
+
+| Rota | Quem | O que faz |
+| --- | --- | --- |
+| `GET /api/auditoria?de=&ate=&usuario=&entidade=&acao=&id=&cursor=` | administrador | A trilha da empresa; `de`/`ate` em `AAAA-MM-DD` (dias do Brasil), `id` aceita só o começo, `proximo` é o cursor da página seguinte |
+
+A tabela é criada por [prisma/sql/018-auditoria.sql](prisma/sql/018-auditoria.sql); rode `npm run db:rls` depois dela.
+
+Ainda não é registrado: o que o **motorista** faz no aplicativo (baixa de entrega, ocorrência, checklist) e o que o **cliente** faz no portal (pedir coleta, abrir e responder atendimento); cotação e CRM (inclusive converter cotação em carga); mensagem em chamado; leitura de volume, posição e cadastro de posições do depósito; registrar CT-e e ligar nota a carga que já existe; manutenção, pneu e checklist de veículo, e alterar ou apagar abastecimento e documento; o teste da integração; e o cadastro de empresas da plataforma. A troca de status de carga feita por esses caminhos continua no histórico de status da carga (`CollectionStatusHistory`), com o usuário. Também não existe: entrada e saída do sistema (login), exportar a trilha, prazo de guarda com descarte e os perfis extras do item 1.19 do roteiro (Diretoria, Expedição, Conferência, Comercial, Financeiro).
 
 ## Portal do cliente
 

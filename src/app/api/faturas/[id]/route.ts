@@ -4,6 +4,14 @@ import { requireStaff } from '@/lib/staff';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { INVOICE_COLLECTION_SELECT, INVOICE_SELECT, invoiceActionSchema } from '@/lib/faturas';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+
+// A ação da rota e o que ela vira na auditoria.
+const NA_AUDITORIA = {
+  pagar: { acao: 'fatura.pagar', feito: 'paga' },
+  reabrir: { acao: 'fatura.reabrir', feito: 'reaberta' },
+  cancelar: { acao: 'fatura.cancelar', feito: 'cancelada' },
+} as const;
 
 const NOT_FOUND = 'Fatura não encontrada.';
 
@@ -37,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
  * da fatura cancelada não é reaproveitado.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff(['ADMIN']);
   if (error) return error;
 
   try {
@@ -47,10 +55,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const { action } = parsed.data;
+    const origem = origemDaRequisicao(req);
 
     const fatura = await transacao(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${id} FOR UPDATE`;
-      const atual = await tx.invoice.findUnique({ where: { id }, select: { status: true } });
+      const atual = await tx.invoice.findUnique({ where: { id }, select: { status: true, paidAt: true } });
       if (!atual) throw new Refusal(NOT_FOUND, 404);
 
       if (action === 'pagar') {
@@ -79,7 +88,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         await tx.invoice.update({ where: { id }, data: { status: 'CANCELLED' }, select: { id: true } });
       }
 
-      return tx.invoice.findUniqueOrThrow({ where: { id }, select: INVOICE_SELECT });
+      const depois = await tx.invoice.findUniqueOrThrow({ where: { id }, select: INVOICE_SELECT });
+
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: NA_AUDITORIA[action].acao,
+        entidade: 'fatura',
+        entidadeId: id,
+        resumo: `Fatura nº ${depois.number} ${NA_AUDITORIA[action].feito}`,
+        antes: { status: atual.status, paidAt: atual.paidAt },
+        depois: { status: depois.status, paidAt: depois.paidAt },
+      });
+
+      return depois;
     });
 
     return NextResponse.json(fatura);

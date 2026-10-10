@@ -12,10 +12,11 @@ import {
 import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
 import { recordStatusChanges } from '@/lib/historico';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /** Libera a saída: as cargas passam para "em rota" e o veículo fica ocupado. */
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -23,6 +24,7 @@ export async function POST(
     if (error) return error;
 
     const manifestId = (await params).id;
+    const origem = origemDaRequisicao(req);
 
     await transacao(async (tx) => {
       const manifest = await lockManifest(tx, manifestId);
@@ -73,6 +75,17 @@ export async function POST(
 
       await tx.vehicle.update({ where: { id: manifest.vehicleId }, data: { status: 'ON_ROUTE' } });
       await tx.manifest.update({ where: { id: manifestId }, data: { status: 'ROUTE' } });
+
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'manifesto.liberar',
+        entidade: 'manifesto',
+        entidadeId: manifestId,
+        resumo: `Manifesto liberado: ${ids.length} carga(s) em rota`,
+        antes: { status: manifest.status },
+        depois: { status: 'ROUTE', cargas: ids.length },
+      });
     });
 
     const manifest = await prisma.manifest.findUnique({ where: { id: manifestId } });
