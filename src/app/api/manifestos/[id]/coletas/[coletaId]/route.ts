@@ -4,6 +4,7 @@ import { requireStaff } from '@/lib/staff';
 import { COLLECTION_STATUS, statusBadge } from '@/lib/format';
 import { recordStatusChanges } from '@/lib/historico';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+import { avisar, avisoDeCargaRetirada, usuarioDoMotorista } from '@/lib/notificacoes';
 
 const MANIFEST_NOT_FOUND = 'Manifesto não encontrado.';
 const COLLECTION_NOT_FOUND = 'Esta carga não está neste manifesto.';
@@ -25,7 +26,7 @@ export async function DELETE(
 
     const manifest = await prisma.manifest.findUnique({
       where: { id: manifestId },
-      select: { status: true }
+      select: { status: true, driverId: true }
     });
     if (!manifest) {
       return NextResponse.json({ error: MANIFEST_NOT_FOUND }, { status: 404 });
@@ -33,7 +34,7 @@ export async function DELETE(
 
     const current = await prisma.collection.findFirst({
       where: { id: coletaId, manifestId },
-      select: { status: true }
+      select: { status: true, receiver: true, destination: true }
     });
     if (!current) {
       return NextResponse.json({ error: COLLECTION_NOT_FOUND }, { status: 404 });
@@ -72,6 +73,12 @@ export async function DELETE(
         await recordStatusChanges(tx, [
           { collectionId: coletaId, fromStatus: 'ROUTE', toStatus: 'COLLECTED', userId: user.id },
         ]);
+        // Sininho: o motorista já está na rua com a viagem e precisa saber que a entrega saiu dela.
+        await avisar(tx, {
+          ...avisoDeCargaRetirada(manifestId, current),
+          para: await usuarioDoMotorista(tx, manifest.driverId),
+          autor: user.id,
+        });
       }
 
       await registrarAuditoria(tx, {

@@ -6,8 +6,9 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { sair } from "@/lib/sair";
 import { SimboloDaEmpresa, useIdentidade } from "@/components/empresa/identidade";
-import { Menu, X, LogOut, Bell } from "lucide-react";
+import { Menu, X, LogOut } from "lucide-react";
 import { motion } from "framer-motion";
+import { Avisos, Sininho } from "@/components/notificacoes/Sininho";
 import { secoesDoMenu } from "./menu";
 
 // Enquanto o nome da empresa não chega (ou se a leitura falhar), o cabeçalho mostra o do sistema.
@@ -25,6 +26,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const secoes = secoesDoMenu(session?.user?.role);
 
   return (
+    <Avisos area="dashboard">
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col md:flex-row">
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-50">
@@ -32,9 +34,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <SimboloDaEmpresa logo={logo} />
           <span data-empresa className="font-outfit font-bold text-lg dark:text-white truncate">{nome}</span>
         </div>
-        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2">
-          {isMobileMenuOpen ? <X /> : <Menu />}
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Sininho className="p-2 text-gray-600 dark:text-gray-300" />
+          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2">
+            {isMobileMenuOpen ? <X /> : <Menu />}
+          </button>
+        </div>
       </div>
 
       {/* Sidebar */}
@@ -117,10 +122,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {pathname.split("/").pop() === "dashboard" ? "Visão Geral" : pathname.split("/").pop()}
           </h2>
           <div className="flex items-center space-x-4">
-            <button className="w-10 h-10 rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center text-gray-500 hover:text-blue-600 transition-colors relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-            </button>
+            <Sininho />
           </div>
         </header>
 
@@ -137,5 +139,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
     </div>
+    </Avisos>
   );
 }

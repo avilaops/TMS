@@ -13,6 +13,7 @@ import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
 import { recordStatusChanges } from '@/lib/historico';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+import { avisar, avisarStatusAoCliente, avisoDeViagemLiberada, usuarioDoMotorista } from '@/lib/notificacoes';
 
 /** Libera a saída: as cargas passam para "em rota" e o veículo fica ocupado. */
 export async function POST(
@@ -68,10 +69,15 @@ export async function POST(
         where: { id: { in: ids }, manifestId, status: 'COLLECTED' },
         data: { status: 'ROUTE' },
       });
-      await recordStatusChanges(
-        tx,
-        ids.map((collectionId) => ({ collectionId, fromStatus: 'COLLECTED', toStatus: 'ROUTE', userId: user.id })),
-      );
+      const trocas = ids.map((collectionId) => ({ collectionId, fromStatus: 'COLLECTED', toStatus: 'ROUTE', userId: user.id }));
+      await recordStatusChanges(tx, trocas);
+      // Sininho: o cliente de cada carga fica sabendo que ela saiu, e o motorista, que a viagem é dele.
+      await avisarStatusAoCliente(tx, trocas, user.id);
+      await avisar(tx, {
+        ...avisoDeViagemLiberada(manifestId, ids.length),
+        para: await usuarioDoMotorista(tx, manifest.driverId),
+        autor: user.id,
+      });
 
       await tx.vehicle.update({ where: { id: manifest.vehicleId }, data: { status: 'ON_ROUTE' } });
       // A data da saída abre a janela da viagem: é dela em diante que o

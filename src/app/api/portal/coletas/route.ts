@@ -6,6 +6,7 @@ import { freteDaColeta } from '@/lib/frete-coleta';
 import { JANELA_INVERTIDA, janelaInvertida, pedidoDeColetaSchema } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
 import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
+import { avisarDepois, avisarEquipe, avisoDePedidoDeColeta } from '@/lib/notificacoes';
 
 const COLLECTION_FIELDS = {
   id: true,
@@ -155,6 +156,18 @@ export async function POST(req: Request) {
           'freightValue',
         ]),
       },
+    });
+
+    // Sininho: quem confirma coleta sabe que chegou um pedido. A coleta já foi
+    // gravada: se o aviso falhar, o pedido segue valendo.
+    await avisarDepois(`coleta.pedida ${collection.id}`, async () => {
+      const cliente = await prisma.client.findUnique({ where: { id: clientId }, select: { companyName: true, tradeName: true } });
+      await avisarEquipe(
+        prisma,
+        'coletas',
+        avisoDePedidoDeColeta({ cliente: cliente?.tradeName || cliente?.companyName || 'Cliente', origin: collection.origin, destination: collection.destination }),
+        userId,
+      );
     });
 
     return NextResponse.json({ success: true, collection }, { status: 201 });

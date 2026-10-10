@@ -123,6 +123,7 @@ Todas estão documentadas em [.env.example](.env.example). As essenciais:
 | `TMS_EMPRESA_PADRAO` | Slug da empresa das rotas públicas de cotação e lead quando a requisição não informa `empresa` |
 | `FISCAL_MCP_URL` | Endereço do serviço fiscal que gera o DANFE em PDF (`https://fiscal.avilaops.com/mcp`). Opcional: sem ela o recurso fica desligado e o botão não aparece |
 | `FISCAL_MCP_TOKEN` | Opcional: enviado como `Authorization: Bearer` ao serviço fiscal, para quando ele exigir autenticação |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Opcionais: chaves do push no navegador (`npx web-push generate-vapid-keys`) e o contato de quem opera (`mailto:`). Sem as três o push fica desligado e só o sininho funciona: [Notificações](#notificações-sininho-e-push) |
 | `TENANT_SLUG`, `TENANT_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed: cria a empresa e o administrador dela |
 
 ## Várias empresas no mesmo sistema (multi-tenant)
@@ -462,7 +463,52 @@ Em `/dashboard/mensagens` (menu Sistema, só `ADMIN`) fica o histórico dos avis
 | `GET /api/eventos?tipo=&situacao=&cursor=` | administrador | Avisos da empresa e o endereço da integração; `proximo` é o cursor da página seguinte |
 | `POST /api/eventos/[id]/reenviar` | administrador | Devolve à fila um aviso que falhou; 409 se entregue, na fila ou sem endereço cadastrado |
 
-Ainda não existe: ver o conteúdo que foi enviado em cada aviso, reenviar vários de uma vez, apagar aviso antigo, notificação push e mensagem direta do TMS para cliente ou motorista.
+Ainda não existe: ver o conteúdo que foi enviado em cada aviso, reenviar vários de uma vez e apagar aviso antigo. O aviso direto do TMS para as pessoas (equipe, cliente e motorista) é o das [Notificações](#notificações-sininho-e-push), logo abaixo; ele não aparece nesta tela.
+
+## Notificações (sininho e push)
+
+Além de avisar sistemas de fora (Integração, acima), o TMS avisa **as pessoas dentro dele**: um sininho com a lista de avisos no painel (cabeçalho do celular e do computador), no portal do cliente e no app do motorista, e notificação push no navegador para quem ativar. As regras e os textos ficam em [src/lib/notificacoes.ts](src/lib/notificacoes.ts); o envio por push, em [src/lib/notificacoes-push.ts](src/lib/notificacoes-push.ts); a tela, em [src/components/notificacoes/Sininho.tsx](src/components/notificacoes/Sininho.tsx).
+
+**Quem é avisado de quê.** Cada aviso é de uma pessoa, nasce na mesma transação da ação que o causou e nunca vai para quem fez a ação.
+
+| Quem recebe | Quando | Abre |
+| --- | --- | --- |
+| Motorista | A viagem dele foi liberada | A viagem no app |
+| Motorista | Uma carga foi retirada da viagem que ele já está fazendo | A viagem no app |
+| Usuários do portal do cliente dono da carga | Pedido de coleta confirmado ou recusado; carga saiu para entrega; carga entregue | A carga no portal |
+| Usuários do portal do cliente | Fatura emitida (número, quantidade de cargas e vencimento; o valor fica na tela de faturas) | Faturas |
+| Usuários do portal do cliente dono do chamado | A transportadora respondeu no atendimento (nota interna não avisa) | O atendimento |
+| Equipe com `coletas` | Pedido de coleta novo pelo portal | Coletas pendentes |
+| Equipe com `ocorrencias` | Chamado novo aberto pelo cliente (portal) ou pelo motorista | O chamado |
+| Responsável do chamado (sem responsável: equipe com `ocorrencias`) | O cliente respondeu no chamado | O chamado |
+| Equipe com `comprovantes` | O motorista deu baixa e mandou o comprovante | O comprovante |
+| Equipe com `financeiro` | O motorista lançou despesa na viagem | Manifestos |
+
+"Equipe com…" são os usuários cujo perfil tem a capacidade na [matriz](#perfis-de-acesso). O texto do aviso para o cliente só leva o que é dele (destinatário, destino e código de rastreio da carga dele; número e vencimento da fatura; número e título do chamado): nunca valor de frete, nome de outro cliente, nota interna nem o texto da mensagem.
+
+**Sininho.** Mostra o número de não lidos e, ao tocar, os últimos 20 avisos (título, texto, há quanto tempo), com "Ver avisos mais antigos". Tocar num aviso abre a tela dele e marca como lido; "Marcar tudo como lido" marca todos. Consulta o servidor ao abrir a tela, ao abrir a lista e a cada 60 segundos (não há websocket). A lista cabe numa tela de celular: só ela rola.
+
+**Push no navegador (Web Push).** Dentro do sininho, "Ativar notificações neste aparelho" pede a permissão do navegador (só depois do toque) e inscreve o aparelho; "Desligar" desfaz, só naquele aparelho. A preferência é por pessoa e por aparelho; não há escolha por tipo de aviso. O despachante do servidor (o mesmo dos eventos, a cada 15 segundos) manda por push os avisos ainda não enviados. É **uma tentativa por aviso e por aparelho**: se o serviço de push recusar, o aviso segue no sininho e não é repetido; resposta 404 ou 410 (inscrição que não existe mais) apaga a inscrição. Aviso já lido, ou com mais de uma hora (servidor parado), não toca o celular. Tocar na notificação foca a aba que já está naquela tela, ou abre uma, e marca o aviso como lido.
+
+- **Um aparelho, uma pessoa.** O endereço da inscrição é do navegador: quem entrar nele depois e ativar leva a inscrição (na mesma empresa ou em outra). Ao sair do sistema, a inscrição é apagada do servidor, e volta sozinha quando a mesma pessoa entrar de novo naquele aparelho.
+- **Service worker.** É o mesmo arquivo ([public/sw.js](public/sw.js)) com três registros possíveis. O da raiz é o do app do motorista e continua cuidando do modo offline. Os do painel (`/dashboard`) e do portal (`/portal`) só são criados quando a pessoa ativa as notificações, recebem push e mais nada: não interceptam requisição nem guardam página.
+- **Endereços aceitos.** A inscrição só é aceita se o endereço for de um serviço de push de navegador conhecido (Chrome e derivados, Firefox, Safari, Edge), por HTTPS: o servidor faz um POST nesse endereço.
+
+**Variáveis.** `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT` (contato de quem opera, `mailto:` ou `https://`). Gere o par uma vez com `npx web-push generate-vapid-keys` e guarde: trocar as chaves desliga o push de todos os aparelhos já inscritos (cada pessoa precisa ativar de novo). **Sem as três, o push fica desligado e nada quebra**: o botão de ativar não aparece e só o sininho funciona.
+
+**iPhone e iPad.** O Safari só entrega push para o sistema instalado na Tela de Início (iOS 16.4 ou mais novo): Compartilhar → "Adicionar à Tela de Início", e abrir por lá. Aberto no Safari comum, o sininho explica isso em vez de mostrar o botão. Para a instalação funcionar, o painel e o portal têm manifesto próprio ([public/painel.webmanifest](public/painel.webmanifest) e [public/portal.webmanifest](public/portal.webmanifest)), como o app do motorista já tinha. O número no ícone do app (o selo) não é atualizado: o contador fica no sininho.
+
+| Rota | Quem | O que faz |
+| --- | --- | --- |
+| `GET /api/notificacoes?cursor=` | qualquer usuário logado | Os avisos da própria pessoa, 20 por página, com `naoLidos` e `proximo` |
+| `POST /api/notificacoes/lidas` | qualquer usuário logado | Marca como lido: `{ "ids": [...] }` ou `{ "todas": true }`; só os próprios |
+| `GET /api/notificacoes/chave` | qualquer usuário logado | `{ ativo, chave }`: a chave pública do push, ou `ativo: false` com o push desligado |
+| `POST /api/notificacoes/aparelho` | qualquer usuário logado | Inscreve o aparelho (corpo: a inscrição que o navegador entrega); 409 com o push desligado |
+| `DELETE /api/notificacoes/aparelho` | qualquer usuário logado | Desinscreve o aparelho (`{ "endpoint": "..." }`); só a própria inscrição |
+
+Essas rotas valem para qualquer perfil (como `GET /api/empresa`) e respondem sempre só com o que é de quem está logado: ninguém lê, marca nem recebe aviso de outra pessoa, nem o administrador. A leitura de aviso não entra na auditoria. As tabelas são criadas por [prisma/sql/023-notificacoes.sql](prisma/sql/023-notificacoes.sql); rode `npm run db:rls` depois dela.
+
+Ainda não existe: SMS, e-mail, preferência por tipo de aviso, push nativo de loja (App Store e Google Play), apagar aviso, limpeza automática de avisos antigos e aviso ao motorista de carga acrescentada com a viagem já em rota (o sistema só deixa acrescentar carga em viagem em montagem). O WhatsApp continua saindo pelo n8n, a partir dos eventos da Integração.
 
 ## Auditoria
 
@@ -515,7 +561,7 @@ src/
   lib/            auth, prisma, permissões, cadastros, coletas, rastreio, fila offline
 prisma/           schema, seed e migrações pontuais
 tests/            suíte Vitest contra Postgres
-public/           ícones, manifesto do PWA do motorista, service worker
+public/           ícones, manifestos (motorista, painel e portal), service worker (offline do motorista e push)
 ```
 
 ## O que ainda é da Mello aqui dentro

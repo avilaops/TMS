@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { COLLECTION_INCLUDE, INACTIVE_CLIENT_MESSAGE, INACTIVE_DRIVER_MESSAGE } from "@/lib/coletas";
 import { freteDaColeta } from "@/lib/frete-coleta";
 import { recordStatusChanges } from "@/lib/historico";
+import { avisarStatusAoCliente } from "@/lib/notificacoes";
 
 // Apoio das rotas que criam uma coleta pelo painel (a de minutas e a importação
 // de NF-e) e das que trocam o status dela dentro de transação (a do painel de
@@ -100,8 +101,8 @@ export type TrocaDeStatus = {
 };
 
 /**
- * Troca o status da coleta e grava a linha do histórico, na mesma transação:
- * ou ficam as duas gravações, ou nenhuma.
+ * Troca o status da coleta, grava a linha do histórico e avisa o cliente no
+ * sininho (src/lib/notificacoes.ts), na mesma transação: ou fica tudo, ou nada.
  *
  * Grava só se a coleta ainda estiver no status `de`: de duas chamadas
  * simultâneas, uma encontra zero linhas e recebe `false`. Cancelar exige ainda
@@ -124,6 +125,9 @@ export async function mudarStatusDaColeta(tx: Prisma.TransactionClient, troca: T
   });
   if (count === 0) return false;
 
-  await recordStatusChanges(tx, [{ collectionId, fromStatus: de, toStatus: para, userId }]);
+  const trocas = [{ collectionId, fromStatus: de, toStatus: para, userId }];
+  await recordStatusChanges(tx, trocas);
+  // Sininho do cliente: coleta confirmada ou recusada, carga entregue pelo painel.
+  await avisarStatusAoCliente(tx, trocas, userId);
   return true;
 }

@@ -4,6 +4,7 @@ import { sistema } from "@/lib/prisma";
 import { conferirEnderecoPublico } from "@/lib/url-publica";
 import { TENTATIVAS } from "@/lib/mensageria";
 import { RECEBEDOR_SELECT, pixCopiaECola, pixDoTitulo, recebedorDaEmpresa, txidDaFatura } from "@/lib/pix";
+import { enviarPushPendentes } from "@/lib/notificacoes-push";
 
 /**
  * Entrega dos eventos (OutboxEvent) no endereço que cada empresa cadastrou.
@@ -314,7 +315,11 @@ const VOLTAS_ENTRE_VARREDURAS = 40;
 // O Next recarrega módulos em desenvolvimento: o relógio fica no global para não duplicar.
 const global = globalThis as { tmsDespachante?: ReturnType<typeof setInterval> };
 
-/** Liga o despachante dentro do servidor (src/instrumentation.ts). */
+/**
+ * Liga o despachante dentro do servidor (src/instrumentation.ts): a cada volta
+ * entrega os eventos para sistemas de fora e manda por push os avisos das
+ * pessoas (src/lib/notificacoes-push.ts).
+ */
 export function iniciarDespacho(): void {
   if (global.tmsDespachante) return;
   let rodando = false;
@@ -327,6 +332,10 @@ export function iniciarDespacho(): void {
     (varrer ? avisarTitulosVencidos() : Promise.resolve(0))
       .then(() => despacharPendentes())
       .catch((erro) => console.error("Erro ao despachar eventos:", erro))
+      // Os avisos das pessoas (sininho) saem por push na mesma volta; um erro
+      // nos eventos de fora não segura o push, nem o contrário.
+      .then(() => enviarPushPendentes())
+      .catch((erro) => console.error("Erro ao enviar avisos por push:", erro))
       .finally(() => {
         rodando = false;
       });

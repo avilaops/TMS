@@ -5,6 +5,7 @@ import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { FATURAVEL, INVOICE_SELECT, centavos, createInvoiceSchema, descricaoDoLancamento } from '@/lib/faturas';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+import { avisar, avisoDeFatura, usuariosDosClientes } from '@/lib/notificacoes';
 
 // Faturamento é financeiro: só o administrador, como em /api/financeiro.
 
@@ -91,6 +92,14 @@ export async function POST(req: Request) {
         entidadeId: criada.id,
         resumo: `Fatura nº ${number} emitida com ${cargas.length} carga(s)`,
         depois: { number, status: 'OPEN', clientId: data.clientId, total, dueDate: data.dueDate, notes: data.notes ?? null, cargas: cargas.length },
+      });
+
+      // Sininho: os usuários do portal deste cliente sabem que há fatura nova.
+      const doCliente = await usuariosDosClientes(tx, [data.clientId]);
+      await avisar(tx, {
+        ...avisoDeFatura({ number, dueDate: data.dueDate, cargas: cargas.length }),
+        para: doCliente.get(data.clientId) ?? [],
+        autor: user.id,
       });
 
       return tx.invoice.findUniqueOrThrow({ where: { id: criada.id }, select: INVOICE_SELECT });

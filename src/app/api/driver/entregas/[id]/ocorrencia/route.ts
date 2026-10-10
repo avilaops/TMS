@@ -7,6 +7,7 @@ import { DELIVERY_NOT_FOUND_MESSAGE } from '@/lib/entregas';
 import { driverOccurrenceSchema, tituloDoMotorista } from '@/lib/ocorrencias';
 import { abrirOcorrencia } from '@/lib/ocorrencias-db';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+import { avisarEquipe, avisoDeChamadoNovo } from '@/lib/notificacoes';
 
 /**
  * Ocorrência registrada pelo motorista numa entrega (o `[id]` é o da carga).
@@ -56,6 +57,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         resumo: `Chamado nº ${criada.number} aberto pelo motorista: ${title}`,
         depois: { number: criada.number, type, title, cargaId: carga.id },
       });
+      // Sininho: quem atende chamados sabe que o motorista registrou um na rua.
+      await avisarEquipe(tx, 'ocorrencias', avisoDeChamadoNovo({ ...criada, title }, 'motorista'), userId);
       return criada;
     });
 

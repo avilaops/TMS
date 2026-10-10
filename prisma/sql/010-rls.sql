@@ -98,6 +98,8 @@ DECLARE
     "Absence": ["driverId", "Driver", "helperId", "Helper"],
     "CrewAdvance": ["driverId", "Driver", "helperId", "Helper", "manifestId", "Manifest"],
     "TripExpense": ["manifestId", "Manifest", "createdById", "User", "reviewedById", "User", "fuelingId", "Fueling", "transactionId", "FinancialTransaction"],
+    "Notification": ["userId", "User"],
+    "PushSubscription": ["userId", "User"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

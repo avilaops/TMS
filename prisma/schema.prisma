@@ -88,6 +88,8 @@ model Tenant {
   crewAdvances       CrewAdvance[]
   tripExpenses       TripExpense[]
   clientReceivers    ClientReceiver[]
+  notifications      Notification[]
+  pushSubscriptions  PushSubscription[]
 }
 
 model User {
@@ -122,6 +124,8 @@ model User {
   auditLogs           AuditLog[]
   tripExpensesCreated  TripExpense[] @relation("TripExpenseCreatedBy")
   tripExpensesReviewed TripExpense[] @relation("TripExpenseReviewedBy")
+  notifications        Notification[]
+  pushSubscriptions    PushSubscription[]
 
   @@index([clientId])
 
@@ -1217,5 +1221,56 @@ model AuditLog {
   @@index([tenantId])
   @@index([tenantId, createdAt])
   @@index([tenantId, entity, entityId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Notificações para as pessoas (sininho e push no navegador)
+//
+// `Notification` é o aviso de uma pessoa: só ela lê e marca como lido (as rotas
+// de /api/notificacoes filtram sempre pelo usuário da sessão). Nasce na mesma
+// transação da ação que o causou (src/lib/notificacoes.ts) e o despachante o
+// manda por push para os aparelhos da pessoa (src/lib/notificacoes-push.ts).
+// ---------------------------------------------------------------------------
+model Notification {
+  tenantId  String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String    @id @default(uuid())
+  userId    String    // o destinatário
+  type      String    // texto curto e estável: viagem.liberada, coleta.entregue, chamado.novo...
+  title     String
+  body      String
+  url       String    // caminho interno que o aviso abre, ex. /dashboard/ocorrencias/<id>
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+  // Quando o despachante pegou o aviso para mandar por push. Nulo = ainda não
+  // pegou. Uma tentativa por aviso: marcado antes do envio, não volta para a fila.
+  pushedAt  DateTime?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([pushedAt])
+}
+
+// O aparelho (navegador) em que a pessoa ativou o push. O endereço é dado pelo
+// serviço de push do navegador e é único no mundo: um aparelho só recebe os
+// avisos de uma pessoa por vez (a rota apaga a inscrição anterior ao gravar).
+model PushSubscription {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique @db.Text
+  p256dh    String
+  auth      String
+  userAgent String?  // resumo do navegador e do aparelho, como na auditoria
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
   @@index([userId])
 }

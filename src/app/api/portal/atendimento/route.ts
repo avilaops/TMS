@@ -6,6 +6,7 @@ import { firstIssue } from '@/lib/usuarios';
 import { PORTAL_OCCURRENCE_SELECT, portalOccurrenceSchema } from '@/lib/ocorrencias';
 import { abrirOcorrencia } from '@/lib/ocorrencias-db';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+import { avisarEquipe, avisoDeChamadoNovo } from '@/lib/notificacoes';
 
 /**
  * Atendimento no portal: os chamados da empresa do cliente logado.
@@ -70,6 +71,8 @@ export async function POST(req: Request) {
         resumo: `Chamado nº ${criada.number} aberto pelo cliente no portal: ${data.title}`,
         depois: { number: criada.number, type: data.type, title: data.title, clientId, cargaId: data.collectionId ?? null },
       });
+      // Sininho: quem atende chamados sabe que chegou um do portal.
+      await avisarEquipe(tx, 'ocorrencias', avisoDeChamadoNovo({ ...criada, title: data.title }, 'cliente'), userId);
       return tx.occurrence.findUniqueOrThrow({ where: { id: criada.id }, select: PORTAL_OCCURRENCE_SELECT });
     });
 

@@ -10,6 +10,7 @@ import {
 } from '@/lib/entregas';
 import { recordStatusChanges } from '@/lib/historico';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+import { avisarEquipe, avisarStatusAoCliente, avisoDeComprovante } from '@/lib/notificacoes';
 
 /**
  * Baixa de entrega pelo motorista, com o comprovante.
@@ -47,7 +48,7 @@ export async function POST(
     const find = () =>
       prisma.collection.findFirst({
         where: { id: collectionId, manifest: { driverId, status: { in: ['ROUTE', 'FINISHED'] } } },
-        select: { status: true, manifest: { select: { status: true } }, proof: { select: { id: true } } },
+        select: { status: true, receiver: true, destination: true, manifest: { select: { status: true } }, proof: { select: { id: true } } },
       });
 
     const alreadyDone = (proofId: string) =>
@@ -69,8 +70,8 @@ export async function POST(
     const proofId = await transacao(async (tx) => {
       // Grava só se a carga ainda estiver em rota nesta viagem: de duas baixas
       // simultâneas, ou de baixa e retirada ao mesmo tempo, uma encontra zero linhas.
-      // Comprovante, linha do histórico e linha da auditoria vão na mesma
-      // transação: ou ficam as quatro gravações, ou nenhuma.
+      // Comprovante, linha do histórico, avisos do sininho e linha da auditoria
+      // vão na mesma transação: ou ficam todas as gravações, ou nenhuma.
       const { count } = await tx.collection.updateMany({
         where: { id: collectionId, status: 'ROUTE', manifest: { driverId, status: 'ROUTE' } },
         data: { status: 'DELIVERED', receiverName },
@@ -81,9 +82,11 @@ export async function POST(
         data: { collectionId, receiverName, receiverDoc, photoBase64, signatureBase64, latitude, longitude },
         select: { id: true },
       });
-      await recordStatusChanges(tx, [
-        { collectionId, fromStatus: 'ROUTE', toStatus: 'DELIVERED', userId },
-      ]);
+      const trocas = [{ collectionId, fromStatus: 'ROUTE', toStatus: 'DELIVERED', userId }];
+      await recordStatusChanges(tx, trocas);
+      // Sininho: o cliente sabe que chegou, e quem confere comprovante sabe que há um novo.
+      await avisarStatusAoCliente(tx, trocas, userId);
+      await avisarEquipe(tx, 'comprovantes', avisoDeComprovante({ id: collectionId, receiver: current.receiver, destination: current.destination }, receiverName), userId);
       // Só o nome de quem recebeu: documento, foto, assinatura e localização ficam no comprovante.
       await registrarAuditoria(tx, {
         ator,

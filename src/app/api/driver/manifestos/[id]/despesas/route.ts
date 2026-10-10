@@ -6,6 +6,7 @@ import { firstIssue } from '@/lib/usuarios';
 import { DRIVER_EXPENSE_SELECT, TRIP_NOT_FOUND, createTripExpenseSchema, totalLancado } from '@/lib/viagem';
 import { lancarDespesa } from '@/lib/viagem-db';
 import { origemDaRequisicao } from '@/lib/auditoria';
+import { avisarEquipe, avisoDeDespesa } from '@/lib/notificacoes';
 
 type Contexto = { params: Promise<{ id: string }> };
 
@@ -62,6 +63,8 @@ export async function POST(req: Request, { params }: Contexto) {
       // Quem fez, para a auditoria: o usuário do motorista.
       const usuario = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, name: true, role: true } });
       const criada = await lancarDespesa(tx, { viagem, despesa: parsed.data, ator: usuario, origem });
+      // Sininho: quem aprova despesa de viagem sabe que há uma esperando.
+      await avisarEquipe(tx, 'financeiro', avisoDeDespesa(parsed.data, usuario.name), userId);
 
       return tx.tripExpense.findUniqueOrThrow({ where: { id: criada.id }, select: DRIVER_EXPENSE_SELECT });
     });

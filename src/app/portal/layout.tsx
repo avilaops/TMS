@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { sair } from "@/lib/sair";
 import { SimboloDaEmpresa, useIdentidade } from "@/components/empresa/identidade";
 import { LayoutDashboard, Package, Receipt, Headset, LogOut, Menu, X, Calculator, Users, TableProperties } from "lucide-react";
+import { Avisos, Sininho } from "@/components/notificacoes/Sininho";
 
 const links = [
   { href: "/portal", icon: LayoutDashboard, label: "Visão geral" },
@@ -26,6 +27,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const logo = identidade?.logo ?? null;
 
   return (
+    <Avisos area="portal">
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Header mobile */}
       <div className="md:hidden flex items-center justify-between p-4 bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -33,9 +35,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           <SimboloDaEmpresa logo={logo} />
           <span data-empresa className="font-outfit font-bold text-lg truncate">{identidade?.name ?? "Portal do cliente"}</span>
         </div>
-        <button onClick={() => setMenuOpen(!menuOpen)} className="p-2" aria-label="Abrir menu">
-          {menuOpen ? <X /> : <Menu />}
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Sininho className="p-2 text-gray-600" />
+          <button onClick={() => setMenuOpen(!menuOpen)} className="p-2" aria-label="Abrir menu">
+            {menuOpen ? <X /> : <Menu />}
+          </button>
+        </div>
       </div>
 
       <aside
@@ -46,10 +51,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         {/* No celular o cabeçalho fixo já mostra a marca; aqui ela só ocuparia o lugar dos links. */}
         <div className="hidden md:flex p-6 items-center gap-3">
           <SimboloDaEmpresa logo={logo} tamanho="grande" />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="font-outfit font-bold text-lg leading-tight truncate">{identidade?.name ?? "Transportadora"}</p>
             <p className="text-xs text-gray-500 uppercase tracking-wide">Portal do cliente</p>
           </div>
+          {/* No computador não há cabeçalho: o sininho fica junto da marca. */}
+          <Sininho className="shrink-0 p-2 rounded-full text-gray-500 hover:text-orange-600 hover:bg-orange-50 transition-colors" />
         </div>
 
         {/* No celular o menu abre abaixo do cabeçalho fixo e os links ficam mais baixos: os sete cabem numa tela. */}
@@ -108,5 +115,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         />
       )}
     </div>
+    </Avisos>
   );
 }

@@ -266,8 +266,9 @@ const ROTAS: Record<string, Capacidade> = {
 
 // Arquivos de rota que não passam por `requireStaff`: públicos, do portal do
 // cliente (`requirePortalClient`), do motorista (`requireDriver`), da
-// plataforma e do login. Rota nova sem guarda da equipe precisa entrar aqui,
-// com consciência de que ela não é coberta pela matriz.
+// plataforma, do login e do sininho (`requireUsuario`: qualquer perfil, sempre
+// só os avisos da própria pessoa). Rota nova sem guarda da equipe precisa
+// entrar aqui, com consciência de que ela não é coberta pela matriz.
 const FORA_DA_MATRIZ = [
   "/api/auth/[...nextauth]",
   "/api/cotacoes",
@@ -280,6 +281,10 @@ const FORA_DA_MATRIZ = [
   "/api/empresas",
   "/api/health",
   "/api/leads",
+  "/api/notificacoes",
+  "/api/notificacoes/aparelho",
+  "/api/notificacoes/chave",
+  "/api/notificacoes/lidas",
   "/api/plataforma/empresas",
   "/api/plataforma/empresas/[id]",
   "/api/portal/atendimento",

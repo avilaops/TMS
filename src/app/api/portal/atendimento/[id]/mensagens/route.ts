@@ -4,6 +4,7 @@ import { requirePortalClient } from '@/lib/portal';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { PORTAL_MESSAGE_SELECT, aceitaMensagem, portalMessageSchema } from '@/lib/ocorrencias';
+import { avisar, avisarEquipe, avisoDeRespostaDoCliente } from '@/lib/notificacoes';
 
 const NOT_FOUND = 'Atendimento não encontrado.';
 
@@ -26,16 +27,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const mensagem = await transacao(async (tx) => {
       // Trava o chamado: a resposta não entra num chamado que está sendo encerrado.
       await tx.$queryRaw`SELECT id FROM "Occurrence" WHERE id = ${id} AND "clientId" = ${clientId} FOR UPDATE`;
-      const ocorrencia = await tx.occurrence.findFirst({ where: { id, clientId }, select: { status: true } });
+      const ocorrencia = await tx.occurrence.findFirst({ where: { id, clientId }, select: { id: true, number: true, title: true, status: true, assigneeId: true } });
       if (!ocorrencia) throw new Refusal(NOT_FOUND, 404);
       if (!aceitaMensagem(ocorrencia.status)) {
         throw new Refusal('Este atendimento foi encerrado. Abra um novo se precisar.', 409);
       }
 
-      return tx.occurrenceMessage.create({
+      const criada = await tx.occurrenceMessage.create({
         data: { occurrenceId: id, authorId: userId, body: parsed.data.body, internal: false, fromClient: true },
         select: PORTAL_MESSAGE_SELECT,
       });
+
+      // Sininho: quem cuida do chamado; sem responsável, quem atende chamados.
+      const conteudo = avisoDeRespostaDoCliente(ocorrencia);
+      if (ocorrencia.assigneeId) await avisar(tx, { ...conteudo, para: ocorrencia.assigneeId, autor: userId });
+      else await avisarEquipe(tx, 'ocorrencias', conteudo, userId);
+      return criada;
     });
 
     return NextResponse.json(mensagem, { status: 201 });
