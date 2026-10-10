@@ -3,15 +3,9 @@ import { requireStaff } from '@/lib/staff';
 import prisma, { transacao } from '@/lib/prisma';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
-import {
-  DESCONTO_MAIOR_QUE_O_VALOR,
-  ENCARGOS_SO_A_RECEBER,
-  FROM_INVOICE_MESSAGE,
-  TRANSACTION_SELECT,
-  temEncargos,
-  updateTransactionSchema,
-  valorRecebido,
-} from '@/lib/financeiro';
+import { DESCONTO_MAIOR_QUE_O_VALOR, FROM_INVOICE_MESSAGE, TRANSACTION_SELECT, updateTransactionSchema, valorRecebido } from '@/lib/financeiro';
+import { TITULO_EM_ABERTO, recusarSeConciliado, situacaoDaBaixa, type SituacaoDoTitulo } from '@/lib/financeiro-db';
+import { CONCILIADO_NAO_MEXE } from '@/lib/conciliacao';
 import { CAMPOS_DO_LANCAMENTO, escolher, nadaMudou, origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const NOT_FOUND = 'Lançamento não encontrado.';
@@ -21,7 +15,12 @@ const NOT_FOUND = 'Lançamento não encontrado.';
  *
  * A baixa de um título a receber aceita `juros`, `multa` e `desconto`: o valor
  * original (`amount`) não muda, e o que entrou de fato fica em `paidAmount`.
- * Reabrir apaga os quatro.
+ * Reabrir apaga os quatro. A regra da baixa é a de `situacaoDaBaixa`
+ * (src/lib/financeiro-db.ts), a mesma que a conciliação bancária usa.
+ *
+ * Lançamento conciliado com o extrato bancário não é reaberto nem excluído por
+ * aqui (409): desfaz-se a conciliação, que reabre o título quando a baixa veio
+ * dela.
  *
  * Lançamento que veio de fatura não passa por aqui: quem o mantém em sincronia
  * com a fatura é o Faturamento, e mexer só nele deixaria a fatura "em aberto"
@@ -53,32 +52,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         if (!cliente) throw new Refusal('Cliente não encontrado.', 400);
       }
 
-      let situacao:
-        | { status: string; paidAt: Date | null; paymentMethod: string | null; interest: number | null; fine: number | null; discount: number | null; paidAmount: number | null }
-        | undefined;
+      let situacao: SituacaoDoTitulo | undefined;
       // O valor e o tipo como vão ficar: a mesma chamada pode corrigir os dois e dar a baixa.
       const valor = campos.amount ?? atual.amount;
       const tipo = campos.type ?? atual.type;
 
       if (action === 'pagar') {
         if (atual.status === 'PAID') throw new Refusal('Este lançamento já está pago.', 409);
-        const comEncargos = temEncargos(encargos);
-        if (comEncargos && tipo !== 'INCOME') throw new Refusal(ENCARGOS_SO_A_RECEBER, 400);
-        const recebido = valorRecebido(valor, encargos);
-        if (recebido < 0) throw new Refusal(DESCONTO_MAIOR_QUE_O_VALOR, 400);
-        situacao = {
-          status: 'PAID',
-          paidAt: paidAt ?? new Date(),
-          paymentMethod: paymentMethod ?? null,
-          // Baixa pelo valor cheio não guarda encargo: `paidAmount` nulo é "recebeu o original".
-          interest: comEncargos ? (juros ?? 0) : null,
-          fine: comEncargos ? (multa ?? 0) : null,
-          discount: comEncargos ? (desconto ?? 0) : null,
-          paidAmount: comEncargos ? recebido : null,
-        };
+        situacao = situacaoDaBaixa({ type: tipo, amount: valor }, encargos, paidAt ?? new Date(), paymentMethod ?? null);
       } else if (action === 'reabrir') {
         if (atual.status !== 'PAID') throw new Refusal('Só lançamento pago pode ser reaberto.', 409);
-        situacao = { status: 'PENDING', paidAt: null, paymentMethod: null, interest: null, fine: null, discount: null, paidAmount: null };
+        await recusarSeConciliado(tx, id);
+        situacao = TITULO_EM_ABERTO;
       }
 
       // Corrigir o valor de um título já baixado com encargos refaz o valor recebido.
@@ -139,12 +124,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     // O lançamento que vai sumir: depois de apagado, só a auditoria sabe o que ele era.
     const apagado = await prisma.financialTransaction.findUnique({ where: { id }, select: TRANSACTION_SELECT });
 
-    const { count } = await prisma.financialTransaction.deleteMany({ where: { id, invoiceId: null } });
+    // O conciliado com o extrato fica: apagar por fora deixaria a linha do extrato ligada a nada.
+    const { count } = await prisma.financialTransaction.deleteMany({ where: { id, invoiceId: null, statementLine: { is: null } } });
     if (count === 0) {
-      const existe = await prisma.financialTransaction.findUnique({ where: { id }, select: { id: true } });
-      return existe
-        ? NextResponse.json({ error: FROM_INVOICE_MESSAGE }, { status: 409 })
-        : NextResponse.json({ error: NOT_FOUND }, { status: 404 });
+      const existe = await prisma.financialTransaction.findUnique({ where: { id }, select: { invoiceId: true } });
+      if (!existe) return NextResponse.json({ error: NOT_FOUND }, { status: 404 });
+      return NextResponse.json({ error: existe.invoiceId ? FROM_INVOICE_MESSAGE : CONCILIADO_NAO_MEXE }, { status: 409 });
     }
 
     await registrarAuditoriaDepois(prisma, {

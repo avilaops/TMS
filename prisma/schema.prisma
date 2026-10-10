@@ -90,6 +90,7 @@ model Tenant {
   clientReceivers    ClientReceiver[]
   notifications      Notification[]
   pushSubscriptions  PushSubscription[]
+  bankStatementLines BankStatementLine[]
 }
 
 model User {
@@ -520,6 +521,8 @@ model FinancialTransaction {
   // Relations
   client      Client?  @relation(fields: [clientId], references: [id])
   tripExpense TripExpense?
+  // A linha do extrato bancário com que este lançamento foi conciliado.
+  statementLine BankStatementLine?
 
   @@index([clientId])
 
@@ -1273,4 +1276,46 @@ model PushSubscription {
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Conciliação bancária por extrato importado (OFX)
+//
+// Uma linha por movimentação do extrato que o administrador exportou do banco
+// e enviou (src/lib/ofx.ts lê o arquivo). A linha é única por conta + `fitId`
+// (o identificador da movimentação no banco): reenviar o mesmo extrato, ou um
+// período que se sobrepõe, não duplica. As regras estão em src/lib/conciliacao.ts.
+//
+// Do número da conta ficam só o fim (`account`, "••••1234") e um resumo
+// criptográfico do banco + agência + número (`accountKey`), que é o que separa
+// uma conta da outra na unicidade.
+// ---------------------------------------------------------------------------
+model BankStatementLine {
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String   @id @default(uuid())
+  accountKey  String
+  bankId      String?  // código do banco, como veio no arquivo
+  account     String   // conta mascarada: só o fim do número
+  fitId       String
+  postedAt    DateTime // dia do calendário, gravado à meia-noite UTC
+  amount      Float    // com sinal: positivo entrou, negativo saiu
+  kind        String?  // TRNTYPE do OFX: CREDIT, DEBIT, XFER, FEE...
+  description String
+  status      String   @default("PENDING") // PENDING, RECONCILED, IGNORED
+  // O lançamento com que a linha foi conciliada. Um lançamento casa com uma linha só.
+  transactionId String? @unique
+  // A baixa do lançamento veio desta conciliação (ele estava em aberto):
+  // desfazer a conciliação reabre o título. Falso quando ele já estava pago
+  // ou nasceu pago a partir da linha.
+  settled     Boolean  @default(false)
+  reconciledAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@unique([tenantId, accountKey, fitId])
+  @@index([tenantId])
+  @@index([tenantId, status, postedAt])
 }

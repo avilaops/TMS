@@ -100,6 +100,7 @@ DECLARE
     "TripExpense": ["manifestId", "Manifest", "createdById", "User", "reviewedById", "User", "fuelingId", "Fueling", "transactionId", "FinancialTransaction"],
     "Notification": ["userId", "User"],
     "PushSubscription": ["userId", "User"],
+    "BankStatementLine": ["transactionId", "FinancialTransaction"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

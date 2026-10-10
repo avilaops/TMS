@@ -33,6 +33,7 @@ export default function ManifestosPage() {
   const { data: session } = useSession();
   const veAcerto = pode(session?.user?.role, "financeiroVer");
   const aprovaDespesa = pode(session?.user?.role, "financeiro");
+  const alteraViagem = pode(session?.user?.role, "manifestos");
 
   const [formData, setFormData] = useState({
     driverId: "",
@@ -421,7 +422,7 @@ export default function ManifestosPage() {
       </div>
 
       {viagemAberta && (
-        <TelaDaViagem key={viagemAberta.id} manifesto={viagemAberta} veAcerto={veAcerto} aprovaDespesa={aprovaDespesa} onClose={() => setViagem(null)} onChange={recarregar} />
+        <TelaDaViagem key={viagemAberta.id} manifesto={viagemAberta} veAcerto={veAcerto} aprovaDespesa={aprovaDespesa} alteraViagem={alteraViagem} onClose={() => setViagem(null)} onChange={recarregar} />
       )}
 
       {isModalOpen && (

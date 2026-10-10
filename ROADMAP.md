@@ -170,7 +170,9 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Auditoria de ações.
 - [x] Notificações no sistema (sininho), por push no navegador e por WhatsApp via n8n.
 - [x] Cobrança por Pix copia e cola (estático).
-- [ ] Integrações bancárias automatizadas (boleto, Pix dinâmico, conciliação).
-- [ ] Roteirização automática com geolocalização.
+- [x] Conciliação bancária por extrato OFX importado.
+- [ ] Boleto registrado e Pix dinâmico com baixa automática (precisa de conta em banco ou gateway com API).
+- [x] Roteirização automática por cidade (ordem sugerida das entregas).
+- [ ] Roteirização por endereço, com mapa, trânsito e GPS do motorista (precisa de serviço de mapas contratado).
 - [x] Ordem das entregas, rota no mapa, despesas e resultado da viagem.
 - [x] Perfis de acesso: Diretoria, Financeiro, Comercial, Expedição e Conferência.

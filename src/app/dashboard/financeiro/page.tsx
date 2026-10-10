@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Loader2, LogIn, Plus, ShieldAlert, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Landmark, Loader2, LogIn, Plus, ShieldAlert, Wallet } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCalendarDate, formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -289,13 +289,25 @@ export default function FinanceiroPage() {
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Financeiro</h1>
           <p className="hidden md:block text-gray-500 text-sm mt-1">Contas a receber, contas a pagar e fluxo de caixa</p>
         </div>
-        <button
-          onClick={abrirNovo}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 md:px-4 md:py-2.5 text-sm md:text-base rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Novo lançamento</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Conciliação bancária: o extrato importado do banco, casado com estes lançamentos. */}
+          <Link
+            href="/dashboard/financeiro/conciliacao"
+            data-conciliacao
+            className="border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 md:px-4 md:py-2.5 text-sm md:text-base rounded-xl flex items-center space-x-2"
+          >
+            <Landmark className="w-4 h-4" />
+            <span>Conciliação</span>
+          </Link>
+          <button
+            onClick={abrirNovo}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 md:px-4 md:py-2.5 text-sm md:text-base rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="md:hidden">Novo</span>
+            <span className="hidden md:inline">Novo lançamento</span>
+          </button>
+        </div>
       </div>
 
       {mensagem && (

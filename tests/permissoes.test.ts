@@ -109,6 +109,10 @@ suite("permissões das rotas internas", () => {
   let equipeProdutividade: typeof import("../src/app/api/equipe/produtividade/route");
   let viagemDados: typeof import("../src/app/api/manifestos/[id]/dados/route");
   let viagemOrdem: typeof import("../src/app/api/manifestos/[id]/ordem/route");
+  let viagemRoteiro: typeof import("../src/app/api/manifestos/[id]/roteiro/route");
+  let conciliacao: typeof import("../src/app/api/financeiro/conciliacao/route");
+  let conciliacaoLinha: typeof import("../src/app/api/financeiro/conciliacao/[id]/route");
+  let conciliacaoCerteiros: typeof import("../src/app/api/financeiro/conciliacao/certeiros/route");
   let viagemDespesas: typeof import("../src/app/api/manifestos/[id]/despesas/route");
   let viagemDespesa: typeof import("../src/app/api/manifestos/[id]/despesas/[despesaId]/route");
   let viagemAcerto: typeof import("../src/app/api/manifestos/[id]/acerto/route");
@@ -227,6 +231,10 @@ suite("permissões das rotas internas", () => {
     equipeProdutividade = await import("../src/app/api/equipe/produtividade/route");
     viagemDados = await import("../src/app/api/manifestos/[id]/dados/route");
     viagemOrdem = await import("../src/app/api/manifestos/[id]/ordem/route");
+    viagemRoteiro = await import("../src/app/api/manifestos/[id]/roteiro/route");
+    conciliacao = await import("../src/app/api/financeiro/conciliacao/route");
+    conciliacaoLinha = await import("../src/app/api/financeiro/conciliacao/[id]/route");
+    conciliacaoCerteiros = await import("../src/app/api/financeiro/conciliacao/certeiros/route");
     viagemDespesas = await import("../src/app/api/manifestos/[id]/despesas/route");
     viagemDespesa = await import("../src/app/api/manifestos/[id]/despesas/[despesaId]/route");
     viagemAcerto = await import("../src/app/api/manifestos/[id]/acerto/route");
@@ -335,6 +343,7 @@ suite("permissões das rotas internas", () => {
       ["GET /api/equipe/produtividade", () => equipeProdutividade.GET()],
       ["PATCH /api/manifestos/[id]/dados", () => viagemDados.PATCH(req("PATCH", { notes: "Invasor" }), ctx(semId))],
       ["PUT /api/manifestos/[id]/ordem", () => viagemOrdem.PUT(req("PUT", { collectionIds: [semId] }), ctx(semId))],
+      ["POST /api/manifestos/[id]/roteiro", () => viagemRoteiro.POST(req("POST", {}), ctx(semId))],
       ["GET /api/manifestos/[id]/despesas", () => viagemDespesas.GET(req(), ctx(semId))],
       ["POST /api/manifestos/[id]/despesas", () => viagemDespesas.POST(req("POST", { type: "TOLL", amount: "10", date: "2026-01-10" }), ctx(semId))],
       ["DELETE /api/manifestos/[id]/despesas/[despesaId]", () => viagemDespesa.DELETE(req("DELETE"), despesaDaViagem)],
@@ -347,6 +356,10 @@ suite("permissões das rotas internas", () => {
       ["DELETE /api/financeiro/[id]", () => financeiroPorId.DELETE(req("DELETE"), ctx(semId))],
       ["GET /api/financeiro/fluxo", () => financeiroFluxo.GET()],
       ["GET /api/financeiro/cobranca", () => financeiroCobranca.GET()],
+      ["GET /api/financeiro/conciliacao", () => conciliacao.GET()],
+      ["POST /api/financeiro/conciliacao", () => conciliacao.POST(req("POST", {}))],
+      ["PATCH /api/financeiro/conciliacao/[id]", () => conciliacaoLinha.PATCH(req("PATCH", { action: "ignorar" }), ctx(semId))],
+      ["POST /api/financeiro/conciliacao/certeiros", () => conciliacaoCerteiros.POST(req("POST", {}))],
       ["GET /api/financeiro/[id]/recibo", () => financeiroRecibo.GET(req(), ctx(semId))],
       ["GET /api/relatorios", () => relatorios.GET()],
       ["GET /api/veiculos/[id]/custos", () => custosDoVeiculo.GET(req(), ctx(semId))],

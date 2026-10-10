@@ -83,6 +83,11 @@ export const ACOES = {
   "lancamento.pagar": "Lançamento pago",
   "lancamento.reabrir": "Lançamento reaberto",
   "lancamento.excluir": "Lançamento excluído",
+  "conciliacao.importar": "Extrato bancário importado",
+  "conciliacao.conciliar": "Linha do extrato conciliada",
+  "conciliacao.criar": "Lançamento criado a partir do extrato",
+  "conciliacao.ignorar": "Linha do extrato ignorada",
+  "conciliacao.desfazer": "Conciliação desfeita",
   "comprovante.aprovar": "Comprovante aprovado",
   "comprovante.recusar": "Comprovante recusado",
   "empresa.criar": "Empresa criada",
@@ -129,6 +134,7 @@ export const ENTIDADES = {
   "despesa-viagem": "Despesa de viagem",
   fatura: "Fatura",
   lancamento: "Lançamento",
+  extrato: "Extrato bancário",
   comprovante: "Comprovante",
   empresa: "Empresa",
   integracao: "Integração",
@@ -640,6 +646,11 @@ export const ROTULOS_DOS_CAMPOS: Record<string, string> = {
   itensComProblema: "Itens com problema",
   slug: "Identificador",
   adminEmail: "E-mail do administrador",
+  transactionId: "Lançamento",
+  settled: "Baixa pela conciliação",
+  importadas: "Linhas novas",
+  repetidas: "Linhas já importadas",
+  contas: "Contas",
 };
 
 export const rotuloDoCampo = (campo: string) => ROTULOS_DOS_CAMPOS[campo] ?? campo;

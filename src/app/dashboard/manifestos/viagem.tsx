@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Loader2, MapPin, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, MapPin, Route, Trash2 } from "lucide-react";
 import { COLLECTION_STATUS, MANIFEST_STATUS, formatCalendarDate, formatCurrency, formatDate, statusBadge } from "@/lib/format";
 import { diaNoBrasil } from "@/lib/financeiro";
 import { acertoPorExtenso, nomeDaPessoa, rotuloDoMotivo, type Acerto } from "@/lib/equipe";
@@ -17,6 +17,7 @@ import {
   rotuloDaDespesa,
   type AcertoDaViagem,
 } from "@/lib/viagem";
+import { AVISO_DA_DISTANCIA, type RespostaDoRoteiro } from "@/lib/roteiro";
 import type { Manifesto } from "./carregar";
 
 /**
@@ -80,6 +81,7 @@ export function TelaDaViagem({
   manifesto,
   veAcerto,
   aprovaDespesa,
+  alteraViagem = true,
   onClose,
   onChange,
 }: {
@@ -88,6 +90,8 @@ export function TelaDaViagem({
   veAcerto: boolean;
   /** O perfil lança no financeiro: aprova e recusa despesa. */
   aprovaDespesa: boolean;
+  /** O perfil altera a viagem (capacidade `manifestos`): o botão "Sugerir ordem" aparece. */
+  alteraViagem?: boolean;
   onClose: () => void;
   /** Algo da viagem mudou no servidor: a lista de manifestos precisa ser lida de novo. */
   onChange: () => void;
@@ -136,7 +140,7 @@ export function TelaDaViagem({
 
         <div className="flex-1 overflow-y-auto p-3 md:p-6">
           {aba === "Dados" && <Dados manifesto={manifesto} onChange={onChange} />}
-          {aba === "Rota" && <Rota manifesto={manifesto} onChange={onChange} />}
+          {aba === "Rota" && <Rota manifesto={manifesto} podeSugerir={alteraViagem} onChange={onChange} />}
           {aba === "Despesas" && <Despesas manifesto={manifesto} admin={aprovaDespesa} />}
           {aba === "Acerto" && <AcertoDaViagemFinalizada manifestId={manifesto.id} />}
         </div>
@@ -266,11 +270,13 @@ function Dados({ manifesto, onChange }: { manifesto: Manifesto; onChange: () => 
 
 /* ------------------------------------ Rota ------------------------------------ */
 
-function Rota({ manifesto, onChange }: { manifesto: Manifesto; onChange: () => void }) {
+function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; podeSugerir: boolean; onChange: () => void }) {
   // A ordem na tela; cada troca vai para o servidor na hora.
   const [ordem, setOrdem] = useState(() => manifesto.collections.map((carga) => carga.id));
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
+  // A ordem sugerida, enquanto a pessoa decide se aplica: nada é gravado até o "Aplicar".
+  const [sugestao, setSugestao] = useState<RespostaDoRoteiro | null>(null);
   const ordenavel = manifesto.status === "ASSEMBLING" || manifesto.status === "ROUTE";
 
   const porId = new Map(manifesto.collections.map((carga) => [carga.id, carga]));
@@ -302,14 +308,132 @@ function Rota({ manifesto, onChange }: { manifesto: Manifesto; onChange: () => v
     }
   };
 
+  // Pede a ordem sugerida ao servidor (é lá que está a tabela das cidades). Só calcula.
+  const sugerir = async (voltar: boolean) => {
+    setOcupado(true);
+    setErro("");
+    try {
+      const res = await fetch(`/api/manifestos/${manifesto.id}/roteiro`, json("POST", { voltar }));
+      if (res.ok) setSugestao((await res.json()) as RespostaDoRoteiro);
+      else setErro(await mensagemDeErro(res, "Erro ao sugerir a ordem das entregas."));
+    } catch {
+      setErro("Erro ao sugerir a ordem das entregas.");
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  // Grava a ordem sugerida pela mesma rota da ordem manual (que confere a lista e registra na auditoria).
+  const aplicar = async () => {
+    if (!sugestao) return;
+    setOcupado(true);
+    setErro("");
+    try {
+      const res = await fetch(`/api/manifestos/${manifesto.id}/ordem`, json("PUT", { collectionIds: sugestao.ordem }));
+      if (res.ok) {
+        setOrdem(sugestao.ordem);
+        setSugestao(null);
+        onChange();
+      } else {
+        setErro(await mensagemDeErro(res, "Erro ao gravar a ordem das entregas."));
+      }
+    } catch {
+      setErro("Erro ao gravar a ordem das entregas.");
+    } finally {
+      setOcupado(false);
+    }
+  };
+
   if (cargas.length === 0) return <p className="text-sm text-gray-500">Esta viagem não tem carga.</p>;
+
+  if (sugestao) {
+    const km = (valor: number) => `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km`;
+    const semLocal = new Set(sugestao.naoLocalizadas);
+    return (
+      <div className="space-y-2" data-sugestao-de-ordem>
+        <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 px-3 py-2 text-sm text-gray-900 dark:text-white">
+          <p className="font-semibold" data-distancias>
+            {sugestao.mudou ? (
+              <>
+                {km(sugestao.distanciaAntesKm)} hoje → {km(sugestao.distanciaDepoisKm)} na ordem sugerida
+              </>
+            ) : (
+              <>A ordem atual já é a mais curta que a conta achou: {km(sugestao.distanciaAntesKm)}</>
+            )}
+          </p>
+          <p className="text-xs text-gray-600 dark:text-gray-300">
+            Distância {AVISO_DA_DISTANCIA}: não é o km de estrada.{" "}
+            {sugestao.origem ? `Saindo de ${sugestao.origem}.` : "A origem não foi localizada: a conta começa na primeira entrega."}
+          </p>
+          <label className="mt-1 flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
+            <input type="checkbox" checked={sugestao.voltar} disabled={ocupado} onChange={(e) => sugerir(e.target.checked)} />
+            Contar a volta à origem
+          </label>
+        </div>
+        {semLocal.size > 0 && (
+          <p className="text-xs text-amber-700 dark:text-amber-400" data-sem-localizacao>
+            {semLocal.size === 1 ? "1 entrega sem localização ficou" : `${semLocal.size} entregas sem localização ficaram`} no fim: a cidade do destino não foi
+            reconhecida.
+          </p>
+        )}
+        {erro && (
+          <p role="alert" className="text-sm text-red-600">
+            {erro}
+          </p>
+        )}
+
+        <ol className="space-y-1">
+          {sugestao.ordem.flatMap((id, posicao) => {
+            const carga = porId.get(id);
+            if (!carga) return [];
+            return (
+              <li key={id} data-parada-sugerida={id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-1.5">
+                <span className="shrink-0 w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center justify-center">
+                  {posicao + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{carga.receiver}</p>
+                  <p className={`text-xs truncate ${semLocal.has(id) ? "text-amber-700 dark:text-amber-400" : "text-gray-500"}`}>
+                    {sugestao.cidades[id] ?? `${carga.destination} · sem localização`}
+                  </p>
+                </div>
+                <span className="shrink-0 text-[11px] text-gray-500">era {ordem.indexOf(id) + 1}</span>
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="flex justify-end gap-2">
+          <button type="button" disabled={ocupado} onClick={() => setSugestao(null)} className="border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 px-4 py-2 rounded-xl">
+            Cancelar
+          </button>
+          <button type="button" disabled={ocupado || !sugestao.mudou} onClick={aplicar} className={BOTAO}>
+            {ocupado && <Loader2 className="w-4 h-4 animate-spin" />}
+            Aplicar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-gray-500">
+      {/* No celular a frase fica em cima e os dois botões embaixo, lado a lado. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <p className="w-full md:w-auto md:flex-1 text-xs text-gray-500">
           {ordenavel ? "A ordem das entregas é a que o motorista vê." : "Ordem em que as entregas foram feitas na viagem."}
         </p>
+        {ordenavel && podeSugerir && cargas.length > 1 && (
+          <button
+            type="button"
+            disabled={ocupado}
+            onClick={() => sugerir(true)}
+            data-sugerir-ordem
+            className="shrink-0 flex items-center gap-1.5 border border-gray-200 dark:border-gray-700 text-sm font-medium text-blue-700 dark:text-blue-400 px-3 py-1.5 rounded-xl disabled:opacity-50"
+          >
+            <Route className="w-4 h-4" /> Sugerir ordem
+          </button>
+        )}
         {link.url && (
           <a
             href={link.url}
