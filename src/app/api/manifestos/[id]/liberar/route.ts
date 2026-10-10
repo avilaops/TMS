@@ -74,7 +74,9 @@ export async function POST(
       );
 
       await tx.vehicle.update({ where: { id: manifest.vehicleId }, data: { status: 'ON_ROUTE' } });
-      await tx.manifest.update({ where: { id: manifestId }, data: { status: 'ROUTE' } });
+      // A data da saída abre a janela da viagem: é dela em diante que o
+      // abastecimento do veículo conta no acerto (src/lib/viagem.ts).
+      await tx.manifest.update({ where: { id: manifestId }, data: { status: 'ROUTE', departedAt: new Date() } });
 
       await registrarAuditoria(tx, {
         ator: user,

@@ -3,14 +3,16 @@ import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { limitesDoPeriodo, periodoDoRelatorio } from '@/lib/relatorios';
 import { produtividadeDaEquipe, semValores } from '@/lib/equipe';
+import { finalizadaNoPeriodo } from '@/lib/viagem';
 
 /**
  * Produtividade e comissão por motorista num período em meses
  * (`?de=AAAA-MM&ate=AAAA-MM`; sem os dois, o mês corrente e os dois anteriores,
  * como nos relatórios). Só leitura; as contas estão em src/lib/equipe.ts.
  *
- * - Viagens: manifestos finalizados, pela data da última alteração (é quando a
- *   viagem foi finalizada: depois disso ela não muda mais).
+ * - Viagens: manifestos finalizados, pela data da finalização (`finishedAt`).
+ *   Viagem anterior a essa coluna conta pela data da última alteração, como
+ *   sempre contou (`finalizadaNoPeriodo`).
  * - Entregas, prazo, peso e frete: as cargas que viraram "Entregue" no período,
  *   pelo histórico de status, com o motorista da carga.
  *
@@ -38,7 +40,7 @@ export async function GET(req?: Request) {
       select: { id: true, active: true, commissionPct: true, user: { select: { name: true } } },
     });
     const viagens = await prisma.manifest.findMany({
-      where: { status: 'FINISHED', updatedAt: noPeriodo },
+      where: finalizadaNoPeriodo(noPeriodo),
       select: { driverId: true },
     });
     const entregas = await prisma.collectionStatusHistory.findMany({

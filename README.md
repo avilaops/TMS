@@ -175,7 +175,12 @@ Em `/dashboard/relatorios`, só para o administrador. Um período em meses (`GET
 - **Comercial:** cotações recebidas no período por status, a conversão (as que viraram coleta sobre todas) e o frete das cargas criadas no período, por cliente. Carga cancelada ou recusada não entra no frete; carga a cotar conta à parte.
 - **Financeiro:** recebido, pago e resultado pela data do pagamento (o recebido é o que entrou de fato, com juros, multa e desconto da baixa), despesas pagas por categoria e por **centro de custo**, e a inadimplência (quanto do que há a receber em aberto já venceu), que é a posição de hoje e não a do período.
 
-Ainda não há exportação para planilha ou PDF, DRE, nem margem por rota ou por veículo.
+- **Resultado** (campo `resultado` da mesma resposta; aba própria na tela, e o DRE também na aba Financeiro):
+  - **DRE básico:** a receita recebida e as despesas pagas no período, por categoria do lançamento, e o que sobrou. É regime de caixa: vale a data do pagamento e o valor que entrou de fato; o que foi faturado e não recebido não aparece.
+  - **Margem por cliente:** o frete das cargas entregues no período menos a parte do custo das viagens que as levaram. O custo da viagem (despesas aprovadas mais combustível) é **rateado pelo peso**: cada carga leva a fração do custo que o peso dela representa no peso total da viagem. Viagem sem peso divide por igual; carga entregue fora de viagem não leva custo.
+  - **Resultado por viagem:** as viagens finalizadas no período, com frete, custo, resultado e margem (a mesma conta do acerto da viagem).
+
+Ainda não há exportação para planilha ou PDF, DRE por competência (o que há é de caixa), nem margem por rota ou por veículo.
 
 ## Frota
 
@@ -210,7 +215,22 @@ Permissão: pessoas, ajudantes, ausências e as contagens da produtividade são 
 
 As tabelas são criadas por [prisma/sql/019-equipe-e-baixa.sql](prisma/sql/019-equipe-e-baixa.sql) (que também traz as colunas da baixa com encargos e do centro de custo); rode `npm run db:rls` depois dela.
 
-Ainda não existe: folha de pagamento, ponto e jornada, banco de horas, saldo e período aquisitivo de férias, anexo do atestado, ajudante ligado à viagem (o manifesto continua só com motorista e veículo) e comissão de ajudante. O acerto não mexe na despesa lançada no Financeiro: a sobra devolvida ou o complemento pago são lançados lá, à mão, e o adiantamento não é apagado pela tela. A viagem conta como finalizada pela data da última alteração do manifesto (não há data própria de finalização), e a comissão é só uma conta: não vira lançamento a pagar nem tem fechamento por período.
+Ainda não existe: folha de pagamento, ponto e jornada, banco de horas, saldo e período aquisitivo de férias, anexo do atestado e comissão de ajudante (o ajudante já pode ser ligado à viagem, mas não entra na produtividade). O acerto não mexe na despesa lançada no Financeiro: a sobra devolvida ou o complemento pago são lançados lá, à mão, e o adiantamento não é apagado pela tela. A viagem conta como finalizada pela data própria de finalização (`Manifest.finishedAt`); as finalizadas antes dessa coluna existir seguem contando pela data da última alteração do manifesto. A comissão é só uma conta: não vira lançamento a pagar nem tem fechamento por período.
+
+## Viagem: dados, rota, despesas e acerto
+
+Em `/dashboard/manifestos`, o botão **Viagem** de cada cartão abre a tela da viagem, com uma aba por assunto. As regras e as contas ficam em [src/lib/viagem.ts](src/lib/viagem.ts) (funções puras: o link da rota, a ordem das paradas e o acerto são calculados na leitura).
+
+- **Dados** (`PATCH /api/manifestos/[id]/dados`): ajudante (do cadastro da Equipe, ativo), hodômetro de saída e de retorno, previsão de saída e de retorno e observação. Todos opcionais; campo em branco apaga. Vale com a viagem em montagem, em rota e finalizada (o hodômetro de retorno chega no fim); só a cancelada não recebe. Os mesmos campos são aceitos na montagem (`POST /api/manifestos`). Liberar a saída grava `departedAt` e finalizar grava `finishedAt`.
+- **Rota** (`PUT /api/manifestos/[id]/ordem`): a ordem das entregas, com subir e descer, gravada em `Collection.manifestSequence`. É a ordem que o painel e o **app do motorista** mostram. Vale em montagem e em rota; carga sem ordem vai para o fim, pela data de criação, e a carga retirada da viagem perde a ordem. O botão **Abrir rota no mapa** (no painel e no app) monta um link do Google Maps (`https://www.google.com/maps/dir/?api=1...`) com as paradas que faltam, na ordem: o endereço é o destino da carga, a origem é onde o aparelho está, e o link leva até 10 paradas (limite do Google Maps); passando disso entram as primeiras. Não usa API paga nem chave.
+- **Despesas** (`TripExpense`; `GET` e `POST /api/manifestos/[id]/despesas`, `PATCH` e `DELETE .../[despesaId]`): tipo (pedágio, combustível, alimentação, hospedagem, estacionamento, manutenção, outro), valor, data, observação e quem lançou. Nasce **pendente**. O **motorista** lança pelo app na viagem dele em rota (`/driver/viagem/[id]/despesas`; `GET` e `POST /api/driver/manifestos/[id]/despesas`) e vê só as que ele lançou e o total delas. **Combustível com litros e hodômetro** gera também o abastecimento da frota (`Fueling`), ligado à despesa; sem um dos dois fica só a despesa. **Só o administrador aprova ou recusa:** aprovar cria, na mesma transação, o lançamento no Financeiro (a pagar, ou já pago), com a categoria do tipo e a viagem como centro de custo; recusar desfaz o abastecimento gerado. Só a pendente pode ser excluída.
+- **Acerto** (`GET /api/manifestos/[id]/acerto`, **só administrador**, só viagem finalizada): frete das cargas, despesas aprovadas, combustível, custo total, km rodados, custo por km, **resultado** (frete − despesas − combustível) e margem, mais os adiantamentos ligados à viagem e o saldo deles contra as despesas aprovadas (a devolver ou a receber). O combustível são os abastecimentos da frota feitos no veículo entre o dia da saída e o da finalização, **menos** os que nasceram de uma despesa da viagem, que já estão nas despesas. Despesa pendente fica fora do custo e aparece em aviso.
+
+Permissão: dados, ordem e lançamento de despesa são da equipe interna (`ADMIN` e `OPERATION`); aprovar despesa e o acerto são do administrador; o motorista só alcança a viagem dele que está em rota. Viagem de outra empresa responde 404, e o banco recusa despesa apontando para viagem, usuário, abastecimento ou lançamento de outra empresa. Tudo fica na Auditoria (dados e ordem da viagem; despesa lançada, aprovada, recusada e excluída).
+
+As colunas e a tabela são criadas por [prisma/sql/020-viagem.sql](prisma/sql/020-viagem.sql); rode `npm run db:rls` depois dela.
+
+Ainda não existe: **roteirização automática** ou otimização da ordem (a ordem é a que a operação define), **rastreamento contínuo por GPS**, **pedágio automático** (cálculo por rota ou integração com tag), etapa "Em retorno" (o fluxo continua Em montagem → Em rota → Finalizada), foto do comprovante da despesa, lançamento de despesa pelo app sem sinal (não entra na fila offline), edição de despesa já lançada (exclui e lança de novo) e despesa prevista na montagem. Duas viagens do mesmo veículo no mesmo dia dividem o abastecimento da frota desse dia: ele aparece no acerto das duas. Excluir no Financeiro o lançamento de uma despesa aprovada não a tira do custo da viagem.
 
 ## Atendimento e ocorrências
 

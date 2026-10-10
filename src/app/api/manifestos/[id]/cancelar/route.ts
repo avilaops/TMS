@@ -26,7 +26,7 @@ export async function POST(
         );
       }
 
-      const { count } = await tx.collection.updateMany({ where: { manifestId }, data: { manifestId: null } });
+      const { count } = await tx.collection.updateMany({ where: { manifestId }, data: { manifestId: null, manifestSequence: null } });
       await tx.manifest.update({ where: { id: manifestId }, data: { status: 'CANCELLED' } });
 
       await registrarAuditoria(tx, {

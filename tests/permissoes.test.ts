@@ -106,6 +106,11 @@ suite("permissões das rotas internas", () => {
   let equipeAdiantamentos: typeof import("../src/app/api/equipe/adiantamentos/route");
   let equipeAdiantamento: typeof import("../src/app/api/equipe/adiantamentos/[id]/route");
   let equipeProdutividade: typeof import("../src/app/api/equipe/produtividade/route");
+  let viagemDados: typeof import("../src/app/api/manifestos/[id]/dados/route");
+  let viagemOrdem: typeof import("../src/app/api/manifestos/[id]/ordem/route");
+  let viagemDespesas: typeof import("../src/app/api/manifestos/[id]/despesas/route");
+  let viagemDespesa: typeof import("../src/app/api/manifestos/[id]/despesas/[despesaId]/route");
+  let viagemAcerto: typeof import("../src/app/api/manifestos/[id]/acerto/route");
 
   const ids = {} as Record<Perfil, string>;
   let clienteId: string;
@@ -218,6 +223,11 @@ suite("permissões das rotas internas", () => {
     equipeAdiantamentos = await import("../src/app/api/equipe/adiantamentos/route");
     equipeAdiantamento = await import("../src/app/api/equipe/adiantamentos/[id]/route");
     equipeProdutividade = await import("../src/app/api/equipe/produtividade/route");
+    viagemDados = await import("../src/app/api/manifestos/[id]/dados/route");
+    viagemOrdem = await import("../src/app/api/manifestos/[id]/ordem/route");
+    viagemDespesas = await import("../src/app/api/manifestos/[id]/despesas/route");
+    viagemDespesa = await import("../src/app/api/manifestos/[id]/despesas/[despesaId]/route");
+    viagemAcerto = await import("../src/app/api/manifestos/[id]/acerto/route");
 
     await limpar();
 
@@ -233,6 +243,7 @@ suite("permissões das rotas internas", () => {
 
     const semId = "00000000-0000-0000-0000-000000000000";
     const registro = { params: Promise.resolve({ id: semId, registroId: semId }) };
+    const despesaDaViagem = { params: Promise.resolve({ id: semId, despesaId: semId }) };
 
     rotasStaff = [
       ["GET /api/clientes", () => clientes.GET()],
@@ -319,6 +330,11 @@ suite("permissões das rotas internas", () => {
       ],
       ["DELETE /api/equipe/ausencias/[id]", () => equipeAusencia.DELETE(req("DELETE"), ctx(semId))],
       ["GET /api/equipe/produtividade", () => equipeProdutividade.GET()],
+      ["PATCH /api/manifestos/[id]/dados", () => viagemDados.PATCH(req("PATCH", { notes: "Invasor" }), ctx(semId))],
+      ["PUT /api/manifestos/[id]/ordem", () => viagemOrdem.PUT(req("PUT", { collectionIds: [semId] }), ctx(semId))],
+      ["GET /api/manifestos/[id]/despesas", () => viagemDespesas.GET(req(), ctx(semId))],
+      ["POST /api/manifestos/[id]/despesas", () => viagemDespesas.POST(req("POST", { type: "TOLL", amount: "10", date: "2026-01-10" }), ctx(semId))],
+      ["DELETE /api/manifestos/[id]/despesas/[despesaId]", () => viagemDespesa.DELETE(req("DELETE"), despesaDaViagem)],
     ];
 
     rotasAdmin = [
@@ -349,6 +365,8 @@ suite("permissões das rotas internas", () => {
         () => equipeAdiantamentos.POST(req("POST", { driverId: semId, date: "2026-01-10", amount: "100", reason: "TRIP" })),
       ],
       ["PATCH /api/equipe/adiantamentos/[id]", () => equipeAdiantamento.PATCH(req("PATCH", { action: "acertar", spentAmount: "1" }), ctx(semId))],
+      ["PATCH /api/manifestos/[id]/despesas/[despesaId]", () => viagemDespesa.PATCH(req("PATCH", { action: "aprovar" }), despesaDaViagem)],
+      ["GET /api/manifestos/[id]/acerto", () => viagemAcerto.GET(req(), ctx(semId))],
     ];
   });
 

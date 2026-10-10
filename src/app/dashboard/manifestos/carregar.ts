@@ -41,6 +41,15 @@ export interface Manifesto {
   driver: Motorista;
   vehicle: Veiculo;
   collections: Minuta[];
+  // Dados da viagem, todos opcionais (src/lib/viagem.ts).
+  helper?: { id: string; name: string } | null;
+  departureOdometer?: number | null;
+  returnOdometer?: number | null;
+  plannedDepartureAt?: string | null;
+  plannedReturnAt?: string | null;
+  notes?: string | null;
+  departedAt?: string | null;
+  finishedAt?: string | null;
 }
 
 export type ManifestosData = {

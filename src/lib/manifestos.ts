@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { tripDataFields } from "@/lib/viagem";
 
 // Regras do manifesto de viagem: quais status existem, que carga pode embarcar
 // e o que a rota de criação aceita. Este arquivo também é importado pela tela,
@@ -44,6 +45,8 @@ export const createManifestSchema = z.object(
       .min(1, COLLECTIONS_MESSAGE)
       .max(MAX_MANIFEST_COLLECTIONS, TOO_MANY_MESSAGE)
       .refine((ids) => new Set(ids).size === ids.length, REPEATED_MESSAGE),
+    // Ajudante, hodômetro, previsões e observação: todos opcionais (src/lib/viagem.ts).
+    ...tripDataFields,
   },
   INVALID_BODY,
 );

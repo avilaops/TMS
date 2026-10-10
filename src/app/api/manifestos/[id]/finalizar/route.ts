@@ -37,10 +37,12 @@ export async function POST(
       // depois desta transação inteira, nunca entre a gravação e a soltura.
       await tx.$queryRaw`SELECT id FROM "Vehicle" WHERE id = ${current.vehicleId} FOR UPDATE`;
 
-      // Grava só se a viagem ainda estiver em rota e sem carga pendente.
+      // Grava só se a viagem ainda estiver em rota e sem carga pendente. A data
+      // da finalização é própria: `updatedAt` muda de novo quando alguém
+      // completa o hodômetro de retorno depois, e a viagem mudaria de mês.
       const { count } = await tx.manifest.updateMany({
         where: { id: manifestId, status: 'ROUTE', collections: { none: { status: 'ROUTE' } } },
-        data: { status: 'FINISHED' },
+        data: { status: 'FINISHED', finishedAt: new Date() },
       });
       if (count === 0) throw new ManifestError(409, CHANGED_MEANWHILE);
 

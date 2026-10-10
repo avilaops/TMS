@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { Plus, Loader2, Route, Truck, Package, MapPin, User, ArrowRight, AlertTriangle, LogIn } from "lucide-react";
 import { COLLECTION_STATUS, MANIFEST_STATUS, statusBadge } from "@/lib/format";
 import { canEmbark, isManifestEditable, manifestLoadsLabel } from "@/lib/manifestos";
 import { diaNoBrasil } from "@/lib/financeiro";
 import { rotuloDaAusencia } from "@/lib/equipe";
 import { loadManifestos, type Manifesto, type ManifestosState, type Minuta } from "./carregar";
+import { TelaDaViagem } from "./viagem";
 
 // A mensagem que o servidor devolveu; `fallback` quando a resposta não é JSON.
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -23,6 +25,11 @@ export default function ManifestosPage() {
   const [state, setState] = useState<ManifestosState>({ status: "loading" });
   // Id do manifesto ou da carga com ação em andamento, para travar o botão.
   const [busyId, setBusyId] = useState<string | null>(null);
+  // A viagem aberta na tela de dados, rota, despesas e acerto.
+  const [viagem, setViagem] = useState<Manifesto | null>(null);
+  // Aprovar despesa e ver o acerto é do administrador; a API confere de novo.
+  const { data: session } = useSession();
+  const admin = session?.user?.role === "ADMIN";
 
   const [formData, setFormData] = useState({
     driverId: "",
@@ -79,6 +86,13 @@ export default function ManifestosPage() {
   const minutas = ready ? state.coletas.filter(canEmbark) : [];
   const motoristas = ready ? state.motoristas.filter((m) => m.active) : [];
   const veiculos = ready ? state.veiculos : [];
+  // A viagem aberta, como veio na última leitura; enquanto a lista recarrega, a que já estava na tela.
+  const viagemAberta = viagem && (manifestos.find((m) => m.id === viagem.id) ?? viagem);
+
+  // Recarrega sem trocar a lista pelo indicador de carga: a tela da viagem fica aberta por cima.
+  const recarregar = useCallback(async () => {
+    show(await loadManifestos((url) => fetch(url)));
+  }, [show]);
 
   const toggleMinuta = (id: string) => {
     setFormData(prev => ({
@@ -298,6 +312,15 @@ export default function ManifestosPage() {
                     <span>
                       {manifesto.vehicle?.plate} <span className="text-xs text-gray-500">({manifesto.vehicle?.model})</span>
                     </span>
+                    {/* Dados, ordem das entregas, despesas e acerto da viagem. */}
+                    <button
+                      type="button"
+                      data-abrir-viagem={manifesto.id}
+                      onClick={() => setViagem(manifesto)}
+                      className="!ml-auto shrink-0 border border-gray-200 dark:border-gray-700 text-blue-700 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 text-xs font-medium px-3 py-1.5 rounded-xl"
+                    >
+                      Viagem
+                    </button>
                   </div>
                 </div>
 
@@ -393,6 +416,10 @@ export default function ManifestosPage() {
           </div>
         )}
       </div>
+
+      {viagemAberta && (
+        <TelaDaViagem key={viagemAberta.id} manifesto={viagemAberta} admin={admin} onClose={() => setViagem(null)} onChange={recarregar} />
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center md:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">

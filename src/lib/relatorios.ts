@@ -321,3 +321,173 @@ export function montarRelatorio(dados: DadosDoRelatorio, hoje: Date = new Date()
     },
   };
 }
+
+/* ------------------------- Resultado: DRE, cliente, viagem ------------------------ */
+
+/**
+ * O resultado do período, à parte do relatório básico (`montarRelatorio` segue
+ * como era):
+ *
+ * - **DRE básico**: a receita recebida e as despesas pagas no período, por
+ *   categoria do lançamento, pela data do pagamento e pelo valor que entrou de
+ *   fato. É regime de caixa: o que foi faturado e não recebido não aparece.
+ * - **Margem por cliente**: o frete das cargas entregues no período menos a
+ *   parte do custo da viagem de cada uma. O custo da viagem (despesas aprovadas
+ *   mais combustível) é rateado pelo peso: a carga leva a fração do custo que o
+ *   peso dela representa no peso total da viagem. Viagem sem peso divide por
+ *   igual entre as cargas; carga entregue fora de viagem não leva custo.
+ * - **Resultado por viagem**: as viagens finalizadas no período, com frete,
+ *   custo, resultado e margem (`acertoDaViagem`, em src/lib/viagem.ts).
+ */
+
+/** Carga entregue no período, com o que a margem por cliente soma. */
+export type EntregaComFrete = {
+  client: ClienteDaCarga;
+  weight: number;
+  freightValue: number | null;
+  /** A viagem que levou a carga; `null` quando foi entregue fora de viagem. */
+  manifestId: string | null;
+};
+
+/** O custo de uma viagem e o que o rateio precisa: o peso e a quantidade de TODAS as cargas dela. */
+export type CustoDaViagem = { id: string; custo: number; peso: number; cargas: number };
+
+/** Viagem finalizada no período, com as contas do acerto já feitas. */
+export type ViagemFinalizada = {
+  id: string;
+  finalizadaEm: Date | string;
+  motorista: string;
+  placa: string;
+  cargas: number;
+  frete: number;
+  custo: number;
+  km: number | null;
+};
+
+export type LinhaDaDre = { categoria: string; total: number };
+
+export type MargemDoCliente = {
+  clientId: string;
+  nome: string;
+  entregas: number;
+  peso: number;
+  frete: number;
+  /** A parte das despesas das viagens que coube às cargas do cliente. */
+  custo: number;
+  resultado: number;
+  /** % do frete que sobrou; `null` sem frete. */
+  margem: number | null;
+};
+
+export type ResultadoDaViagem = ViagemFinalizada & { resultado: number; margem: number | null };
+
+export type Resultado = {
+  dre: {
+    receitas: LinhaDaDre[];
+    receita: number;
+    despesas: LinhaDaDre[];
+    despesa: number;
+    resultado: number;
+    /** % da receita que sobrou; `null` sem receita. */
+    margem: number | null;
+  };
+  clientes: MargemDoCliente[];
+  viagens: ResultadoDaViagem[];
+  totalDasViagens: { frete: number; custo: number; resultado: number; margem: number | null };
+};
+
+const porTotal = (linhas: Map<string, number>): LinhaDaDre[] =>
+  [...linhas.entries()]
+    .map(([categoria, total]) => ({ categoria, total: centavos(total) }))
+    .sort((a, b) => b.total - a.total || a.categoria.localeCompare(b.categoria, "pt-BR"));
+
+/** O DRE básico: receitas e despesas do período por categoria, e o que sobrou. */
+export function dreDoPeriodo(pagos: readonly LancamentoPago[]): Resultado["dre"] {
+  const receitas = new Map<string, number>();
+  const despesas = new Map<string, number>();
+  let receita = 0;
+  let despesa = 0;
+  for (const lancamento of pagos) {
+    const valor = valorRealizado(lancamento);
+    const categoria = lancamento.category?.trim() || SEM_CATEGORIA;
+    if (lancamento.type === "INCOME") {
+      receita += valor;
+      receitas.set(categoria, (receitas.get(categoria) ?? 0) + valor);
+    } else {
+      despesa += valor;
+      despesas.set(categoria, (despesas.get(categoria) ?? 0) + valor);
+    }
+  }
+  return {
+    receitas: porTotal(receitas),
+    receita: centavos(receita),
+    despesas: porTotal(despesas),
+    despesa: centavos(despesa),
+    resultado: centavos(receita - despesa),
+    margem: taxa(receita - despesa, receita),
+  };
+}
+
+/** A parte do custo da viagem que cabe a uma carga, pelo peso. */
+export function custoRateado(carga: { weight: number }, viagem: CustoDaViagem): number {
+  if (viagem.peso > 0) return (viagem.custo * carga.weight) / viagem.peso;
+  return viagem.cargas > 0 ? viagem.custo / viagem.cargas : 0;
+}
+
+/** Frete, custo rateado e margem das cargas entregues, por cliente. */
+export function margemPorCliente(entregues: readonly EntregaComFrete[], viagens: readonly CustoDaViagem[]): MargemDoCliente[] {
+  const custos = new Map(viagens.map((viagem) => [viagem.id, viagem]));
+  const clientes = new Map<string, { nome: string; entregas: number; peso: number; frete: number; custo: number }>();
+
+  for (const carga of entregues) {
+    const linha = clientes.get(carga.client.id) ?? { nome: carga.client.tradeName || carga.client.companyName, entregas: 0, peso: 0, frete: 0, custo: 0 };
+    const viagem = carga.manifestId ? custos.get(carga.manifestId) : undefined;
+    linha.entregas += 1;
+    linha.peso += carga.weight;
+    linha.frete += carga.freightValue ?? 0;
+    if (viagem) linha.custo += custoRateado(carga, viagem);
+    clientes.set(carga.client.id, linha);
+  }
+
+  return [...clientes.entries()]
+    .map(([clientId, linha]) => ({
+      clientId,
+      nome: linha.nome,
+      entregas: linha.entregas,
+      peso: centavos(linha.peso),
+      frete: centavos(linha.frete),
+      custo: centavos(linha.custo),
+      resultado: centavos(linha.frete - linha.custo),
+      margem: taxa(linha.frete - linha.custo, linha.frete),
+    }))
+    .sort((a, b) => b.resultado - a.resultado || b.frete - a.frete || a.nome.localeCompare(b.nome, "pt-BR"));
+}
+
+export function montarResultado(dados: {
+  pagos: readonly LancamentoPago[];
+  entregues: readonly EntregaComFrete[];
+  /** O custo de cada viagem que levou alguma carga entregue no período. */
+  custos: readonly CustoDaViagem[];
+  /** As viagens finalizadas no período. */
+  finalizadas: readonly ViagemFinalizada[];
+}): Resultado {
+  const viagens = dados.finalizadas
+    .map((viagem) => ({
+      ...viagem,
+      frete: centavos(viagem.frete),
+      custo: centavos(viagem.custo),
+      resultado: centavos(viagem.frete - viagem.custo),
+      margem: taxa(viagem.frete - viagem.custo, viagem.frete),
+    }))
+    .sort((a, b) => new Date(b.finalizadaEm).getTime() - new Date(a.finalizadaEm).getTime() || a.id.localeCompare(b.id));
+
+  const frete = viagens.reduce((soma, viagem) => soma + viagem.frete, 0);
+  const custo = viagens.reduce((soma, viagem) => soma + viagem.custo, 0);
+
+  return {
+    dre: dreDoPeriodo(dados.pagos),
+    clientes: margemPorCliente(dados.entregues, dados.custos),
+    viagens,
+    totalDasViagens: { frete: centavos(frete), custo: centavos(custo), resultado: centavos(frete - custo), margem: taxa(frete - custo, frete) },
+  };
+}

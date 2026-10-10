@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, CheckCircle2, Package, ShieldCheck, Loader2, PenTool, ClipboardCheck, AlertTriangle } from "lucide-react";
+import { ArrowLeft, MapPin, CheckCircle2, Package, ShieldCheck, Loader2, PenTool, ClipboardCheck, AlertTriangle, Navigation, Receipt } from "lucide-react";
 import Link from "next/link";
+import { linkDaRota } from "@/lib/viagem";
 
 interface Parada {
   id: string;
@@ -71,6 +72,7 @@ export default function ViagemDetalhes() {
   const pendentes = manifesto.collections.filter((c) => c.status !== 'DELIVERED').length;
   const concluidas = total - pendentes;
   const progress = total === 0 ? 0 : (concluidas / total) * 100;
+  const rota = linkDaRota(manifesto.collections.filter((c) => c.status !== 'DELIVERED').map((c) => c.destination));
 
   return (
     <div className="space-y-6 pb-6">
@@ -107,6 +109,36 @@ export default function ViagemDetalhes() {
       >
         <ClipboardCheck className="w-5 h-5 mr-2 text-blue-600" /> Checklist do veículo
       </Link>
+
+      <div className="grid grid-cols-2 gap-3">
+        {/* As paradas que faltam, na ordem da viagem; o mapa parte de onde o aparelho está. */}
+        {rota.url ? (
+          <a
+            href={rota.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-rota-no-mapa
+            className="flex items-center justify-center min-w-0 bg-white text-gray-900 text-sm font-medium py-3 rounded-2xl border border-gray-200 shadow-sm"
+          >
+            <Navigation className="w-5 h-5 mr-2 shrink-0 text-blue-600" /> Abrir rota no mapa
+          </a>
+        ) : (
+          <span className="flex items-center justify-center min-w-0 bg-gray-50 text-gray-400 text-sm font-medium py-3 rounded-2xl border border-gray-200">
+            Sem parada pendente
+          </span>
+        )}
+        <Link
+          href={`/driver/viagem/${manifesto.id}/despesas`}
+          className="flex items-center justify-center min-w-0 bg-white text-gray-900 text-sm font-medium py-3 rounded-2xl border border-gray-200 shadow-sm"
+        >
+          <Receipt className="w-5 h-5 mr-2 shrink-0 text-blue-600" /> Despesas
+        </Link>
+      </div>
+      {rota.deFora > 0 && (
+        <p className="text-xs text-gray-500 px-1">
+          O mapa leva as {rota.incluidas} próximas paradas; abra de novo depois delas para as {rota.deFora} restantes.
+        </p>
+      )}
 
       <div className="space-y-4">
         <h3 className="font-bold text-gray-900 px-1">Entregas</h3>

@@ -64,7 +64,7 @@ export async function DELETE(
     const changed = await transacao(async (tx) => {
       const { count } = await tx.collection.updateMany({
         where: { id: coletaId, manifestId, status: expected, manifest: { status: manifest.status } },
-        data: { status: 'COLLECTED', manifestId: null },
+        data: { status: 'COLLECTED', manifestId: null, manifestSequence: null },
       });
       if (count === 0) return false;
 

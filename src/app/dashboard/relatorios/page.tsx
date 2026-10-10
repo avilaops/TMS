@@ -6,7 +6,8 @@ import { AlertTriangle, CheckCircle2, Loader2, LogIn, Package, ShieldAlert, Tren
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { COLLECTION_STATUS, formatCurrency, formatWeight, statusBadge } from "@/lib/format";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/crm";
-import { periodoDoRelatorio, type Relatorio } from "@/lib/relatorios";
+import { periodoDoRelatorio, type Relatorio, type Resultado } from "@/lib/relatorios";
+import { codigoDaViagem } from "@/lib/viagem";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
 
 /**
@@ -14,7 +15,8 @@ import { deniedReason, type DeniedReason } from "../financeiro/carregar";
  * A tela só lê; as contas vêm prontas de `/api/relatorios`.
  */
 
-type Resposta = Relatorio & { periodo: { de: string; ate: string } };
+// `resultado` (DRE, margem por cliente e resultado por viagem) vem junto na mesma resposta.
+type Resposta = Relatorio & { periodo: { de: string; ate: string }; resultado?: Resultado };
 
 type Carga = { denied: DeniedReason } | { denied: null; erro: string } | { denied: null; erro: null; relatorio: Resposta };
 
@@ -129,10 +131,10 @@ export default function RelatoriosPage() {
   );
 }
 
-const SECOES = ["Operação", "Comercial", "Financeiro"] as const;
+const SECOES = ["Operação", "Comercial", "Financeiro", "Resultado"] as const;
 
 function Conteudo({ relatorio }: { relatorio: Resposta }) {
-  const { operacional, comercial, financeiro } = relatorio;
+  const { operacional, comercial, financeiro, resultado } = relatorio;
   const { prazo } = operacional;
   // No celular aparece uma seção por vez, escolhida nas abas; no computador, as três em sequência.
   const [secao, setSecao] = useState<(typeof SECOES)[number]>("Operação");
@@ -151,7 +153,7 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
         />
       </div>
 
-      <div role="tablist" aria-label="Seção" className="md:hidden grid grid-cols-3 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+      <div role="tablist" aria-label="Seção" className="md:hidden grid grid-cols-4 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
         {SECOES.map((nome) => (
           <button
             key={nome}
@@ -160,7 +162,7 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
             aria-selected={secao === nome}
             data-aba={nome}
             onClick={() => setSecao(nome)}
-            className={`py-1.5 rounded-lg text-sm font-semibold ${secao === nome ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+            className={`py-1.5 rounded-lg text-[13px] font-semibold ${secao === nome ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
           >
             {nome}
           </button>
@@ -250,7 +252,54 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
             linhas={financeiro.despesasPorCentroDeCusto.map((d) => ({ chave: `centro:${d.centro}`, celulas: [d.centro, formatCurrency(d.total)] }))}
           />
         )}
+        {/* DRE básico: a receita recebida por categoria fecha a conta com as despesas por categoria acima. */}
+        {resultado && resultado.dre.receitas.length > 0 && (
+          <Tabela
+            vazio=""
+            colunas={["DRE: receita por categoria", "Total"]}
+            linhas={[
+              ...resultado.dre.receitas.map((r) => ({ chave: `receita:${r.categoria}`, celulas: [r.categoria, formatCurrency(r.total)] })),
+              { chave: "dre:despesas", celulas: ["(−) Despesas pagas", formatCurrency(resultado.dre.despesa)] },
+              { chave: "dre:resultado", celulas: [`(=) Resultado${resultado.dre.margem === null ? "" : ` (${porcento(resultado.dre.margem)})`}`, formatCurrency(resultado.dre.resultado)] },
+            ]}
+          />
+        )}
       </Secao>
+
+      {resultado && (
+        <Secao
+          ativa={secao}
+          titulo="Resultado"
+          descricao="Margem das cargas entregues no período, por cliente, com o custo das viagens rateado pelo peso, e o resultado das viagens finalizadas nele."
+        >
+          <Linhas
+            itens={[
+              ["Frete das viagens", formatCurrency(resultado.totalDasViagens.frete)],
+              ["Custo das viagens", formatCurrency(resultado.totalDasViagens.custo)],
+              ["Resultado", formatCurrency(resultado.totalDasViagens.resultado)],
+              ["Margem", porcento(resultado.totalDasViagens.margem)],
+              ["Viagens", String(resultado.viagens.length)],
+              ["Clientes", String(resultado.clientes.length)],
+            ]}
+          />
+          <Tabela
+            vazio="Nenhuma carga entregue no período."
+            colunas={["Cliente", "Frete", "Custo", "Resultado", "Margem"]}
+            linhas={resultado.clientes.map((c) => ({
+              chave: `margem:${c.clientId}`,
+              celulas: [c.nome, formatCurrency(c.frete), formatCurrency(c.custo), formatCurrency(c.resultado), porcento(c.margem)],
+            }))}
+          />
+          <Tabela
+            vazio="Nenhuma viagem finalizada no período."
+            colunas={["Viagem", "Frete", "Custo", "Resultado", "Margem"]}
+            linhas={resultado.viagens.map((v) => ({
+              chave: `viagem:${v.id}`,
+              celulas: [`#${codigoDaViagem(v.id)} · ${v.motorista}`, formatCurrency(v.frete), formatCurrency(v.custo), formatCurrency(v.resultado), porcento(v.margem)],
+            }))}
+          />
+        </Secao>
+      )}
     </>
   );
 }

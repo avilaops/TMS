@@ -168,4 +168,6 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [ ] Emissão fiscal (CT-e). Falta: certificado digital A1 da transportadora, credenciamento na SEFAZ e homologação. Hoje só há o registro manual do número e da chave de um CT-e emitido em outro sistema.
 - [x] Auditoria de ações.
 - [ ] Notificações avançadas (Push, WhatsApp). WhatsApp via n8n funcionando; push não existe.
-- [ ] Integrações bancárias automatizadas e roteirização avançada com geolocalização.
+- [ ] Integrações bancárias automatizadas (boleto, Pix dinâmico, conciliação).
+- [ ] Roteirização automática com geolocalização.
+- [x] Ordem das entregas, rota no mapa, despesas e resultado da viagem.

@@ -78,7 +78,7 @@ DECLARE
     "Vehicle": ["driverId", "Driver"],
     "Collection": ["clientId", "Client", "driverId", "Driver", "manifestId", "Manifest", "freightTableId", "FreightTable", "invoiceId", "Invoice"],
     "CollectionStatusHistory": ["collectionId", "Collection", "userId", "User"],
-    "Manifest": ["driverId", "Driver", "vehicleId", "Vehicle"],
+    "Manifest": ["driverId", "Driver", "vehicleId", "Vehicle", "helperId", "Helper"],
     "FinancialTransaction": ["clientId", "Client", "invoiceId", "Invoice"],
     "Invoice": ["clientId", "Client"],
     "Maintenance": ["vehicleId", "Vehicle"],
@@ -96,6 +96,7 @@ DECLARE
     "AuditLog": ["userId", "User"],
     "Absence": ["driverId", "Driver", "helperId", "Helper"],
     "CrewAdvance": ["driverId", "Driver", "helperId", "Helper", "manifestId", "Manifest"],
+    "TripExpense": ["manifestId", "Manifest", "createdById", "User", "reviewedById", "User", "fuelingId", "Fueling", "transactionId", "FinancialTransaction"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

@@ -72,6 +72,7 @@ model Tenant {
   helpers            Helper[]
   absences           Absence[]
   crewAdvances       CrewAdvance[]
+  tripExpenses       TripExpense[]
 }
 
 model User {
@@ -104,6 +105,8 @@ model User {
   warehouseReceipts   WarehouseReceipt[]
   fiscalDocuments     FiscalDocument[]
   auditLogs           AuditLog[]
+  tripExpensesCreated  TripExpense[] @relation("TripExpenseCreatedBy")
+  tripExpensesReviewed TripExpense[] @relation("TripExpenseReviewedBy")
 
   @@index([clientId])
 
@@ -310,6 +313,9 @@ model Collection {
   invoiceValue Float?
   driverId    String?
   manifestId  String?
+  // Ordem desta entrega na viagem (1, 2, 3...). Nulo = sem ordem definida: vai
+  // para o fim, pela data de criação. Volta a nulo quando a carga sai da viagem.
+  manifestSequence Int?
   status      String   @default("PENDING") // PENDING, CONFIRMED, COLLECTED, ROUTE, DELIVERED
 
   // Frete desta carga. Calculado pela tabela de frete quando a coleta nasce e
@@ -398,11 +404,27 @@ model Manifest {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Dados da viagem, todos opcionais (src/lib/viagem.ts). O hodômetro de saída
+  // e o de retorno dão os km rodados; as previsões são só informação.
+  helperId           String?
+  departureOdometer  Int?
+  returnOdometer     Int?
+  plannedDepartureAt DateTime?
+  plannedReturnAt    DateTime?
+  notes              String?
+  // Quando a saída foi liberada e quando a viagem foi finalizada. Nulos nas
+  // viagens anteriores a estas colunas: para elas vale `createdAt` como saída
+  // e `updatedAt` como finalização (`finalizadaNoPeriodo`).
+  departedAt         DateTime?
+  finishedAt         DateTime?
+
   // Relations
   driver      Driver    @relation(fields: [driverId], references: [id])
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
+  helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: SetNull)
   collections Collection[]
   advances    CrewAdvance[]
+  expenses    TripExpense[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -444,6 +466,7 @@ model FinancialTransaction {
 
   // Relations
   client      Client?  @relation(fields: [clientId], references: [id])
+  tripExpense TripExpense?
 
   @@index([clientId])
 
@@ -498,6 +521,8 @@ model Fueling {
   // Relations
   vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
   driver    Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  // A despesa de viagem que gerou este abastecimento, quando ele nasceu de uma.
+  tripExpense TripExpense?
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -591,6 +616,7 @@ model Helper {
   // Relations
   absences  Absence[]
   advances  CrewAdvance[]
+  manifests Manifest[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -655,6 +681,46 @@ model CrewAdvance {
 
 // Comprovante da entrega de uma carga, registrado pelo motorista na baixa.
 // A entrega e a propria carga (Collection): nao ha registro de entrega a parte.
+// Despesa de uma viagem (pedágio, combustível, alimentação...), lançada pelo
+// painel ou pelo motorista no aplicativo. Nasce pendente; o administrador
+// aprova (e ela vira lançamento no Financeiro) ou recusa. Ver src/lib/viagem.ts.
+model TripExpense {
+  tenantId   String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id         String   @id @default(uuid())
+  manifestId String
+  type       String   // TOLL, FUEL, FOOD, LODGING, PARKING, MAINTENANCE, OTHER
+  amount     Float
+  date       DateTime // dia do calendário, gravado à meia-noite UTC
+  notes      String?
+  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  // Quem lançou: é por aqui que o motorista só vê as dele.
+  createdById String?
+  // Quem aprovou ou recusou, e quando.
+  reviewedById String?
+  reviewedAt   DateTime?
+  // Só no combustível: com litros e hodômetro a despesa gera o abastecimento
+  // da frota (`fuelingId`), e o consumo do veículo sai dele.
+  liters     Float?
+  odometer   Int?
+  fuelingId  String?  @unique
+  // O lançamento que a aprovação criou no Financeiro.
+  transactionId String? @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  manifest    Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation("TripExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedBy  User?    @relation("TripExpenseReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  fueling     Fueling? @relation(fields: [fuelingId], references: [id], onDelete: SetNull)
+  transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([manifestId])
+  @@index([tenantId, status])
+}
+
 model ProofOfDelivery {
   tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id              String   @id @default(uuid())

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireDriver } from '@/lib/driver';
+import { ORDEM_DAS_CARGAS } from '@/lib/manifestos-db';
 
 /** Viagens do motorista logado. Nunca devolve manifesto de outro motorista. */
 export async function GET() {
@@ -32,7 +33,8 @@ export async function GET() {
             // cliente não vão para o aparelho do motorista.
             client: { select: { tradeName: true, companyName: true } },
           },
-          orderBy: { createdAt: 'asc' },
+          // A ordem das entregas que a operação definiu na viagem.
+          orderBy: ORDEM_DAS_CARGAS,
         },
       },
     });

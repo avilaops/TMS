@@ -12,6 +12,8 @@ import {
   cannotEmbarkMessage,
   createManifestSchema,
 } from '@/lib/manifestos';
+import { ManifestError, ORDEM_DAS_CARGAS, conferirAjudante } from '@/lib/manifestos-db';
+import { incoerenciaDaViagem } from '@/lib/viagem';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /** Desfaz a transação quando alguma carga deixou de estar apta entre a conferência e a gravação. */
@@ -64,9 +66,10 @@ export async function GET() {
       include: {
         driver: { include: { user: { select: DRIVER_USER_SELECT } }, omit: DRIVER_OMIT },
         vehicle: true,
+        helper: { select: { id: true, name: true } },
         collections: {
           include: { client: { select: { tradeName: true, companyName: true } } },
-          orderBy: { createdAt: 'asc' },
+          orderBy: ORDEM_DAS_CARGAS,
         },
       },
       orderBy: { createdAt: 'desc' }
@@ -88,6 +91,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const { driverId, vehicleId, collectionIds } = parsed.data;
+    const dadosDaViagem = {
+      helperId: parsed.data.helperId ?? null,
+      departureOdometer: parsed.data.departureOdometer ?? null,
+      returnOdometer: parsed.data.returnOdometer ?? null,
+      plannedDepartureAt: parsed.data.plannedDepartureAt ?? null,
+      plannedReturnAt: parsed.data.plannedReturnAt ?? null,
+      notes: parsed.data.notes ?? null,
+    };
+    const incoerencia = incoerenciaDaViagem(dadosDaViagem);
+    if (incoerencia) return NextResponse.json({ error: incoerencia }, { status: 400 });
 
     const refused = await driverOrVehicleRefusal(prisma, driverId, vehicleId);
     if (refused) return refused;
@@ -115,11 +128,12 @@ export async function POST(req: Request) {
       await tx.$queryRaw`SELECT id FROM "Driver" WHERE id = ${driverId} FOR SHARE`;
       const changed = await driverOrVehicleRefusal(tx, driverId, vehicleId);
       if (changed) throw new Refused(changed);
+      await conferirAjudante(tx, dadosDaViagem.helperId);
 
       // Nasce em montagem: as cargas ficam reservadas, ainda coletadas. Quem as
       // põe em rota é a liberação da saída (/api/manifestos/[id]/liberar).
       const manifest = await tx.manifest.create({
-        data: { driverId, vehicleId, status: 'ASSEMBLING' }
+        data: { driverId, vehicleId, status: 'ASSEMBLING', ...dadosDaViagem }
       });
 
       // A conferência vale aqui: de duas montagens simultâneas com a mesma
@@ -152,6 +166,9 @@ export async function POST(req: Request) {
     return NextResponse.json(newManifest, { status: 201 });
   } catch (error) {
     if (error instanceof Refused) return error.response;
+    if (error instanceof ManifestError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof CannotEmbark) {
       return NextResponse.json({ error: cannotEmbarkMessage(error.count) }, { status: 409 });
     }
