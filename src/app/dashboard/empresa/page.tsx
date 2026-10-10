@@ -260,6 +260,8 @@ const TIPO: Record<string, string> = {
   "fatura.reaberta": "Fatura reaberta",
   "fatura.cancelada": "Fatura cancelada",
   "cobranca.vencida": "Título vencido",
+  "ocorrencia.aberta": "Chamado aberto",
+  "ocorrencia.status": "Status de chamado",
   teste: "Teste",
 };
 

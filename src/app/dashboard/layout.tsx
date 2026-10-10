@@ -27,7 +27,8 @@ import {
   Receipt,
   Banknote,
   BarChart3,
-  Wrench
+  Wrench,
+  Headset
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -51,6 +52,7 @@ const SECOES: { titulo: string | null; links: LinkDoMenu[] }[] = [
       { href: "/dashboard/coletas", icon: Package, label: "Minutas" },
       { href: "/dashboard/manifestos", icon: Route, label: "Manifestos" },
       { href: "/dashboard/comprovantes", icon: ClipboardCheck, label: "Comprovantes" },
+      { href: "/dashboard/ocorrencias", icon: Headset, label: "Ocorrências" },
       { href: "/dashboard/fiscal/cte", icon: FileText, label: "Emissão CT-e" },
     ],
   },

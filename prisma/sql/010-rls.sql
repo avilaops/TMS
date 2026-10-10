@@ -88,6 +88,8 @@ DECLARE
     "VehicleChecklist": ["vehicleId", "Vehicle", "userId", "User"],
     "QuoteLead": ["collectionId", "Collection"],
     "ProofOfDelivery": ["collectionId", "Collection", "reviewedById", "User"],
+    "Occurrence": ["collectionId", "Collection", "clientId", "Client", "openedById", "User", "assigneeId", "User"],
+    "OccurrenceMessage": ["occurrenceId", "Occurrence", "authorId", "User"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

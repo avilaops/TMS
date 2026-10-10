@@ -7,7 +7,8 @@ import { conferirEnderecoPublico } from "@/lib/url-publica";
  * Entrega dos eventos (OutboxEvent) no endereço que cada empresa cadastrou.
  *
  * Quem cria o evento de status é o gatilho do banco (prisma/sql/010-rls.sql),
- * na transação da troca. Aqui só se entrega: o despachante pega um lote, marca
+ * na transação da troca; os de chamado nascem na rota, também na transação da
+ * mudança (src/lib/ocorrencias-db.ts). Aqui só se entrega: o despachante pega um lote, marca
  * a tentativa antes de enviar (queda no meio não repete na hora nem perde o
  * evento) e, se der errado, tenta de novo em 1, 2, 4... minutos, até
  * `TENTATIVAS` vezes.
@@ -93,9 +94,62 @@ async function dadosDoTituloVencido(evento: Pendente, payload: Record<string, un
   };
 }
 
+async function dadosDaOcorrencia(evento: Pendente, payload: Record<string, unknown>) {
+  const occurrenceId = texto(payload.occurrenceId);
+  const ocorrencia = occurrenceId
+    ? await sistema.occurrence.findFirst({
+        where: { id: occurrenceId, tenantId: evento.tenantId },
+        select: {
+          id: true,
+          number: true,
+          type: true,
+          title: true,
+          status: true,
+          priority: true,
+          origin: true,
+          openedAt: true,
+          client: { select: CLIENTE },
+          collection: { select: { id: true, trackingCode: true, receiver: true, destination: true, client: { select: CLIENTE } } },
+        },
+      })
+    : null;
+  if (!ocorrencia) return { ocorrencia: null };
+
+  const base = enderecoPublico();
+  const carga = ocorrencia.collection;
+  return {
+    ocorrencia: {
+      id: ocorrencia.id,
+      numero: ocorrencia.number,
+      tipo: ocorrencia.type,
+      titulo: ocorrencia.title,
+      // O status de agora: o chamado pode ter andado entre o aviso nascer e sair.
+      status: ocorrencia.status,
+      prioridade: ocorrencia.priority,
+      // CLIENT = aberto no portal; STAFF = aberto pela equipe ou pelo motorista.
+      abertaPor: ocorrencia.origin,
+      abertaEm: ocorrencia.openedAt.toISOString(),
+      // O chamado do motorista não tem cliente próprio: vale o dono da carga.
+      cliente: cliente(ocorrencia.client ?? carga?.client ?? null),
+      carga: carga && {
+        id: carga.id,
+        destinatario: carga.receiver,
+        destino: carga.destination,
+        rastreio: carga.trackingCode && {
+          codigo: carga.trackingCode,
+          link: `${base}/rastreio?cnpj=${carga.client.cnpj}&codigo=${carga.trackingCode}`,
+        },
+      },
+      // Onde a equipe abre o chamado, depois de entrar.
+      painel: `${base}/dashboard/ocorrencias/${ocorrencia.id}`,
+    },
+  };
+}
+
 async function dadosDoEvento(evento: Pendente): Promise<Record<string, unknown>> {
   const payload = (evento.payload ?? {}) as Record<string, unknown>;
   if (evento.type.startsWith("fatura.")) return dadosDaFatura(evento, payload);
+  if (evento.type.startsWith("ocorrencia.")) return dadosDaOcorrencia(evento, payload);
   if (evento.type === "cobranca.vencida") return dadosDoTituloVencido(evento, payload);
   if (evento.type !== "coleta.status") return payload;
 

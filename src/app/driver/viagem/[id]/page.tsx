@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, CheckCircle2, Package, ShieldCheck, Loader2, PenTool, ClipboardCheck } from "lucide-react";
+import { ArrowLeft, MapPin, CheckCircle2, Package, ShieldCheck, Loader2, PenTool, ClipboardCheck, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 interface Parada {
@@ -162,6 +162,14 @@ export default function ViagemDetalhes() {
                   )}
                 </div>
               )}
+
+              {/* Avaria, atraso, recusa: vira chamado para a equipe, ligado a esta carga. */}
+              <Link
+                href={`/driver/entregas/${coleta.id}/ocorrencia`}
+                className="mt-2 w-full flex items-center justify-center py-2.5 rounded-2xl border border-gray-200 text-sm font-medium text-gray-700"
+              >
+                <AlertTriangle className="w-4 h-4 mr-2 text-amber-600" /> Registrar ocorrência
+              </Link>
             </div>
           )
         })}

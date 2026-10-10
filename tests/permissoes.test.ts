@@ -77,6 +77,9 @@ suite("permissões das rotas internas", () => {
   let crm: typeof import("../src/app/api/dashboard/crm/route");
   let crmLead: typeof import("../src/app/api/dashboard/crm/[id]/route");
   let crmConverter: typeof import("../src/app/api/dashboard/crm/[id]/converter/route");
+  let ocorrencias: typeof import("../src/app/api/ocorrencias/route");
+  let ocorrencia: typeof import("../src/app/api/ocorrencias/[id]/route");
+  let ocorrenciaMensagens: typeof import("../src/app/api/ocorrencias/[id]/mensagens/route");
   let usuarios: typeof import("../src/app/api/usuarios/route");
   let usuario: typeof import("../src/app/api/usuarios/[id]/route");
 
@@ -162,6 +165,9 @@ suite("permissões das rotas internas", () => {
     crm = await import("../src/app/api/dashboard/crm/route");
     crmLead = await import("../src/app/api/dashboard/crm/[id]/route");
     crmConverter = await import("../src/app/api/dashboard/crm/[id]/converter/route");
+    ocorrencias = await import("../src/app/api/ocorrencias/route");
+    ocorrencia = await import("../src/app/api/ocorrencias/[id]/route");
+    ocorrenciaMensagens = await import("../src/app/api/ocorrencias/[id]/mensagens/route");
     usuarios = await import("../src/app/api/usuarios/route");
     usuario = await import("../src/app/api/usuarios/[id]/route");
 
@@ -230,6 +236,11 @@ suite("permissões das rotas internas", () => {
       ["GET /api/dashboard/crm", () => crm.GET()],
       ["PATCH /api/dashboard/crm/[id]", () => crmLead.PATCH(req("PATCH", {}), ctx(semId))],
       ["POST /api/dashboard/crm/[id]/converter", () => crmConverter.POST(req("POST", {}), ctx(semId))],
+      ["GET /api/ocorrencias", () => ocorrencias.GET(req())],
+      ["POST /api/ocorrencias", () => ocorrencias.POST(req("POST", { type: "OTHER", title: "Invasor", description: "x" }))],
+      ["GET /api/ocorrencias/[id]", () => ocorrencia.GET(req(), ctx(semId))],
+      ["PATCH /api/ocorrencias/[id]", () => ocorrencia.PATCH(req("PATCH", { status: "CLOSED" }), ctx(semId))],
+      ["POST /api/ocorrencias/[id]/mensagens", () => ocorrenciaMensagens.POST(req("POST", { body: "x" }), ctx(semId))],
     ];
 
     rotasAdmin = [

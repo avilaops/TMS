@@ -6,12 +6,13 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { sair } from "@/lib/sair";
 import { SimboloDaEmpresa, useIdentidade } from "@/components/empresa/identidade";
-import { LayoutDashboard, Package, Receipt, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, Package, Receipt, Headset, LogOut, Menu, X } from "lucide-react";
 
 const links = [
   { href: "/portal", icon: LayoutDashboard, label: "Visão geral" },
   { href: "/portal/coletas", icon: Package, label: "Minhas coletas" },
   { href: "/portal/faturas", icon: Receipt, label: "Faturas" },
+  { href: "/portal/atendimento", icon: Headset, label: "Atendimento" },
 ];
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {

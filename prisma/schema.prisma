@@ -58,6 +58,8 @@ model Tenant {
   vehicleDocuments VehicleDocument[]
   tires          Tire[]
   vehicleChecklists VehicleChecklist[]
+  occurrences    Occurrence[]
+  occurrenceMessages OccurrenceMessage[]
 }
 
 model User {
@@ -83,6 +85,9 @@ model User {
   statusChanges CollectionStatusHistory[]
   proofsReviewed ProofOfDelivery[]
   vehicleChecklists VehicleChecklist[]
+  occurrencesOpened   Occurrence[] @relation("OccurrenceOpenedBy")
+  occurrencesAssigned Occurrence[] @relation("OccurrenceAssignee")
+  occurrenceMessages  OccurrenceMessage[]
 
   @@index([clientId])
 
@@ -114,6 +119,7 @@ model Client {
   transactions    FinancialTransaction[]
 
   invoices        Invoice[]
+  occurrences     Occurrence[]
 
   // Tabela de frete negociada com este cliente. Sem ela vale a padrão da transportadora.
   freightTableId  String?
@@ -324,6 +330,7 @@ model Collection {
   statusHistory CollectionStatusHistory[]
   proof       ProofOfDelivery?
   quoteLead   QuoteLead?
+  occurrences Occurrence[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -583,6 +590,75 @@ model QuoteLead {
 }
 
 // ---------------------------------------------------------------------------
+// Atendimento e ocorrências
+//
+// Chamado de um cliente (aberto no portal) ou da equipe (painel, ou o motorista
+// numa entrega) sobre uma carga ou sobre o serviço. O número é sequencial por
+// empresa, como o da fatura. A conversa fica em OccurrenceMessage; a nota
+// interna (`internal`) nunca vai para o portal. Regras em src/lib/ocorrencias.ts.
+// ---------------------------------------------------------------------------
+model Occurrence {
+  tenantId     String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String    @id @default(uuid())
+  number       Int       // sequencial por empresa
+  type         String    // DELAY, DAMAGE, LOSS, BILLING, REDELIVERY, OTHER
+  title        String
+  description  String    @db.Text
+  status       String    @default("OPEN") // OPEN, ANALYSIS, IN_PROGRESS, RESOLVED, CLOSED
+  priority     String    @default("NORMAL") // LOW, NORMAL, HIGH
+  // A carga de que o chamado trata, quando trata de uma.
+  collectionId String?
+  // O cliente a quem o chamado pertence: é por aqui que o portal filtra. Nulo = chamado só da equipe.
+  clientId     String?
+  // Quem abriu, e de que lado: CLIENT (portal) ou STAFF (painel ou motorista).
+  openedById   String?
+  origin       String    @default("STAFF")
+  // Quem da equipe cuida do chamado.
+  assigneeId   String?
+  openedAt     DateTime  @default(now())
+  resolvedAt   DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  client       Client?     @relation(fields: [clientId], references: [id])
+  openedBy     User?       @relation("OccurrenceOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  assignee     User?       @relation("OccurrenceAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  messages     OccurrenceMessage[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@index([clientId])
+  @@index([collectionId])
+}
+
+// Andamento do chamado, em ordem cronológica.
+model OccurrenceMessage {
+  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String   @id @default(uuid())
+  occurrenceId String
+  authorId     String?  // nulo se o usuário foi apagado
+  // De que lado veio, gravado na hora: o perfil do autor pode mudar depois.
+  fromClient   Boolean  @default(false)
+  // Nota interna: só a equipe lê. O portal nunca recebe estas linhas.
+  internal     Boolean  @default(false)
+  body         String   @db.Text
+  createdAt    DateTime @default(now())
+
+  // Relations
+  occurrence   Occurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  author       User?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([occurrenceId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
 // Conteúdo e distribuição
 //
 // A matéria do blog continua sendo escrita em src/content/blog.ts, que é quem
@@ -730,7 +806,7 @@ model Webhook {
 model OutboxEvent {
   tenantId      String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id            String    @id @default(uuid())
-  type          String    // coleta.status, fatura.emitida|paga|reaberta|cancelada, cobranca.vencida, teste
+  type          String    // coleta.status, fatura.emitida|paga|reaberta|cancelada, cobranca.vencida, ocorrencia.aberta|status, teste
   payload       Json
   createdAt     DateTime  @default(now())
   // Próxima tentativa de entrega. Cada tentativa empurra para a frente (1, 2, 4... minutos).

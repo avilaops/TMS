@@ -12,9 +12,9 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 
 | Área | Rota | Quem acessa | O que faz |
 | --- | --- | --- | --- |
-| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), financeiro, fiscal/CT-e, mensagens, usuários |
-| Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline, e checklist do veículo da viagem |
-| Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas e minutas da própria empresa |
+| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), ocorrências (chamados de clientes e da equipe), financeiro, fiscal/CT-e, mensagens, usuários |
+| Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline, checklist do veículo da viagem e registro de ocorrência na entrega |
+| Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas, minutas e atendimento (chamados) da própria empresa |
 | API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
 
 Não há página pública: a raiz `/` leva quem já entrou para a própria área e todo o resto para `/login`.
@@ -193,6 +193,36 @@ Permissão: tudo é da equipe interna (`ADMIN` e `OPERATION`), menos os custos, 
 
 Ainda não existe: integração com bomba ou cartão de combustível, multas, estoque de pneus, telemetria, aviso de vencimento por mensagem (o alerta é só na tela), manutenção preventiva programada por km, e anexo do documento (PDF ou foto). O abastecimento não lança despesa no Financeiro (só a manutenção lança), e a situação de uma manutenção já registrada não é alterada pela tela.
 
+## Atendimento e ocorrências
+
+Chamados de clientes ou da equipe sobre uma carga ou sobre o serviço: atraso, avaria, extravio, cobrança, reentrega ou outro. As regras ficam em [src/lib/ocorrencias.ts](src/lib/ocorrencias.ts); a abertura (número e aviso) em [src/lib/ocorrencias-db.ts](src/lib/ocorrencias-db.ts).
+
+- **Fluxo:** `Aberto → Em análise → Em tratamento → Resolvido → Encerrado`. A equipe só anda para a frente e pode pular etapa (resolver direto um chamado aberto). O **Resolvido pode ser reaberto** e volta para Em tratamento. **Encerrado é final:** não muda de status nem recebe mensagem. Resolver, reabrir e encerrar gravam as datas (`resolvedAt`, `closedAt`).
+- **Número:** sequencial por empresa, sem buraco nem repetição, com a mesma trava da emissão de fatura (uma abertura por vez na empresa).
+- **Conversa:** as mensagens ficam em ordem cronológica; a descrição de quem abriu é a primeira fala. A equipe escreve uma **resposta** (o cliente lê) ou uma **nota interna** (só a equipe lê).
+
+**Painel** (`/dashboard/ocorrencias`, no menu em Operação, `ADMIN` e `OPERATION`): os contadores por status no topo, que também filtram a lista; filtro por tipo; e "Abrir chamado", informando o **código de rastreio** da carga (o chamado fica ligado à carga e ao cliente dono dela), ou escolhendo um cliente, ou nenhum dos dois (chamado só interno). Na lista, a carga é um link para o rastreio dela. A tela do chamado (`/dashboard/ocorrencias/[id]`) tem os dados, a conversa e as trocas de status, prioridade (baixa, normal, alta) e responsável (alguém da equipe), gravadas na hora.
+
+**Portal do cliente** (`/portal/atendimento`): "Abrir atendimento" (assunto, título, descrição e, se quiser, uma das cargas dele), a lista dos chamados da empresa dele e a conversa de cada um, onde ele responde enquanto o chamado não estiver encerrado. O cliente vê os chamados que ele abriu **e os que a transportadora abriu em nome dele** (com carga ou cliente informado), com a descrição. Não vê: nota interna, prioridade, responsável, o nome de quem respondeu pela transportadora, nem chamado só interno. Chamado de outro cliente responde 404, igual a um id inventado.
+
+**App do motorista** (`/driver/entregas/[id]/ocorrencia`, pelo botão "Registrar ocorrência" de cada entrega da viagem): tipo e descrição. Nasce como chamado **interno**, ligado à carga e sem cliente, então não aparece no portal; a equipe decide o que dizer ao cliente. Só vale para carga de uma viagem dele em rota, e precisa de sinal (não entra na fila offline).
+
+| Rota | Quem | O que faz |
+| --- | --- | --- |
+| `GET /api/ocorrencias?status=&type=` | equipe | Lista (do mais novo para o mais antigo) e contadores por status, estes sempre de todos os chamados |
+| `POST /api/ocorrencias` | equipe | Abre chamado (`type`, `title`, `description`, `priority`, `trackingCode` ou `clientId`) |
+| `GET /api/ocorrencias/[id]` | equipe | O chamado, a conversa inteira, os status para onde pode ir e a equipe que pode assumir |
+| `PATCH /api/ocorrencias/[id]` | equipe | Troca `status`, `priority` e `assigneeId` (vazio tira o responsável); troca fora do fluxo é 409 |
+| `POST /api/ocorrencias/[id]/mensagens` | equipe | Resposta ou nota interna (`body`, `internal`) |
+| `GET` e `POST /api/portal/atendimento` | cliente | Lista e abre os chamados da empresa dele (`type`, `title`, `description`, `collectionId`) |
+| `GET /api/portal/atendimento/[id]` | cliente | O chamado e a conversa, sem notas internas |
+| `POST /api/portal/atendimento/[id]/mensagens` | cliente | Resposta do cliente (`body`); encerrado é 409 |
+| `POST /api/driver/entregas/[id]/ocorrencia` | motorista | Registra ocorrência na entrega (`type`, `description`) |
+
+Abrir um chamado e trocar o status avisam os sistemas de fora (`ocorrencia.aberta` e `ocorrencia.status`, na seção Integração).
+
+Ainda não existe: prazo de atendimento (SLA) com relógio, anexo de arquivo ou foto no chamado, e-mail ou mensagem automática ao cliente quando a transportadora responde (ele vê ao entrar no portal; o aviso por WhatsApp pode ser montado no destino dos eventos), aviso de mensagem nova, alteração de tipo, título ou carga depois de aberto, e os chamados na tela da carga. O painel inicial não conta chamados.
+
 ## Empresa
 
 Em `/dashboard/empresa`, só para o administrador: o **nome** e o **símbolo** que aparecem no topo do painel, do portal do cliente e do app do motorista (`GET` e `PATCH /api/empresa`). O símbolo é uma imagem PNG, JPEG ou WebP, reduzida no navegador para 192 pixels antes de enviar e guardada no cadastro da empresa (`Tenant.logo`); sem símbolo, aparece o caminhão. As regras ficam em [src/lib/empresa.ts](src/lib/empresa.ts).
@@ -201,7 +231,7 @@ A aplicação só lê a tabela de empresas; a gravação vai pelo dono do banco,
 
 ## Integração (eventos para n8n e outros sistemas)
 
-Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook do n8n, por exemplo). A partir daí, cada troca de status de carga (inclusive a criação), cada fatura emitida, paga, reaberta ou cancelada e cada título que vence é avisado nesse endereço por `POST`, em até 15 segundos. Empresa sem endereço não gera evento.
+Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook do n8n, por exemplo). A partir daí, cada troca de status de carga (inclusive a criação), cada fatura emitida, paga, reaberta ou cancelada, cada título que vence e cada chamado aberto ou com status trocado é avisado nesse endereço por `POST`, em até 15 segundos. Empresa sem endereço não gera evento.
 
 ```json
 {
@@ -224,7 +254,7 @@ Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook d
 ```
 
 - **Cabeçalhos:** `X-TMS-Evento` (o tipo), `X-TMS-Entrega` (o id, para o destino descartar repetição) e `X-TMS-Assinatura` (`sha256=` + HMAC-SHA256 do corpo com o segredo). O segredo aparece uma vez, ao cadastrar ou trocar.
-- **Garantia de entrega:** o evento é gravado pelo banco na mesma transação da troca de status (gatilho em [prisma/sql/010-rls.sql](prisma/sql/010-rls.sql), tabela `OutboxEvent`). Resposta fora de 2xx ou sem resposta em 8 segundos é tentada de novo em 1, 2, 4… minutos, até 8 vezes. O mesmo evento pode chegar mais de uma vez; use o id.
+- **Garantia de entrega:** o evento é gravado na mesma transação da mudança (tabela `OutboxEvent`): os de carga e de fatura por gatilho do banco ([prisma/sql/010-rls.sql](prisma/sql/010-rls.sql)), os de chamado pela própria rota ([src/lib/ocorrencias-db.ts](src/lib/ocorrencias-db.ts)). Resposta fora de 2xx ou sem resposta em 8 segundos é tentada de novo em 1, 2, 4… minutos, até 8 vezes. O mesmo evento pode chegar mais de uma vez; use o id.
 - **Endereço:** só `https` e só endereço público. O servidor recusa IP interno ao salvar e de novo a cada entrega ([src/lib/url-publica.ts](src/lib/url-publica.ts)).
 - **Quem entrega:** o próprio servidor, a cada 15 segundos ([src/instrumentation.ts](src/instrumentation.ts), [src/lib/eventos.ts](src/lib/eventos.ts)). `TMS_EVENTOS=off` desliga.
 - **Rotas:** `GET`/`PUT /api/empresa/webhook` e `POST /api/empresa/webhook/teste`, só para o administrador.
@@ -236,7 +266,10 @@ Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook d
 | `coleta.status` | Carga criada ou com status trocado | `de`, `para`, `coleta` |
 | `fatura.emitida`, `fatura.paga`, `fatura.reaberta`, `fatura.cancelada` | Fatura criada ou com status trocado | `fatura` (número, total, vencimento, cliente, link do portal) |
 | `cobranca.vencida` | Título a receber venceu e segue em aberto | `titulo` (valor, vencimento, dias de atraso, cliente ou pagador, fatura) |
+| `ocorrencia.aberta`, `ocorrencia.status` | Chamado aberto (painel, portal ou motorista) ou com status trocado | `ocorrencia` (número, tipo, título, status, prioridade, quem abriu, cliente, carga com código e link de rastreio, link do painel) |
 | `teste` | Botão "Enviar teste" | mensagem fixa |
+
+Nos avisos de chamado, `status` é o de agora (lido na entrega, como nos de fatura), `tipo` é `DELAY`, `DAMAGE`, `LOSS`, `BILLING`, `REDELIVERY` ou `OTHER`, e `abertaPor` é `CLIENT` (portal) ou `STAFF` (equipe ou motorista). No chamado do motorista, `cliente` é o dono da carga. A descrição e a conversa não saem no aviso. Trocar prioridade ou responsável e escrever mensagem não avisam.
 
 O aviso de título vencido sai uma vez por título e por vencimento; a procura roda a cada 10 minutos. Ao cadastrar o endereço, os títulos que já estavam vencidos são avisados nessa primeira procura.
 
@@ -246,7 +279,7 @@ Ainda não há escolha de quais tipos receber, nem repetição do aviso de títu
 
 ## Portal do cliente
 
-Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu e consulta faturas. Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
+Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu, consulta faturas e abre atendimento (`/portal/atendimento`, na seção Atendimento e ocorrências). Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
 
 ## Estrutura
 

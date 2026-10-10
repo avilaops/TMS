@@ -160,6 +160,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [ ] Conferência via bipagem e localização de volumes.
 - [x] Controle de manutenção, abastecimento, pneus e documentos.
 - [x] Custos detalhados de frota e checklists.
+- [x] Atendimento e ocorrências.
 
 ### Fase 4: Fiscal e Automações
 - [ ] Leitura de XML e documentos fiscais.
