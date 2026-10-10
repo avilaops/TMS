@@ -125,6 +125,94 @@ const driverId = z
 
 const clientId = z.string("Informe o cliente.").trim().min(1, "Informe o cliente.").max(64, "Cliente inválido.");
 
+// --- Pedido de coleta: quando buscar, urgência, cubagem e observação ---------
+// Tudo opcional, no painel e no portal. Vazio vira `null` (apaga); ausente não mexe.
+
+export const PRIORIDADES = ["NORMAL", "URGENT"] as const;
+export type Prioridade = (typeof PRIORIDADES)[number];
+export const PRIORIDADE_LABEL: Record<Prioridade, string> = { NORMAL: "Normal", URGENT: "Urgente" };
+
+const PICKUP_DATE_MESSAGE = "A data da coleta precisa ser um dia válido.";
+const PICKUP_TIME_MESSAGE = "O horário da janela precisa estar no formato HH:MM.";
+const CUBIC_METERS_MESSAGE = "A cubagem precisa ser um número maior que zero, em m³.";
+const PICKUP_NOTES_MESSAGE = "Observação muito longa (máximo de 500 letras).";
+export const JANELA_INVERTIDA = "O fim da janela de coleta precisa ser depois do início.";
+
+const emBrancoViraNulo = (value: unknown) => (typeof value === "string" && value.trim() === "" ? null : value);
+
+// Dia do calendário (`AAAA-MM-DD`), gravado à meia-noite UTC como o vencimento.
+// O `Date` aceita "2026-02-31" e devolve março: a volta para texto confere.
+const pickupDate = z.preprocess(
+  emBrancoViraNulo,
+  z
+    .string(PICKUP_DATE_MESSAGE)
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, PICKUP_DATE_MESSAGE)
+    .refine((dia) => {
+      const data = new Date(`${dia}T00:00:00.000Z`);
+      return !Number.isNaN(data.getTime()) && data.toISOString().slice(0, 10) === dia;
+    }, PICKUP_DATE_MESSAGE)
+    .transform((dia) => new Date(`${dia}T00:00:00.000Z`))
+    .nullish(),
+);
+
+const pickupTime = z.preprocess(
+  emBrancoViraNulo,
+  z.string(PICKUP_TIME_MESSAGE).trim().regex(/^([01]\d|2[0-3]):[0-5]\d$/, PICKUP_TIME_MESSAGE).nullish(),
+);
+
+const priority = z.enum(PRIORIDADES, "Prioridade inválida.").optional();
+
+const cubicMeters = z.preprocess(
+  fromFormNumber,
+  z.number(CUBIC_METERS_MESSAGE).gt(0, CUBIC_METERS_MESSAGE).max(100000, CUBIC_METERS_MESSAGE).nullish(),
+);
+
+const pickupNotes = z.preprocess(
+  emBrancoViraNulo,
+  z.string(PICKUP_NOTES_MESSAGE).trim().max(500, PICKUP_NOTES_MESSAGE).nullish(),
+);
+
+/** Os campos do pedido, para os schemas do painel e para o do portal. */
+export const CAMPOS_DO_PEDIDO = {
+  pickupDate,
+  pickupFrom: pickupTime,
+  pickupTo: pickupTime,
+  priority,
+  cubicMeters,
+  pickupNotes,
+} as const;
+
+/** O que o portal manda além dos dados da carga (que a rota dele confere à mão). */
+export const pedidoDeColetaSchema = z.object(CAMPOS_DO_PEDIDO, INVALID_BODY);
+
+/**
+ * A janela só faz sentido com o fim depois do início. Fica fora dos schemas de
+ * propósito: na edição um dos lados pode vir do que já está gravado, e schema
+ * com `refine` não aceita `omit` (src/lib/nfe.ts usa).
+ */
+export function janelaInvertida(de: string | null | undefined, ate: string | null | undefined): boolean {
+  return Boolean(de && ate && de >= ate);
+}
+
+/** A janela como aparece nas telas: "12/10 das 08:00 às 12:00", ou só o que foi informado. Vazio = sem janela. */
+export function janelaDaColeta(coleta: {
+  pickupDate?: Date | string | null;
+  pickupFrom?: string | null;
+  pickupTo?: string | null;
+}): string {
+  const partes: string[] = [];
+  if (coleta.pickupDate) {
+    // Dia do calendário: lido em UTC, sem passar pelo fuso do aparelho.
+    const [, mes, dia] = new Date(coleta.pickupDate).toISOString().slice(0, 10).split("-");
+    partes.push(`${dia}/${mes}`);
+  }
+  if (coleta.pickupFrom && coleta.pickupTo) partes.push(`das ${coleta.pickupFrom} às ${coleta.pickupTo}`);
+  else if (coleta.pickupFrom) partes.push(`a partir das ${coleta.pickupFrom}`);
+  else if (coleta.pickupTo) partes.push(`até as ${coleta.pickupTo}`);
+  return partes.join(" ");
+}
+
 /** Campos que a conversão de cotação em coleta (src/lib/crm.ts) valida do mesmo jeito. */
 export const COLLECTION_FIELDS = { clientId, sender, receiver, invoiceKey, invoiceValue } as const;
 
@@ -140,6 +228,7 @@ export const createCollectionSchema = z.object(
     invoiceKey,
     invoiceValue,
     driverId,
+    ...CAMPOS_DO_PEDIDO,
   },
   INVALID_BODY,
 );
@@ -158,6 +247,7 @@ export const updateCollectionSchema = z
       invoiceKey,
       invoiceValue,
       driverId,
+      ...CAMPOS_DO_PEDIDO,
       // Frete informado à mão. Número fixa o valor; vazio ou `null` devolve o
       // cálculo para a tabela de frete.
       freightValue: z.preprocess(

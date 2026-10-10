@@ -635,7 +635,8 @@ suite("rotas da cobrança", () => {
       expect(aberta.transaction).toEqual({ id: lancamento.id });
       // O que a fatura já devolvia continua lá.
       expect(Object.keys(aberta).sort()).toEqual(
-        ["_count", "client", "collections", "dueDate", "id", "issuedAt", "notes", "number", "paidAt", "status", "total", "transaction"],
+        // `pix`: o Pix Copia e Cola da fatura em aberto (nulo sem chave cadastrada). Ver tests/pix.test.ts.
+        ["_count", "client", "collections", "dueDate", "id", "issuedAt", "notes", "number", "paidAt", "pix", "status", "total", "transaction"],
       );
       expect((await lerRecibo(lancamento.id)).status).toBe(409);
 

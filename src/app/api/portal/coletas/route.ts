@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { requirePortalClient } from '@/lib/portal';
 import { withTrackingCode } from '@/lib/tracking';
 import { freteDaColeta } from '@/lib/frete-coleta';
+import { JANELA_INVERTIDA, janelaInvertida, pedidoDeColetaSchema } from '@/lib/coletas';
+import { firstIssue } from '@/lib/usuarios';
 
 const COLLECTION_FIELDS = {
   id: true,
@@ -19,6 +21,13 @@ const COLLECTION_FIELDS = {
   // O cliente vê o valor e o prazo; a composição e a tabela ficam com a transportadora.
   freightValue: true,
   freightDeadlineHours: true,
+  // O que ele mesmo pediu para a coleta.
+  pickupDate: true,
+  pickupFrom: true,
+  pickupTo: true,
+  priority: true,
+  cubicMeters: true,
+  pickupNotes: true,
 } as const;
 
 export async function GET() {
@@ -70,12 +79,23 @@ export async function POST(req: Request) {
       }
     }
 
+    // Janela de horário, prioridade, cubagem e observação: tudo opcional.
+    const extras = pedidoDeColetaSchema.safeParse(body);
+    if (!extras.success) {
+      return NextResponse.json({ error: firstIssue(extras.error) }, { status: 400 });
+    }
+    const pedido = extras.data;
+    if (janelaInvertida(pedido.pickupFrom, pedido.pickupTo)) {
+      return NextResponse.json({ error: JANELA_INVERTIDA }, { status: 400 });
+    }
+
     const frete = await freteDaColeta(prisma, {
       clientId,
       destination: String(destination),
       weight: weightNumber,
       volumes: volumesNumber,
       invoiceValue: invoiceValueNumber,
+      cubicMeters: pedido.cubicMeters,
     });
 
     const collection = await withTrackingCode((trackingCode) =>
@@ -89,6 +109,12 @@ export async function POST(req: Request) {
           volumes: volumesNumber,
           weight: weightNumber,
           invoiceValue: invoiceValueNumber,
+          pickupDate: pedido.pickupDate ?? null,
+          pickupFrom: pedido.pickupFrom ?? null,
+          pickupTo: pedido.pickupTo ?? null,
+          priority: pedido.priority ?? 'NORMAL',
+          cubicMeters: pedido.cubicMeters ?? null,
+          pickupNotes: pedido.pickupNotes ?? null,
           ...frete,
           freightDetails: frete.freightDetails ?? undefined,
           status: 'PENDING',

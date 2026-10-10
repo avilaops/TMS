@@ -162,12 +162,14 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Custos detalhados de frota e checklists.
 - [x] Atendimento e ocorrências.
 - [x] Equipe: ajudantes, ausências, adiantamentos e produtividade.
+- [x] Portal do cliente: cotação, destinatários, exportação e tabela de frete.
 
 ### Fase 4: Fiscal e Automações
 - [x] Leitura de XML e documentos fiscais.
 - [ ] Emissão fiscal (CT-e). Falta: certificado digital A1 da transportadora, credenciamento na SEFAZ e homologação. Hoje só há o registro manual do número e da chave de um CT-e emitido em outro sistema.
 - [x] Auditoria de ações.
 - [ ] Notificações avançadas (Push, WhatsApp). WhatsApp via n8n funcionando; push não existe.
+- [x] Cobrança por Pix copia e cola (estático).
 - [ ] Integrações bancárias automatizadas (boleto, Pix dinâmico, conciliação).
 - [ ] Roteirização automática com geolocalização.
 - [x] Ordem das entregas, rota no mapa, despesas e resultado da viagem.

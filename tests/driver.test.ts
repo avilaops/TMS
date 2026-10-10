@@ -1123,7 +1123,8 @@ suite("aplicativo do motorista", () => {
       expect(daViagem.collections.map((c) => c.id)).toEqual([primeira.id, segunda.id]);
       for (const coleta of daViagem.collections) {
         expect(Object.keys(coleta).sort()).toEqual(
-          ["client", "destination", "id", "origin", "receiver", "receiverName", "status", "volumes", "weight"],
+          // Os seis campos do pedido de coleta (janela, prioridade, cubagem e observação) aparecem na parada.
+          ["client", "cubicMeters", "destination", "id", "origin", "pickupDate", "pickupFrom", "pickupNotes", "pickupTo", "priority", "receiver", "receiverName", "status", "volumes", "weight"],
         );
         expect(coleta.client).toEqual({ tradeName: "Teste Driver", companyName: "Empresa Teste Driver LTDA" });
       }

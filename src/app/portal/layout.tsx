@@ -6,11 +6,14 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { sair } from "@/lib/sair";
 import { SimboloDaEmpresa, useIdentidade } from "@/components/empresa/identidade";
-import { LayoutDashboard, Package, Receipt, Headset, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, Package, Receipt, Headset, LogOut, Menu, X, Calculator, Users, TableProperties } from "lucide-react";
 
 const links = [
   { href: "/portal", icon: LayoutDashboard, label: "Visão geral" },
   { href: "/portal/coletas", icon: Package, label: "Minhas coletas" },
+  { href: "/portal/cotacao", icon: Calculator, label: "Cotação" },
+  { href: "/portal/destinatarios", icon: Users, label: "Destinatários" },
+  { href: "/portal/tabela-frete", icon: TableProperties, label: "Tabela de frete" },
   { href: "/portal/faturas", icon: Receipt, label: "Faturas" },
   { href: "/portal/atendimento", icon: Headset, label: "Atendimento" },
 ];
@@ -40,7 +43,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           menuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
-        <div className="p-6 flex items-center gap-3">
+        {/* No celular o cabeçalho fixo já mostra a marca; aqui ela só ocuparia o lugar dos links. */}
+        <div className="hidden md:flex p-6 items-center gap-3">
           <SimboloDaEmpresa logo={logo} tamanho="grande" />
           <div className="min-w-0">
             <p className="font-outfit font-bold text-lg leading-tight truncate">{identidade?.name ?? "Transportadora"}</p>
@@ -48,7 +52,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           </div>
         </div>
 
-        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+        {/* No celular o menu abre abaixo do cabeçalho fixo e os links ficam mais baixos: os sete cabem numa tela. */}
+        <nav className="flex-1 px-4 pt-20 pb-2 md:py-4 space-y-0.5 md:space-y-1 overflow-y-auto">
           {links.map((link) => {
             // "Visão geral" é prefixo de tudo: só marca na própria página.
             const isActive =
@@ -58,7 +63,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                 key={link.href}
                 href={link.href}
                 onClick={() => setMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                aria-current={isActive ? "page" : undefined}
+                className={`flex items-center gap-3 min-h-11 px-4 py-2 md:py-3 rounded-xl transition-all ${
                   isActive
                     ? "bg-orange-50 text-orange-700 font-medium"
                     : "text-gray-600 hover:bg-gray-50"
@@ -71,8 +77,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           })}
         </nav>
 
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center gap-3 mb-4 px-2">
+        <div className="px-4 py-2 md:p-4 border-t border-gray-200">
+          <div className="flex items-center gap-3 mb-1 md:mb-4 px-2">
             <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-700 font-bold">
               {session?.user?.name?.charAt(0) ?? "C"}
             </div>
@@ -85,7 +91,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           </div>
           <button
             onClick={() => sair()}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-all"
+            className="w-full flex items-center gap-3 min-h-11 px-4 py-2 md:py-3 rounded-xl text-red-600 hover:bg-red-50 transition-all"
           >
             <LogOut className="w-5 h-5" />
             <span>Sair</span>

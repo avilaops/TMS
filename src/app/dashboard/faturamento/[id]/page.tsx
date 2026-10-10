@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { formatCalendarDate, formatCurrency, formatDate, formatDocument, formatWeight } from "@/lib/format";
+import { PixCopiaECola } from "@/components/pix/copia-e-cola";
 
 /** A fatura como vai para o cliente: cabeçalho, cargas cobradas e total. Imprime ou salva em PDF. */
 
@@ -18,6 +19,8 @@ type Fatura = {
   client: { companyName: string; tradeName: string | null; cnpj: string };
   /** O lançamento a receber da fatura; é dele o recibo. */
   transaction: { id: string } | null;
+  /** Pix Copia e Cola da fatura em aberto; nulo sem chave cadastrada em Empresa. */
+  pix: string | null;
   collections: {
     id: string;
     trackingCode: string | null;
@@ -150,6 +153,13 @@ export default function FaturaPage({ params }: { params: Promise<{ id: string }>
             </tfoot>
           </table>
         </div>
+
+        {fatura.pix && <PixCopiaECola codigo={fatura.pix} className="mt-4 max-w-xl" />}
+        {fatura.status === "OPEN" && !fatura.pix && (
+          <p data-sem-pix className="mt-4 text-xs text-gray-500 print:hidden">
+            Para a fatura sair com o Pix Copia e Cola, cadastre a chave Pix em Empresa &gt; Cobrança.
+          </p>
+        )}
 
         {fatura.status === "CANCELLED" && (
           <p className="mt-4 text-sm text-gray-600">

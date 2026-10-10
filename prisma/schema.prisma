@@ -36,6 +36,13 @@ model Tenant {
   // vez) e juros (% ao mês, proporcional aos dias de atraso). Ver src/lib/cobranca.ts.
   lateFinePct     Float @default(2)
   lateInterestPct Float @default(1)
+  // Recebimento por Pix (estático, sem banco): a chave da transportadora e o
+  // recebedor que vão no "Pix Copia e Cola" da fatura. Tudo nulo = sem Pix.
+  // `pixKeyType`: CPF, CNPJ, EMAIL, TELEFONE, ALEATORIA. Ver src/lib/pix.ts.
+  pixKeyType      String?
+  pixKey          String?
+  pixName         String?
+  pixCity         String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -73,6 +80,7 @@ model Tenant {
   absences           Absence[]
   crewAdvances       CrewAdvance[]
   tripExpenses       TripExpense[]
+  clientReceivers    ClientReceiver[]
 }
 
 model User {
@@ -139,6 +147,7 @@ model Client {
 
   invoices        Invoice[]
   occurrences     Occurrence[]
+  receivers       ClientReceiver[]
 
   // Tabela de frete negociada com este cliente. Sem ela vale a padrão da transportadora.
   freightTableId  String?
@@ -189,6 +198,28 @@ model Invoice {
   @@index([tenantId])
   @@unique([tenantId, number])
   @@index([clientId])
+}
+
+// Destinatário frequente de um cliente: ele cadastra pelo portal e escolhe ao
+// pedir coleta. Cada cliente só enxerga os seus (filtro por `clientId`).
+model ClientReceiver {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String   @id @default(uuid())
+  clientId    String
+  name        String
+  document    String?  // CNPJ ou CPF, só dígitos
+  city        String   // cidade-UF, como vai no destino da coleta
+  address     String?
+  contactName String?
+  phone       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([tenantId, clientId])
 }
 
 model FreightTable {
@@ -335,6 +366,17 @@ model Collection {
   invoiceId            String?
   invoice              Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   receiverName String?
+
+  // Pedido de coleta: quando buscar, com que urgência e o que o motorista
+  // precisa saber. Tudo opcional. `pickupDate` é um dia do calendário (meia-noite
+  // UTC); a janela são horas do relógio ("08:00"). `cubicMeters` entra no frete
+  // quando a tabela tem fator de cubagem. Ver src/lib/coletas.ts.
+  pickupDate   DateTime?
+  pickupFrom   String?
+  pickupTo     String?
+  priority     String   @default("NORMAL") // NORMAL, URGENT
+  cubicMeters  Float?
+  pickupNotes  String?
 
   // Codigo publico de rastreio: 10 digitos sorteados com CSPRNG (src/lib/tracking.ts).
   // E o segundo fator do rastreio publico, junto do CNPJ do cliente. Opcional no

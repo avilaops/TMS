@@ -1,5 +1,6 @@
 import { centavos } from "@/lib/faturas";
 import { diaDoVencimento, diaNoBrasil } from "@/lib/financeiro";
+import { pixDoTitulo, type Recebedor } from "@/lib/pix";
 
 /**
  * Cobrança: a posição do que há a receber, por devedor e por faixa de atraso,
@@ -9,8 +10,10 @@ import { diaDoVencimento, diaNoBrasil } from "@/lib/financeiro";
  * sem tocar no banco. Este arquivo também é importado pela tela, então não
  * pode puxar nada que só exista no servidor.
  *
- * O sistema não emite boleto nem tem chave de pagamento: o aviso lista o que
- * está em aberto e não inventa dado de pagamento.
+ * O sistema não emite boleto. Com a chave Pix cadastrada em Empresa, cada
+ * título leva o seu "Pix Copia e Cola" estático (src/lib/pix.ts) e o aviso o
+ * inclui; sem chave, o aviso lista o que está em aberto e não inventa dado de
+ * pagamento. O Pix é estático: pagar não dá baixa, a baixa segue manual.
  */
 
 export const FAIXAS = ["a_vencer", "ate_30", "de_31_a_60", "de_61_a_90", "acima_de_90"] as const;
@@ -53,6 +56,8 @@ export type TituloDaCobranca = {
   diasDeAtraso: number;
   faixa: Faixa;
   invoice: { id: string; number: number } | null;
+  /** Pix Copia e Cola do título; nulo (ou ausente) quando a empresa não tem chave cadastrada. */
+  pix?: string | null;
 };
 
 export type Devedor = {
@@ -172,8 +177,16 @@ function porVencimento(a: TituloDaCobranca, b: TituloDaCobranca): number {
   return diaDoVencimento(a.dueDate).localeCompare(diaDoVencimento(b.dueDate)) || a.description.localeCompare(b.description, "pt-BR");
 }
 
-/** Quem deve, quanto e há quanto tempo. `titulos` são os lançamentos a receber em aberto. */
-export function posicaoDeCobranca(titulos: readonly TituloEmAberto[], hoje: Date = new Date()): PosicaoDeCobranca {
+/**
+ * Quem deve, quanto e há quanto tempo. `titulos` são os lançamentos a receber
+ * em aberto. Com `recebedor` (a chave Pix da empresa), cada título sai com o
+ * seu Pix Copia e Cola.
+ */
+export function posicaoDeCobranca(
+  titulos: readonly TituloEmAberto[],
+  hoje: Date = new Date(),
+  recebedor: Recebedor | null = null,
+): PosicaoDeCobranca {
   const grupos = new Map<string, Devedor>();
   const geral = faixasZeradas();
 
@@ -197,6 +210,7 @@ export function posicaoDeCobranca(titulos: readonly TituloEmAberto[], hoje: Date
       diasDeAtraso: dias,
       faixa,
       invoice: titulo.invoice ? { id: titulo.invoice.id, number: titulo.invoice.number } : null,
+      ...(recebedor && { pix: pixDoTitulo(recebedor, { id: titulo.id, amount: emReais(valor), invoice: titulo.invoice }) }),
     });
     // Até o fim do laço, `total`, `vencido` e as faixas estão em centavos.
     devedor.total += valor;
@@ -270,6 +284,19 @@ export function textoDoAviso({
     return { dias, valor: emCentavos(titulo.amount), texto: `- ${partes.join(" | ")}` };
   });
 
+  // Um código por título: o Pix estático leva o valor e o identificador de cada um.
+  const comPix = devedor.titulos.filter((titulo) => titulo.pix);
+  const pagamento =
+    comPix.length === 0
+      ? []
+      : [
+          "",
+          "Para pagar por Pix, copie o código do título e cole no aplicativo do seu banco (Pix Copia e Cola):",
+          ...comPix.flatMap((titulo) => ["", `${titulo.description} (${reais(titulo.amount)}):`, titulo.pix as string]),
+          "",
+          "Depois de pagar, envie o comprovante: a baixa é feita manualmente.",
+        ];
+
   const emAtraso = linhas.some((linha) => linha.dias > 0);
   const total = emReais(linhas.reduce((soma, linha) => soma + linha.valor, 0));
   const plural = linhas.length > 1;
@@ -288,6 +315,7 @@ export function textoDoAviso({
     ...linhas.map((linha) => linha.texto),
     "",
     `Total em aberto: ${reais(total)}`,
+    ...pagamento,
     "",
     "Atenciosamente,",
     empresa.name,

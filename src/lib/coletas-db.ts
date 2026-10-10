@@ -21,6 +21,13 @@ export type ColetaNova = {
   invoiceKey?: string | null;
   invoiceValue?: number | null;
   driverId?: string | null;
+  // Pedido de coleta (src/lib/coletas.ts): tudo opcional.
+  pickupDate?: Date | null;
+  pickupFrom?: string | null;
+  pickupTo?: string | null;
+  priority?: string;
+  cubicMeters?: number | null;
+  pickupNotes?: string | null;
 };
 
 /** Por que a coleta não pode nascer (cliente ou motorista inativo ou de fora), ou `null`. */
@@ -48,6 +55,7 @@ export async function criarColetaConfirmada(db: ColetasDb, dados: ColetaNova, us
     weight: dados.weight,
     volumes: dados.volumes,
     invoiceValue: dados.invoiceValue,
+    cubicMeters: dados.cubicMeters,
   });
 
   return db.collection.create({
@@ -62,6 +70,12 @@ export async function criarColetaConfirmada(db: ColetasDb, dados: ColetaNova, us
       invoiceKey: dados.invoiceKey ?? null,
       invoiceValue: dados.invoiceValue ?? null,
       driverId: dados.driverId ?? null,
+      pickupDate: dados.pickupDate ?? null,
+      pickupFrom: dados.pickupFrom ?? null,
+      pickupTo: dados.pickupTo ?? null,
+      priority: dados.priority ?? "NORMAL",
+      cubicMeters: dados.cubicMeters ?? null,
+      pickupNotes: dados.pickupNotes ?? null,
       ...frete,
       freightDetails: frete.freightDetails ?? undefined,
       // Quem cria pelo painel é o operador que aprovaria: nasce confirmada.

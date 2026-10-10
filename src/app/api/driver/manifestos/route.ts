@@ -29,6 +29,13 @@ export async function GET() {
             weight: true,
             status: true,
             receiverName: true,
+            // O que o cliente pediu para a coleta: janela, urgência e observação.
+            pickupDate: true,
+            pickupFrom: true,
+            pickupTo: true,
+            priority: true,
+            cubicMeters: true,
+            pickupNotes: true,
             // Só o nome de quem embarcou: limite de crédito e contato do
             // cliente não vão para o aparelho do motorista.
             client: { select: { tradeName: true, companyName: true } },

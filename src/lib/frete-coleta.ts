@@ -25,7 +25,15 @@ export const SEM_FRETE: FreteDaColeta = {
 
 export async function freteDaColeta(
   db: unknown,
-  carga: { clientId: string; destination: string; weight: number; volumes: number; invoiceValue?: number | null },
+  carga: {
+    clientId: string;
+    destination: string;
+    weight: number;
+    volumes: number;
+    invoiceValue?: number | null;
+    /** Cubagem, em m³. Só pesa na conta se a tabela tiver fator de cubagem. */
+    cubicMeters?: number | null;
+  },
 ): Promise<FreteDaColeta> {
   const tabela = await tabelaVigente(db, carga.clientId);
   if (!tabela) return SEM_FRETE;
@@ -34,6 +42,7 @@ export async function freteDaColeta(
     peso: carga.weight,
     volumes: carga.volumes,
     valorNota: carga.invoiceValue,
+    metrosCubicos: carga.cubicMeters,
   });
   if (!frete.atendida) return SEM_FRETE;
 

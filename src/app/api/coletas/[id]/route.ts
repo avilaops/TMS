@@ -5,7 +5,9 @@ import {
   COLLECTION_INCLUDE,
   EDITABLE_STATUSES,
   INACTIVE_DRIVER_MESSAGE,
+  JANELA_INVERTIDA,
   isEditable,
+  janelaInvertida,
   updateCollectionSchema,
 } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
@@ -64,6 +66,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         volumes: true,
         invoiceValue: true,
         freightManual: true,
+        cubicMeters: true,
+        pickupFrom: true,
+        pickupTo: true,
         // Só para o "antes" da auditoria.
         trackingCode: true,
         sender: true,
@@ -71,6 +76,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         origin: true,
         invoiceKey: true,
         freightValue: true,
+        pickupDate: true,
+        priority: true,
+        pickupNotes: true,
       }
     });
     if (!target) {
@@ -80,6 +88,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!isEditable(target)) {
       const message = target.manifestId !== null ? IN_MANIFEST : lockedByStatus(target.status);
       return NextResponse.json({ error: message }, { status: 409 });
+    }
+
+    // A janela vale inteira: o lado que não veio no corpo é o que já está gravado.
+    const de = data.pickupFrom === undefined ? target.pickupFrom : data.pickupFrom;
+    const ate = data.pickupTo === undefined ? target.pickupTo : data.pickupTo;
+    if ((data.pickupFrom !== undefined || data.pickupTo !== undefined) && janelaInvertida(de, ate)) {
+      return NextResponse.json({ error: JANELA_INVERTIDA }, { status: 400 });
     }
 
     // O motorista que já estava na coleta passa mesmo inativo: o formulário
@@ -107,7 +122,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         campos.destination !== undefined ||
         campos.weight !== undefined ||
         campos.volumes !== undefined ||
-        campos.invoiceValue !== undefined;
+        campos.invoiceValue !== undefined ||
+        campos.cubicMeters !== undefined;
       if (freightValue === null || (mudouAConta && !target.freightManual)) {
         const calculado = await freteDaColeta(prisma, {
           clientId: target.clientId,
@@ -115,6 +131,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           weight: campos.weight ?? target.weight,
           volumes: campos.volumes ?? target.volumes,
           invoiceValue: campos.invoiceValue === undefined ? target.invoiceValue : campos.invoiceValue,
+          cubicMeters: campos.cubicMeters === undefined ? target.cubicMeters : campos.cubicMeters,
         });
         frete = { ...calculado, freightManual: false };
       }
@@ -135,6 +152,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         invoiceKey: data.invoiceKey,
         invoiceValue: data.invoiceValue,
         driverId: data.driverId,
+        pickupDate: data.pickupDate,
+        pickupFrom: data.pickupFrom,
+        pickupTo: data.pickupTo,
+        priority: data.priority,
+        cubicMeters: data.cubicMeters,
+        pickupNotes: data.pickupNotes,
         ...(frete && {
           freightValue: frete.freightValue,
           freightDeadlineHours: frete.freightDeadlineHours,

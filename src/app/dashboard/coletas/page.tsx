@@ -3,7 +3,16 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Plus, Search, Loader2, Package, MapPin, Truck, Copy, Check, Pencil, Inbox } from "lucide-react";
-import { COLLECTION_STATUSES, allowedTransitions, changedFields, isEditable, type CollectionStatus } from "@/lib/coletas";
+import {
+  COLLECTION_STATUSES,
+  PRIORIDADES,
+  PRIORIDADE_LABEL,
+  allowedTransitions,
+  changedFields,
+  isEditable,
+  janelaDaColeta,
+  type CollectionStatus,
+} from "@/lib/coletas";
 import { COLLECTION_STATUS, statusBadge } from "@/lib/format";
 
 interface Cliente {
@@ -35,6 +44,13 @@ interface Coleta {
   freightValue: number | null;
   freightManual: boolean;
   trackingCode: string | null;
+  // Pedido de coleta: janela de horário, prioridade, cubagem e observação. Tudo opcional.
+  pickupDate: string | null;
+  pickupFrom: string | null;
+  pickupTo: string | null;
+  priority: string;
+  cubicMeters: number | null;
+  pickupNotes: string | null;
   // Comprovante registrado pelo motorista na baixa; nulo na baixa feita pelo painel.
   proof?: { id: string; status: string } | null;
   client: Cliente;
@@ -91,6 +107,12 @@ const EMPTY_FORM = {
   invoiceValue: "",
   freightValue: "",
   driverId: "",
+  pickupDate: "",
+  pickupFrom: "",
+  pickupTo: "",
+  priority: "NORMAL",
+  cubicMeters: "",
+  pickupNotes: "",
 };
 
 // A coleta como o formulário de edição a mostra, sem o cliente (que não muda).
@@ -106,7 +128,22 @@ const toEditForm = (coleta: Coleta) => ({
   // Só o valor fixado à mão aparece no campo: em branco quer dizer "pela tabela".
   freightValue: coleta.freightManual && coleta.freightValue !== null ? String(coleta.freightValue) : "",
   driverId: coleta.driver?.id ?? "",
+  // Dia do calendário: os dez primeiros caracteres, sem passar pelo fuso.
+  pickupDate: coleta.pickupDate ? coleta.pickupDate.slice(0, 10) : "",
+  pickupFrom: coleta.pickupFrom ?? "",
+  pickupTo: coleta.pickupTo ?? "",
+  priority: coleta.priority || "NORMAL",
+  cubicMeters: coleta.cubicMeters === null ? "" : String(coleta.cubicMeters),
+  pickupNotes: coleta.pickupNotes ?? "",
 });
+
+// O formulário tem algum dado do pedido? É o que abre a seção ao editar.
+const temPedido = (form: typeof EMPTY_FORM) =>
+  Boolean(form.pickupDate || form.pickupFrom || form.pickupTo || form.cubicMeters || form.pickupNotes) || form.priority !== "NORMAL";
+
+const CAMPO_DO_PEDIDO =
+  "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
+const ROTULO_DO_PEDIDO = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
 
 // Como cada troca de status aparece na linha. As que não têm volta pedem confirmação.
 const STATUS_ACTIONS: Partial<Record<CollectionStatus, { label: string; confirm?: string; className: string }>> = {
@@ -133,6 +170,9 @@ export default function ColetasPage() {
   const [isLoading, setIsLoading] = useState(true);
   
   const [formData, setFormData] = useState(EMPTY_FORM);
+  // Os dados do pedido (janela, prioridade, cubagem) ficam recolhidos: são
+  // opcionais, e o formulário principal precisa caber na tela do celular.
+  const [pedidoAberto, setPedidoAberto] = useState(false);
 
   // A tela já nasce com `isLoading` ligado: a primeira carga só busca.
   const loadData = () =>
@@ -163,6 +203,7 @@ export default function ColetasPage() {
     setEditingId(null);
     setEditOriginal(null);
     setFormData(EMPTY_FORM);
+    setPedidoAberto(false);
   };
 
   const openEdit = (coleta: Coleta) => {
@@ -170,6 +211,7 @@ export default function ColetasPage() {
     setEditingId(coleta.id);
     setEditOriginal(original);
     setFormData({ clientId: coleta.client?.id ?? "", ...original });
+    setPedidoAberto(temPedido({ clientId: "", ...original }));
     setIsModalOpen(true);
   };
 
@@ -377,6 +419,7 @@ export default function ColetasPage() {
                             <span>→</span>
                             <span>{coleta.destination.split('-')[0]}</span>
                           </div>
+                          <PedidoDaColeta coleta={coleta} />
                         </div>
                       </div>
                     </td>
@@ -612,6 +655,52 @@ export default function ColetasPage() {
                 </div>
               )}
 
+              {/* Pedido de coleta: opcional e recolhido, para o formulário caber na tela do celular. */}
+              <div className="rounded-xl border border-gray-100 dark:border-gray-800">
+                <button
+                  type="button"
+                  aria-expanded={pedidoAberto}
+                  data-secao="pedido"
+                  onClick={() => setPedidoAberto((aberto) => !aberto)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  <span>Janela, prioridade e cubagem (opcional)</span>
+                  <span aria-hidden className="text-gray-400">{pedidoAberto ? "−" : "+"}</span>
+                </button>
+                {pedidoAberto && (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3">
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-data" className={ROTULO_DO_PEDIDO}>Data da coleta</label>
+                      <input id="coleta-data" type="date" value={formData.pickupDate} onChange={(e) => setFormData({...formData, pickupDate: e.target.value})} className={CAMPO_DO_PEDIDO} />
+                    </div>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-prioridade" className={ROTULO_DO_PEDIDO}>Prioridade</label>
+                      <select id="coleta-prioridade" value={formData.priority} onChange={(e) => setFormData({...formData, priority: e.target.value})} className={CAMPO_DO_PEDIDO}>
+                        {PRIORIDADES.map((prioridade) => (
+                          <option key={prioridade} value={prioridade}>{PRIORIDADE_LABEL[prioridade]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-de" className={ROTULO_DO_PEDIDO}>Janela: das</label>
+                      <input id="coleta-de" type="time" value={formData.pickupFrom} onChange={(e) => setFormData({...formData, pickupFrom: e.target.value})} className={CAMPO_DO_PEDIDO} />
+                    </div>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-ate" className={ROTULO_DO_PEDIDO}>até</label>
+                      <input id="coleta-ate" type="time" value={formData.pickupTo} onChange={(e) => setFormData({...formData, pickupTo: e.target.value})} className={CAMPO_DO_PEDIDO} />
+                    </div>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-cubagem" className={ROTULO_DO_PEDIDO}>Cubagem (m³)</label>
+                      <input id="coleta-cubagem" type="number" min="0" step="0.001" value={formData.cubicMeters} onChange={(e) => setFormData({...formData, cubicMeters: e.target.value})} className={CAMPO_DO_PEDIDO} />
+                    </div>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0 lg:col-span-3">
+                      <label htmlFor="coleta-observacao" className={ROTULO_DO_PEDIDO}>Observação</label>
+                      <input id="coleta-observacao" type="text" maxLength={500} value={formData.pickupNotes} onChange={(e) => setFormData({...formData, pickupNotes: e.target.value})} placeholder="Ex.: procurar o João na doca 2" className={CAMPO_DO_PEDIDO} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Motorista Alocado */}
               <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                 <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Alocar Motorista (Opcional)</label>
@@ -648,6 +737,22 @@ export default function ColetasPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** O que foi pedido para a coleta, numa linha: urgência, janela, cubagem e observação. Sem nada, não aparece. */
+function PedidoDaColeta({ coleta }: { coleta: Coleta }) {
+  const janela = janelaDaColeta(coleta);
+  const urgente = coleta.priority === "URGENT";
+  if (!urgente && !janela && coleta.cubicMeters === null && !coleta.pickupNotes) return null;
+
+  return (
+    <div data-pedido={coleta.id} className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400">
+      {urgente && <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 font-semibold">Urgente</span>}
+      {janela && <span>Coletar {janela}</span>}
+      {coleta.cubicMeters !== null && <span>{coleta.cubicMeters.toLocaleString("pt-BR")} m³</span>}
+      {coleta.pickupNotes && <span className="italic break-words">{coleta.pickupNotes}</span>}
     </div>
   );
 }

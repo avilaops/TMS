@@ -73,6 +73,7 @@ DECLARE
   referencias jsonb := '{
     "User": ["clientId", "Client"],
     "Client": ["freightTableId", "FreightTable"],
+    "ClientReceiver": ["clientId", "Client"],
     "FreightTableCity": ["tableId", "FreightTable"],
     "Driver": ["userId", "User"],
     "Vehicle": ["driverId", "Driver"],

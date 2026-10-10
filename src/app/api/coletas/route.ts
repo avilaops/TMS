@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
-import { COLLECTION_INCLUDE, createCollectionSchema } from '@/lib/coletas';
+import { COLLECTION_INCLUDE, JANELA_INVERTIDA, createCollectionSchema, janelaInvertida } from '@/lib/coletas';
 import { criarColetaConfirmada, recusaDaColetaNova } from '@/lib/coletas-db';
 import { firstIssue } from '@/lib/usuarios';
 import { withTrackingCode } from '@/lib/tracking';
@@ -33,6 +33,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const data = parsed.data;
+    if (janelaInvertida(data.pickupFrom, data.pickupTo)) {
+      return NextResponse.json({ error: JANELA_INVERTIDA }, { status: 400 });
+    }
 
     const recusa = await recusaDaColetaNova(prisma, data);
     if (recusa) return NextResponse.json({ error: recusa }, { status: 400 });

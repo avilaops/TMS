@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import prisma, { transacao } from '@/lib/prisma';
+import prisma, { empresaAtual, transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { INVOICE_COLLECTION_SELECT, INVOICE_SELECT, invoiceActionSchema } from '@/lib/faturas';
 import { DESCONTO_MAIOR_QUE_O_VALOR, temEncargos, valorRecebido } from '@/lib/financeiro';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+import { RECEBEDOR_SELECT, pixCopiaECola, recebedorDaEmpresa, txidDaFatura } from '@/lib/pix';
 
 // A ação da rota e o que ela vira na auditoria.
 const NA_AUDITORIA = {
@@ -35,7 +36,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!fatura) return NextResponse.json({ error: NOT_FOUND }, { status: 404 });
-    return NextResponse.json(fatura);
+
+    // Pix Copia e Cola (estático) da fatura em aberto, se a empresa cadastrou a
+    // chave em Empresa > Cobrança. A empresa só lê o próprio cadastro.
+    let pix: string | null = null;
+    if (fatura.status === 'OPEN' && fatura.total > 0) {
+      const empresa = await prisma.tenant.findUnique({ where: { id: await empresaAtual() }, select: RECEBEDOR_SELECT });
+      const recebedor = recebedorDaEmpresa(empresa);
+      if (recebedor) pix = pixCopiaECola({ ...recebedor, valor: fatura.total, txid: txidDaFatura(fatura.number) });
+    }
+
+    return NextResponse.json({ ...fatura, pix });
   } catch (error) {
     console.error('Erro ao buscar fatura:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

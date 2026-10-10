@@ -5,8 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { ImagePlus, Loader2, LogIn, ShieldAlert, Trash2, Truck } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { IDENTIDADE_ALTERADA, LADO_DO_SIMBOLO, TAMANHO_MAXIMO_DO_SIMBOLO, type Identidade } from "@/lib/empresa";
+import { IDENTIDADE_ALTERADA, LADO_DO_SIMBOLO, TAMANHO_MAXIMO_DO_SIMBOLO, type Identidade, type PixDaEmpresa } from "@/lib/empresa";
 import type { ParametrosDeCobranca } from "@/lib/cobranca";
+import { AVISO_PIX_ESTATICO, LIMITE_DA_CIDADE, LIMITE_DO_NOME, TIPOS_DE_CHAVE, TIPO_DE_CHAVE_LABEL, type TipoDeChave } from "@/lib/pix";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
 
 /**
@@ -254,27 +255,46 @@ export default function EmpresaPage() {
   );
 }
 
+/** O que a rota de cobrança devolve: os percentuais e, se cadastrado, o Pix. */
+type CobrancaDaEmpresa = ParametrosDeCobranca & { pix?: PixDaEmpresa | null };
+
+const SEM_PIX = { tipo: "CNPJ" as TipoDeChave, chave: "", nome: "", cidade: "" };
+
+const EXEMPLO_DE_CHAVE: Record<TipoDeChave, string> = {
+  CPF: "000.000.000-00",
+  CNPJ: "00.000.000/0000-00",
+  EMAIL: "financeiro@suaempresa.com.br",
+  TELEFONE: "(17) 99999-0000",
+  ALEATORIA: "123e4567-e89b-12d3-a456-426614174000",
+};
+
 /**
  * Parâmetros de cobrança: a multa e os juros que a baixa de um título vencido
- * sugere (Financeiro e Faturamento). É só a sugestão: na baixa o operador
- * altera ou apaga os valores.
+ * sugere (Financeiro e Faturamento) e o recebimento por Pix. Os encargos são
+ * só a sugestão: na baixa o operador altera ou apaga os valores. Com a chave
+ * Pix cadastrada, a fatura e o aviso de cobrança saem com o Pix Copia e Cola.
  */
 function Cobranca({ escondida }: { escondida: boolean }) {
   const [multaPct, setMultaPct] = useState("");
   const [jurosPct, setJurosPct] = useState("");
+  const [pix, setPix] = useState(SEM_PIX);
   const [ocupado, setOcupado] = useState(false);
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
 
-  const mostrar = (corpo: ParametrosDeCobranca) => {
+  const mostrar = (corpo: CobrancaDaEmpresa) => {
     setMultaPct(String(corpo.multaPct).replace(".", ","));
     setJurosPct(String(corpo.jurosPct).replace(".", ","));
+    setPix(corpo.pix ?? SEM_PIX);
   };
+
+  const campoDoPix = (nome: keyof typeof SEM_PIX) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setPix((atual) => ({ ...atual, [nome]: e.target.value }));
 
   useEffect(() => {
     let ativo = true;
     fetch("/api/empresa/cobranca")
       .then((res) => (res.ok ? res.json() : null))
-      .then((corpo: ParametrosDeCobranca | null) => {
+      .then((corpo: CobrancaDaEmpresa | null) => {
         if (ativo && corpo) mostrar(corpo);
       })
       .catch(() => {
@@ -293,9 +313,10 @@ function Cobranca({ escondida }: { escondida: boolean }) {
       const res = await fetch("/api/empresa/cobranca", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ multaPct, jurosPct }),
+        // Chave em branco remove o Pix; preenchida, vai com o recebedor.
+        body: JSON.stringify({ multaPct, jurosPct, pix: pix.chave.trim() === "" ? null : pix }),
       });
-      const corpo = (await res.json().catch(() => null)) as (ParametrosDeCobranca & { error?: string }) | null;
+      const corpo = (await res.json().catch(() => null)) as (CobrancaDaEmpresa & { error?: string }) | null;
       if (!res.ok || !corpo) return setMensagem({ ok: false, texto: corpo?.error ?? FALHA_AO_SALVAR });
       mostrar(corpo);
       setMensagem({ ok: true, texto: "Cobrança atualizada." });
@@ -325,6 +346,39 @@ function Cobranca({ escondida }: { escondida: boolean }) {
           <input required inputMode="decimal" data-campo="jurosPct" value={jurosPct} onChange={(e) => setJurosPct(e.target.value)} className={INPUT} />
         </label>
       </div>
+
+      <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+        <h3 className="pt-2 text-sm font-semibold text-gray-900 dark:text-white">Recebimento por Pix</h3>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Com a chave cadastrada, a fatura e o aviso de cobrança saem com o Pix Copia e Cola. Chave em branco desliga.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+        <label className="block space-y-1 min-w-0">
+          <span className={LABEL}>Tipo da chave</span>
+          <select data-campo="pixTipo" value={pix.tipo} onChange={campoDoPix("tipo")} className={INPUT}>
+            {TIPOS_DE_CHAVE.map((tipo) => (
+              <option key={tipo} value={tipo}>
+                {TIPO_DE_CHAVE_LABEL[tipo]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1 min-w-0">
+          <span className={LABEL}>Chave Pix</span>
+          <input data-campo="pixChave" maxLength={120} placeholder={EXEMPLO_DE_CHAVE[pix.tipo]} value={pix.chave} onChange={campoDoPix("chave")} className={INPUT} />
+        </label>
+        <label className="block space-y-1 min-w-0">
+          <span className={LABEL}>Nome do recebedor</span>
+          <input data-campo="pixNome" maxLength={LIMITE_DO_NOME} required={pix.chave.trim() !== ""} value={pix.nome} onChange={campoDoPix("nome")} className={INPUT} />
+        </label>
+        <label className="block space-y-1 min-w-0">
+          <span className={LABEL}>Cidade</span>
+          <input data-campo="pixCidade" maxLength={LIMITE_DA_CIDADE} required={pix.chave.trim() !== ""} value={pix.cidade} onChange={campoDoPix("cidade")} className={INPUT} />
+        </label>
+      </div>
+      <p className="text-xs text-gray-500">{AVISO_PIX_ESTATICO}</p>
 
       {mensagem && (
         <p role={mensagem.ok ? "status" : "alert"} className={`text-sm ${mensagem.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>

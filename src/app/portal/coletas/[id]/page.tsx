@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, ArrowLeft, CheckCircle2, Circle, Loader2, Printer, Truck, XCircle } from "lucide-react";
 import { formatCurrency, formatWeight } from "@/lib/format";
+import { janelaDaColeta } from "@/lib/coletas";
 
 type Detalhe = {
   id: string;
@@ -16,6 +17,12 @@ type Detalhe = {
   invoiceValue: number | null;
   freightValue: number | null;
   freightDeadlineHours: number | null;
+  pickupDate: string | null;
+  pickupFrom: string | null;
+  pickupTo: string | null;
+  priority: string;
+  cubicMeters: number | null;
+  pickupNotes: string | null;
   status: string;
   createdAt: string;
   trackingCode: string | null;
@@ -140,6 +147,14 @@ export default function PortalColetaPage({ params }: { params: Promise<{ id: str
                 : `${formatCurrency(coleta.freightValue)}${coleta.freightDeadlineHours ? ` · prazo de ${coleta.freightDeadlineHours} h` : ""}`
             }
           />
+          {(janelaDaColeta(coleta) || coleta.priority === "URGENT") && (
+            <Dado
+              rotulo="Coleta pedida para"
+              valor={[janelaDaColeta(coleta), coleta.priority === "URGENT" ? "urgente" : ""].filter(Boolean).join(" · ")}
+            />
+          )}
+          {coleta.cubicMeters != null && <Dado rotulo="Cubagem" valor={`${coleta.cubicMeters.toLocaleString("pt-BR")} m³`} />}
+          {coleta.pickupNotes && <Dado rotulo="Observação para a coleta" valor={coleta.pickupNotes} />}
         </dl>
 
         {coleta.fiscalDocuments.length > 0 && (

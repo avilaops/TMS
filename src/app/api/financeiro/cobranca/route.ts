@@ -3,6 +3,7 @@ import { requireStaff } from '@/lib/staff';
 import prisma, { empresaAtual } from '@/lib/prisma';
 import { diaNoBrasil } from '@/lib/financeiro';
 import { TITULO_SELECT, posicaoDeCobranca } from '@/lib/cobranca';
+import { RECEBEDOR_SELECT, recebedorDaEmpresa } from '@/lib/pix';
 
 /**
  * Posição de cobrança: o que há a receber em aberto, por devedor e por faixa de
@@ -20,12 +21,13 @@ export async function GET() {
       select: TITULO_SELECT,
     });
     // A empresa só lê o próprio cadastro (prisma/sql/010-rls.sql): é ela que assina o aviso.
-    const empresa = await prisma.tenant.findUnique({ where: { id: await empresaAtual() }, select: { name: true } });
+    const empresa = await prisma.tenant.findUnique({ where: { id: await empresaAtual() }, select: { name: true, ...RECEBEDOR_SELECT } });
 
     return NextResponse.json({
       hoje: diaNoBrasil(hoje),
       empresa: { name: empresa?.name ?? '' },
-      ...posicaoDeCobranca(titulos, hoje),
+      // Com a chave Pix cadastrada, cada título sai com o seu Copia e Cola, que entra no aviso.
+      ...posicaoDeCobranca(titulos, hoje, recebedorDaEmpresa(empresa)),
     });
   } catch (error) {
     console.error('Erro ao montar a posição de cobrança:', error);

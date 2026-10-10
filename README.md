@@ -154,7 +154,7 @@ Em `/dashboard/financeiro`, só para o administrador. As regras e as contas fica
 - **Lançamento que veio de fatura** não é pago, editado nem excluído por aqui: responde 409 e manda para o Faturamento, que mantém fatura e lançamento em sincronia. Pagar a fatura grava o `paidAt` do lançamento.
 - **Fluxo de caixa** (`GET /api/financeiro/fluxo?de=AAAA-MM&ate=AAAA-MM`, padrão de três meses para trás e três para a frente, no máximo 36): por mês, o **previsto** (o que vence no mês) e o **realizado** (o que foi pago ou recebido no mês), com saldo e acumulado. O resumo dos cartões é sempre de todos os lançamentos: conta vencida há um ano continua vencida.
 
-Ainda não existe: boleto, Pix, conciliação bancária, parcelamento, lançamento recorrente e acordo de dívida. A baixa é sempre do título inteiro (não há recebimento parcial), os encargos não entram no lançamento já criado como pago (só na baixa), e o centro de custo é um texto no lançamento, sem cadastro nem rateio.
+Ainda não existe: boleto, Pix dinâmico (com confirmação automática do pagamento), conciliação bancária, parcelamento, lançamento recorrente e acordo de dívida. A baixa é sempre do título inteiro (não há recebimento parcial), os encargos não entram no lançamento já criado como pago (só na baixa), e o centro de custo é um texto no lançamento, sem cadastro nem rateio.
 
 ## Cobrança
 
@@ -162,10 +162,20 @@ Em `/dashboard/cobranca`, só para o administrador. As contas ficam em [src/lib/
 
 - **Posição por cliente** (`GET /api/financeiro/cobranca`): os lançamentos a receber em aberto, agrupados por quem deve (o cliente; sem cliente, o pagador digitado; sem nenhum, "Sem cliente informado"), com total, vencido e o maior atraso em dias. Quem mais deve em atraso aparece primeiro.
 - **Faixas de atraso:** a vencer, 1 a 30, 31 a 60, 61 a 90 e mais de 90 dias, contados do vencimento até hoje no relógio do Brasil. Título sem vencimento conta em "a vencer".
-- **Aviso de cobrança:** o texto já redigido com os títulos do cliente (lembrete quando nada venceu, atraso quando algo venceu), para copiar e mandar pelo canal de costume. O sistema não envia nada e o texto não traz dado de pagamento.
+- **Aviso de cobrança:** o texto já redigido com os títulos do cliente (lembrete quando nada venceu, atraso quando algo venceu), para copiar e mandar pelo canal de costume. O sistema não envia nada. Com a chave Pix cadastrada (abaixo), o aviso leva o Pix Copia e Cola de cada título; sem chave, o texto não traz dado de pagamento.
 - **Recibo** (`GET /api/financeiro/[id]/recibo`, tela `/dashboard/financeiro/recibo/[id]`): só de receita já recebida, para imprimir ou salvar em PDF. Chega-se a ele pelo link "Recibo" no Financeiro e na fatura paga.
 
 A baixa continua no Faturamento e no Financeiro (com juros, multa e desconto); título pago sai da posição, e o recibo sai pelo valor recebido, com a composição quando houve encargo. A posição e o aviso mostram o valor original do título, sem juros nem multa. Parcelas e o registro de que o aviso foi mandado não existem.
+
+### Cobrança por Pix (Copia e Cola estático)
+
+O administrador cadastra em **Empresa > Cobrança** a chave Pix da transportadora (CPF, CNPJ, e-mail, telefone ou aleatória, conferida pelo formato e, em CPF e CNPJ, pelo dígito verificador), o nome do recebedor (até 25 letras) e a cidade (até 15), que são os limites do padrão. A partir daí o sistema monta o **Pix Copia e Cola** de cada título a receber em aberto, com o valor do título e um identificador (`FAT000123` para a fatura nº 123; `TIT` + o começo do id para lançamento sem fatura). O código é o BR Code do Banco Central (campos 00, 26, 52, 53, 54, 58, 59, 60, 62 e o CRC16 no 63), gerado por função pura em [src/lib/pix.ts](src/lib/pix.ts), sem banco e sem dependência; nome e cidade saem sem acento.
+
+Onde aparece, com botão de copiar: na fatura do painel (`/dashboard/faturamento/[id]`, enquanto em aberto), nas faturas do portal do cliente ("Pagar com Pix" em cada título em aberto), no texto do aviso de cobrança, e nos avisos `fatura.emitida` e `cobranca.vencida` da integração (campo `pixCopiaECola`).
+
+**É Pix estático: o pagamento NÃO dá baixa sozinho.** O sistema não fala com banco nenhum e não sabe se o cliente pagou; quem recebe confere o extrato (o identificador aparece nele) e dá a baixa à mão, como sempre. As telas dizem isso ao lado do código. O valor é o original do título, sem juros nem multa.
+
+Ainda não existe: **QR Code** (o projeto não tem gerador de QR e não se acrescentou dependência: sai só o código para copiar e colar), boleto, Pix dinâmico com confirmação automática, conciliação bancária e mais de uma chave por empresa.
 
 ## Relatórios
 
@@ -326,7 +336,7 @@ Ainda não existe: emissão de CT-e e de MDF-e, consulta à SEFAZ (situação da
 
 Em `/dashboard/empresa`, só para o administrador: o **nome** e o **símbolo** que aparecem no topo do painel, do portal do cliente e do app do motorista (`GET` e `PATCH /api/empresa`). O símbolo é uma imagem PNG, JPEG ou WebP, reduzida no navegador para 192 pixels antes de enviar e guardada no cadastro da empresa (`Tenant.logo`); sem símbolo, aparece o caminhão. As regras ficam em [src/lib/empresa.ts](src/lib/empresa.ts).
 
-Na mesma tela, a seção **Cobrança** guarda a multa (% do valor) e os juros (% ao mês) que a baixa de um título vencido sugere (`GET` e `PATCH /api/empresa/cobranca`, só administrador; padrão de 2% e 1%, colunas `Tenant.lateFinePct` e `Tenant.lateInterestPct`).
+Na mesma tela, a seção **Cobrança** guarda a multa (% do valor) e os juros (% ao mês) que a baixa de um título vencido sugere (`GET` e `PATCH /api/empresa/cobranca`, só administrador; padrão de 2% e 1%, colunas `Tenant.lateFinePct` e `Tenant.lateInterestPct`). A mesma seção e a mesma rota guardam o **recebimento por Pix**: tipo da chave, chave, nome do recebedor e cidade (colunas `Tenant.pixKeyType`, `pixKey`, `pixName` e `pixCity`; no corpo, `pix` com `tipo`, `chave`, `nome` e `cidade`, `null` para remover, ausente para não mexer). Ver "Cobrança por Pix".
 
 A aplicação só lê a tabela de empresas; a gravação vai pelo dono do banco, presa ao id da empresa da sessão. O portal do cliente e o app do motorista mostram o mesmo nome e símbolo (a leitura é liberada a todo perfil da empresa).
 
@@ -365,12 +375,14 @@ Em `/dashboard/empresa`, o administrador cadastra um **endereço** (um Webhook d
 | Tipo | Quando | `dados` |
 | --- | --- | --- |
 | `coleta.status` | Carga criada ou com status trocado | `de`, `para`, `coleta` |
-| `fatura.emitida`, `fatura.paga`, `fatura.reaberta`, `fatura.cancelada` | Fatura criada ou com status trocado | `fatura` (número, total, vencimento, cliente, link do portal) |
-| `cobranca.vencida` | Título a receber venceu e segue em aberto | `titulo` (valor, vencimento, dias de atraso, cliente ou pagador, fatura) |
+| `fatura.emitida`, `fatura.paga`, `fatura.reaberta`, `fatura.cancelada` | Fatura criada ou com status trocado | `fatura` (número, total, vencimento, cliente, link do portal; em `fatura.emitida`, `pixCopiaECola`) |
+| `cobranca.vencida` | Título a receber venceu e segue em aberto | `titulo` (valor, vencimento, dias de atraso, cliente ou pagador, fatura, `pixCopiaECola`) |
 | `ocorrencia.aberta`, `ocorrencia.status` | Chamado aberto (painel, portal ou motorista) ou com status trocado | `ocorrencia` (número, tipo, título, status, prioridade, quem abriu, cliente, carga com código e link de rastreio, link do painel) |
 | `teste` | Botão "Enviar teste" | mensagem fixa |
 
 Nos avisos de chamado, `status` é o de agora (lido na entrega, como nos de fatura), `tipo` é `DELAY`, `DAMAGE`, `LOSS`, `BILLING`, `REDELIVERY` ou `OTHER`, e `abertaPor` é `CLIENT` (portal) ou `STAFF` (equipe ou motorista). No chamado do motorista, `cliente` é o dono da carga. A descrição e a conversa não saem no aviso. Trocar prioridade ou responsável e escrever mensagem não avisam.
+
+O campo `pixCopiaECola` (texto do Pix Copia e Cola estático, com o valor do título) só vai quando a empresa tem chave Pix cadastrada e a fatura ou o título segue em aberto na hora da entrega; sem chave, os avisos saem sem o campo. O destino pode mandá-lo ao cliente, mas pagar não dá baixa no TMS: a baixa é manual.
 
 O aviso de título vencido sai uma vez por título e por vencimento; a procura roda a cada 10 minutos. Ao cadastrar o endereço, os títulos que já estavam vencidos são avisados nessa primeira procura.
 
@@ -416,6 +428,21 @@ Ainda não é registrado: o que o **motorista** faz no aplicativo (baixa de entr
 ## Portal do cliente
 
 Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu, consulta faturas e abre atendimento (`/portal/atendimento`, na seção Atendimento e ocorrências). Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, o XML das notas fiscais ligadas à carga, para baixar, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
+
+Além disso, o cliente tem (regras em [src/lib/portal-cliente.ts](src/lib/portal-cliente.ts)):
+
+- **Cotação** (`/portal/cotacao`, `POST /api/portal/cotacao`): informa destino, peso, volumes, valor da nota e, se quiser, a cubagem em m³, e vê o **valor** e o **prazo** pela tabela de frete dele (a do cadastro; senão a padrão). É a mesma conta do simulador do painel, mas a resposta é fechada: valor, prazo e avisos, sem a composição, o nome da tabela ou os percentuais. Nada é gravado; "Pedir coleta com estes dados" abre o pedido de coleta preenchido.
+- **Tabela de frete** (`/portal/tabela-frete`, `GET /api/portal/tabela-frete`): só leitura, com as cidades atendidas, o frete mínimo e o prazo de cada uma, e busca por cidade.
+- **Destinatários frequentes** (`/portal/destinatarios`; `GET` e `POST /api/portal/destinatarios`, `PATCH` e `DELETE /api/portal/destinatarios/[id]`; tabela `ClientReceiver`): nome, CNPJ/CPF opcional, cidade-UF, endereço e contato, até 200 por cliente. No pedido de coleta, escolher um deles preenche o destinatário e a cidade de destino.
+- **Pedido de coleta** (`POST /api/portal/coletas`): além dos dados da carga, aceita, tudo opcional, a **data** e a **janela de horário** da coleta, a **prioridade** (normal ou urgente), a **cubagem** em m³ e uma **observação**. Os mesmos campos existem na minuta do painel (criação e edição, com auditoria) e aparecem na lista de minutas, nas solicitações pendentes e na viagem do motorista. A cubagem entra no frete quando a tabela tem fator de cubagem; sem ela, a conta é a de sempre.
+- **Baixar** (`GET /api/portal/coletas/exportar?de=AAAA-MM-DD&ate=AAAA-MM-DD`): as cargas pedidas no período (padrão: últimos 30 dias; no máximo 366 dias e 5.000 linhas) em CSV montado no servidor, com `;`, vírgula decimal e marca de UTF-8 para abrir no Excel: código, data, destino, destinatário, volumes, peso, frete e situação. Texto que começa com `=`, `+`, `-` ou `@` sai com apóstrofo na frente, para a planilha não o executar como fórmula.
+- **Pix nas faturas**: com a chave cadastrada pela transportadora, cada título em aberto traz o Pix Copia e Cola (ver "Cobrança por Pix").
+
+Cada rota do portal filtra pelo cliente da sessão: destinatário, carga ou título de outro cliente da mesma transportadora responde 404 ou simplesmente não aparece, e o `clientId` que vier no corpo é ignorado. Entre transportadoras, quem separa é o banco.
+
+Ainda não existe no portal: QR Code do Pix, exportação em PDF ou XLSX, o cliente alterar ou cancelar um pedido já enviado, endereço e contato do destinatário gravados na carga (o destinatário frequente preenche só o nome e a cidade), cotação gravada como histórico e registro, na trilha de auditoria, do que o cliente faz no portal.
+
+As colunas e a tabela deste módulo (pedido de coleta, destinatários e chave Pix) são criadas por [prisma/sql/021-portal-pix.sql](prisma/sql/021-portal-pix.sql); rode `npm run db:rls` depois dela.
 
 ## Estrutura
 

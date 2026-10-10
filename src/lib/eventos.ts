@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { sistema } from "@/lib/prisma";
 import { conferirEnderecoPublico } from "@/lib/url-publica";
 import { TENTATIVAS } from "@/lib/mensageria";
+import { RECEBEDOR_SELECT, pixCopiaECola, pixDoTitulo, recebedorDaEmpresa, txidDaFatura } from "@/lib/pix";
 
 /**
  * Entrega dos eventos (OutboxEvent) no endereço que cada empresa cadastrou.
@@ -47,6 +48,12 @@ const dia = (data: Date | null) => (data ? data.toISOString().slice(0, 10) : nul
 
 const enderecoPublico = () => (process.env.NEXTAUTH_URL || "").replace(/\/+$/, "");
 
+/** O recebedor do Pix da empresa do evento, ou `null` sem chave cadastrada. */
+async function recebedorDoEvento(evento: Pendente) {
+  const empresa = await sistema.tenant.findUnique({ where: { id: evento.tenantId }, select: RECEBEDOR_SELECT });
+  return recebedorDaEmpresa(empresa);
+}
+
 async function dadosDaFatura(evento: Pendente, payload: Record<string, unknown>) {
   const invoiceId = texto(payload.invoiceId);
   const fatura = invoiceId
@@ -55,6 +62,8 @@ async function dadosDaFatura(evento: Pendente, payload: Record<string, unknown>)
         select: { id: true, number: true, status: true, total: true, dueDate: true, issuedAt: true, paidAt: true, client: { select: CLIENTE }, _count: { select: { collections: true } } },
       })
     : null;
+  // Só no aviso de emissão, com a fatura ainda em aberto, e se a empresa tem chave.
+  const recebedor = fatura && evento.type === "fatura.emitida" && fatura.status === "OPEN" && fatura.total > 0 ? await recebedorDoEvento(evento) : null;
   return {
     fatura: fatura && {
       id: fatura.id,
@@ -68,6 +77,8 @@ async function dadosDaFatura(evento: Pendente, payload: Record<string, unknown>)
       cliente: cliente(fatura.client),
       // Onde o cliente consulta as faturas dele, depois de entrar.
       portal: `${enderecoPublico()}/portal/faturas`,
+      // Pix Copia e Cola estático: pagar não dá baixa no TMS, a baixa é manual.
+      ...(recebedor && { pixCopiaECola: pixCopiaECola({ ...recebedor, valor: fatura.total, txid: txidDaFatura(fatura.number) }) }),
     },
   };
 }
@@ -80,6 +91,7 @@ async function dadosDoTituloVencido(evento: Pendente, payload: Record<string, un
         select: { id: true, description: true, amount: true, dueDate: true, status: true, counterparty: true, client: { select: CLIENTE }, invoice: { select: { id: true, number: true } } },
       })
     : null;
+  const pix = titulo && titulo.status === "PENDING" ? pixDoTitulo(await recebedorDoEvento(evento), { id: titulo.id, amount: titulo.amount, invoice: titulo.invoice }) : null;
   return {
     titulo: titulo && {
       id: titulo.id,
@@ -92,6 +104,8 @@ async function dadosDoTituloVencido(evento: Pendente, payload: Record<string, un
       fatura: titulo.invoice && { id: titulo.invoice.id, numero: titulo.invoice.number },
       cliente: cliente(titulo.client),
       pagador: titulo.client ? null : titulo.counterparty,
+      // Pix Copia e Cola estático do título em aberto, se a empresa tem chave: a baixa segue manual.
+      ...(pix && { pixCopiaECola: pix }),
     },
   };
 }

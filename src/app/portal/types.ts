@@ -11,6 +11,14 @@ export type PortalCollection = {
   createdAt: string;
   trackingCode: string | null;
   driver?: { user: { name: string } } | null;
+  // Só na lista de coletas (a visão geral não pede estes campos).
+  freightValue?: number | null;
+  pickupDate?: string | null;
+  pickupFrom?: string | null;
+  pickupTo?: string | null;
+  priority?: string;
+  cubicMeters?: number | null;
+  pickupNotes?: string | null;
 };
 
 export type PortalInvoice = {
@@ -20,6 +28,8 @@ export type PortalInvoice = {
   dueDate: string | null;
   status: string;
   createdAt: string;
+  /** Pix Copia e Cola do título em aberto; nulo se a transportadora não cadastrou chave. */
+  pix: string | null;
 };
 
 /** Lê a resposta da API do portal e transforma erro em mensagem legível. */

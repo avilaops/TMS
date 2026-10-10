@@ -6,6 +6,7 @@ import { AlertTriangle, CalendarClock, Loader2, LogIn, ShieldAlert, Users, Walle
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCalendarDate, formatCurrency } from "@/lib/format";
 import { FAIXAS, FAIXA_LABEL, textoDoAviso, type Devedor, type TotaisDaCobranca } from "@/lib/cobranca";
+import { AVISO_PIX_ESTATICO } from "@/lib/pix";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
 
 /**
@@ -217,6 +218,7 @@ export default function CobrancaPage() {
                               texto={textoDoAviso({ empresa: posicao.empresa, devedor, hoje: meioDiaNoBrasil(posicao.hoje) })}
                               copia={copia}
                               aoCopiar={copiar}
+                              comPix={devedor.titulos.some((titulo) => titulo.pix)}
                             />
                           </td>
                         </tr>
@@ -277,8 +279,11 @@ function Aviso({
   texto,
   copia,
   aoCopiar,
+  comPix,
 }: {
   texto: string;
+  /** O aviso leva o Pix Copia e Cola de cada título (chave cadastrada em Empresa). */
+  comPix: boolean;
   copia: { ok: boolean; texto: string } | null;
   aoCopiar: (texto: string) => Promise<void>;
 }) {
@@ -302,6 +307,11 @@ function Aviso({
         )}
         <p className="text-xs text-gray-500">O sistema não envia o aviso: copie e mande pelo canal que você usa com o cliente.</p>
       </div>
+      <p data-pix-do-aviso className="text-xs text-gray-500">
+        {comPix
+          ? `O aviso leva o Pix Copia e Cola de cada título, com o valor dele. ${AVISO_PIX_ESTATICO}`
+          : "Para o aviso levar o Pix Copia e Cola de cada título, cadastre a chave Pix em Empresa > Cobrança."}
+      </p>
     </div>
   );
 }

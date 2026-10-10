@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Receipt, AlertCircle } from "lucide-react";
+import { PixCopiaECola } from "@/components/pix/copia-e-cola";
 import {
   INVOICE_STATUS,
   formatCalendarDate,
@@ -11,10 +12,15 @@ import {
 } from "@/lib/format";
 import { readPortal, type PortalInvoice } from "../types";
 
+const ROTULO_DA_CELULA =
+  "before:content-[attr(data-rotulo)] before:block before:text-[11px] before:text-gray-500 md:before:content-none";
+
 export default function PortalFaturasPage() {
   const [faturas, setFaturas] = useState<PortalInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // O título com o Pix Copia e Cola aberto.
+  const [pixAberto, setPixAberto] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/portal/faturas")
@@ -41,7 +47,7 @@ export default function PortalFaturasPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div>
         <h1 className="text-2xl font-outfit font-bold text-gray-900">Faturas</h1>
         <p className="text-gray-500">
@@ -58,43 +64,55 @@ export default function PortalFaturasPage() {
             <p className="text-gray-600">Nenhuma fatura emitida até agora.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500">
-                <tr>
-                  <th className="text-left font-medium px-6 py-3">Descrição</th>
-                  <th className="text-left font-medium px-6 py-3 whitespace-nowrap">Emissão</th>
-                  <th className="text-left font-medium px-6 py-3 whitespace-nowrap">Vencimento</th>
-                  <th className="text-left font-medium px-6 py-3 whitespace-nowrap">Valor</th>
-                  <th className="text-left font-medium px-6 py-3">Situação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {faturas.map((fatura) => {
-                  const badge = statusBadge(INVOICE_STATUS, fatura.status);
-                  return (
-                    <tr key={fatura.id} className="hover:bg-gray-50/60">
-                      <td className="px-6 py-4 font-medium text-gray-900">{fatura.description}</td>
-                      <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
-                        {formatDate(fatura.createdAt)}
-                      </td>
-                      <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
-                        {formatCalendarDate(fatura.dueDate)}
-                      </td>
-                      <td className="px-6 py-4 text-gray-900 whitespace-nowrap">
-                        {formatCurrency(fatura.amount)}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap ${badge.className}`}>
-                          {badge.label}
+          <table className="block md:table w-full text-sm">
+            <thead className="hidden md:table-header-group bg-gray-50 text-gray-500 text-left">
+              <tr>
+                <th className="font-medium px-6 py-3">Descrição</th>
+                <th className="font-medium px-6 py-3 whitespace-nowrap">Emissão</th>
+                <th className="font-medium px-6 py-3 whitespace-nowrap">Vencimento</th>
+                <th className="font-medium px-6 py-3 whitespace-nowrap">Valor</th>
+                <th className="font-medium px-6 py-3">Situação</th>
+              </tr>
+            </thead>
+            <tbody className="block md:table-row-group divide-y divide-gray-100">
+              {faturas.map((fatura) => {
+                const badge = statusBadge(INVOICE_STATUS, fatura.status);
+                const aberto = pixAberto === fatura.id;
+                return (
+                  <Fragment key={fatura.id}>
+                    <tr data-fatura={fatura.id} className="grid grid-cols-3 gap-x-3 gap-y-1 px-3 py-2.5 md:table-row hover:bg-gray-50/60">
+                      <td className="col-span-3 min-w-0 md:table-cell md:px-6 md:py-4 font-medium text-gray-900">{fatura.description}</td>
+                      <td data-rotulo="Emissão" className={`min-w-0 md:table-cell md:px-6 md:py-4 text-gray-600 ${ROTULO_DA_CELULA}`}>{formatDate(fatura.createdAt)}</td>
+                      <td data-rotulo="Vencimento" className={`min-w-0 md:table-cell md:px-6 md:py-4 text-gray-600 ${ROTULO_DA_CELULA}`}>{formatCalendarDate(fatura.dueDate)}</td>
+                      <td data-rotulo="Valor" className={`min-w-0 md:table-cell md:px-6 md:py-4 text-gray-900 ${ROTULO_DA_CELULA}`}>{formatCurrency(fatura.amount)}</td>
+                      <td className="col-span-3 min-w-0 md:table-cell md:px-6 md:py-4">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className={`text-xs px-3 py-1 rounded-full border whitespace-nowrap ${badge.className}`}>{badge.label}</span>
+                          {fatura.pix && (
+                            <button
+                              type="button"
+                              aria-expanded={aberto}
+                              onClick={() => setPixAberto(aberto ? null : fatura.id)}
+                              className="text-sm font-medium text-emerald-700 hover:underline"
+                            >
+                              {aberto ? "Fechar Pix" : "Pagar com Pix"}
+                            </button>
+                          )}
                         </span>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    {aberto && fatura.pix && (
+                      <tr data-pix-de={fatura.id} className="block md:table-row">
+                        <td colSpan={5} className="block md:table-cell px-3 pb-3 md:px-6 md:pb-4">
+                          <PixCopiaECola codigo={fatura.pix} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

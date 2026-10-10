@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { janelaDaColeta } from '@/lib/coletas';
 
 type Collection = {
   id: string;
@@ -15,6 +16,13 @@ type Collection = {
   volumes: number;
   weight: number;
   invoiceValue: number | null;
+  // O que o cliente pediu: janela de horário, urgência, cubagem e observação.
+  pickupDate: string | null;
+  pickupFrom: string | null;
+  pickupTo: string | null;
+  priority: string;
+  cubicMeters: number | null;
+  pickupNotes: string | null;
   status: string;
   createdAt: string;
   client: { companyName: string };
@@ -86,6 +94,7 @@ export default function PendentesPage() {
                 <div className="flex items-center space-x-3">
                   <Badge variant="secondary" className="font-mono text-xs">{coleta.id.substring(0, 8)}</Badge>
                   <span className="font-semibold text-lg">{coleta.client.companyName}</span>
+                  {coleta.priority === 'URGENT' && <Badge variant="destructive">Urgente</Badge>}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600 mt-2">
                   <div>
@@ -96,6 +105,9 @@ export default function PendentesPage() {
                     <p><span className="font-medium text-gray-800">Volumes:</span> {coleta.volumes} un</p>
                     <p><span className="font-medium text-gray-800">Peso:</span> {coleta.weight} kg</p>
                     {coleta.invoiceValue && <p><span className="font-medium text-gray-800">Valor NF:</span> R$ {coleta.invoiceValue}</p>}
+                    {coleta.cubicMeters !== null && <p><span className="font-medium text-gray-800">Cubagem:</span> {coleta.cubicMeters.toLocaleString('pt-BR')} m³</p>}
+                    {janelaDaColeta(coleta) && <p><span className="font-medium text-gray-800">Coletar:</span> {janelaDaColeta(coleta)}</p>}
+                    {coleta.pickupNotes && <p className="break-words"><span className="font-medium text-gray-800">Observação:</span> {coleta.pickupNotes}</p>}
                   </div>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, MapPin, CheckCircle2, Package, ShieldCheck, Loader2, PenTool, ClipboardCheck, AlertTriangle, Navigation, Receipt } from "lucide-react";
 import Link from "next/link";
 import { linkDaRota } from "@/lib/viagem";
+import { janelaDaColeta } from "@/lib/coletas";
 
 interface Parada {
   id: string;
@@ -14,6 +15,13 @@ interface Parada {
   weight: number;
   status: string;
   receiverName: string | null;
+  // O que o cliente pediu: janela de horário, urgência, cubagem e observação.
+  pickupDate: string | null;
+  pickupFrom: string | null;
+  pickupTo: string | null;
+  priority: string;
+  cubicMeters: number | null;
+  pickupNotes: string | null;
   client: { tradeName: string | null; companyName: string } | null;
 }
 
@@ -174,8 +182,18 @@ export default function ViagemDetalhes() {
 
               <div className="flex items-center space-x-2 text-sm text-gray-600 mb-4">
                 <Package className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                <span>{coleta.volumes} volumes ({coleta.weight} kg)</span>
+                <span>
+                  {coleta.volumes} volumes ({coleta.weight} kg{coleta.cubicMeters ? `, ${coleta.cubicMeters.toLocaleString("pt-BR")} m³` : ""})
+                </span>
               </div>
+
+              {(coleta.priority === "URGENT" || janelaDaColeta(coleta) || coleta.pickupNotes) && (
+                <div data-pedido={coleta.id} className="mb-4 rounded-2xl bg-amber-50 border border-amber-100 px-3 py-2 text-sm text-amber-900 space-y-0.5">
+                  {coleta.priority === "URGENT" && <p className="font-bold text-red-700">Urgente</p>}
+                  {janelaDaColeta(coleta) && <p>Janela: {janelaDaColeta(coleta)}</p>}
+                  {coleta.pickupNotes && <p className="break-words">{coleta.pickupNotes}</p>}
+                </div>
+              )}
 
               {!isDelivered ? (
                 // A baixa é uma tela própria: é ela que grava no servidor e que
