@@ -19,7 +19,7 @@ import {
  * de tudo o que está no depósito. Só leitura, sem dado financeiro.
  */
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {

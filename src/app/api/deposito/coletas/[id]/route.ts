@@ -10,7 +10,7 @@ import { lerCarga } from '@/lib/deposito-db';
  * É o que a página de etiquetas imprime. Sem dado financeiro.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {

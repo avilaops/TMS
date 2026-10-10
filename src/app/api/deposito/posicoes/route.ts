@@ -7,7 +7,7 @@ import { POSICAO_REPETIDA, POSICAO_SELECT, createLocationSchema } from '@/lib/de
 
 /** As posições do depósito, as ativas primeiro, com quantos volumes há em cada uma. */
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {
@@ -24,7 +24,7 @@ export async function GET() {
 
 /** Cadastra uma posição. O código é único na empresa. */
 export async function POST(req: Request) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {

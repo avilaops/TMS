@@ -6,88 +6,9 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { sair } from "@/lib/sair";
 import { SimboloDaEmpresa, useIdentidade } from "@/components/empresa/identidade";
-import {
-  LayoutDashboard,
-  Users,
-  CarFront,
-  Truck,
-  Menu,
-  X,
-  LogOut,
-  Bell,
-  Package,
-  Route,
-  FileText,
-  DollarSign,
-  UserPlus,
-  UserCog,
-  Building2,
-  ClipboardCheck,
-  Calculator,
-  Receipt,
-  Banknote,
-  BarChart3,
-  Wrench,
-  Headset,
-  Warehouse,
-  History,
-  HardHat
-} from "lucide-react";
+import { Menu, X, LogOut, Bell } from "lucide-react";
 import { motion } from "framer-motion";
-
-// `roles` restringe o link a esses perfis. É só o menu: quem decide o acesso é
-// a API (`requireStaff`), que devolve 403 para o perfil errado.
-type LinkDoMenu = { href: string; icon: typeof Truck; label: string; roles?: string[] };
-
-const SECOES: { titulo: string | null; links: LinkDoMenu[] }[] = [
-  { titulo: null, links: [{ href: "/dashboard", icon: LayoutDashboard, label: "Visão Geral" }] },
-  {
-    titulo: "Comercial",
-    links: [
-      { href: "/dashboard/clientes", icon: Users, label: "Clientes" },
-      { href: "/dashboard/crm", icon: UserPlus, label: "CRM" },
-      { href: "/dashboard/tabelas-frete", icon: Calculator, label: "Tabelas de frete" },
-    ],
-  },
-  {
-    titulo: "Operação",
-    links: [
-      { href: "/dashboard/coletas", icon: Package, label: "Minutas" },
-      { href: "/dashboard/deposito", icon: Warehouse, label: "Depósito" },
-      { href: "/dashboard/manifestos", icon: Route, label: "Manifestos" },
-      { href: "/dashboard/comprovantes", icon: ClipboardCheck, label: "Comprovantes" },
-      { href: "/dashboard/ocorrencias", icon: Headset, label: "Ocorrências" },
-      { href: "/dashboard/fiscal", icon: FileText, label: "Notas fiscais" },
-    ],
-  },
-  {
-    titulo: "Financeiro",
-    links: [
-      { href: "/dashboard/faturamento", icon: Receipt, label: "Faturamento", roles: ["ADMIN"] },
-      { href: "/dashboard/cobranca", icon: Banknote, label: "Cobrança", roles: ["ADMIN"] },
-      { href: "/dashboard/financeiro", icon: DollarSign, label: "Financeiro", roles: ["ADMIN"] },
-    ],
-  },
-  {
-    titulo: "Frota",
-    links: [
-      { href: "/dashboard/motoristas", icon: CarFront, label: "Motoristas" },
-      { href: "/dashboard/veiculos", icon: Truck, label: "Veículos" },
-      { href: "/dashboard/equipe", icon: HardHat, label: "Equipe" },
-      { href: "/dashboard/frota", icon: Wrench, label: "Alertas" },
-    ],
-  },
-  {
-    titulo: "Sistema",
-    links: [
-      { href: "/dashboard/relatorios", icon: BarChart3, label: "Relatórios", roles: ["ADMIN"] },
-      { href: "/dashboard/mensagens", icon: Bell, label: "Mensageria", roles: ["ADMIN"] },
-      { href: "/dashboard/auditoria", icon: History, label: "Auditoria", roles: ["ADMIN"] },
-      { href: "/dashboard/usuarios", icon: UserCog, label: "Usuários", roles: ["ADMIN"] },
-      { href: "/dashboard/empresa", icon: Building2, label: "Empresa", roles: ["ADMIN"] },
-    ],
-  },
-];
+import { secoesDoMenu } from "./menu";
 
 // Enquanto o nome da empresa não chega (ou se a leitura falhar), o cabeçalho mostra o do sistema.
 const NOME_PADRAO = "TMS";
@@ -100,12 +21,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const nome = identidade?.name ?? NOME_PADRAO;
   const logo = identidade?.logo ?? null;
-  const role = session?.user?.role;
-  // Seção sem nenhum link para o perfil (o Financeiro, para a operação) não aparece.
-  const secoes = SECOES.map((secao) => ({
-    ...secao,
-    links: secao.links.filter((link) => !link.roles || (role && link.roles.includes(role))),
-  })).filter((secao) => secao.links.length > 0);
+  // O menu mostra só o que o perfil pode abrir (src/app/dashboard/menu.ts).
+  const secoes = secoesDoMenu(session?.user?.role);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col md:flex-row">

@@ -13,7 +13,7 @@ import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
  * sempre de todos os chamados, para o topo da tela não mudar ao filtrar.
  */
 export async function GET(req: Request) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'ocorrencias' });
   if (error) return error;
 
   try {
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
  * carga e ao cliente dono dela; sem carga, pode ser de um cliente ou só interno.
  */
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'ocorrencias' });
   if (error) return error;
 
   try {

@@ -25,7 +25,7 @@ const MUDOU = 'A carga foi alterada enquanto você ligava a nota. Tente de novo.
  * dados dela não mudam depois do manifesto.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'fiscal' });
   if (error) return error;
 
   try {

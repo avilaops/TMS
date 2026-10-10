@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PERFIS } from "@/lib/permissoes";
 
 // Campos que as rotas de usuário devolvem. `password` nunca entra aqui.
 export const USER_PUBLIC_SELECT = {
@@ -29,7 +30,9 @@ export const DRIVER_OMIT = { commissionPct: true } as const;
 export const DRIVER_ROLE_MESSAGE =
   "Motorista é criado pelo cadastro de motoristas (Motoristas → Novo), que gera o usuário junto do registro de motorista.";
 
-const role = z.enum(["ADMIN", "OPERATION", "DRIVER", "CLIENT"]);
+// Todos os perfis do enum `Role`. DRIVER passa na validação para a rota poder
+// responder com a mensagem certa (`DRIVER_ROLE_MESSAGE`).
+const role = z.enum(PERFIS);
 const name = z.string().trim().min(2, "Informe o nome.").max(120);
 const clientId = z.string().trim().min(1);
 

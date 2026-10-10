@@ -16,7 +16,7 @@ import { AUDIT_SELECT, TAMANHO_DA_PAGINA, filtroDeAuditoria, filtrosDeAuditoriaS
  * `null` quando acabou.
  */
 export async function GET(req: Request) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { error } = await requireStaff({ pode: 'auditoria' });
   if (error) return error;
 
   try {

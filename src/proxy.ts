@@ -1,23 +1,21 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { AREA_DO_PERFIL, PERFIS_INTERNOS } from "@/lib/permissoes";
 
 // Cada área do sistema só aceita os perfis listados aqui.
 // Perfis são estritos de propósito: um ADMIN não tem registro de Driver nem
 // empresa vinculada, então entrar em /driver ou /portal só quebraria as telas.
-const AREA_ROLES: Record<string, string[]> = {
-  "/dashboard": ["ADMIN", "OPERATION"],
+// Em /dashboard entra a equipe interna inteira; o que cada perfil abre lá
+// dentro é decidido pelo menu e, de verdade, pela API (src/lib/permissoes.ts).
+const AREA_ROLES: Record<string, readonly string[]> = {
+  "/dashboard": PERFIS_INTERNOS,
   "/driver": ["DRIVER"],
   "/portal": ["CLIENT"],
 };
 
 // Para onde mandar um usuário autenticado que bateu na área errada.
-const HOME_BY_ROLE: Record<string, string> = {
-  ADMIN: "/dashboard",
-  OPERATION: "/dashboard",
-  DRIVER: "/driver",
-  CLIENT: "/portal",
-};
+const HOME_BY_ROLE: Record<string, string> = AREA_DO_PERFIL;
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

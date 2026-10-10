@@ -29,7 +29,7 @@ const ENTREGA = { id: true, type: true, createdAt: true, deliveredAt: true, atte
  * mostrado uma vez, quando é criado ou trocado.
  */
 export async function GET() {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { error } = await requireStaff({ pode: 'empresa' });
   if (error) return error;
 
   try {
@@ -48,7 +48,7 @@ export async function GET() {
  * A resposta traz `segredo` só quando ele acabou de ser gerado.
  */
 export async function PUT(req: Request) {
-  const { user, error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff({ pode: 'empresa' });
   if (error) return error;
   const origem = origemDaRequisicao(req);
 

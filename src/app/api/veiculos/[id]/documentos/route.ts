@@ -11,7 +11,7 @@ import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/au
  * cada um com a situação de hoje (em dia, a vencer em até 30 dias ou vencido).
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frotaVer' });
   if (error) return error;
 
   try {
@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {

@@ -8,7 +8,7 @@ import { withTrackingCode } from '@/lib/tracking';
 import { CAMPOS_DA_COLETA, escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'coletasVer' });
   if (error) return error;
 
   try {
@@ -24,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'coletas' });
   if (error) return error;
 
   try {

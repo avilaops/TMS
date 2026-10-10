@@ -7,7 +7,7 @@ import { acharVeiculo, veiculoNaoEncontrado } from '@/lib/frota-db';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frotaVer' });
   if (error) return error;
 
   try {
@@ -25,7 +25,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {

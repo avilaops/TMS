@@ -16,7 +16,7 @@ const NAO_CONFERIDO = 'Só volume conferido e presente pode ir para uma posiçã
  * Vale na conferência e depois, enquanto a carga estiver no depósito.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {

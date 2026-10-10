@@ -8,7 +8,7 @@ import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 const DUPLICATE_MESSAGE = 'Já existe uma tabela de frete com este nome.';
 
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'tabelasFreteVer' });
   if (error) return error;
 
   try {
@@ -23,9 +23,10 @@ export async function GET() {
   }
 }
 
-// Preço é decisão de quem administra a transportadora: criar e alterar tabela é só ADMIN.
+// Preço é decisão de quem administra a transportadora e do comercial: criar e
+// alterar tabela exige `tabelasFrete`. A operação só lê e calcula.
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'tabelasFrete' });
   if (error) return error;
 
   try {

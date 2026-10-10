@@ -7,7 +7,7 @@ import { acharVeiculo, veiculoNaoEncontrado } from '@/lib/frota-db';
 
 /** Pneus do veículo: os que estão nele primeiro, depois os retirados, pela instalação mais recente. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frotaVer' });
   if (error) return error;
 
   try {
@@ -27,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {

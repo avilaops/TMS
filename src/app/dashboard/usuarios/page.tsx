@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AvisoDeAcesso, type Acesso } from "@/components/AvisoDeAcesso";
+import { PERFIS_INTERNOS, ROTULO_DO_PERFIL } from "@/lib/permissoes";
 
 interface Usuario {
   id: string;
@@ -38,15 +39,10 @@ interface Empresa {
   companyName: string;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: "Administrador",
-  OPERATION: "Operação",
-  CLIENT: "Cliente",
-  DRIVER: "Motorista",
-};
+const ROLE_LABEL: Record<string, string> = ROTULO_DO_PERFIL;
 
 // Motorista nasce pelo cadastro de motoristas, por isso não aparece aqui.
-const ASSIGNABLE_ROLES = ["ADMIN", "OPERATION", "CLIENT"];
+const ASSIGNABLE_ROLES: string[] = [...PERFIS_INTERNOS, "CLIENT"];
 
 const SELECT_CLASS =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";

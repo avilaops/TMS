@@ -10,7 +10,7 @@ const LIMITE = 50;
 
 /** Checklists do veículo, do mais recente para o mais antigo, feitos no painel ou pelo motorista no app. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frotaVer' });
   if (error) return error;
 
   try {
@@ -32,7 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /** Registra um checklist pelo painel. Quem fez é o usuário logado; a data é a de agora. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'frotaChecklist' });
   if (error) return error;
 
   try {

@@ -10,7 +10,7 @@ import { MESSAGE_SELECT, aceitaMensagem, staffMessageSchema } from '@/lib/ocorre
  * interna (`internal: true`, só a equipe lê).
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'ocorrencias' });
   if (error) return error;
 
   try {

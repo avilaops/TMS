@@ -6,7 +6,7 @@ import { respostaComXml } from '@/lib/nfe-db';
 
 /** O XML original da nota, como foi importado, para baixar. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'fiscalVer' });
   if (error) return error;
 
   try {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
+import { perfisQuePodem } from '@/lib/permissoes';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import {
@@ -18,8 +19,8 @@ import { nadaMudou, origemDaRequisicao, registrarAuditoria } from '@/lib/auditor
 
 const NOT_FOUND = 'Chamado não encontrado.';
 
-// Quem pode ser responsável por um chamado: a equipe interna.
-const DA_EQUIPE = { role: { in: ['ADMIN', 'OPERATION'] as ('ADMIN' | 'OPERATION')[] } };
+// Quem pode ser responsável por um chamado: os perfis que atendem chamados.
+const DA_EQUIPE = { role: { in: perfisQuePodem('ocorrencias') } };
 
 const DETALHE = {
   ...OCCURRENCE_SELECT,
@@ -32,7 +33,7 @@ const DETALHE = {
  * porque `/api/usuarios` é só do administrador, e o operador também atribui.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'ocorrencias' });
   if (error) return error;
 
   try {
@@ -54,7 +55,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
  * mesma transação.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'ocorrencias' });
   if (error) return error;
 
   try {

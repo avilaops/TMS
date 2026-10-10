@@ -13,7 +13,7 @@ import { TABELA_PARA_CALCULO, calcularFrete, tabelaVigente } from '@/lib/frete';
  * ou fora da validade: serve para conferir uma tabela antes de colocá-la em uso.
  */
 export async function POST(req: Request) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'tabelasFreteVer' });
   if (error) return error;
 
   try {

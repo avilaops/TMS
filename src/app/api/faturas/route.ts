@@ -9,7 +9,7 @@ import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 // Faturamento é financeiro: só o administrador, como em /api/financeiro.
 
 export async function GET() {
-  const { error } = await requireStaff(['ADMIN']);
+  const { error } = await requireStaff({ pode: 'faturamentoVer' });
   if (error) return error;
 
   try {
@@ -22,7 +22,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'faturamento' });
   if (error) return error;
 
   try {

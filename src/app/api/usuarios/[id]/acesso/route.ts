@@ -13,7 +13,7 @@ import { origemDaRequisicao, registrarAuditoriaDepois } from "@/lib/auditoria";
  * login único limita a cinco mensagens por hora para a mesma caixa).
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff({ pode: "usuarios" });
   if (error) return error;
 
   const { id } = await params;

@@ -4,7 +4,7 @@ import { requireStaff } from '@/lib/staff';
 
 export async function GET(req: Request) {
   try {
-    const { error } = await requireStaff();
+    const { error } = await requireStaff({ pode: 'coletasVer' });
     if (error) return error;
 
     const pendentes = await prisma.collection.findMany({

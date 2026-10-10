@@ -47,7 +47,7 @@ const paraAAuditoria = ({ pix, ...parametros }: ReturnType<typeof paraATela>) =>
  * administrador lê e altera: é configuração do financeiro.
  */
 export async function GET() {
-  const { error } = await requireStaff(['ADMIN']);
+  const { error } = await requireStaff({ pode: 'empresa' });
   if (error) return error;
 
   try {
@@ -61,7 +61,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'empresa' });
   if (error) return error;
 
   const dados = parametrosDeCobrancaSchema.safeParse(await req.json().catch(() => null));

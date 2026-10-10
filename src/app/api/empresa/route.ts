@@ -41,7 +41,7 @@ export async function GET() {
 
 /** Troca o nome e o símbolo da empresa da sessão. Só o administrador. */
 export async function PATCH(req: Request) {
-  const { user, error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff({ pode: 'empresa' });
   if (error) return error;
 
   const dados = identidadeSchema.safeParse(await req.json().catch(() => null));

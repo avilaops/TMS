@@ -11,6 +11,7 @@ import {
   type LinhaDeAuditoria,
 } from "@/lib/auditoria";
 import { AcessoRestrito } from "@/components/AcessoRestrito";
+import { ROTULO_DO_PERFIL } from "@/lib/permissoes";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
 
 /**
@@ -37,7 +38,7 @@ const COM_ROTULO =
 const dataHora = (iso: string) =>
   new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 
-const PERFIS: Record<string, string> = { ADMIN: "Administrador", OPERATION: "Operação", DRIVER: "Motorista", CLIENT: "Cliente" };
+const PERFIS: Record<string, string> = ROTULO_DO_PERFIL;
 
 async function buscar(filtros: Filtros, cursor: string | null): Promise<Carga> {
   try {

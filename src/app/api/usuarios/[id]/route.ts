@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { transacao } from "@/lib/prisma";
 import { requireStaff } from "@/lib/staff";
+import { pode } from "@/lib/permissoes";
 import {
   DRIVER_ROLE_MESSAGE,
   USER_PUBLIC_SELECT,
@@ -22,7 +23,7 @@ class Refusal extends Error {
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user: admin, error } = await requireStaff(["ADMIN"]);
+  const { user: admin, error } = await requireStaff({ pode: "usuarios" });
   if (error) return error;
 
   try {
@@ -51,7 +52,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       // na trava acima pode ter sido rebaixado nesse meio-tempo: aqui a
       // conferência vale de novo, já com as linhas de ADMIN seguras.
       const autor = await tx.user.findUnique({ where: { id: admin.id }, select: { role: true } });
-      if (autor?.role !== "ADMIN") throw new Refusal("Acesso negado", 403);
+      if (!pode(autor?.role, "usuarios")) throw new Refusal("Acesso negado", 403);
 
       const target = await tx.user.findUnique({
         where: { id },

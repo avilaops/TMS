@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
+import { pode } from '@/lib/permissoes';
 import prisma, { sistema, transacao } from '@/lib/prisma';
 import { COMMISSION_ADMIN_ONLY, DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
@@ -9,7 +10,7 @@ import { nadaMudou, origemDaRequisicao, registrarAuditoria, registrarAuditoriaDe
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'motoristas' });
   if (error) return error;
 
   try {
@@ -22,8 +23,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const data = parsed.data;
 
     // Comissão é dinheiro: a operação cuida do cadastro, mas não deste campo.
-    const admin = user.role === 'ADMIN';
-    if (data.commissionPct !== undefined && !admin) {
+    // Mudar o percentual exige, além do cadastro, a capacidade de alterar os
+    // valores da equipe; ler o percentual de volta, a de ver esses valores.
+    const alteraComissao = pode(user.role, 'equipeValores');
+    const veComissao = pode(user.role, 'equipeValoresVer');
+    if (data.commissionPct !== undefined && !alteraComissao) {
       return NextResponse.json({ error: COMMISSION_ADMIN_ONLY }, { status: 403 });
     }
 
@@ -129,7 +133,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
 
       // O percentual só volta para quem pode vê-lo.
-      return admin ? atualizado : { ...atualizado, commissionPct: undefined };
+      return veComissao ? atualizado : { ...atualizado, commissionPct: undefined };
     });
 
     // E-mail novo é outra conta no login único: libera a nova e revoga a

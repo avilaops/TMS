@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ArrowLeft, Loader2, LogIn, ShieldAlert } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { pode } from "@/lib/permissoes";
 import { deniedReason, type DeniedReason } from "../../financeiro/carregar";
 import { AbaAbastecimento, AbaChecklist, AbaDocumentos, AbaManutencao, AbaPneus, type PropsDaAba } from "./abas";
 import { AbaCustos } from "./custos";
@@ -14,7 +15,7 @@ import { AbaCustos } from "./custos";
  * Frota de um veículo: manutenção, abastecimento, documentos, pneus,
  * checklist e custos, uma aba de cada vez. As regras ficam em src/lib/frota.ts.
  *
- * A aba de custos só aparece para o administrador; quem decide o acesso é a
+ * A aba de custos só aparece para quem tem `frotaCustos`; quem decide o acesso é a
  * API, que responde 403 para os demais.
  */
 
@@ -61,7 +62,7 @@ async function carregar(id: string): Promise<Carga> {
 export default function FrotaDoVeiculoPage() {
   const { id } = useParams<{ id: string }>();
   const { data: session } = useSession();
-  const admin = session?.user?.role === "ADMIN";
+  const admin = pode(session?.user?.role, "frotaCustos");
 
   const [carga, setCarga] = useState<Exclude<Carga, { denied: DeniedReason }> | null>(null);
   const [denied, setDenied] = useState<DeniedReason | null>(null);

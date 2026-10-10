@@ -14,7 +14,7 @@ const SITUACOES: readonly Situacao[] = ['pago', 'vencido', 'aberto'];
  * filtro devolve tudo, do mais novo para o mais antigo.
  */
 export async function GET(req?: Request) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { error } = await requireStaff({ pode: 'financeiroVer' });
   if (error) return error;
 
   try {
@@ -54,7 +54,7 @@ export async function GET(req?: Request) {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff({ pode: 'financeiro' });
   if (error) return error;
 
   try {

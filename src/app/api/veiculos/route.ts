@@ -8,7 +8,7 @@ import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/au
 const DUPLICATE_MESSAGE = 'Já existe um veículo com esta placa.';
 
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frotaVer' });
   if (error) return error;
 
   try {
@@ -24,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {

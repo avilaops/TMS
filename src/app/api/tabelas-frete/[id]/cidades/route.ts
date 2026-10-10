@@ -14,7 +14,7 @@ import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
  * Tudo numa transação: lista com erro não apaga a que estava valendo.
  */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'tabelasFrete' });
   if (error) return error;
   const origem = origemDaRequisicao(req);
 

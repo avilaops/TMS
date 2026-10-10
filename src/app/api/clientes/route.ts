@@ -8,7 +8,7 @@ import { origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 const DUPLICATE_MESSAGE = 'Já existe um cliente cadastrado com este CNPJ/CPF.';
 
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'clientesVer' });
   if (error) return error;
 
   try {
@@ -25,7 +25,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'clientes' });
   if (error) return error;
 
   try {

@@ -15,7 +15,7 @@ import { escolher, origemDaRequisicao, registrarAuditoria } from '@/lib/auditori
  * registrado: a sobra devolvida ou o complemento pago são lançados lá, à mão.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'equipeValores' });
   if (error) return error;
 
   try {

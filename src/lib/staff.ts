@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma, { SemEmpresaError } from "@/lib/prisma";
+import { pode, type Capacidade, type PerfilInterno } from "@/lib/permissoes";
 
-export type StaffRole = "ADMIN" | "OPERATION";
+export type StaffRole = PerfilInterno;
 
 export type StaffUser = {
   id: string;
@@ -12,6 +13,9 @@ export type StaffUser = {
   role: StaffRole;
 };
 
+/** O que a rota exige: uma capacidade da matriz (o normal) ou, na forma antiga, uma lista de perfis. */
+export type RegraDeAcesso = readonly StaffRole[] | { pode: Capacidade };
+
 /**
  * Confere o perfil do usuário logado nas rotas internas de /api.
  *
@@ -19,13 +23,19 @@ export type StaffUser = {
  * rota interna precisa passar por este helper antes de tocar no banco — é o
  * que impede um CLIENT ou DRIVER autenticado de ler clientes, financeiro etc.
  *
+ * A rota diz a capacidade que exige (`requireStaff({ pode: "financeiro" })`) e
+ * a matriz de `src/lib/permissoes.ts` diz quais perfis a têm. A lista de perfis
+ * (`requireStaff(["ADMIN"])`) e a chamada sem argumento (ADMIN e OPERATION)
+ * continuam valendo, mas nenhuma rota deve usá-las: `tests/perfis.test.ts`
+ * recusa rota sem capacidade.
+ *
  * O perfil vem do banco, não do token: o JWT guarda o perfil do momento do
  * login, e um usuário rebaixado continuaria entrando até a sessão expirar.
  *
- * Sem sessão → 401. Sessão com perfil fora de `roles` → 403.
+ * Sem sessão → 401. Sessão com perfil que não atende à regra → 403.
  */
 export async function requireStaff(
-  roles: readonly StaffRole[] = ["ADMIN", "OPERATION"]
+  regra: RegraDeAcesso = ["ADMIN", "OPERATION"]
 ): Promise<{ user: StaffUser; error: null } | { user: null; error: NextResponse }> {
   const session = await getServerSession(authOptions);
 
@@ -56,7 +66,9 @@ export async function requireStaff(
     };
   }
 
-  if (!(roles as readonly string[]).includes(user.role)) {
+  const liberado = "pode" in regra ? pode(user.role, regra.pode) : (regra as readonly string[]).includes(user.role);
+
+  if (!liberado) {
     return {
       user: null,
       error: NextResponse.json({ error: "Acesso negado" }, { status: 403 }),

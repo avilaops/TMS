@@ -21,7 +21,7 @@ const NOT_FOUND = 'Fatura não encontrada.';
 const SEM_ENCARGOS = { interest: null, fine: null, discount: null, paidAmount: null };
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { error } = await requireStaff({ pode: 'faturamentoVer' });
   if (error) return error;
 
   try {
@@ -62,7 +62,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
  * da fatura cancelada não é reaproveitado.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'faturamento' });
   if (error) return error;
 
   try {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Loader2, LogIn, ShieldAlert } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { pode } from "@/lib/permissoes";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
 import { Adiantamentos } from "./adiantamentos";
 import { Ausencias } from "./ausencias";
@@ -17,8 +18,9 @@ import type { PessoaDaEquipe } from "./comum";
  * adiantamentos com acerto e a produtividade dos motoristas. Uma aba por
  * assunto; no celular cada aba cabe numa tela.
  *
- * Adiantamentos são dinheiro: a aba só aparece para o administrador (e a API
- * recusa os demais). Na Produtividade, frete e comissão também são só dele.
+ * Adiantamentos são dinheiro: a aba só aparece para quem lê os valores da
+ * equipe (`equipeValoresVer`), e a API recusa os demais. Na Produtividade,
+ * frete e comissão seguem a mesma regra.
  */
 
 type Carga = { denied: DeniedReason } | { denied: null; erro: string } | { denied: null; erro: null; pessoas: PessoaDaEquipe[] };
@@ -44,7 +46,7 @@ async function carregar(): Promise<Carga> {
 export default function EquipePage() {
   const { data: session } = useSession();
   // Só para mostrar a aba: quem decide é a API, que devolve 403 para o perfil errado.
-  const admin = session?.user?.role === "ADMIN";
+  const admin = pode(session?.user?.role, "equipeValoresVer");
   const [carga, setCarga] = useState<Carga | null>(null);
   const [aba, setAba] = useState<Aba>("Pessoas");
 

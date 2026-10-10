@@ -34,7 +34,8 @@ async function segurarDespesa(tx: Prisma.TransactionClient, manifestId: string, 
 }
 
 /**
- * Aprova ou recusa uma despesa pendente. Só o administrador: aprovar cria o
+ * Aprova ou recusa uma despesa pendente. Só quem lança no financeiro
+ * (`financeiro`: administrador e financeiro): aprovar cria o
  * lançamento a pagar (ou já pago) no Financeiro, na mesma transação, como a
  * manutenção e o adiantamento fazem — ou ficam os dois, ou nenhum.
  *
@@ -43,7 +44,7 @@ async function segurarDespesa(tx: Prisma.TransactionClient, manifestId: string, 
  * de combustível tinha gerado na frota.
  */
 export async function PATCH(req: Request, { params }: Contexto) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'financeiro' });
   if (error) return error;
 
   try {
@@ -134,7 +135,7 @@ export async function PATCH(req: Request, { params }: Contexto) {
  * duas ficam.
  */
 export async function DELETE(req: Request, { params }: Contexto) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'manifestos' });
   if (error) return error;
 
   try {

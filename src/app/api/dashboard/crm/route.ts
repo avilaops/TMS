@@ -5,7 +5,7 @@ import { LEAD_INCLUDE } from "@/lib/crm";
 
 export async function GET() {
   try {
-    const { error } = await requireStaff();
+    const { error } = await requireStaff({ pode: "crm" });
     if (error) return error;
 
     const leads = await prisma.quoteLead.findMany({

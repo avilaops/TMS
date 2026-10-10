@@ -6,7 +6,7 @@ import { sugestaoDaNota } from '@/lib/nfe-db';
 
 /** Uma nota importada, com a carga sugerida enquanto ela não estiver ligada a nenhuma. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'fiscalVer' });
   if (error) return error;
 
   try {

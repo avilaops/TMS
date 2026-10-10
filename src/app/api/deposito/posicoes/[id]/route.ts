@@ -13,7 +13,7 @@ const NOT_FOUND = 'Posição não encontrada.';
  * Posição não é apagada, para o volume que passou por ela não perder o lugar.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {

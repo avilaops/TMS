@@ -8,6 +8,7 @@ import { COLLECTION_STATUS, MANIFEST_STATUS, statusBadge } from "@/lib/format";
 import { canEmbark, isManifestEditable, manifestLoadsLabel } from "@/lib/manifestos";
 import { diaNoBrasil } from "@/lib/financeiro";
 import { rotuloDaAusencia } from "@/lib/equipe";
+import { pode } from "@/lib/permissoes";
 import { loadManifestos, type Manifesto, type ManifestosState, type Minuta } from "./carregar";
 import { TelaDaViagem } from "./viagem";
 
@@ -27,9 +28,11 @@ export default function ManifestosPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   // A viagem aberta na tela de dados, rota, despesas e acerto.
   const [viagem, setViagem] = useState<Manifesto | null>(null);
-  // Aprovar despesa e ver o acerto é do administrador; a API confere de novo.
+  // Ver o acerto é de quem lê o financeiro; aprovar despesa, de quem lança
+  // nele. Só para mostrar a aba e os botões: a API confere de novo.
   const { data: session } = useSession();
-  const admin = session?.user?.role === "ADMIN";
+  const veAcerto = pode(session?.user?.role, "financeiroVer");
+  const aprovaDespesa = pode(session?.user?.role, "financeiro");
 
   const [formData, setFormData] = useState({
     driverId: "",
@@ -418,7 +421,7 @@ export default function ManifestosPage() {
       </div>
 
       {viagemAberta && (
-        <TelaDaViagem key={viagemAberta.id} manifesto={viagemAberta} admin={admin} onClose={() => setViagem(null)} onChange={recarregar} />
+        <TelaDaViagem key={viagemAberta.id} manifesto={viagemAberta} veAcerto={veAcerto} aprovaDespesa={aprovaDespesa} onClose={() => setViagem(null)} onChange={recarregar} />
       )}
 
       {isModalOpen && (

@@ -10,7 +10,7 @@ const CAMPOS_AUDITADOS = ['plate', 'model', 'type', 'capacity', 'maxWeight', 'ye
 
 /** O veículo, para o cabeçalho da tela de frota (`/dashboard/veiculos/[id]`). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frotaVer' });
   if (error) return error;
 
   try {
@@ -27,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {

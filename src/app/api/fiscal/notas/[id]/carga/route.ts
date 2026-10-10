@@ -16,7 +16,7 @@ import { CAMPOS_DA_COLETA, escolher, origemDaRequisicao, registrarAuditoria } fr
  * valor da NF da carga são os da nota, não os do formulário.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'fiscal' });
   if (error) return error;
 
   try {

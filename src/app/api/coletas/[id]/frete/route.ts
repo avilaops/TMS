@@ -26,7 +26,7 @@ const schema = z.object(
  * frete não muda mais: a fatura já saiu com ele.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'coletasFrete' });
   if (error) return error;
 
   try {

@@ -16,7 +16,7 @@ const LEITURA_INVALIDA = 'Leia o código de rastreio da carga ou a etiqueta de u
  * transportadora responde 404, igual a um código que não existe.
  */
 export async function GET(req: Request) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {

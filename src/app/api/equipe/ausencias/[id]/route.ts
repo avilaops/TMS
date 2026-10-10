@@ -8,7 +8,7 @@ import { escolher, nadaMudou, origemDaRequisicao, registrarAuditoria } from '@/l
 
 /** Corrige tipo, período ou observação de uma ausência. De quem ela é não muda: para isso, apague e registre de novo. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'equipe' });
   if (error) return error;
 
   try {
@@ -58,7 +58,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 /** Apaga uma ausência lançada por engano. A auditoria guarda o que ela era. */
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'equipe' });
   if (error) return error;
 
   try {

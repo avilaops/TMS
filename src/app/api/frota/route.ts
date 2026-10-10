@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
+import { pode } from '@/lib/permissoes';
 import prisma from '@/lib/prisma';
 import { diaNoBrasil } from '@/lib/financeiro';
 import { DIAS_DE_AVISO, alertasDeVencimento, limitesDeCalendario, totaisDeCusto } from '@/lib/frota';
@@ -8,12 +9,13 @@ const DIA = 86_400_000;
 
 /**
  * Alertas da frota: documentos de veículo e CNHs vencidos ou a vencer em até 30
- * dias, e os veículos em manutenção. Para o ADMIN vai também o custo do mês
- * corrente (manutenção concluída e abastecimento de todos os veículos); para os
- * demais o campo nem vai na resposta. Só leitura.
+ * dias, e os veículos em manutenção. Para quem lê os custos da frota
+ * (`frotaCustos`) vai também o custo do mês corrente (manutenção concluída e
+ * abastecimento de todos os veículos); para os demais o campo nem vai na
+ * resposta. Só leitura.
  */
 export async function GET() {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'frotaVer' });
   if (error) return error;
 
   try {
@@ -68,7 +70,7 @@ export async function GET() {
       emManutencao,
     };
 
-    if (user.role === 'ADMIN') {
+    if (pode(user.role, 'frotaCustos')) {
       const mes = diaDeHoje.slice(0, 7);
       const limites = limitesDeCalendario(mes, mes);
       if (limites) {

@@ -28,7 +28,7 @@ const NOT_FOUND = 'Lançamento não encontrado.';
  * com o lançamento "pago" (ou o contrário).
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff({ pode: 'financeiro' });
   if (error) return error;
 
   try {
@@ -130,7 +130,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 /** Exclui um lançamento manual. O de fatura sai quando a fatura é cancelada. */
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff({ pode: 'financeiro' });
   if (error) return error;
 
   try {

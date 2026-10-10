@@ -21,7 +21,7 @@ const MAXIMO_NA_LISTA = 200;
 
 /** Cargas em rota ou entregues, com os dados que um CT-e precisa e o registro, se houver. */
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'fiscalVer' });
   if (error) return error;
 
   try {
@@ -44,7 +44,7 @@ export async function GET() {
  * desfazem o registro. Nada é enviado à SEFAZ.
  */
 export async function POST(req: Request) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'fiscal' });
   if (error) return error;
 
   try {

@@ -1,7 +1,9 @@
 // Carga dos indicadores do painel, fora do componente para poder ser testada
 // sem navegador (tests/seguranca-usuarios.test.ts).
 
-// `receita` só vem da API para o perfil ADMIN.
+import { pode } from "@/lib/permissoes";
+
+// `receita` só vem da API para quem lê o financeiro (`financeiroVer`).
 export type Stats = {
   coletas: number;
   manifestos: number;
@@ -64,13 +66,14 @@ export async function loadStats(request: () => Promise<Response>): Promise<Paine
 
 /**
  * Cartão "Receita" e atalho do financeiro. Com a resposta em mãos quem decide
- * é a API (o campo `receita` só vai para ADMIN). Sem ela — carregando, com erro
- * ou com a sessão caída — vale o perfil da sessão: o ADMIN vê o cartão em estado de erro em vez
- * de o cartão sumir como se ele não tivesse acesso.
+ * é a API (o campo `receita` só vai para quem lê o financeiro). Sem ela —
+ * carregando, com erro ou com a sessão caída — vale o perfil da sessão: quem lê
+ * o financeiro vê o cartão em estado de erro em vez de o cartão sumir como se
+ * não tivesse acesso.
  */
 export function showFinance(state: PainelState, sessionRole: string | undefined): boolean {
   if (state.status === "ready") return state.stats.receita !== undefined;
-  return sessionRole === "ADMIN";
+  return pode(sessionRole, "financeiroVer");
 }
 
 /* ----------------------- Receita à mostra ou escondida ----------------------- */

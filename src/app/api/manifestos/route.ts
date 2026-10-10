@@ -58,7 +58,7 @@ async function driverOrVehicleRefusal(
 }
 
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'manifestosVer' });
   if (error) return error;
 
   try {
@@ -82,7 +82,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'manifestos' });
   if (error) return error;
 
   try {

@@ -9,7 +9,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireStaff();
+    const { error } = await requireStaff({ pode: "crm" });
     if (error) return error;
 
     const { id } = await params;

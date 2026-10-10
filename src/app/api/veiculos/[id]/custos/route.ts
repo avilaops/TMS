@@ -11,10 +11,10 @@ const ABASTECIMENTO = { date: true, odometer: true, liters: true, totalCost: tru
  * Custos do veículo num período em meses: manutenção concluída, abastecimento,
  * total, km rodados, custo por km e consumo médio.
  * `?de=AAAA-MM&ate=AAAA-MM`; sem os dois, o mês corrente e os dois anteriores.
- * Custo é dado financeiro: só ADMIN. As contas estão em src/lib/frota.ts.
+ * Custo é dado financeiro: só quem tem `frotaCustos`. As contas estão em src/lib/frota.ts.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { error } = await requireStaff({ pode: 'frotaCustos' });
   if (error) return error;
 
   try {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
+import { pode } from '@/lib/permissoes';
 import prisma from '@/lib/prisma';
 import { limitesDoPeriodo, periodoDoRelatorio } from '@/lib/relatorios';
 import { produtividadeDaEquipe, semValores } from '@/lib/equipe';
@@ -16,11 +17,11 @@ import { finalizadaNoPeriodo } from '@/lib/viagem';
  * - Entregas, prazo, peso e frete: as cargas que viraram "Entregue" no período,
  *   pelo histórico de status, com o motorista da carga.
  *
- * Frete e comissão são dinheiro: só o administrador recebe. Para a operação os
- * campos nem vão na resposta.
+ * Frete e comissão são dinheiro: só recebe quem lê os valores da equipe
+ * (`equipeValoresVer`). Para os demais os campos nem vão na resposta.
  */
 export async function GET(req?: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'equipeVer' });
   if (error) return error;
 
   try {
@@ -80,7 +81,7 @@ export async function GET(req?: Request) {
       })),
     }).filter((linha) => !inativos.has(linha.driverId) || linha.entregas > 0 || linha.viagens > 0);
 
-    const comValores = user.role === 'ADMIN';
+    const comValores = pode(user.role, 'equipeValoresVer');
     return NextResponse.json({
       periodo: { de, ate },
       comValores,

@@ -10,7 +10,7 @@ import { FATURAVEL, INVOICE_COLLECTION_SELECT } from '@/lib/faturas';
  * entram em fatura depois de o operador informar o frete.
  */
 export async function GET(req: Request) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { error } = await requireStaff({ pode: 'faturamentoVer' });
   if (error) return error;
 
   try {

@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { pode } from '@/lib/permissoes';
 import { PROOF_STATUS } from '@/lib/entregas';
 import { statusBadge } from '@/lib/format';
 import { Conferencia } from './conferencia';
@@ -15,7 +16,7 @@ export default async function ComprovantePage({ params }: { params: Promise<{ id
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect('/login');
   const viewer = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
-  if (!viewer || (viewer.role !== 'ADMIN' && viewer.role !== 'OPERATION')) notFound();
+  if (!pode(viewer?.role, 'comprovantes')) notFound();
 
   const collectionId = (await params).id;
 

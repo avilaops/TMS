@@ -11,7 +11,7 @@ import { dadosDoConvite, liberarAcesso, senhaSemUso } from "@/lib/acessos";
 import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from "@/lib/auditoria";
 
 export async function GET() {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { error } = await requireStaff({ pode: "usuarios" });
   if (error) return error;
 
   try {
@@ -27,7 +27,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff({ pode: "usuarios" });
   if (error) return error;
 
   try {

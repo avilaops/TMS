@@ -23,7 +23,7 @@ const COLETADA = 'COLLECTED';
  * contas e registra quem concluiu por último.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {

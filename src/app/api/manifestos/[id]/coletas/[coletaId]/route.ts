@@ -17,7 +17,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; coletaId: string }> }
 ) {
   try {
-    const { user, error } = await requireStaff();
+    const { user, error } = await requireStaff({ pode: 'manifestos' });
     if (error) return error;
 
     const { id: manifestId, coletaId } = await params;

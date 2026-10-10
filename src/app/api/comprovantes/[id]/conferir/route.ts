@@ -17,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await requireStaff();
+    const { user, error } = await requireStaff({ pode: 'comprovantes' });
     if (error) return error;
 
     const collectionId = (await params).id;

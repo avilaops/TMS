@@ -8,7 +8,7 @@ import { escolher, nadaMudou, origemDaRequisicao, registrarAuditoria } from '@/l
 
 /** Altera nome e telefone, ou desativa e reativa. O CPF é a chave do cadastro e não muda. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'equipe' });
   if (error) return error;
 
   try {

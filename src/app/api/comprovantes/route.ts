@@ -14,7 +14,7 @@ import {
  */
 export async function GET(req: Request) {
   try {
-    const { error } = await requireStaff();
+    const { error } = await requireStaff({ pode: 'comprovantes' });
     if (error) return error;
 
     const status = new URL(req.url).searchParams.get('status') ?? 'SUBMITTED';

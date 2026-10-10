@@ -10,7 +10,7 @@ import { ABSENCE_SELECT, HELPER_SELECT, ausentesNoDia, chaveDaPessoa } from '@/l
  * do Brasil. Não traz dinheiro: é da equipe interna inteira.
  */
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'equipeVer' });
   if (error) return error;
 
   try {

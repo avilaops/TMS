@@ -10,7 +10,7 @@ import { fluxoDeCaixa, mesesDoPeriodo, periodoPadrao, resumoFinanceiro } from '@
  * vencida há um ano continua vencida.
  */
 export async function GET(req?: Request) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { error } = await requireStaff({ pode: 'financeiroVer' });
   if (error) return error;
 
   try {

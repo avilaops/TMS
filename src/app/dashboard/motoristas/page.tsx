@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { Plus, Loader2, CarFront, User } from "lucide-react";
 import { AvisoDeAcesso, type Acesso } from "@/components/AvisoDeAcesso";
+import { pode } from "@/lib/permissoes";
 
 interface Motorista {
   id: string;
@@ -63,7 +64,7 @@ export default function MotoristasPage() {
   const [formData, setFormData] = useState(FORM_VAZIO);
   // Só para mostrar o campo: quem decide é a API, que recusa o percentual dos demais perfis.
   const { data: session } = useSession();
-  const admin = session?.user?.role === "ADMIN";
+  const admin = pode(session?.user?.role, "equipeValores");
 
   useEffect(() => {
     fetchMotoristas();

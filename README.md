@@ -12,7 +12,7 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 
 | Área | Rota | Quem acessa | O que faz |
 | --- | --- | --- | --- |
-| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), equipe (ajudantes, ausências, adiantamentos e produtividade), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e; CT-e só com registro manual, sem emissão), mensageria (histórico dos avisos para sistemas de fora), auditoria, usuários |
+| Gestão | `/dashboard` | Equipe interna: `ADMIN`, `DIRECTOR`, `OPERATION`, `FINANCE`, `COMMERCIAL`, `EXPEDITION`, `WAREHOUSE` (cada um vê a sua parte: [Perfis de acesso](#perfis-de-acesso)) | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), equipe (ajudantes, ausências, adiantamentos e produtividade), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e; CT-e só com registro manual, sem emissão), mensageria (histórico dos avisos para sistemas de fora), auditoria, usuários |
 | Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline, checklist do veículo da viagem e registro de ocorrência na entrega |
 | Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas, minutas e atendimento (chamados) da própria empresa |
 | API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
@@ -20,6 +20,49 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 Não há página pública: a raiz `/` leva quem já entrou para a própria área e todo o resto para `/login`.
 
 O controle de acesso por perfil fica em [src/proxy.ts](src/proxy.ts) e é conferido de novo no servidor em cada rota interna. Perfis são estritos: um `ADMIN` não entra em `/driver` nem em `/portal`, porque não tem motorista nem empresa vinculados.
+
+### Perfis de acesso
+
+São nove perfis (enum `Role`): os sete da equipe interna, que entram em `/dashboard`, mais `DRIVER` (motorista, `/driver`) e `CLIENT` (cliente, `/portal`). O que cada perfil interno pode fazer está num arquivo só, [src/lib/permissoes.ts](src/lib/permissoes.ts): uma lista de **capacidades** (`financeiro`, `clientesVer`, `deposito`…) e os perfis que têm cada uma. Cada rota interna pede uma capacidade (`requireStaff({ pode: "financeiro" })`), o menu mostra só as telas que o perfil pode abrir ([src/app/dashboard/menu.ts](src/app/dashboard/menu.ts)) e as respostas que escondem dinheiro decidem pela mesma lista. O perfil é lido do banco a cada chamada, não do token: troca de perfil vale na hora.
+
+| Área | Administrador `ADMIN` | Diretoria `DIRECTOR` | Operação `OPERATION` | Financeiro `FINANCE` | Comercial `COMMERCIAL` | Expedição `EXPEDITION` | Conferência `WAREHOUSE` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Visão geral (contadores) | sim, com receita | sim, com receita | sim | sim, com receita | sim | sim | sim |
+| Clientes | tudo | tudo | tudo | lê; altera só condição de pagamento e limite de crédito | tudo | não | não |
+| CRM e cotações | tudo | tudo | tudo | não | tudo | não | não |
+| Tabelas de frete | tudo | lê e calcula | lê e calcula | lê e calcula | tudo | não | não |
+| Minutas (cargas) | tudo | tudo | tudo | lê; informa frete à mão | lê | lê; muda status | lê |
+| Depósito, conferência e etiquetas | tudo | tudo | tudo | não | não | não | tudo |
+| Manifestos e viagens | tudo | tudo | tudo | lê | não | tudo | não |
+| Despesas de viagem | lança e aprova | lança | lança | lê e aprova | não | lança | não |
+| Acerto e resultado da viagem | lê | lê | não | lê | não | não | não |
+| Comprovantes de entrega | tudo | tudo | tudo | não | não | tudo | não |
+| Ocorrências (chamados) | tudo | tudo | tudo | não | tudo | tudo | tudo |
+| Notas fiscais e CT-e | tudo | tudo | tudo | lê | não | lê | não |
+| Faturamento | tudo | lê | não | tudo | não | não | não |
+| Cobrança (painel) | lê | lê | não | lê | não | não | não |
+| Financeiro (lançamentos, fluxo, recibo) | tudo | lê | não | tudo | não | não | não |
+| Motoristas | tudo | tudo, sem alterar comissão | tudo, sem ver comissão | lê, com comissão | não | lê, sem comissão | não |
+| Veículos e frota | tudo | tudo | tudo | lê | não | lê; registra checklist | não |
+| Custos da frota | lê | lê | não | lê | não | não | não |
+| Equipe (ajudantes, ausências, produtividade) | tudo | tudo, com valores | tudo, sem valores | lê, com valores | não | lê, sem valores | não |
+| Adiantamentos da equipe | tudo | lê | não | tudo | não | não | não |
+| Relatórios | lê | lê | não | lê | não | não | não |
+| Mensageria | lê e reenvia | lê | não | não | não | não | não |
+| Auditoria | lê | lê | não | não | não | não | não |
+| Usuários | tudo | não | não | não | não | não | não |
+| Empresa, integração e parâmetros de cobrança | tudo | não | não | não | não | não | não |
+
+- **Administrador e Operação não mudaram** com a chegada dos outros cinco: toda rota que era "equipe interna" continua com os dois, e toda rota que era "só administrador" continua sem a Operação. Nas seções abaixo, "equipe interna" e "administrador" descrevem esses dois; os demais seguem a tabela.
+- **Diretoria** faz tudo o que a Operação faz e **lê** o que é dinheiro; não lança, não baixa, não fatura, não mexe em preço, usuário, empresa nem integração.
+- **Financeiro** não opera carga: não cria nem altera minuta, manifesto, veículo ou motorista. O percentual de comissão do motorista ele lê, mas só o administrador altera (mudar exige também o cadastro de motoristas).
+- **Atribuir perfil** é do administrador, em `/dashboard/usuarios`. Motorista continua nascendo pelo cadastro de motoristas, e cliente continua exigindo a empresa vinculada. A trava do último administrador vale para qualquer destino, e toda troca fica na auditoria (`usuario.perfil`, com o perfil de antes e o de depois).
+- **Responsável por chamado** pode ser qualquer usuário de um perfil que atende chamados (todos os internos menos o Financeiro).
+- **Rota nova** precisa de uma capacidade: [tests/perfis.test.ts](tests/perfis.test.ts) lê todas as rotas de `src/app/api`, recusa `requireStaff` sem capacidade e confere, perfil por perfil, o 403 e a passagem em cada uma.
+
+Os valores novos do enum entram por [prisma/sql/022-perfis.sql](prisma/sql/022-perfis.sql) (só `ALTER TYPE ... ADD VALUE IF NOT EXISTS`; roda em transação única, `psql -1 -f`, e pode rodar de novo). Nenhum usuário troca de perfil sozinho.
+
+Ainda não existe: perfil sob medida por empresa (a matriz é do código, igual para todas), mais de um perfil por usuário, restrição por filial ou por cliente dentro de um perfil, e tela própria de leitura para quem só lê (a Diretoria no Financeiro e o Financeiro em Clientes veem os mesmos botões; quem recusa a gravação é a API, com 403).
 
 ### Quem consome a API pública
 
@@ -423,7 +466,7 @@ O que é registrado: criar, alterar, desativar e reativar **cliente**, **motoris
 
 A tabela é criada por [prisma/sql/018-auditoria.sql](prisma/sql/018-auditoria.sql); rode `npm run db:rls` depois dela.
 
-Ainda não é registrado: o que o **motorista** faz no aplicativo (baixa de entrega, ocorrência, checklist) e o que o **cliente** faz no portal (pedir coleta, abrir e responder atendimento); cotação e CRM (inclusive converter cotação em carga); mensagem em chamado; leitura de volume, posição e cadastro de posições do depósito; registrar CT-e e ligar nota a carga que já existe; manutenção, pneu e checklist de veículo, e alterar ou apagar abastecimento e documento; o teste da integração; e o cadastro de empresas da plataforma. A troca de status de carga feita por esses caminhos continua no histórico de status da carga (`CollectionStatusHistory`), com o usuário. Também não existe: entrada e saída do sistema (login), exportar a trilha, prazo de guarda com descarte e os perfis extras do item 1.19 do roteiro (Diretoria, Expedição, Conferência, Comercial, Financeiro).
+Ainda não é registrado: o que o **motorista** faz no aplicativo (baixa de entrega, ocorrência, checklist) e o que o **cliente** faz no portal (pedir coleta, abrir e responder atendimento); cotação e CRM (inclusive converter cotação em carga); mensagem em chamado; leitura de volume, posição e cadastro de posições do depósito; registrar CT-e e ligar nota a carga que já existe; manutenção, pneu e checklist de veículo, e alterar ou apagar abastecimento e documento; o teste da integração; e o cadastro de empresas da plataforma. A troca de status de carga feita por esses caminhos continua no histórico de status da carga (`CollectionStatusHistory`), com o usuário. Também não existe: entrada e saída do sistema (login), exportar a trilha e prazo de guarda com descarte.
 
 ## Portal do cliente
 

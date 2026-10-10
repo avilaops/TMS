@@ -6,7 +6,7 @@ import { STATUS_HISTORY_SELECT } from '@/lib/historico';
 const NOT_FOUND = 'Coleta não encontrada.';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'coletasVer' });
   if (error) return error;
 
   try {

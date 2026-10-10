@@ -10,7 +10,7 @@ type Contexto = { params: Promise<{ id: string; registroId: string }> };
 
 /** Altera o pneu: posição, marca, observação e a retirada (`removedKm`; `null` devolve o pneu ao veículo). */
 export async function PATCH(req: Request, { params }: Contexto) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {
@@ -38,7 +38,7 @@ export async function PATCH(req: Request, { params }: Contexto) {
 }
 
 export async function DELETE(_req: Request, { params }: Contexto) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {

@@ -13,7 +13,7 @@ import { EVENTO_SELECT, FILTRO_DA_SITUACAO, TAMANHO_DA_PAGINA, filtrosDeAvisosSc
  * falhou ou desistiu). Uma página por vez: `proximo` é o cursor da seguinte.
  */
 export async function GET(req: Request) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { error } = await requireStaff({ pode: 'mensageriaVer' });
   if (error) return error;
 
   try {

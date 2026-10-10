@@ -14,7 +14,7 @@ import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
  * ainda está na fila. Sem endereço cadastrado não há para onde mandar: 409.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'mensageria' });
   if (error) return error;
 
   try {

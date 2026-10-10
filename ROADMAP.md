@@ -173,3 +173,4 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [ ] Integrações bancárias automatizadas (boleto, Pix dinâmico, conciliação).
 - [ ] Roteirização automática com geolocalização.
 - [x] Ordem das entregas, rota no mapa, despesas e resultado da viagem.
+- [x] Perfis de acesso: Diretoria, Financeiro, Comercial, Expedição e Conferência.

@@ -12,7 +12,7 @@ import { combustivelDasViagens } from '@/lib/viagem-db';
  * Só leitura. As contas estão em src/lib/relatorios.ts.
  */
 export async function GET(req?: Request) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { error } = await requireStaff({ pode: 'relatorios' });
   if (error) return error;
 
   try {

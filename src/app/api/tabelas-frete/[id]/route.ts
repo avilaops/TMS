@@ -14,7 +14,7 @@ import { nadaMudou, origemDaRequisicao, registrarAuditoria } from '@/lib/auditor
 const DUPLICATE_MESSAGE = 'Já existe uma tabela de frete com este nome.';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'tabelasFreteVer' });
   if (error) return error;
 
   try {
@@ -32,7 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'tabelasFrete' });
   if (error) return error;
 
   try {

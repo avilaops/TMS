@@ -9,7 +9,7 @@ import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/au
 const DUPLICATE_CPF = 'Já existe um ajudante com este CPF.';
 
 export async function GET() {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'equipeVer' });
   if (error) return error;
 
   try {
@@ -23,7 +23,7 @@ export async function GET() {
 
 /** Cadastra um ajudante. Ele não tem login: é só o registro de quem viaja junto. */
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'equipe' });
   if (error) return error;
 
   try {

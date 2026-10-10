@@ -20,7 +20,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await requireStaff();
+    const { user, error } = await requireStaff({ pode: 'manifestos' });
     if (error) return error;
 
     const manifestId = (await params).id;

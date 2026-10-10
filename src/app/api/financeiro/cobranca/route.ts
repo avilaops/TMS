@@ -11,7 +11,7 @@ import { RECEBEDOR_SELECT, recebedorDaEmpresa } from '@/lib/pix';
  * título pago some daqui na consulta seguinte.
  */
 export async function GET() {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { error } = await requireStaff({ pode: 'cobranca' });
   if (error) return error;
 
   try {

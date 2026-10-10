@@ -21,7 +21,7 @@ const DE_OUTRA_CARGA = 'Este volume não é desta carga. Confira a etiqueta.';
  * ou de outra transportadora: o código de rastreio dela não é o desta.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {

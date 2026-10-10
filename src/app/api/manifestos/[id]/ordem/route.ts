@@ -17,7 +17,7 @@ import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
  */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user, error } = await requireStaff();
+    const { user, error } = await requireStaff({ pode: 'manifestos' });
     if (error) return error;
 
     const manifestId = (await params).id;

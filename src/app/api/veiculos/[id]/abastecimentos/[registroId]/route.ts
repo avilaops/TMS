@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 
 /** Apaga um abastecimento lançado errado. O consumo dos vizinhos é refeito na próxima leitura. */
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; registroId: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {

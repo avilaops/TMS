@@ -10,11 +10,11 @@ import { origemDaRequisicao } from '@/lib/auditoria';
 /**
  * Despesas da viagem (pedágio, combustível, alimentação...), da mais recente
  * para a mais antiga, com quem lançou cada uma e o total do que não foi
- * recusado. A equipe interna lê e lança; aprovar é só do administrador
- * (/api/manifestos/[id]/despesas/[despesaId]).
+ * recusado. Quem monta viagem lê e lança; o financeiro lê; aprovar é de quem
+ * lança no financeiro (/api/manifestos/[id]/despesas/[despesaId]).
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'manifestosVer' });
   if (error) return error;
 
   try {
@@ -37,7 +37,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 /** Lança uma despesa na viagem. Nasce pendente; só a viagem cancelada não recebe. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user, error } = await requireStaff();
+    const { user, error } = await requireStaff({ pode: 'manifestos' });
     if (error) return error;
 
     const manifestId = (await params).id;

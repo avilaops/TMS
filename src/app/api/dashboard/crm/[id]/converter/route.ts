@@ -31,7 +31,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: "crm" });
   if (error) return error;
 
   try {

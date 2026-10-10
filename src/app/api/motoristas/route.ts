@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
+import { pode } from '@/lib/permissoes';
 import prisma, { transacao } from '@/lib/prisma';
 import { DRIVER_PUBLIC_INCLUDE, createDriverSchema, isUniqueViolation } from '@/lib/cadastros';
 import { DRIVER_OMIT, firstIssue } from '@/lib/usuarios';
@@ -10,14 +11,14 @@ const DUPLICATE_CPF = 'Já existe um motorista com este CPF.';
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
 
 export async function GET() {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'motoristasVer' });
   if (error) return error;
 
   try {
     const motoristas = await prisma.driver.findMany({
       include: DRIVER_PUBLIC_INCLUDE,
-      // O percentual de comissão só vai para o administrador.
-      omit: user.role === 'ADMIN' ? undefined : DRIVER_OMIT,
+      // O percentual de comissão só vai para quem lê os valores da equipe.
+      omit: pode(user.role, 'equipeValoresVer') ? undefined : DRIVER_OMIT,
       orderBy: { createdAt: 'desc' }
     });
     return NextResponse.json(motoristas);
@@ -28,7 +29,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'motoristas' });
   if (error) return error;
 
   try {

@@ -22,7 +22,7 @@ import type { Manifesto } from "./carregar";
 /**
  * A tela da viagem, aberta a partir do cartão do manifesto: dados (ajudante,
  * hodômetro, previsões), ordem das entregas com a rota no mapa, despesas e, para
- * o administrador, o acerto da viagem finalizada. Uma aba por vez, para caber
+ * quem lê o financeiro, o acerto da viagem finalizada. Uma aba por vez, para caber
  * na tela do celular.
  */
 
@@ -78,18 +78,22 @@ const json = (method: string, corpo?: unknown): RequestInit => ({
 
 export function TelaDaViagem({
   manifesto,
-  admin,
+  veAcerto,
+  aprovaDespesa,
   onClose,
   onChange,
 }: {
   manifesto: Manifesto;
-  admin: boolean;
+  /** O perfil lê o financeiro: a aba Acerto aparece na viagem finalizada. */
+  veAcerto: boolean;
+  /** O perfil lança no financeiro: aprova e recusa despesa. */
+  aprovaDespesa: boolean;
   onClose: () => void;
   /** Algo da viagem mudou no servidor: a lista de manifestos precisa ser lida de novo. */
   onChange: () => void;
 }) {
   const [aba, setAba] = useState<Aba>("Dados");
-  const abas: Aba[] = ["Dados", "Rota", "Despesas", ...(admin && manifesto.status === "FINISHED" ? (["Acerto"] as const) : [])];
+  const abas: Aba[] = ["Dados", "Rota", "Despesas", ...(veAcerto && manifesto.status === "FINISHED" ? (["Acerto"] as const) : [])];
   const selo = statusBadge(MANIFEST_STATUS, manifesto.status);
 
   return (
@@ -133,7 +137,7 @@ export function TelaDaViagem({
         <div className="flex-1 overflow-y-auto p-3 md:p-6">
           {aba === "Dados" && <Dados manifesto={manifesto} onChange={onChange} />}
           {aba === "Rota" && <Rota manifesto={manifesto} onChange={onChange} />}
-          {aba === "Despesas" && <Despesas manifesto={manifesto} admin={admin} />}
+          {aba === "Despesas" && <Despesas manifesto={manifesto} admin={aprovaDespesa} />}
           {aba === "Acerto" && <AcertoDaViagemFinalizada manifestId={manifesto.id} />}
         </div>
       </div>

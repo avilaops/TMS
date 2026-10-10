@@ -6,11 +6,18 @@ datasource db {
   provider = "postgresql"
 }
 
+// Perfis de acesso. O que cada um pode fazer está em src/lib/permissoes.ts.
+// Valor novo entra sempre no fim: é como o `ALTER TYPE ... ADD VALUE` o grava.
 enum Role {
   ADMIN
   OPERATION
   DRIVER
   CLIENT
+  DIRECTOR
+  FINANCE
+  COMMERCIAL
+  EXPEDITION
+  WAREHOUSE
 }
 
 // ---------------------------------------------------------------------------

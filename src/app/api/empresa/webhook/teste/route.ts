@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 
 /** Põe um evento de teste na fila do endereço cadastrado. Só o administrador. */
 export async function POST() {
-  const { user, error } = await requireStaff(["ADMIN"]);
+  const { user, error } = await requireStaff({ pode: 'empresa' });
   if (error) return error;
 
   try {

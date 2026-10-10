@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
+import { pode } from '@/lib/permissoes';
 import prisma from '@/lib/prisma';
 import { entregasPorDia, semanaCorrente } from '@/lib/relatorios';
 import { diaNoBrasil, valorRealizado } from '@/lib/financeiro';
 
 export async function GET() {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'painel' });
   if (error) return error;
 
   try {
@@ -51,9 +52,9 @@ export async function GET() {
       },
     };
 
-    // Receita é dado financeiro: só ADMIN, como em /api/financeiro. Para os
-    // demais o campo nem vai na resposta.
-    if (user.role === 'ADMIN') {
+    // Receita é dado financeiro: só para quem lê o financeiro, como em
+    // /api/financeiro. Para os demais o campo nem vai na resposta.
+    if (pode(user.role, 'financeiroVer')) {
       const transacoes = await prisma.financialTransaction.findMany({
         where: { type: 'INCOME', status: 'PAID' },
         select: { amount: true, paidAt: true, paidAmount: true },

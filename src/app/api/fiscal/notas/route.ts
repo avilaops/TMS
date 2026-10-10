@@ -24,7 +24,7 @@ const grandeDemais = () => NextResponse.json({ error: XML_GRANDE }, { status: 41
 
 /** Notas importadas, da mais nova para a mais antiga. `?busca=` por chave, número, CNPJ/CPF ou razão social. */
 export async function GET(req: Request) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'fiscalVer' });
   if (error) return error;
 
   try {
@@ -59,7 +59,7 @@ async function jaImportada(chave: string) {
  * A mesma nota não entra duas vezes na empresa: 409, com a carga a que está ligada.
  */
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'fiscal' });
   if (error) return error;
 
   try {

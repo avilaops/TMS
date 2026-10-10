@@ -10,7 +10,7 @@ const NOT_FOUND = 'Lançamento não encontrado.';
  * para esta e responde o mesmo 404 do inexistente.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(["ADMIN"]);
+  const { error } = await requireStaff({ pode: 'financeiroVer' });
   if (error) return error;
 
   try {

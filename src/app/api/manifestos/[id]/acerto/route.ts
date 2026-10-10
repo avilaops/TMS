@@ -10,12 +10,12 @@ import { combustivelDasViagens } from '@/lib/viagem-db';
  * combustível, custo total, resultado e margem, os km rodados e os
  * adiantamentos ligados a ela. Só leitura; as contas estão em src/lib/viagem.ts.
  *
- * É dinheiro: só o administrador. O saldo do adiantamento compara o que foi
+ * É dinheiro: só quem lê o financeiro (`financeiroVer`). O saldo do adiantamento compara o que foi
  * adiantado para a viagem com as despesas aprovadas dela — sobra, a equipe
  * devolve; falta, a empresa completa (a mesma conta do acerto de adiantamento).
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff(['ADMIN']);
+  const { error } = await requireStaff({ pode: 'financeiroVer' });
   if (error) return error;
 
   try {

@@ -21,7 +21,7 @@ const LIMITE = 300;
 
 /** Adiantamentos da equipe, do mais recente para o mais antigo. Dinheiro: só o administrador. */
 export async function GET() {
-  const { error } = await requireStaff(['ADMIN']);
+  const { error } = await requireStaff({ pode: 'equipeValoresVer' });
   if (error) return error;
 
   try {
@@ -43,7 +43,7 @@ export async function GET() {
  * a manutenção faz: ou ficam os dois, ou nenhum.
  */
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff(['ADMIN']);
+  const { user, error } = await requireStaff({ pode: 'equipeValores' });
   if (error) return error;
 
   try {

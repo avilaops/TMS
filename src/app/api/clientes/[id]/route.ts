@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
+import { CAMPOS_DE_CONDICAO, pode } from '@/lib/permissoes';
 import prisma from '@/lib/prisma';
 import { CLIENT_PUBLIC_SELECT, isUniqueViolation, updateClientSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const DUPLICATE_MESSAGE = 'Já existe outro cliente cadastrado com este CNPJ/CPF.';
+const SO_CONDICOES = 'Seu perfil só altera a condição de pagamento e o limite de crédito do cliente.';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'clientesCondicoes' });
   if (error) return error;
 
   try {
@@ -19,6 +21,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
     const data = parsed.data;
+
+    // Quem não cuida do cadastro inteiro (o financeiro) só muda a condição de
+    // pagamento e o limite de crédito: qualquer outro campo no corpo recusa o
+    // pedido todo, em vez de gravar só a parte permitida em silêncio.
+    if (!pode(user.role, 'clientes')) {
+      const foraDoAlcance = Object.keys(data).some(
+        (campo) => data[campo as keyof typeof data] !== undefined && !(CAMPOS_DE_CONDICAO as readonly string[]).includes(campo),
+      );
+      if (foraDoAlcance) {
+        return NextResponse.json({ error: SO_CONDICOES }, { status: 403 });
+      }
+    }
 
     // O cadastro como estava: é o "antes" da auditoria.
     const target = await prisma.client.findUnique({ where: { id }, select: CLIENT_PUBLIC_SELECT });

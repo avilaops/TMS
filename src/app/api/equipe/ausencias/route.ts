@@ -18,7 +18,7 @@ const DIA = /^\d{4}-\d{2}-\d{2}$/;
  * avisar que o motorista escolhido está ausente.
  */
 export async function GET(req?: Request) {
-  const { error } = await requireStaff();
+  const { error } = await requireStaff({ pode: 'equipeVer' });
   if (error) return error;
 
   try {
@@ -42,7 +42,7 @@ export async function GET(req?: Request) {
 }
 
 export async function POST(req: Request) {
-  const { user, error } = await requireStaff();
+  const { user, error } = await requireStaff({ pode: 'equipe' });
   if (error) return error;
 
   try {
