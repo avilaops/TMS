@@ -28,7 +28,8 @@ import {
   Banknote,
   BarChart3,
   Wrench,
-  Headset
+  Headset,
+  Warehouse
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -50,6 +51,7 @@ const SECOES: { titulo: string | null; links: LinkDoMenu[] }[] = [
     titulo: "Operação",
     links: [
       { href: "/dashboard/coletas", icon: Package, label: "Minutas" },
+      { href: "/dashboard/deposito", icon: Warehouse, label: "Depósito" },
       { href: "/dashboard/manifestos", icon: Route, label: "Manifestos" },
       { href: "/dashboard/comprovantes", icon: ClipboardCheck, label: "Comprovantes" },
       { href: "/dashboard/ocorrencias", icon: Headset, label: "Ocorrências" },

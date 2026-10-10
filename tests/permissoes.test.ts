@@ -80,6 +80,14 @@ suite("permissões das rotas internas", () => {
   let ocorrencias: typeof import("../src/app/api/ocorrencias/route");
   let ocorrencia: typeof import("../src/app/api/ocorrencias/[id]/route");
   let ocorrenciaMensagens: typeof import("../src/app/api/ocorrencias/[id]/mensagens/route");
+  let deposito: typeof import("../src/app/api/deposito/route");
+  let depositoConferencia: typeof import("../src/app/api/deposito/conferencia/route");
+  let depositoCarga: typeof import("../src/app/api/deposito/coletas/[id]/route");
+  let depositoVolumes: typeof import("../src/app/api/deposito/coletas/[id]/volumes/route");
+  let depositoPosicao: typeof import("../src/app/api/deposito/coletas/[id]/posicao/route");
+  let depositoConcluir: typeof import("../src/app/api/deposito/coletas/[id]/concluir/route");
+  let depositoPosicoes: typeof import("../src/app/api/deposito/posicoes/route");
+  let depositoPosicaoPorId: typeof import("../src/app/api/deposito/posicoes/[id]/route");
   let usuarios: typeof import("../src/app/api/usuarios/route");
   let usuario: typeof import("../src/app/api/usuarios/[id]/route");
 
@@ -168,6 +176,14 @@ suite("permissões das rotas internas", () => {
     ocorrencias = await import("../src/app/api/ocorrencias/route");
     ocorrencia = await import("../src/app/api/ocorrencias/[id]/route");
     ocorrenciaMensagens = await import("../src/app/api/ocorrencias/[id]/mensagens/route");
+    deposito = await import("../src/app/api/deposito/route");
+    depositoConferencia = await import("../src/app/api/deposito/conferencia/route");
+    depositoCarga = await import("../src/app/api/deposito/coletas/[id]/route");
+    depositoVolumes = await import("../src/app/api/deposito/coletas/[id]/volumes/route");
+    depositoPosicao = await import("../src/app/api/deposito/coletas/[id]/posicao/route");
+    depositoConcluir = await import("../src/app/api/deposito/coletas/[id]/concluir/route");
+    depositoPosicoes = await import("../src/app/api/deposito/posicoes/route");
+    depositoPosicaoPorId = await import("../src/app/api/deposito/posicoes/[id]/route");
     usuarios = await import("../src/app/api/usuarios/route");
     usuario = await import("../src/app/api/usuarios/[id]/route");
 
@@ -241,6 +257,15 @@ suite("permissões das rotas internas", () => {
       ["GET /api/ocorrencias/[id]", () => ocorrencia.GET(req(), ctx(semId))],
       ["PATCH /api/ocorrencias/[id]", () => ocorrencia.PATCH(req("PATCH", { status: "CLOSED" }), ctx(semId))],
       ["POST /api/ocorrencias/[id]/mensagens", () => ocorrenciaMensagens.POST(req("POST", { body: "x" }), ctx(semId))],
+      ["GET /api/deposito", () => deposito.GET()],
+      ["GET /api/deposito/conferencia", () => depositoConferencia.GET(req())],
+      ["GET /api/deposito/coletas/[id]", () => depositoCarga.GET(req(), ctx(semId))],
+      ["POST /api/deposito/coletas/[id]/volumes", () => depositoVolumes.POST(req("POST", { sequence: 1 }), ctx(semId))],
+      ["POST /api/deposito/coletas/[id]/posicao", () => depositoPosicao.POST(req("POST", { locationCode: "A-01" }), ctx(semId))],
+      ["POST /api/deposito/coletas/[id]/concluir", () => depositoConcluir.POST(req("POST"), ctx(semId))],
+      ["GET /api/deposito/posicoes", () => depositoPosicoes.GET()],
+      ["POST /api/deposito/posicoes", () => depositoPosicoes.POST(req("POST", { code: "INVASOR-01" }))],
+      ["PATCH /api/deposito/posicoes/[id]", () => depositoPosicaoPorId.PATCH(req("PATCH", { active: false }), ctx(semId))],
     ];
 
     rotasAdmin = [

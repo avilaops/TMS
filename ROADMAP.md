@@ -157,7 +157,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Cobranças e relatórios básicos.
 
 ### Fase 3: Frota e Depósito
-- [ ] Conferência via bipagem e localização de volumes.
+- [x] Conferência via bipagem e localização de volumes.
 - [x] Controle de manutenção, abastecimento, pneus e documentos.
 - [x] Custos detalhados de frota e checklists.
 - [x] Atendimento e ocorrências.

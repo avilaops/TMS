@@ -223,6 +223,33 @@ Abrir um chamado e trocar o status avisam os sistemas de fora (`ocorrencia.abert
 
 Ainda não existe: prazo de atendimento (SLA) com relógio, anexo de arquivo ou foto no chamado, e-mail ou mensagem automática ao cliente quando a transportadora responde (ele vê ao entrar no portal; o aviso por WhatsApp pode ser montado no destino dos eventos), aviso de mensagem nova, alteração de tipo, título ou carga depois de aberto, e os chamados na tela da carga. O painel inicial não conta chamados.
 
+## Recebimento, conferência e depósito
+
+Conferência dos volumes quando a carga chega, etiqueta com código de barras, posição de cada volume e a visão do que está parado no depósito. As regras ficam em [src/lib/deposito.ts](src/lib/deposito.ts); o código de barras em [src/lib/code128.ts](src/lib/code128.ts). No menu em Operação, "Depósito", para `ADMIN` e `OPERATION`. Nenhuma tela ou rota daqui mostra valor de nota ou frete.
+
+- **Volume:** a carga diz quantos volumes tem, e cada um tem um código: o de rastreio da carga mais a sequência (`1234567890-02`). O volume só ganha linha no banco (`CollectionVolume`) quando é conferido: **recebido**, **avariado** (com observação) ou **faltando**, com peso conferido opcional, posição, quem e quando. Sem linha ele está "a conferir".
+- **Conferência por leitura** (`/dashboard/deposito/conferencia`): um campo só, sempre com o foco. Leitor de código de barras é um teclado: digita o código e aperta Enter. Lê-se o código de rastreio da carga (ou a etiqueta de um volume dela) e a carga abre com os volumes esperados; cada etiqueta lida marca o volume como recebido, e "Conferir" faz o mesmo sem leitor. **Leitura repetida não conta duas vezes.** Etiqueta de outra carga é recusada, e código de carga de outra transportadora responde igual a código que não existe. Em "Editar" ficam peso, avaria, faltando e posição. Só carga **confirmada** ou **coletada** é conferida.
+- **Concluir:** o que não foi lido fica como faltando; a conferência (`WarehouseReceipt`) grava quem, quando e as divergências; e a carga confirmada passa para **coletada** pelo mesmo caminho do painel de minutas (`mudarStatusDaColeta`, em [src/lib/coletas-db.ts](src/lib/coletas-db.ts)), com a linha no histórico e o evento `coleta.status`. Precisa de ao menos um volume presente. Enquanto a carga estiver no depósito dá para corrigir volume (o faltante que apareceu) e concluir de novo: os números gravados acompanham.
+- **Divergências:** de **quantidade** quando chegou um número de volumes diferente do declarado; de **peso** quando todos chegaram, todos foram pesados e a soma difere do declarado em mais de 2% (`TOLERANCIA_DE_PESO_PCT`).
+- **Etiqueta** (`/dashboard/deposito/etiquetas/[coletaId]`, com link na lista de minutas e na conferência): uma por volume, com cliente, destino, destinatário, "Volume 2 de 3", o código legível e o código de barras **Code 128** (subconjunto B), desenhado em SVG sem biblioteca. A tabela de padrões, o dígito verificador e o desenho são testados contra valores gerados por outra implementação ([tests/code128.test.ts](tests/code128.test.ts)). Imprime pelo navegador, duas por linha numa A4; só as etiquetas saem no papel.
+- **Posições** (`/dashboard/deposito/posicoes`): cadastro com código curto único por empresa (`A-01-03`: letras, números e hífen, com ao menos uma letra, gravado em maiúsculas), descrição e ativa ou não. Aloca-se lendo o código da posição na conferência (vai para os volumes conferidos ainda sem lugar) ou no "Editar" de um volume. Posição não é apagada, é desativada.
+- **Visão do depósito** (`/dashboard/deposito`): as cargas **coletadas ainda sem manifesto**, da mais antiga para a mais nova, com volumes, posição, data de entrada (quando passou para coletada) e dias parada; busca por código, cliente ou posição; cartões com cargas, volumes e cada **alerta**, que também filtram: parada há mais de 3 dias (`DIAS_PARADO_ALERTA`), divergência de quantidade, volume avariado e carga sem posição (não passou pela conferência ou tem volume presente sem lugar).
+
+| Rota | Quem | O que faz |
+| --- | --- | --- |
+| `GET /api/deposito` | equipe | O que está no depósito, com contadores, dias e alertas |
+| `GET /api/deposito/conferencia?codigo=` | equipe | Acha a carga pelo código de rastreio ou pela etiqueta de um volume; devolve os volumes esperados |
+| `GET /api/deposito/coletas/[id]` | equipe | A carga com os volumes (é o que a etiqueta imprime) |
+| `POST /api/deposito/coletas/[id]/volumes` | equipe | Leitura (`codigo` ou `sequence`) ou correção (`status`, `weight`, `damageNote`) de um volume |
+| `POST /api/deposito/coletas/[id]/posicao` | equipe | Põe volumes numa posição (`locationCode`, `sequences`); em branco tira |
+| `POST /api/deposito/coletas/[id]/concluir` | equipe | Conclui a conferência e dá a carga como coletada |
+| `GET` e `POST /api/deposito/posicoes` | equipe | Lista (com quantos volumes há em cada uma) e cadastra posição |
+| `PATCH /api/deposito/posicoes/[id]` | equipe | Altera `code`, `description` e `active` |
+
+As tabelas são criadas por [prisma/sql/016-deposito.sql](prisma/sql/016-deposito.sql).
+
+Ainda não existe: leitura pela câmera do celular (só leitor que digita, ou digitação), impressão direta em impressora térmica (ZPL), inventário cíclico, mais de uma unidade (um depósito por empresa), foto da avaria, vínculo do volume com a NF-e, conferência de embarque no manifesto, e histórico de movimentação entre posições (fica só a posição atual). Carga com mais de 999 volumes não é conferida nem etiquetada volume a volume. O volume continua com a posição gravada depois que a carga sai para entrega; ela só deixa de contar na ocupação da posição.
+
 ## Empresa
 
 Em `/dashboard/empresa`, só para o administrador: o **nome** e o **símbolo** que aparecem no topo do painel, do portal do cliente e do app do motorista (`GET` e `PATCH /api/empresa`). O símbolo é uma imagem PNG, JPEG ou WebP, reduzida no navegador para 192 pixels antes de enviar e guardada no cadastro da empresa (`Tenant.logo`); sem símbolo, aparece o caminhão. As regras ficam em [src/lib/empresa.ts](src/lib/empresa.ts).

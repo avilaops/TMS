@@ -90,6 +90,8 @@ DECLARE
     "ProofOfDelivery": ["collectionId", "Collection", "reviewedById", "User"],
     "Occurrence": ["collectionId", "Collection", "clientId", "Client", "openedById", "User", "assigneeId", "User"],
     "OccurrenceMessage": ["occurrenceId", "Occurrence", "authorId", "User"],
+    "CollectionVolume": ["collectionId", "Collection", "locationId", "WarehouseLocation", "checkedById", "User"],
+    "WarehouseReceipt": ["collectionId", "Collection", "userId", "User"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

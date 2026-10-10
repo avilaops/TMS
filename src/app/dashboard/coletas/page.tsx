@@ -435,6 +435,15 @@ export default function ColetasPage() {
                             Comprovante
                           </Link>
                         )}
+                        {/* Etiquetas dos volumes: da coleta confirmada até a carga sair do depósito. */}
+                        {(coleta.status === 'CONFIRMED' || coleta.status === 'COLLECTED') && coleta.trackingCode && (
+                          <Link
+                            href={`/dashboard/deposito/etiquetas/${coleta.id}`}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                          >
+                            Etiquetas
+                          </Link>
+                        )}
                         {isEditable(coleta) && (
                           <button
                             type="button"

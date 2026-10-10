@@ -60,6 +60,9 @@ model Tenant {
   vehicleChecklists VehicleChecklist[]
   occurrences    Occurrence[]
   occurrenceMessages OccurrenceMessage[]
+  warehouseLocations WarehouseLocation[]
+  collectionVolumes  CollectionVolume[]
+  warehouseReceipts  WarehouseReceipt[]
 }
 
 model User {
@@ -88,6 +91,8 @@ model User {
   occurrencesOpened   Occurrence[] @relation("OccurrenceOpenedBy")
   occurrencesAssigned Occurrence[] @relation("OccurrenceAssignee")
   occurrenceMessages  OccurrenceMessage[]
+  volumesChecked      CollectionVolume[]
+  warehouseReceipts   WarehouseReceipt[]
 
   @@index([clientId])
 
@@ -331,6 +336,8 @@ model Collection {
   proof       ProofOfDelivery?
   quoteLead   QuoteLead?
   occurrences Occurrence[]
+  volumeItems CollectionVolume[]
+  warehouseReceipt WarehouseReceipt?
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -656,6 +663,89 @@ model OccurrenceMessage {
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
   @@index([occurrenceId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Recebimento, conferência e depósito
+//
+// A carga (Collection) diz quantos volumes tem. Cada volume ganha uma linha em
+// CollectionVolume quando é conferido no depósito: recebido, avariado ou
+// faltando. O código do volume é o código de rastreio da carga mais a
+// sequência ("1234567890-02"); enquanto o volume não foi conferido ele não tem
+// linha, e o código sai da conta (src/lib/deposito.ts), que é o que a etiqueta
+// imprime. WarehouseReceipt é a conferência concluída da carga: quem, quando e
+// as divergências encontradas. WarehouseLocation é a posição no depósito.
+// ---------------------------------------------------------------------------
+model WarehouseLocation {
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String   @id @default(uuid())
+  // Código curto, em maiúsculas, como está escrito na prateleira: "A-01-03".
+  code        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  volumes     CollectionVolume[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, code])
+}
+
+model CollectionVolume {
+  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String   @id @default(uuid())
+  collectionId String
+  sequence     Int      // 1 até Collection.volumes
+  code         String   // código de rastreio + "-" + sequência
+  status       String   @default("RECEIVED") // RECEIVED, DAMAGED, MISSING
+  weight       Float?   // peso conferido, em kg
+  damageNote   String?  // o que há de errado, quando avariado
+  locationId   String?  // posição no depósito
+  checkedAt    DateTime @default(now())
+  checkedById  String?  // nulo se o usuário foi apagado
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  collection   Collection         @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  location     WarehouseLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  checkedBy    User?              @relation(fields: [checkedById], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, code])
+  @@unique([collectionId, sequence])
+  @@index([locationId])
+}
+
+// A conferência concluída de uma carga. Os números são os do momento em que
+// foi concluída, e são refeitos se um volume mudar depois (um faltante que
+// apareceu). Peso conferido é nulo quando nem todo volume presente foi pesado.
+model WarehouseReceipt {
+  tenantId        String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id              String   @id @default(uuid())
+  collectionId    String   @unique
+  userId          String?  // quem concluiu; nulo se o usuário foi apagado
+  concludedAt     DateTime @default(now())
+  expectedVolumes Int      // o declarado na carga
+  receivedVolumes Int      // presentes sem avaria
+  damagedVolumes  Int      // presentes com avaria
+  missingVolumes  Int
+  declaredWeight  Float
+  checkedWeight   Float?
+  quantityDivergence Boolean @default(false)
+  weightDivergence   Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import { requireStaff } from '@/lib/staff';
 import { canTransition, statusChangeSchema } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
 import { COLLECTION_STATUS, statusBadge } from '@/lib/format';
-import { recordStatusChanges } from '@/lib/historico';
+import { mudarStatusDaColeta } from '@/lib/coletas-db';
 
 const NOT_FOUND = 'Coleta não encontrada.';
 const IN_MANIFEST = 'Esta coleta está em um manifesto: retire a carga do manifesto antes de cancelar.';
@@ -50,26 +50,11 @@ export async function POST(
 
     // Grava só se a coleta ainda estiver no status lido acima: de duas chamadas
     // simultâneas, uma encontra zero linhas e recebe 409. A linha do histórico
-    // vai na mesma transação: ou ficam as duas gravações, ou nenhuma.
-    const changed = await transacao(async (tx) => {
-      const { count } = await tx.collection.updateMany({
-        where: {
-          id: collectionId,
-          status: current.status,
-          ...(cancelling ? { manifestId: null } : {}),
-        },
-        data: {
-          status,
-          ...(status === 'DELIVERED' ? { receiverName } : {}),
-        },
-      });
-      if (count === 0) return false;
-
-      await recordStatusChanges(tx, [
-        { collectionId, fromStatus: current.status, toStatus: status, userId: user.id },
-      ]);
-      return true;
-    });
+    // vai na mesma transação (`mudarStatusDaColeta`, que a conferência do
+    // depósito também usa).
+    const changed = await transacao((tx) =>
+      mudarStatusDaColeta(tx, { collectionId, de: current.status, para: status, userId: user.id, receiverName })
+    );
     if (!changed) {
       return NextResponse.json({ error: CHANGED_MEANWHILE }, { status: 409 });
     }
