@@ -166,7 +166,10 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 
 ### Fase 4: Fiscal e Automações
 - [x] Leitura de XML e documentos fiscais.
-- [ ] Emissão fiscal (CT-e). Falta: certificado digital A1 da transportadora, credenciamento na SEFAZ e homologação. Hoje só há o registro manual do número e da chave de um CT-e emitido em outro sistema.
+- [x] Emissão de CT-e implementada (montagem validada no esquema oficial, assinatura, transmissão e cancelamento), em homologação.
+- [x] DACTE em PDF do CT-e autorizado, pelo serviço fiscal.
+- [ ] Primeira autorização real de CT-e em homologação e liberação para produção (precisa do certificado A1 e do credenciamento da transportadora na SEFAZ).
+- [ ] MDF-e.
 - [x] Auditoria de ações.
 - [x] Notificações no sistema (sininho), por push no navegador e por WhatsApp via n8n.
 - [x] Cobrança por Pix copia e cola (estático).

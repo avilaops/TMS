@@ -14,7 +14,8 @@ import { localizarEnderecosPendentes } from "@/lib/geo-db";
  *
  * Quem cria o evento de status é o gatilho do banco (prisma/sql/010-rls.sql),
  * na transação da troca; os de chamado nascem na rota, também na transação da
- * mudança (src/lib/ocorrencias-db.ts). Aqui só se entrega: o despachante pega um lote, marca
+ * mudança (src/lib/ocorrencias-db.ts), e os de CT-e, na transação que grava a
+ * autorização ou o cancelamento (src/lib/cte-db.ts). Aqui só se entrega: o despachante pega um lote, marca
  * a tentativa antes de enviar (queda no meio não repete na hora nem perde o
  * evento) e, se der errado, tenta de novo em 1, 2, 4... minutos, até
  * `TENTATIVAS` vezes.
@@ -187,9 +188,61 @@ async function dadosDaOcorrencia(evento: Pendente, payload: Record<string, unkno
   };
 }
 
+/** `cte.autorizado` e `cte.cancelado`: o CT-e como está na hora da entrega, com a carga dele. Sem o XML. */
+async function dadosDoCte(evento: Pendente, payload: Record<string, unknown>) {
+  const cteId = texto(payload.cteId);
+  const cte = cteId
+    ? await sistema.cte.findFirst({
+        where: { id: cteId, tenantId: evento.tenantId },
+        select: {
+          id: true,
+          environment: true,
+          series: true,
+          number: true,
+          accessKey: true,
+          status: true,
+          protocol: true,
+          authorizedAt: true,
+          cancelledAt: true,
+          cancelProtocol: true,
+          collection: { select: { id: true, trackingCode: true, receiver: true, destination: true, client: { select: CLIENTE } } },
+        },
+      })
+    : null;
+  if (!cte) return { cte: null };
+
+  const carga = cte.collection;
+  return {
+    cte: {
+      id: cte.id,
+      // PRODUCAO tem valor fiscal; HOMOLOGACAO é teste.
+      ambiente: cte.environment,
+      serie: cte.series,
+      numero: cte.number,
+      chave: cte.accessKey,
+      // AUTHORIZED ou CANCELLED: o estado de agora, que pode ter mudado desde que o aviso nasceu.
+      situacao: cte.status,
+      protocolo: cte.protocol,
+      autorizadoEm: cte.authorizedAt?.toISOString() ?? null,
+      canceladoEm: cte.cancelledAt?.toISOString() ?? null,
+      protocoloDoCancelamento: cte.cancelProtocol,
+      carga: {
+        id: carga.id,
+        destinatario: carga.receiver,
+        destino: carga.destination,
+        rastreio: carga.trackingCode,
+        cliente: cliente(carga.client),
+      },
+      // Onde a equipe baixa o XML, depois de entrar.
+      painel: `${enderecoPublico()}/dashboard/fiscal/cte`,
+    },
+  };
+}
+
 async function dadosDoEvento(evento: Pendente): Promise<Record<string, unknown>> {
   const payload = (evento.payload ?? {}) as Record<string, unknown>;
   if (evento.type.startsWith("fatura.")) return dadosDaFatura(evento, payload);
+  if (evento.type === "cte.autorizado" || evento.type === "cte.cancelado") return dadosDoCte(evento, payload);
   if (evento.type.startsWith("ocorrencia.")) return dadosDaOcorrencia(evento, payload);
   if (evento.type === "cobranca.vencida") return dadosDoTituloVencido(evento, payload);
   if (evento.type !== "coleta.status") return payload;

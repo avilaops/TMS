@@ -48,7 +48,8 @@ type Db = Omit<PrismaClient, "$transaction" | "$on" | "$extends">;
 export type Empresa = {
   id: string;
   db: Db;
-  transacao: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>;
+  /** `opcoes`: os tempos da transação (espera por conexão e duração), para quem espera por uma trava. */
+  transacao: <T>(fn: (tx: Tx) => Promise<T>, opcoes?: { maxWait?: number; timeout?: number }) => Promise<T>;
 };
 
 /** A empresa da sessão de quem fez a requisição (rotas do painel e do portal). */

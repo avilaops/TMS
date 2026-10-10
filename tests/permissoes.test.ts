@@ -57,6 +57,14 @@ suite("permissões das rotas internas", () => {
   let fiscalNotaCarga: typeof import("../src/app/api/fiscal/notas/[id]/carga/route");
   let fiscalNotaLigar: typeof import("../src/app/api/fiscal/notas/[id]/ligar/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
+  let cteEmissao: typeof import("../src/app/api/fiscal/cte/emissao/route");
+  let cteXml: typeof import("../src/app/api/fiscal/cte/emissao/[id]/xml/route");
+  let cteDacte: typeof import("../src/app/api/fiscal/cte/emissao/[id]/dacte/route");
+  let cteCancelar: typeof import("../src/app/api/fiscal/cte/emissao/[id]/cancelar/route");
+  let cteStatus: typeof import("../src/app/api/fiscal/cte/status-servico/route");
+  let cteSituacao: typeof import("../src/app/api/fiscal/cte/situacao/route");
+  let empresaFiscal: typeof import("../src/app/api/empresa/fiscal/route");
+  let empresaCertificado: typeof import("../src/app/api/empresa/fiscal/certificado/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
   let manifestoPorId: typeof import("../src/app/api/manifestos/[id]/route");
   let manifestoLiberar: typeof import("../src/app/api/manifestos/[id]/liberar/route");
@@ -184,6 +192,14 @@ suite("permissões das rotas internas", () => {
     fiscalNotaCarga = await import("../src/app/api/fiscal/notas/[id]/carga/route");
     fiscalNotaLigar = await import("../src/app/api/fiscal/notas/[id]/ligar/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
+    cteEmissao = await import("../src/app/api/fiscal/cte/emissao/route");
+    cteXml = await import("../src/app/api/fiscal/cte/emissao/[id]/xml/route");
+    cteDacte = await import("../src/app/api/fiscal/cte/emissao/[id]/dacte/route");
+    cteCancelar = await import("../src/app/api/fiscal/cte/emissao/[id]/cancelar/route");
+    cteStatus = await import("../src/app/api/fiscal/cte/status-servico/route");
+    cteSituacao = await import("../src/app/api/fiscal/cte/situacao/route");
+    empresaFiscal = await import("../src/app/api/empresa/fiscal/route");
+    empresaCertificado = await import("../src/app/api/empresa/fiscal/certificado/route");
     manifestos = await import("../src/app/api/manifestos/route");
     manifestoPorId = await import("../src/app/api/manifestos/[id]/route");
     manifestoLiberar = await import("../src/app/api/manifestos/[id]/liberar/route");
@@ -284,6 +300,13 @@ suite("permissões das rotas internas", () => {
       ["POST /api/fiscal/notas/[id]/ligar", () => fiscalNotaLigar.POST(req("POST", {}), ctx(semId))],
       ["GET /api/fiscal/cte", () => fiscalCte.GET()],
       ["POST /api/fiscal/cte", () => fiscalCte.POST(req("POST", {}))],
+      ["GET /api/fiscal/cte/emissao", () => cteEmissao.GET(req())],
+      ["POST /api/fiscal/cte/emissao", () => cteEmissao.POST(req("POST", { collectionId: semId }))],
+      ["GET /api/fiscal/cte/emissao/[id]/xml", () => cteXml.GET(req(), ctx(semId))],
+      ["GET /api/fiscal/cte/emissao/[id]/dacte", () => cteDacte.GET(req(), ctx(semId))],
+      ["POST /api/fiscal/cte/emissao/[id]/cancelar", () => cteCancelar.POST(req("POST", { justificativa: "Tentativa de quem não pode" }), ctx(semId))],
+      ["GET /api/fiscal/cte/status-servico", () => cteStatus.GET()],
+      ["GET /api/fiscal/cte/situacao", () => cteSituacao.GET()],
       ["GET /api/manifestos", () => manifestos.GET()],
       ["POST /api/manifestos", () => manifestos.POST(req("POST", {}))],
       ["PATCH /api/manifestos/[id]", () => manifestoPorId.PATCH(req("PATCH", { driverId: semId }), ctx(semId))],
@@ -390,6 +413,10 @@ suite("permissões das rotas internas", () => {
       ["PUT /api/empresa/gateway", () => empresaGateway.PUT(req("PUT", { accessToken: "APP_USR-invasor-0000000000000000", webhookSecret: "segredo-invasor" }))],
       ["DELETE /api/empresa/gateway", () => empresaGateway.DELETE(req("DELETE"))],
       ["POST /api/empresa/gateway/teste", () => empresaGatewayTeste.POST()],
+      ["GET /api/empresa/fiscal", () => empresaFiscal.GET()],
+      ["PUT /api/empresa/fiscal", () => empresaFiscal.PUT(req("PUT", { cnpj: "11222333000181" }))],
+      ["PUT /api/empresa/fiscal/certificado", () => empresaCertificado.PUT(req("PUT", { arquivo: "QUJD", senha: "x" }))],
+      ["DELETE /api/empresa/fiscal/certificado", () => empresaCertificado.DELETE(req("DELETE"))],
       ["POST /api/faturas/[id]/cobrancas", () => faturaCobrancas.POST(req("POST", { tipo: "PIX" }), ctx(semId))],
       ["POST /api/faturas/[id]/cobrancas/[cobrancaId]", () => faturaCobranca.POST(req("POST"), { params: Promise.resolve({ id: semId, cobrancaId: semId }) })],
       ["GET /api/equipe/adiantamentos", () => equipeAdiantamentos.GET()],

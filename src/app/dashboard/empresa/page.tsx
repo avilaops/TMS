@@ -10,10 +10,12 @@ import type { ParametrosDeCobranca } from "@/lib/cobranca";
 import { AVISO_PIX_ESTATICO, LIMITE_DA_CIDADE, LIMITE_DO_NOME, TIPOS_DE_CHAVE, TIPO_DE_CHAVE_LABEL, type TipoDeChave } from "@/lib/pix";
 import { GATEWAY_INDISPONIVEL, type GatewayDaEmpresa } from "@/lib/cobranca-gateway";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
+import { Fiscal } from "./fiscal";
 
 /**
  * Identidade da empresa (o nome e o símbolo que aparecem no cabeçalho do
- * painel), os parâmetros de cobrança e a integração. Só o administrador altera.
+ * painel), os parâmetros de cobrança, a integração e o fiscal (emitente de CT-e
+ * e certificado A1, em ./fiscal.tsx). Só o administrador altera.
  */
 
 type Carga = { denied: DeniedReason } | { denied: null; erro: string } | { denied: null; erro: null };
@@ -52,7 +54,7 @@ export default function EmpresaPage() {
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
   const arquivo = useRef<HTMLInputElement>(null);
   // No celular aparece uma parte por vez; no computador, as três.
-  const [aba, setAba] = useState<"identidade" | "cobranca" | "integracao">("identidade");
+  const [aba, setAba] = useState<"identidade" | "cobranca" | "integracao" | "fiscal">("identidade");
   const [parteDaCobranca, setParteDaCobranca] = useState<"encargos" | "mercado-pago">("encargos");
 
   useEffect(() => {
@@ -175,12 +177,13 @@ export default function EmpresaPage() {
         <p className="hidden md:block text-gray-500 text-sm mt-1">Nome e símbolo que aparecem no topo do painel</p>
       </div>
 
-      <div role="tablist" aria-label="Parte" className="md:hidden grid grid-cols-3 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+      <div role="tablist" aria-label="Parte" className="md:hidden grid grid-cols-4 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
         {(
           [
             ["identidade", "Identidade"],
             ["cobranca", "Cobrança"],
             ["integracao", "Integração"],
+            ["fiscal", "Fiscal"],
           ] as const
         ).map(([chave, rotulo]) => (
           <button
@@ -190,7 +193,7 @@ export default function EmpresaPage() {
             aria-selected={aba === chave}
             data-aba={chave}
             onClick={() => setAba(chave)}
-            className={`py-1.5 rounded-lg text-sm font-semibold ${aba === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+            className={`py-1.5 rounded-lg text-[13px] font-semibold ${aba === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
           >
             {rotulo}
           </button>
@@ -279,6 +282,8 @@ export default function EmpresaPage() {
       <MercadoPago escondida={aba !== "cobranca" || parteDaCobranca !== "mercado-pago"} />
 
       <Integracao escondida={aba !== "integracao"} />
+
+      <Fiscal escondida={aba !== "fiscal"} />
     </div>
   );
 }
@@ -555,6 +560,8 @@ const TIPO: Record<string, string> = {
   "cobranca.vencida": "Título vencido",
   "ocorrencia.aberta": "Chamado aberto",
   "ocorrencia.status": "Status de chamado",
+  "cte.autorizado": "CT-e autorizado",
+  "cte.cancelado": "CT-e cancelado",
   teste: "Teste",
 };
 

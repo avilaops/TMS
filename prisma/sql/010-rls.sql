@@ -103,6 +103,7 @@ DECLARE
     "BankStatementLine": ["transactionId", "FinancialTransaction"],
     "PaymentCharge": ["invoiceId", "Invoice"],
     "TripPosition": ["manifestId", "Manifest"],
+    "Cte": ["collectionId", "Collection", "issuedById", "User"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

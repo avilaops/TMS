@@ -44,6 +44,8 @@ export const TIPOS_DE_AVISO = [
   "despesa.lancada",
   "fatura.paga-pelo-gateway",
   "cobranca.a-conferir",
+  "cte.autorizado",
+  "cte.cancelado",
 ] as const;
 export type TipoDeAviso = (typeof TIPOS_DE_AVISO)[number];
 
@@ -273,6 +275,14 @@ export const avisoDeCobrancaAConferir = (fatura: { id: string; number: number },
   titulo: `Fatura nº ${fatura.number}: cobrança a conferir`,
   texto: motivo,
   url: `/dashboard/faturamento/${fatura.id}`,
+});
+
+/** Equipe (quem lê o fiscal): a SEFAZ autorizou, ou registrou o cancelamento de, um CT-e emitido pelo sistema. */
+export const avisoDeCte = (oQue: "autorizado" | "cancelado", cte: { numero: number; ambiente: string; carga: string | null }): Conteudo => ({
+  tipo: `cte.${oQue}`,
+  titulo: `CT-e nº ${cte.numero} ${oQue}${cte.ambiente === "PRODUCAO" ? "" : " (homologação)"}`,
+  texto: `${oQue === "autorizado" ? "A SEFAZ autorizou o CT-e" : "A SEFAZ registrou o cancelamento do CT-e"} da carga ${cte.carga ?? "sem código"}.`,
+  url: "/dashboard/fiscal/cte",
 });
 
 /* ----------------------- Avisos que as rotas compartilham ---------------------- */

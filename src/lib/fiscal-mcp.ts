@@ -1,6 +1,7 @@
 /**
  * Cliente do servidor fiscal da casa ("MCP Fiscal Brasil"), só para o que o TMS
- * usa dele: gerar o DANFE em PDF a partir do XML de uma NF-e.
+ * usa dele: gerar o DANFE em PDF a partir do XML de uma NF-e e o DACTE a partir
+ * do XML de um CT-e autorizado.
  *
  * O servidor fala MCP por HTTP (JSON-RPC em `POST`, resposta em JSON ou em
  * `text/event-stream` com uma linha `data: {json}`). A conversa tem três
@@ -160,6 +161,74 @@ const VERSAO_DO_PROTOCOLO = "2025-03-26";
  * o XML ou não devolveu um PDF).
  */
 export async function gerarDanfe(xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<Buffer> {
+  return pdfDoResultado(await chamarFerramenta("gerar_danfe", xml, opcoes));
+}
+
+/* ----------------------------------- DACTE ----------------------------------- */
+
+export const DACTE_DESLIGADO = "A geração de DACTE não está ligada neste sistema.";
+export const DACTE_RECUSADO = "O serviço fiscal não conseguiu gerar o DACTE deste CT-e.";
+export const DACTE_SEM_PROTOCOLO = "O serviço fiscal não reconheceu o protocolo de autorização deste CT-e: o DACTE não foi gerado.";
+
+/** Nome do arquivo no download. O de homologação diz no nome que não tem valor fiscal. */
+export const nomeDoArquivoDacte = (chave: string, homologacao: boolean) =>
+  `${chave.replace(/[^0-9A-Za-z]/g, "")}-dacte${homologacao ? "-HOMOLOGACAO-SEM-VALOR-FISCAL" : ""}.pdf`;
+
+/** O resultado da ferramenta diz que o CT-e tem protocolo de autorização (cStat 100)? */
+function autorizadoNoResultado(resultado: unknown): boolean {
+  if (!ehObjeto(resultado)) return false;
+  const estruturado = ehObjeto(resultado.structuredContent) ? resultado.structuredContent : null;
+  const texto = textoDoResultado(resultado);
+  const doTexto = texto ? lerJson(texto) : null;
+  const dados = estruturado ?? (ehObjeto(doTexto) ? doTexto : null);
+  return dados?.autorizado === true;
+}
+
+/**
+ * Gera o DACTE (PDF) do arquivo de um CT-e autorizado (`cteProc`) no serviço
+ * fiscal (ferramenta `gerar_dacte`). O PDF só é devolvido quando o serviço
+ * confirma que o XML traz o protocolo de autorização: este sistema não entrega
+ * DACTE de CT-e sem protocolo. As falhas são as de `gerarDanfe`, com as frases
+ * do DACTE.
+ */
+export async function gerarDacte(xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<Buffer> {
+  try {
+    const resultado = await chamarFerramenta("gerar_dacte", xml, opcoes);
+    const pdf = pdfDoResultado(resultado);
+    if (!autorizadoNoResultado(resultado)) throw new FiscalMcpError("ferramenta", DACTE_SEM_PROTOCOLO, "autorizado diferente de true");
+    return pdf;
+  } catch (erro) {
+    if (!(erro instanceof FiscalMcpError)) throw erro;
+    const frase = erro.motivo === "desligado" ? DACTE_DESLIGADO : erro.message === DANFE_RECUSADO ? DACTE_RECUSADO : erro.message;
+    throw new FiscalMcpError(erro.motivo, frase, erro.detalhe);
+  }
+}
+
+/** A resposta da rota de DACTE: o PDF como anexo, ou o erro em JSON com o status do motivo. */
+export async function respostaDoDacte(chave: string, xml: string, homologacao: boolean): Promise<Response> {
+  try {
+    const pdf = await gerarDacte(xml);
+    return new Response(new Uint8Array(pdf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${nomeDoArquivoDacte(chave, homologacao)}"`,
+        "Content-Length": String(pdf.byteLength),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+      },
+    });
+  } catch (erro) {
+    if (!(erro instanceof FiscalMcpError)) throw erro;
+    if (erro.motivo !== "desligado") console.error(`DACTE não gerado (${erro.motivo}):`, erro.detalhe ?? erro.message);
+    return Response.json({ error: erro.message }, { status: STATUS_DA_FALHA[erro.motivo] });
+  }
+}
+
+/**
+ * A conversa com o serviço: abre a sessão, chama a ferramenta com o XML e
+ * devolve o resultado dela, cru. Quem chama tira dele o que precisa.
+ */
+async function chamarFerramenta(ferramenta: "gerar_danfe" | "gerar_dacte", xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<unknown> {
   const endereco = enderecoDoFiscal();
   if (!endereco) throw new FiscalMcpError("desligado", DANFE_DESLIGADO);
 
@@ -212,8 +281,8 @@ export async function gerarDanfe(xml: string, opcoes: { tempoLimiteMs?: number }
     const aviso = await enviar({ method: "notifications/initialized" });
     await aviso.body?.cancel().catch(() => undefined);
 
-    const { resultado } = await chamar(2, "tools/call", { name: "gerar_danfe", arguments: { xml_content: xml } });
-    return pdfDoResultado(resultado);
+    const { resultado } = await chamar(2, "tools/call", { name: ferramenta, arguments: { xml_content: xml } });
+    return resultado;
   } catch (erro) {
     if (erro instanceof FiscalMcpError) throw erro;
     if (controle.signal.aborted) throw new FiscalMcpError("tempo", DANFE_TEMPO_ESGOTADO);

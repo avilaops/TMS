@@ -12,7 +12,7 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 
 | Área | Rota | Quem acessa | O que faz |
 | --- | --- | --- | --- |
-| Gestão | `/dashboard` | Equipe interna: `ADMIN`, `DIRECTOR`, `OPERATION`, `FINANCE`, `COMMERCIAL`, `EXPEDITION`, `WAREHOUSE` (cada um vê a sua parte: [Perfis de acesso](#perfis-de-acesso)) | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), equipe (ajudantes, ausências, adiantamentos e produtividade), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e; CT-e só com registro manual, sem emissão), mensageria (histórico dos avisos para sistemas de fora), auditoria, usuários |
+| Gestão | `/dashboard` | Equipe interna: `ADMIN`, `DIRECTOR`, `OPERATION`, `FINANCE`, `COMMERCIAL`, `EXPEDITION`, `WAREHOUSE` (cada um vê a sua parte: [Perfis de acesso](#perfis-de-acesso)) | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), equipe (ajudantes, ausências, adiantamentos e produtividade), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e) e CT-e (emissão pela SEFAZ, pronta para homologação, e registro manual), mensageria (histórico dos avisos para sistemas de fora), auditoria, usuários |
 | Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline, checklist do veículo da viagem e registro de ocorrência na entrega |
 | Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas, minutas e atendimento (chamados) da própria empresa |
 | API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
@@ -125,7 +125,7 @@ Todas estão documentadas em [.env.example](.env.example). As essenciais:
 | `FISCAL_MCP_URL` | Endereço do serviço fiscal que gera o DANFE em PDF (`https://fiscal.avilaops.com/mcp`). Opcional: sem ela o recurso fica desligado e o botão não aparece |
 | `FISCAL_MCP_TOKEN` | Opcional: enviado como `Authorization: Bearer` ao serviço fiscal, para quando ele exigir autenticação |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Opcionais: chaves do push no navegador (`npx web-push generate-vapid-keys`) e o contato de quem opera (`mailto:`). Sem as três o push fica desligado e só o sininho funciona: [Notificações](#notificações-sininho-e-push) |
-| `TMS_CHAVE_DE_DADOS` | Opcional: chave (32 caracteres ou mais, `openssl rand -base64 48`) que cifra as credenciais do Mercado Pago de cada empresa. Sem ela a cobrança pelo Mercado Pago fica desligada: [Cobrança pelo Mercado Pago](#cobrança-pelo-mercado-pago) |
+| `TMS_CHAVE_DE_DADOS` | Opcional: chave (32 caracteres ou mais, `openssl rand -base64 48`) que cifra as credenciais do Mercado Pago e o certificado A1 de cada empresa. Sem ela a cobrança pelo Mercado Pago e o envio do certificado (emissão de CT-e) ficam desligados: [Cobrança pelo Mercado Pago](#cobrança-pelo-mercado-pago) |
 | `MERCADO_PAGO_API` | Opcional: endereço da API do Mercado Pago (padrão `https://api.mercadopago.com`). Só os testes mudam |
 | `GEO_CONTATO` | Opcional: e-mail ou site de quem responde pelo uso do Nominatim (vai no `User-Agent`). **Sem ela os endereços de entrega não são localizados** e a rota segue pela cidade: [Mapa, endereço e GPS](#mapa-endereço-e-gps) |
 | `GEO_URL` | Opcional: servidor do Nominatim (padrão `https://nominatim.openstreetmap.org`). Troque por uma instância própria quando o volume crescer |
@@ -444,7 +444,7 @@ Importação do XML da NF-e para guardar a nota e criar a carga com os dados del
 | `GET /api/fiscal/notas/[id]/danfe` | quem baixa o XML (`fiscalVer`) | O DANFE em PDF, como anexo (`<chave>-danfe.pdf`) |
 | `POST /api/fiscal/notas/[id]/carga` | equipe | Cria a carga sugerida e liga a nota a ela |
 | `POST /api/fiscal/notas/[id]/ligar` | equipe | Liga a nota a uma carga pelo `trackingCode` |
-| `GET /api/fiscal/cte` | equipe | Cargas em rota ou entregues, com os dados que um CT-e precisa |
+| `GET /api/fiscal/cte` | equipe | Cargas em rota ou entregues, com os dados que um CT-e precisa e o CT-e emitido pelo sistema (`emitido`) |
 | `POST /api/fiscal/cte` | equipe | Registra à mão `cteNumber` e `cteKey` de um CT-e emitido em outro sistema; os dois vazios desfazem |
 | `GET /api/portal/coletas/[id]/notas/[notaId]` | cliente | O XML de uma nota de uma carga dele |
 | `GET /api/portal/coletas/[id]/notas/[notaId]/danfe` | cliente | O DANFE em PDF de uma nota de uma carga dele |
@@ -462,11 +462,79 @@ O PDF não é montado aqui: quem o gera é o servidor fiscal da casa ("MCP Fisca
 
 Ainda não existe: o botão na linha da lista de notas (só na nota aberta), guardar o PDF gerado, gerar vários de uma vez e DACTE.
 
-### CT-e: este sistema não emite
+### CT-e
 
-**Não há emissão de CT-e.** Emitir exige o certificado digital A1 da transportadora, credenciamento na SEFAZ e homologação, e nada disso existe aqui. A tela `/dashboard/fiscal/cte` diz isso no topo, lista as cargas em rota ou entregues com os dados que um CT-e precisa (todas como "não emitido", com o que falta: chave da NF-e, valor da mercadoria, frete) e deixa **registrar à mão** o número e a chave de um CT-e emitido em outro sistema, nos campos `cteNumber`, `cteKey` e `cteStatus` da carga. A chave é conferida (44 dígitos, dígito verificador, modelo 57 e o mesmo número informado), mas nada é enviado nem consultado na SEFAZ. As telas e as rotas anteriores, que simulavam a emissão com chave sorteada, foram retiradas.
+A tela `/dashboard/fiscal/cte` lista as cargas em rota ou entregues com a situação do CT-e de cada uma. Dela se **confere e emite** o CT-e pela SEFAZ (modelo 57, modal rodoviário, leiaute 4.00), se baixa o XML autorizado e o DACTE, e se cancela. O **registro manual** do número e da chave de um CT-e emitido em outro sistema continua existindo (`cteNumber`, `cteKey` e `cteStatus` da carga; a chave é conferida, nada é enviado à SEFAZ).
 
-Ainda não existe: emissão de CT-e e de MDF-e, consulta à SEFAZ (situação da nota, download pela chave), manifestação do destinatário, leitura de XML de CT-e ou de NFC-e, importação por e-mail ou em arquivo compactado, mais de uma NF-e criando uma carga só, desfazer a ligação entre nota e carga e apagar nota importada. Anexar a nota a uma carga não muda o valor da NF nem o frete dela.
+**Regra da casa: nada é "autorizado" sem o protocolo da SEFAZ.** Um CT-e só fica autorizado com `cStat` 100 e número de protocolo, para a chave, o ambiente e o resumo (`digVal`) do XML que foi enviado. Resposta "autorizado" sem protocolo, de outra chave ou de outro ambiente não autoriza nada.
+
+**O que NÃO foi provado.** Não havia certificado A1 de nenhuma transportadora nem acesso à SEFAZ: **nenhum CT-e foi autorizado de verdade, nem em homologação.** O que existe está provado até onde dá sem a SEFAZ: o XML é validado contra os esquemas oficiais, a assinatura é conferida de volta, e a conversa SOAP com autenticação mútua é exercitada contra um servidor HTTPS local que imita a SEFAZ. A primeira emissão real pode ser rejeitada por regra que só a SEFAZ aplica (cadastro do emitente, IE do tomador, tabela de classificação do IBS/CBS): a tela mostra o código e o motivo que ela devolver. Não conferido contra o serviço real: o espaço de nomes SOAP (`http://www.portalfiscal.inf.br/cte/wsdl/<serviço>V4`: o MOC traz o exemplo sem o "V4", e a SEFAZ não entrega o WSDL sem certificado) e a negociação do certificado do cliente.
+
+**Passo a passo para a transportadora**
+
+1. Credenciar-se como emissora de CT-e na SEFAZ do seu estado (ambiente de homologação e de produção) e ter o RNTRC.
+2. Em **Empresa → Fiscal**, preencher os dados do emitente (CNPJ, IE, endereço, RNTRC, regime, série e próximo número, CFOP, ICMS, IBS/CBS) e salvar. O ambiente nasce em **homologação**.
+3. Na mesma tela, enviar o **certificado digital A1** (e-CNPJ, arquivo `.pfx`/`.p12` com a senha).
+4. Em **CT-e**, "Conferir e emitir" numa carga em rota ou entregue, e "Emitir em homologação". Corrigir o que a SEFAZ rejeitar.
+5. Só depois de autorizar em homologação: em Empresa → Fiscal, trocar o ambiente para **produção** (a tela pede o CNPJ digitado de novo) e conferir o próximo número.
+
+**Dados fiscais do emitente** (`FiscalIssuer`, uma linha por empresa, só o administrador): CNPJ (aceita o **CNPJ alfanumérico**), IE, razão social, endereço com o **código IBGE** do município (achado na tabela de `src/lib/municipios.ts`; cidade que não existe é recusada), RNTRC, regime (CRT), série, próximo número, ambiente, CFOP dentro e fora do estado, situação do ICMS (00, 40, 41, 90 ou Simples Nacional) e alíquota, e os parâmetros do **IBS/CBS** (CST, `cClassTrib`, alíquotas do IBS da UF, do IBS do município e da CBS, e PIS/COFINS, que só entram na base de cálculo). Passar a produção exige digitar o CNPJ de novo. O próximo número não pode ficar abaixo de um CT-e já autorizado.
+
+**Certificado A1.** O arquivo e a senha ficam **cifrados** no banco (AES-256-GCM, chave derivada de `TMS_CHAVE_DE_DADOS`, amarrada à empresa e ao campo, como as credenciais do Mercado Pago) e **não voltam** para a tela, para log nem para a auditoria: a leitura devolve só o titular, o CNPJ, a validade e se confere com o emitente. É recusado o certificado de outro CNPJ (o de outro estabelecimento da mesma empresa, mesma raiz de 8 posições, é aceito, como o MOC permite), vencido, sem CNPJ (e-CPF) ou que não seja A1 (pela política 2.16.76.1.2.1.x). **Não é conferida** a cadeia até a ICP-Brasil nem a revogação: quem confere é a SEFAZ. Sem `TMS_CHAVE_DE_DADOS` o envio fica desligado e a tela explica.
+
+**O documento** (`src/lib/cte/montar.ts`, função pura; `src/lib/cte/preparar.ts` decide quem é quem):
+
+- remetente e destinatário saem da NF-e importada e ligada à carga (CNPJ/CPF, IE, endereço com código IBGE). Sem NF-e, só quando o nome é o do cliente pagador (cadastro) ou, para o destinatário, o de um destinatário frequente com CNPJ/CPF; carga interestadual sem NF-e não emite (a SEFAZ rejeita, 813);
+- tomador é o cliente pagador: pelo CNPJ ele é o remetente (`toma3` 0), o destinatário (`toma3` 3) ou um terceiro (`toma4`, com o endereço do cadastro);
+- início e fim da prestação são a origem e o destino da carga; valor da prestação é o frete; valor da carga é o valor da NF;
+- chave de acesso com dígito verificador (com o CNPJ alfanumérico: cada caractere vale o código ASCII menos 48), `cCT` sorteado, emissão normal, QR Code em `infCTeSupl`;
+- ICMS pela configuração (`ICMS00`, `ICMS45`, `ICMS90`, `ICMSSN`); CFOP 5932/6932 quando a prestação começa fora da UF do emitente (regra G051);
+- **IBS e CBS**: grupo `imp/IBSCBS` e total `imp/vTotDFe`. Base = prestação menos ICMS, PIS e COFINS (LC 214/2025, art. 12). CST montados hoje: 000 (com valores), 400 e 410 (sem valores). Obrigatório para o regime normal; o Simples pode ficar sem;
+- em homologação, o nome do remetente e do destinatário é a frase que a SEFAZ exige;
+- veículo e motorista da viagem vão na observação (o modal rodoviário do CT-e 4.00 não tem esses grupos: são do MDF-e).
+
+**Assinatura** (`src/lib/cte/assinar.ts`): XMLDSig "enveloped" do `infCte` (e do `infEvento`), RSA-SHA1, resumo SHA-1, C14N 1.0, transformações Enveloped e C14N: os algoritmos que o MOC 4.00 exige (item 3.2.4), os mesmos que o ERP da casa usa na NF-e.
+
+**Transmissão** (`src/lib/cte/soap.ts`, `sefaz.ts`, `enderecos.ts`): SOAP 1.2 sobre TLS 1.2 com autenticação mútua (o certificado da empresa), para `CTeRecepcaoSincV4` (XML em GZip + Base64), `CTeStatusServicoV4`, `CTeConsultaV4` e `CTeRecepcaoEventoV4`, nos endereços que o Portal do CT-e publica para cada autorizador (MT, MS, MG, PR, RS, SP, SVRS e SVSP), em homologação e produção. O certificado do servidor da SEFAZ é sempre conferido, contra as raízes do Node mais as raízes v5 e v10 da ICP-Brasil (`src/lib/cte/raizes-icp-brasil.ts`, com a origem e as impressões digitais). Tempo limite de 30 segundos.
+
+**Numeração** (`CteNumbering`, por empresa + ambiente + série, com a mesma trava da fatura): emissões simultâneas nunca levam o mesmo número. **Rejeição não consome o número** (a SEFAZ não grava CT-e rejeitado): o reenvio da mesma carga usa o mesmo número, com chave nova. Autorização consome, e a rejeição 539 (número usado por outro documento) também. **Envio sem resposta** não decide nada: o CT-e fica "sem resposta" com o mesmo XML, e a próxima tentativa consulta a SEFAZ pela chave antes de reenviar (se ela autorizou, grava; se não consta, reenvia o mesmo XML). Um buraco na numeração só aparece se uma carga rejeitada nunca for reenviada; o CT-e 4.00 não tem mais inutilização.
+
+**O CT-e da carga.** Só o CT-e autorizado **em produção** preenche `cteKey`, `cteNumber` e `cteStatus` da carga. O de homologação fica só na tabela `Cte`, marcado como homologação em toda a tela: não tem valor fiscal.
+
+**Cancelamento**: evento 110111, com justificativa de 15 a 255 letras, até 168 horas da autorização. Só fica cancelado com o evento registrado (135, com protocolo) ou quando a SEFAZ responde que já estava cancelado (218) e a consulta confirma (101).
+
+**DACTE**: o PDF é gerado pelo serviço fiscal da casa (`FISCAL_MCP_URL`, ferramenta `gerar_dacte`, o mesmo serviço do DANFE), só para CT-e autorizado, a partir do `cteProc` guardado, e só quando o serviço confirma o protocolo. O arquivo de homologação leva `HOMOLOGACAO-SEM-VALOR-FISCAL` no nome. Sem a variável o botão não aparece.
+
+**Normas conferidas** (Portal do CT-e, em 10/10/2026):
+
+| Norma | Data | O que muda aqui |
+| --- | --- | --- |
+| MOC CT-e 4.00, Visão Geral e Anexo I | fev/2023 | Leiaute, assinatura, serviços, regras do tomador, CFOP (G051), homologação (G002/G005), duplicidade (204/539), cancelamento (168 h), QR Code (item 9) |
+| NT Conjunta 2025.001 (CNPJ alfanumérico) | 25/04/2025; produção 06/07/2026 | CNPJ e chave de acesso com letras; dígito verificador com ASCII menos 48 |
+| NT 2025.001 RTC v1.14b | 30/04/2026 | Grupo `IBSCBS`, `vTotDFe`, alíquotas de 2026 (0,1% / 0% / 0,9%), regras 014, 022 e 029 |
+| NT 2026.001 v1.01 | 02/03/2026 | Vínculo de pagamento (`pgtoVinc`, eventos): facultativo, não usado |
+| NT 2026.002 v1.01 | 04/08/2026 | Rejeição 310 (IBS/CBS obrigatório para o regime normal): em homologação desde 01/07/2026; em produção, "implementação futura" |
+| NT 2026.004 v1.00 | 01/10/2026; homologação 13/10, produção 16/11/2026 | `vTotDFe` repete `vTPrest`; `vTPrestLiq` (facultativo, não usado); fim de EPEC e FS-DA (o sistema só emite em modo normal) |
+
+**Rotas**
+
+| Rota | Quem | O que faz |
+| --- | --- | --- |
+| `GET`/`PUT /api/empresa/fiscal` | administrador | Dados fiscais do emitente (a leitura traz do certificado só titular, CNPJ e validade) |
+| `PUT`/`DELETE /api/empresa/fiscal/certificado` | administrador | Envia (`{ arquivo, senha }`, arquivo em base64) e remove o certificado A1 |
+| `GET /api/fiscal/cte/situacao` | quem lê o fiscal | A empresa está pronta para emitir? Ambiente e o que falta |
+| `GET /api/fiscal/cte/emissao?collectionId=` | quem lê o fiscal | Conferência: o que vai no documento, pendências e avisos |
+| `POST /api/fiscal/cte/emissao` | quem escreve no fiscal | Monta, assina e transmite; devolve o CT-e como ficou e a mensagem da SEFAZ |
+| `GET /api/fiscal/cte/emissao/[id]/xml` | quem lê o fiscal | O `cteProc` autorizado, como anexo |
+| `GET /api/fiscal/cte/emissao/[id]/dacte` | quem lê o fiscal | O DACTE em PDF do CT-e autorizado |
+| `POST /api/fiscal/cte/emissao/[id]/cancelar` | quem escreve no fiscal | Cancela (`{ justificativa }`) |
+| `GET /api/fiscal/cte/status-servico` | quem lê o fiscal | Pergunta à SEFAZ se o serviço está em operação |
+
+Eventos para o n8n: `cte.autorizado` e `cte.cancelado` (com número, chave, ambiente, protocolo e a carga; sem o XML). Aviso no sininho para quem lê o fiscal. Auditoria: dados fiscais, certificado (sem o conteúdo), autorização, rejeição e cancelamento. As tabelas são criadas por [prisma/sql/027-cte.sql](prisma/sql/027-cte.sql); os esquemas oficiais usados nos testes estão em [fiscal/esquemas/cte-4.00](fiscal/esquemas/cte-4.00/README.md).
+
+**Ainda não existe no CT-e:** a primeira autorização real; MDF-e; carta de correção, CT-e complementar, de substituição e simplificado; contingência; expedidor e recebedor; redução de alíquota, diferimento e demais grupos do IBS/CBS além dos CST 000, 400 e 410; a conferência do CST e do `cClassTrib` contra a tabela oficial; cliente e destinatário frequente com CNPJ alfanumérico no cadastro (o cadastro de clientes ainda só aceita dígitos).
+
+Ainda não existe nas notas: consulta à SEFAZ (situação da nota, download pela chave), manifestação do destinatário, leitura de XML de CT-e ou de NFC-e, importação por e-mail ou em arquivo compactado, mais de uma NF-e criando uma carga só, desfazer a ligação entre nota e carga e apagar nota importada. Anexar a nota a uma carga não muda o valor da NF nem o frete dela.
 
 ## Empresa
 

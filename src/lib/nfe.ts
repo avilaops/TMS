@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createCollectionSchema } from "@/lib/coletas";
+import type { CteEmitido } from "@/lib/cte";
 import { enderecoDoTexto, type EnderecoDaEntrega } from "@/lib/endereco";
 
 // Documentos fiscais: leitura do XML de NF-e (modelo 55), sugestão da carga a
@@ -29,22 +30,35 @@ const CHAVE_NAO_E_DA_NOTA = "A chave de acesso não corresponde ao emitente, à 
 export const TAMANHO_DA_CHAVE = 44;
 
 /**
- * Dígito verificador da chave: módulo 11 sobre os 43 primeiros dígitos, com
- * pesos de 2 a 9 da direita para a esquerda. Resto 0 ou 1 dá dígito 0.
+ * O formato da chave desde o CNPJ alfanumérico (Nota Técnica Conjunta 2025.001,
+ * item 5, em produção desde 06/07/2026): letras maiúsculas só nas 12 primeiras
+ * posições do CNPJ do emitente. A chave só de dígitos é o caso particular.
+ */
+const CORPO_DA_CHAVE = /^[0-9]{6}[A-Z0-9]{12}[0-9]{25}$/;
+const CHAVE_INTEIRA = /^[0-9]{6}[A-Z0-9]{12}[0-9]{26}$/;
+
+/** Uma chave como a pessoa cola (com espaços, pontos, minúsculas) no formato do documento: só letras e dígitos, em maiúsculas. */
+export const limparChave = (texto: string) => texto.replace(/[^0-9a-zA-Z]/g, "").toUpperCase();
+
+/**
+ * Dígito verificador da chave: módulo 11 sobre os 43 primeiros caracteres, com
+ * pesos de 2 a 9 da direita para a esquerda. Resto 0 ou 1 dá dígito 0. Cada
+ * caractere vale o código ASCII menos 48 (NT Conjunta 2025.001): um dígito
+ * vale ele mesmo, "A" vale 17.
  */
 export function digitoDaChave(corpo: string): number | null {
-  if (!/^\d{43}$/.test(corpo)) return null;
+  if (!CORPO_DA_CHAVE.test(corpo)) return null;
   let soma = 0;
   for (let i = 0; i < corpo.length; i += 1) {
     const peso = 2 + (i % 8);
-    soma += Number(corpo[corpo.length - 1 - i]) * peso;
+    soma += (corpo.charCodeAt(corpo.length - 1 - i) - 48) * peso;
   }
   const resto = soma % 11;
   return resto < 2 ? 0 : 11 - resto;
 }
 
 export function chaveValida(chave: string): boolean {
-  if (!/^\d{44}$/.test(chave)) return false;
+  if (!CHAVE_INTEIRA.test(chave)) return false;
   return digitoDaChave(chave.slice(0, 43)) === Number(chave[43]);
 }
 
@@ -62,9 +76,11 @@ export function partesDaChave(chave: string) {
 // Leitor de XML
 // ---------------------------------------------------------------------------
 
-type No = { nome: string; atributos: Map<string, string>; filhos: No[]; texto: string };
+/** Um elemento do XML lido: o nome sem prefixo, os atributos, os filhos e o texto. */
+export type No = { nome: string; atributos: Map<string, string>; filhos: No[]; texto: string };
 
-class XmlInvalido extends Error {}
+/** O texto não é um XML que o leitor aceita. A mensagem é uma frase curta, sem ponto final. */
+export class XmlInvalido extends Error {}
 
 const NOME_XML = /^[A-Za-z_][\w.-]*(:[A-Za-z_][\w.-]*)?$/;
 const ATRIBUTO = /\s+([^\s=<>"'/]+)\s*=\s*(?:"([^"<]*)"|'([^'<]*)')/y;
@@ -141,9 +157,10 @@ function abrir(conteudo: string): { no: No; nomeCompleto: string; fechada: boole
 /**
  * Lê o XML para uma árvore de elementos. Não é um leitor completo de XML: é o
  * suficiente para documento fiscal (elementos, atributos, texto, CDATA,
- * comentário e a declaração `<?xml ?>`), e recusa o resto.
+ * comentário e a declaração `<?xml ?>`), e recusa o resto. A emissão de CT-e
+ * (src/lib/cte/) lê com ele as respostas da SEFAZ.
  */
-function lerXml(entrada: string): No {
+export function lerXml(entrada: string): No {
   const xml = entrada.charCodeAt(0) === 0xfeff ? entrada.slice(1) : entrada;
   if (xml.includes("\u0000")) throw new XmlInvalido("o arquivo tem bytes nulos");
 
@@ -208,10 +225,10 @@ function lerXml(entrada: string): No {
   return raiz;
 }
 
-const filho = (no: No | undefined, nome: string) => no?.filhos.find((f) => f.nome === nome);
+export const filho = (no: No | undefined, nome: string) => no?.filhos.find((f) => f.nome === nome);
 
 /** Texto de um elemento filho: sem espaço sobrando, cortado no tamanho da coluna. Vazio ou ausente é `null`. */
-function campo(no: No | undefined, nome: string, maximo = 200): string | null {
+export function campo(no: No | undefined, nome: string, maximo = 200): string | null {
   const valor = filho(no, nome)?.texto.replace(/\s+/g, " ").trim() ?? "";
   return valor === "" ? null : valor.slice(0, maximo);
 }
@@ -293,8 +310,9 @@ const uf = (no: No | undefined) => {
 
 /** O CNPJ; sem ele, o CPF (produtor rural, pessoa física). `null` se não há um nem outro com o tamanho certo. */
 function documento(no: No | undefined): string | null {
-  const cnpj = digitos(campo(no, "CNPJ"));
-  if (cnpj !== null && cnpj.length === 14) return cnpj;
+  // O CNPJ pode ter letras desde 2026 (NT Conjunta 2025.001).
+  const cnpj = campo(no, "CNPJ")?.toUpperCase().replace(/[^0-9A-Z]/g, "") ?? null;
+  if (cnpj !== null && /^[A-Z0-9]{12}[0-9]{2}$/.test(cnpj)) return cnpj;
   const cpf = digitos(campo(no, "CPF"));
   return cpf !== null && cpf.length === 11 ? cpf : null;
 }
@@ -335,8 +353,9 @@ export function lerNfe(xml: unknown): LeituraDaNota {
   const inf = filho(nfe, "infNFe");
   if (!inf) return recusa(`${NAO_E_NFE} (o elemento principal é <${raiz.nome}>).`);
 
-  const daNota = /^NFe(\d+)$/.exec(inf.atributos.get("Id") ?? "")?.[1] ?? null;
-  const doProtocolo = digitos(campo(filho(filho(raiz, "protNFe"), "infProt"), "chNFe"));
+  const daNota = /^NFe([0-9A-Z]+)$/.exec(inf.atributos.get("Id") ?? "")?.[1] ?? null;
+  const noProtocolo = campo(filho(filho(raiz, "protNFe"), "infProt"), "chNFe");
+  const doProtocolo = noProtocolo === null ? null : limparChave(noProtocolo);
   const chave = daNota ?? doProtocolo;
   if (chave === null || chave.length !== TAMANHO_DA_CHAVE) return recusa(CHAVE_SEM_44);
   if (!chaveValida(chave)) return recusa(CHAVE_INVALIDA);
@@ -393,6 +412,97 @@ export function lerNfe(xml: unknown): LeituraDaNota {
       totalValue,
       ...volumesDaNota(transp),
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Emitente e destinatário da nota, para o CT-e
+// ---------------------------------------------------------------------------
+
+/** O endereço como a nota traz, campo a campo (o CT-e pede assim, com o código IBGE do município). */
+export type EnderecoDaNota = {
+  logradouro: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  /** Código IBGE do município, 7 dígitos. */
+  codigoMunicipio: string | null;
+  municipio: string | null;
+  uf: string | null;
+  cep: string | null;
+};
+
+export type ParticipanteDaNota = {
+  /** CNPJ (14) ou CPF (11), só dígitos. */
+  documento: string | null;
+  /** Inscrição estadual: só dígitos, ou "ISENTO". */
+  ie: string | null;
+  nome: string | null;
+  fantasia: string | null;
+  telefone: string | null;
+  endereco: EnderecoDaNota;
+};
+
+export type ParticipantesDaNota = { emitente: ParticipanteDaNota; destinatario: ParticipanteDaNota; produto: string | null };
+
+function inscricao(no: No | undefined): string | null {
+  const valor = campo(no, "IE")?.toUpperCase() ?? null;
+  if (valor === null) return null;
+  if (valor === "ISENTO") return valor;
+  const numeros = valor.replace(/\D/g, "");
+  return numeros.length >= 2 && numeros.length <= 14 ? numeros : null;
+}
+
+function enderecoEmCampos(no: No | undefined): EnderecoDaNota {
+  const codigo = digitos(campo(no, "cMun"));
+  const cep = digitos(campo(no, "CEP"));
+  return {
+    logradouro: campo(no, "xLgr", 255),
+    numero: campo(no, "nro", 60),
+    complemento: campo(no, "xCpl", 60),
+    bairro: campo(no, "xBairro", 60),
+    codigoMunicipio: codigo !== null && codigo.length === 7 ? codigo : null,
+    municipio: campo(no, "xMun", 60),
+    uf: uf(no),
+    cep: cep !== null && cep.length === 8 ? cep : null,
+  };
+}
+
+function participante(no: No | undefined, endereco: No | undefined): ParticipanteDaNota {
+  const telefone = digitos(campo(endereco, "fone"));
+  return {
+    documento: documento(no),
+    ie: inscricao(no),
+    nome: campo(no, "xNome", 60),
+    fantasia: campo(no, "xFant", 60),
+    telefone: telefone !== null && telefone.length >= 6 && telefone.length <= 14 ? telefone : null,
+    endereco: enderecoEmCampos(endereco),
+  };
+}
+
+/**
+ * O emitente e o destinatário de uma NF-e já importada, com a inscrição
+ * estadual e o endereço campo a campo, e a descrição do primeiro produto. É o
+ * que a emissão do CT-e precisa da nota e que `FiscalDocument` não guarda em
+ * colunas. `null` quando o texto não é o XML de uma NF-e.
+ */
+export function participantesDaNota(xml: string): ParticipantesDaNota | null {
+  let raiz: No;
+  try {
+    raiz = lerXml(xml);
+  } catch (erro) {
+    if (erro instanceof XmlInvalido) return null;
+    throw erro;
+  }
+  const nfe = raiz.nome === "nfeProc" ? filho(raiz, "NFe") : raiz.nome === "NFe" ? raiz : undefined;
+  const inf = filho(nfe, "infNFe");
+  if (!inf) return null;
+  const emit = filho(inf, "emit");
+  const dest = filho(inf, "dest");
+  return {
+    emitente: participante(emit, filho(emit, "enderEmit")),
+    destinatario: participante(dest, filho(dest, "enderDest")),
+    produto: campo(filho(filho(inf, "det"), "prod"), "xProd", 60),
   };
 }
 
@@ -587,9 +697,8 @@ export const nomeDoArquivoXml = (chave: string) => `${chave.replace(/\D/g, "")}-
 // CT-e: registro manual do que foi emitido em outro sistema
 // ---------------------------------------------------------------------------
 
-// Este sistema NÃO emite CT-e: emitir exige certificado digital A1 da
-// transportadora, credenciamento na SEFAZ e homologação. O que existe é o
-// registro do número e da chave de um CT-e emitido fora daqui.
+// O registro manual do número e da chave de um CT-e emitido em outro sistema.
+// A emissão pelo próprio TMS está em src/lib/cte.ts e src/lib/cte/.
 
 /** Cargas que já saíram: é a partir da saída que o CT-e precisa existir. */
 export const STATUS_COM_CTE = ["ROUTE", "DELIVERED"] as const;
@@ -627,7 +736,7 @@ export const registrarCteSchema = z
       cteKey: z.preprocess(
         (valor) => {
           const limpo = vazioParaNulo(valor);
-          return typeof limpo === "string" ? limpo.replace(/\D/g, "") : limpo;
+          return typeof limpo === "string" ? limparChave(limpo) : limpo;
         },
         z.string(CTE_CHAVE_MESSAGE).length(TAMANHO_DA_CHAVE, CTE_CHAVE_MESSAGE).nullable(),
       ),
@@ -649,7 +758,7 @@ export const registrarCteSchema = z
     else if (partes.numero !== dados.cteNumber) ctx.addIssue({ code: "custom", message: CTE_CHAVE_DE_OUTRO_NUMERO });
   });
 
-/** A carga como a tela de CT-e a lista: os dados que um CT-e precisa e a situação do registro. */
+/** A carga como a tela de CT-e a lista: os dados que um CT-e precisa e a situação do registro. A rota acrescenta `emitido`. */
 export const CARGA_PARA_CTE_SELECT = {
   id: true,
   trackingCode: true,
@@ -688,6 +797,8 @@ export type CargaParaCte = {
   cteStatus: string | null;
   updatedAt: string;
   client: { id: string; companyName: string; tradeName: string | null; cnpj: string };
+  /** O CT-e mais recente que ESTE sistema montou para a carga (src/lib/cte.ts), se houver. */
+  emitido: CteEmitido | null;
 };
 
 /** Só há CT-e registrado quando a carga tem a chave e a situação diz emitido. */

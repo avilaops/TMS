@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { isUniqueViolation } from '@/lib/cadastros';
@@ -12,15 +13,26 @@ import {
   registrarCteSchema,
 } from '@/lib/nfe';
 import { nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
+import { EMITIDO_PELO_SISTEMA } from '@/lib/cte';
+import { CTE_DA_CARGA, paraATela } from '@/lib/cte-db';
 
-// Este sistema NÃO emite CT-e. Emitir exige certificado digital A1 da
-// transportadora, credenciamento na SEFAZ e homologação, e nada disso existe
-// aqui. Estas rotas só listam as cargas com os dados que um CT-e precisa e
-// guardam o número e a chave de um CT-e emitido em outro sistema.
+// A lista das cargas que pedem CT-e e o registro manual de um CT-e emitido em
+// outro sistema. A emissão pela SEFAZ está em /api/fiscal/cte/emissao; aqui
+// nada é enviado.
+
+const CARGA_COM_CTE_SELECT = { ...CARGA_PARA_CTE_SELECT, ...CTE_DA_CARGA } as const;
+
+type CargaLida = Prisma.CollectionGetPayload<{ select: typeof CARGA_COM_CTE_SELECT }>;
+
+/** A carga como a tela a recebe: no lugar da lista de CT-e, só o mais recente (`emitido`). */
+const paraALista = ({ ctes, ...carga }: CargaLida) => ({ ...carga, emitido: ctes[0] ? paraATela(ctes[0]) : null });
 
 const MAXIMO_NA_LISTA = 200;
 
-/** Cargas em rota ou entregues, com os dados que um CT-e precisa e o registro, se houver. */
+/**
+ * Cargas em rota ou entregues, com os dados que um CT-e precisa, o registro
+ * manual, se houver, e o CT-e mais recente que este sistema montou (`emitido`).
+ */
 export async function GET() {
   const { error } = await requireStaff({ pode: 'fiscalVer' });
   if (error) return error;
@@ -28,11 +40,11 @@ export async function GET() {
   try {
     const cargas = await prisma.collection.findMany({
       where: { status: { in: [...STATUS_COM_CTE] } },
-      select: CARGA_PARA_CTE_SELECT,
+      select: CARGA_COM_CTE_SELECT,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: MAXIMO_NA_LISTA,
     });
-    return NextResponse.json(cargas);
+    return NextResponse.json(cargas.map(paraALista));
   } catch (err) {
     console.error('Erro ao listar cargas para CT-e:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
@@ -64,6 +76,11 @@ export async function POST(req: Request) {
     if (!(STATUS_COM_CTE as readonly string[]).includes(carga.status)) {
       return NextResponse.json({ error: CTE_CARGA_NAO_SAIU }, { status: 409 });
     }
+    // O CT-e que a SEFAZ autorizou por este sistema não é trocado nem apagado à mão: o caminho é o cancelamento.
+    if (carga.cteKey !== null) {
+      const autorizado = await prisma.cte.findFirst({ where: { collectionId, accessKey: carga.cteKey, status: 'AUTHORIZED' }, select: { id: true } });
+      if (autorizado) return NextResponse.json({ error: EMITIDO_PELO_SISTEMA }, { status: 409 });
+    }
 
     let gravadas = 0;
     try {
@@ -78,7 +95,8 @@ export async function POST(req: Request) {
       throw err;
     }
 
-    const atualizada = await prisma.collection.findFirst({ where: { id: collectionId }, select: CARGA_PARA_CTE_SELECT });
+    const lida = await prisma.collection.findFirst({ where: { id: collectionId }, select: CARGA_COM_CTE_SELECT });
+    const atualizada = lida && paraALista(lida);
 
     const antes = { cteNumber: carga.cteNumber, cteKey: carga.cteKey, cteStatus: carga.cteStatus };
     const depois = { cteNumber, cteKey, cteStatus: cteKey === null ? 'PENDING' : 'ISSUED' };

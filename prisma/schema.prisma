@@ -94,6 +94,9 @@ model Tenant {
   paymentGateway     PaymentGateway?
   paymentCharges     PaymentCharge[]
   tripPositions      TripPosition[]
+  fiscalIssuer       FiscalIssuer?
+  cteNumberings      CteNumbering[]
+  ctes               Cte[]
 }
 
 model User {
@@ -130,6 +133,7 @@ model User {
   tripExpensesReviewed TripExpense[] @relation("TripExpenseReviewedBy")
   notifications        Notification[]
   pushSubscriptions    PushSubscription[]
+  ctesIssued           Cte[]
 
   @@index([clientId])
 
@@ -416,7 +420,9 @@ model Collection {
   // backfill; toda coleta nova ja nasce com ele.
   trackingCode String?  @unique
   
-  // CT-e
+  // CT-e da carga: o registrado à mão (emitido em outro sistema) ou o que este
+  // sistema emitiu e a SEFAZ autorizou EM PRODUÇÃO (tabela "Cte"). CT-e de
+  // homologação não tem valor fiscal e não chega a estes campos.
   cteKey      String?  @unique
   cteNumber   Int?
   cteStatus   String?  @default("PENDING") // PENDING, ISSUED, CANCELLED
@@ -435,6 +441,7 @@ model Collection {
   volumeItems CollectionVolume[]
   warehouseReceipt WarehouseReceipt?
   fiscalDocuments FiscalDocument[]
+  ctes        Cte[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -1446,4 +1453,136 @@ model GeoCache {
   lat       Float?
   lon       Float?
   createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Emissão de CT-e (modelo 57, modal rodoviário, leiaute 4.00)
+// ---------------------------------------------------------------------------
+
+// Dados fiscais do emitente e o certificado digital A1 da empresa (Empresa →
+// Fiscal). Uma linha por empresa. Ver src/lib/cte.ts e src/lib/cte-db.ts.
+//
+// O certificado (.pfx) e a senha dele ficam CIFRADOS (AES-256-GCM, chave
+// derivada de TMS_CHAVE_DE_DADOS; src/lib/cifra.ts) e nunca saem do servidor:
+// em claro ficam só o titular, o CNPJ e a validade, que a tela mostra. Os cinco
+// campos `cert*` nulos = sem certificado.
+model FiscalIssuer {
+  tenantId     String   @unique @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String   @id @default(uuid())
+  cnpj         String   // só dígitos
+  ie           String   // só dígitos
+  legalName    String
+  tradeName    String?
+  street       String
+  number       String
+  complement   String?
+  district     String
+  cityCode     String   // código IBGE do município, 7 dígitos
+  cityName     String
+  state        String
+  zip          String   // só dígitos
+  phone        String?
+  rntrc        String
+  taxRegime    String   // CRT: 1, 2, 3 ou 4
+  cteSeries    Int      @default(1)
+  environment  String   @default("HOMOLOGACAO") // HOMOLOGACAO, PRODUCAO
+  cfopInState  String
+  cfopOutState String
+  icmsCst      String   // 00, 40, 41, 90 ou SN (Simples Nacional)
+  icmsRate     Float    @default(0)
+
+  // IBS e CBS da Reforma Tributária (grupo imp/IBSCBS do CT-e). CST e
+  // classificação nulos = o CT-e vai sem o grupo. As alíquotas, em %, são as do
+  // ano (2026: 0,1 / 0 / 0,9). PIS e COFINS só entram na base de cálculo.
+  ibsCbsCst    String?
+  ibsCbsClass  String?
+  ibsStateRate Float    @default(0.1)
+  ibsCityRate  Float    @default(0)
+  cbsRate      Float    @default(0.9)
+  pisRate      Float    @default(0)
+  cofinsRate   Float    @default(0)
+
+  certPfxEnc      String?   @db.Text
+  certPasswordEnc String?   @db.Text
+  certSubject     String?   // nome comum (CN) do certificado
+  certTaxId       String?   // CNPJ do certificado
+  certNotBefore   DateTime?
+  certNotAfter    DateTime?
+  certUploadedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+}
+
+// Próximo número de CT-e de cada série, por ambiente: homologação e produção
+// têm numerações separadas na SEFAZ. Quem pega o número trava a empresa
+// (`pg_advisory_xact_lock`), como a fatura.
+model CteNumbering {
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String   @id @default(uuid())
+  environment String   // HOMOLOGACAO, PRODUCAO
+  series      Int
+  nextNumber  Int      @default(1)
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, environment, series])
+}
+
+// Cada CT-e que este sistema montou para uma carga. `status`:
+//   DRAFT      montado e numerado, sem resposta definitiva da SEFAZ (inclui o
+//              envio que ficou sem resposta: `unanswered`);
+//   REJECTED   a SEFAZ rejeitou (`statusCode` e `statusReason` dizem por quê);
+//   AUTHORIZED a SEFAZ autorizou: há `protocol` e o `xmlReturn` (cteProc);
+//   CANCELLED  autorizado e depois cancelado por evento.
+// Só existe AUTHORIZED com protocolo devolvido pela SEFAZ.
+// Uma carga tem no máximo um CT-e em andamento (DRAFT/REJECTED) e um autorizado
+// por ambiente; os cancelados ficam como histórico.
+model Cte {
+  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String   @id @default(uuid())
+  collectionId String
+  environment  String   // HOMOLOGACAO, PRODUCAO
+  series       Int
+  number       Int
+  accessKey    String   // 44 dígitos
+  status       String   @default("DRAFT")
+
+  xmlSent      String   @db.Text  // o CT-e assinado, como foi (ou vai ser) enviado
+  xmlReturn    String?  @db.Text  // o cteProc: CT-e + protocolo de autorização
+  protocol     String?
+  statusCode   Int?     // cStat da última resposta
+  statusReason String?  // xMotivo da última resposta, ou o problema do envio
+  issuedAt     DateTime // dhEmi
+  authorizedAt DateTime?
+
+  cancelledAt    DateTime?
+  cancelProtocol String?
+  cancelReason   String?
+  cancelXml      String?  @db.Text // o evento assinado e o retorno da SEFAZ
+
+  // Envio em andamento (uma emissão por vez por carga) e envio que ficou sem
+  // resposta: a próxima tentativa consulta a SEFAZ pela chave antes de reenviar.
+  sendingAt    DateTime?
+  unanswered   Boolean  @default(false)
+  // A SEFAZ disse que o número já foi usado por outro documento (rejeição 539):
+  // a próxima tentativa desta carga pega número novo.
+  numberBurned Boolean  @default(false)
+
+  issuedById   String?  // quem emitiu; nulo se o usuário foi apagado
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  issuedBy     User?      @relation(fields: [issuedById], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, accessKey])
+  @@unique([tenantId, environment, series, number])
+  @@index([tenantId, collectionId])
+  @@index([collectionId])
 }

@@ -26,6 +26,8 @@ export const TIPOS_DE_AVISO = {
   "cobranca.vencida": "Título vencido",
   "ocorrencia.aberta": "Chamado aberto",
   "ocorrencia.status": "Chamado mudou de status",
+  "cte.autorizado": "CT-e autorizado",
+  "cte.cancelado": "CT-e cancelado",
   teste: "Teste da integração",
 } as const;
 

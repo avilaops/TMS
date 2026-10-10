@@ -228,7 +228,7 @@ describe("tela de mensageria", () => {
     const [tipo, situacao] = [...tela.querySelectorAll("select")];
     // Todo tipo que o sistema gera está no filtro.
     expect([...tipo.querySelectorAll("option")].map((o) => o.getAttribute("value"))).toEqual(
-      ["", "coleta.status", "fatura.emitida", "fatura.paga", "fatura.reaberta", "fatura.cancelada", "cobranca.vencida", "ocorrencia.aberta", "ocorrencia.status", "teste"],
+      ["", "coleta.status", "fatura.emitida", "fatura.paga", "fatura.reaberta", "fatura.cancelada", "cobranca.vencida", "ocorrencia.aberta", "ocorrencia.status", "cte.autorizado", "cte.cancelado", "teste"],
     );
     const escolher = async (campo: HTMLSelectElement, valor: string) => {
       const { act } = await import("react");

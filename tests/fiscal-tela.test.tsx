@@ -2,11 +2,11 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ate, clicar, desmontarTudo, montar, porTexto } from "./tela";
-import type { CargaParaCte, NotaImportada, SugestaoDeCarga } from "../src/lib/nfe";
+import type { NotaImportada, SugestaoDeCarga } from "../src/lib/nfe";
 
 /**
- * Telas de documentos fiscais: as notas (importar, consultar, criar a carga) e
- * o CT-e. As regras e as rotas são testadas em `tests/fiscal.test.ts`; aqui se
+ * Tela das notas fiscais (importar, consultar, criar a carga). A tela do CT-e
+ * tem o seu arquivo (tests/cte-tela.test.tsx). As regras e as rotas são testadas em `tests/fiscal.test.ts`; aqui se
  * confere o que cada tela mostra e o que ela manda para a API.
  */
 
@@ -19,7 +19,6 @@ vi.mock("next/link", () => ({
 }));
 
 import NotasFiscaisPage from "../src/app/dashboard/fiscal/page";
-import CtePage from "../src/app/dashboard/fiscal/cte/page";
 
 type Resposta = { status?: number; body: unknown };
 type Pedido = { url: string; method: string; body: Record<string, unknown> | undefined };
@@ -40,15 +39,6 @@ function api(respostas: Record<string, Resposta | ((body: Record<string, unknown
     }),
   );
   return pedidos;
-}
-
-async function digitar(campo: HTMLInputElement | HTMLTextAreaElement, valor: string) {
-  const prototipo = campo instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  const gravar = Object.getOwnPropertyDescriptor(prototipo, "value")!.set!;
-  await act(async () => {
-    gravar.call(campo, valor);
-    campo.dispatchEvent(new Event("input", { bubbles: true }));
-  });
 }
 
 async function enviar(form: HTMLFormElement) {
@@ -260,98 +250,5 @@ describe("tela de notas fiscais", () => {
     await enviar(painel.querySelector("form")!);
     await ate(() => expect(painel.textContent).toContain("Nota ligada à carga 1234567890."));
     expect(pedidos.find((p) => p.url === "/api/fiscal/notas/n1/ligar")?.body).toEqual({ trackingCode: "1234567890" });
-  });
-});
-
-const carga = (extra: Partial<CargaParaCte> = {}): CargaParaCte => ({
-  id: "c1",
-  trackingCode: "1234567890",
-  status: "ROUTE",
-  sender: "Fábrica de Tintas",
-  receiver: "Mercado Bom Preço",
-  origin: "São José do Rio Preto - SP",
-  destination: "Mirassol - SP",
-  volumes: 3,
-  weight: 42.5,
-  invoiceKey: CHAVE,
-  invoiceValue: 1534.56,
-  freightValue: 120,
-  cteKey: null,
-  cteNumber: null,
-  cteStatus: "PENDING",
-  updatedAt: "2026-10-09T12:00:00.000Z",
-  client: { id: "cli1", companyName: "Fábrica de Tintas LTDA", tradeName: "Fábrica de Tintas", cnpj: "99444333000181" },
-  ...extra,
-});
-
-describe("tela de CT-e", () => {
-  const CHAVE_CTE = "35261099444333000343570010000005011123456783";
-
-  it("avisa que o sistema não emite CT-e, mostra tudo como não emitido e não tem nada que pareça emissão", async () => {
-    api({ "/api/fiscal/cte": { body: [carga(), carga({ id: "c2", trackingCode: "1234567891", status: "DELIVERED", invoiceKey: null, freightValue: null })] } });
-    const tela = await montar(<CtePage />);
-    await ate(() => expect(tela.querySelectorAll("tr[data-carga]")).toHaveLength(2));
-
-    const aviso = tela.querySelector("[data-aviso-cte]")!.textContent!;
-    expect(aviso).toContain("Este sistema ainda não emite CT-e.");
-    expect(aviso).toContain("A emissão não está ligada à SEFAZ");
-    expect(aviso).toContain("certificado digital A1");
-
-    expect(tela.querySelectorAll('[data-cte="nao-emitido"]')).toHaveLength(2);
-    expect(tela.querySelectorAll('[data-cte="registrado"]')).toHaveLength(0);
-    const [completa, incompleta] = [...tela.querySelectorAll("tr[data-carga]")];
-    expect(completa.textContent).toContain(CHAVE);
-    expect(completa.textContent).toMatch(/R\$\s120,00/);
-    expect(completa.textContent).not.toContain("Falta:");
-    expect(incompleta.textContent).toContain("Falta: chave da NF-e, valor do frete");
-
-    expect([...tela.querySelectorAll("button")].map((botao) => botao.textContent)).toEqual(["Registrar CT-e", "Registrar CT-e"]);
-    expect(tela.textContent).not.toMatch(/Emitir CT-e|Emitindo|Autorizado|DACTE|Homologação\)/);
-  });
-
-  it("registra o número e a chave de um CT-e emitido em outro sistema, e desfaz o registro", async () => {
-    const registrada = carga({ cteNumber: 501, cteKey: CHAVE_CTE, cteStatus: "ISSUED" });
-    const pedidos = api({
-      "/api/fiscal/cte": { body: [carga()] },
-      "POST /api/fiscal/cte": (body) => ({ body: body?.cteKey ? registrada : carga() }),
-    });
-    const tela = await montar(<CtePage />);
-    await ate(() => expect(tela.querySelectorAll("tr[data-carga]")).toHaveLength(1));
-
-    await clicar(porTexto(tela, "button", "Registrar CT-e")[0]);
-    const dialogo = tela.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(dialogo.textContent).toContain("nada é enviado à SEFAZ");
-    expect(porTexto(dialogo, "button", "Desfazer o registro")).toHaveLength(0);
-    await digitar(dialogo.querySelector("input")!, "501");
-    await digitar(dialogo.querySelector("textarea")!, CHAVE_CTE);
-    await enviar(dialogo.querySelector("form")!);
-
-    await ate(() => expect(tela.querySelector('[data-cte="registrado"]')).not.toBeNull());
-    expect(pedidos.at(-1)).toMatchObject({ method: "POST", url: "/api/fiscal/cte", body: { collectionId: "c1", cteNumber: "501", cteKey: CHAVE_CTE } });
-    expect(tela.querySelector('[data-cte="registrado"]')!.textContent).toBe("Registrado nº 501");
-    expect(tela.querySelector('[role="dialog"]')).toBeNull();
-
-    await clicar(porTexto(tela, "button", "Alterar registro")[0]);
-    await clicar(porTexto(tela, '[role="dialog"] button', "Desfazer o registro")[0]);
-    await ate(() => expect(tela.querySelector('[data-cte="nao-emitido"]')).not.toBeNull());
-    expect(pedidos.at(-1)?.body).toEqual({ collectionId: "c1", cteNumber: null, cteKey: null });
-  });
-
-  it("recusa do servidor aparece no formulário e o registro continua aberto", async () => {
-    api({
-      "/api/fiscal/cte": { body: [carga()] },
-      "POST /api/fiscal/cte": { status: 400, body: { error: "Esta chave não é de CT-e (modelo 57). Confira se não é a chave da NF-e." } },
-    });
-    const tela = await montar(<CtePage />);
-    await ate(() => expect(tela.querySelectorAll("tr[data-carga]")).toHaveLength(1));
-    await clicar(porTexto(tela, "button", "Registrar CT-e")[0]);
-    const dialogo = tela.querySelector<HTMLElement>('[role="dialog"]')!;
-    await digitar(dialogo.querySelector("input")!, "501");
-    await digitar(dialogo.querySelector("textarea")!, CHAVE);
-    await enviar(dialogo.querySelector("form")!);
-
-    await ate(() => expect(dialogo.querySelector('[role="alert"]')).not.toBeNull());
-    expect(dialogo.querySelector('[role="alert"]')!.textContent).toContain("não é de CT-e");
-    expect(tela.querySelector('[data-cte="nao-emitido"]')).not.toBeNull();
   });
 });

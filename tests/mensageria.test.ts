@@ -23,8 +23,10 @@ vi.mock("next-auth", () => ({ getServerSession: vi.fn() }));
 describe("mensageria: tipos e situação do aviso", () => {
   it("a lista de tipos cobre todo tipo de aviso que o código e os gatilhos do banco geram", () => {
     // Onde nasce cada aviso: o despachante, os chamados, os gatilhos de carga e de fatura, e o teste da integração.
-    const fontes = ["src/lib/eventos.ts", "src/lib/ocorrencias-db.ts", "prisma/sql/010-rls.sql"].map((arquivo) => readFileSync(arquivo, "utf8")).join("\n");
+    const fontes = ["src/lib/eventos.ts", "src/lib/ocorrencias-db.ts", "src/lib/cte-db.ts", "prisma/sql/010-rls.sql"].map((arquivo) => readFileSync(arquivo, "utf8")).join("\n");
     const gerados = new Set([...fontes.matchAll(/["'`]((?:coleta|fatura|cobranca|ocorrencia)\.[a-z]+)/g)].map((achado) => achado[1]));
+    // Os de CT-e nascem em `avisarIntegracao` (src/lib/cte-db.ts), que também escreve ações de auditoria com o mesmo prefixo.
+    for (const achado of fontes.matchAll(/avisarIntegracao\(tx, "(cte\.[a-z]+)"/g)) gerados.add(achado[1]);
     expect(readFileSync("src/app/api/empresa/webhook/teste/route.ts", "utf8")).toContain("type: 'teste'");
     gerados.add("teste");
 
