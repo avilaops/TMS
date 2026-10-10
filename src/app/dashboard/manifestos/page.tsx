@@ -319,7 +319,7 @@ export default function ManifestosPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center space-x-2">
                     <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-bold px-2 py-1 rounded-md">
-                      MDF-e #{manifesto.id.substring(0,6).toUpperCase()}
+                      Viagem #{manifesto.id.substring(0,6).toUpperCase()}
                     </span>
                   </div>
                   <div className="flex flex-col items-end gap-1">

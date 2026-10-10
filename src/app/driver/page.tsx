@@ -98,7 +98,7 @@ export default function DriverHome() {
               >
                 <div className="flex justify-between items-start mb-4">
                   <div className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded-md">
-                    MDF-e #{manifesto.id.substring(0,6).toUpperCase()}
+                    Viagem #{manifesto.id.substring(0,6).toUpperCase()}
                   </div>
                   <span className="text-xs font-medium text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full flex items-center">
                     <Clock className="w-3 h-3 mr-1" /> Em andamento
