@@ -12,8 +12,8 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 
 | Área | Rota | Quem acessa | O que faz |
 | --- | --- | --- | --- |
-| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e manutenção, financeiro, fiscal/CT-e, mensagens, usuários |
-| Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline |
+| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), financeiro, fiscal/CT-e, mensagens, usuários |
+| Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline, e checklist do veículo da viagem |
 | Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas e minutas da própria empresa |
 | API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
 
@@ -173,6 +173,25 @@ Em `/dashboard/relatorios`, só para o administrador. Um período em meses (`GET
 - **Financeiro:** recebido, pago e resultado pela data do pagamento, despesas pagas por categoria, e a inadimplência (quanto do que há a receber em aberto já venceu), que é a posição de hoje e não a do período.
 
 Ainda não há exportação para planilha ou PDF, DRE, nem margem por rota ou por veículo.
+
+## Frota
+
+O que se controla de cada veículo, além do cadastro. As regras e as contas ficam em [src/lib/frota.ts](src/lib/frota.ts); as contas são funções puras e não gravam nada (consumo, custo por km e situação de documento são calculados na leitura).
+
+**Tela do veículo** (`/dashboard/veiculos/[id]`, pelo link "Manutenção e frota" da lista de veículos), com uma aba por assunto. O endereço antigo da manutenção (`/dashboard/veiculos/[id]/manutencao`) leva para lá.
+
+- **Manutenção** (`GET` e `POST /api/veiculos/[id]/manutencao`): serviço, custo, data e, agora, **tipo** (preventiva ou corretiva) e **hodômetro**, os dois opcionais. Registrar continua lançando a despesa no Financeiro.
+- **Abastecimento** (`GET` e `POST /api/veiculos/[id]/abastecimentos`, `DELETE .../[registroId]`): data, litros, valor total, hodômetro, posto e motorista (os dois últimos opcionais). O **consumo (km/l)** e o **custo por km** são medidos de um abastecimento para o seguinte, pelo hodômetro (conta do tanque cheio). Fica sem medição, em vez de sair com número errado: o primeiro abastecimento, o que tem hodômetro igual ou menor que o anterior, e o que tem litros zerados.
+- **Documentos** (`GET` e `POST /api/veiculos/[id]/documentos`, `PATCH` e `DELETE .../[registroId]`): licenciamento (CRLV), seguro, ANTT, tacógrafo ou outro, com número, vencimento e observação. A **situação** é calculada: em dia, a vencer (hoje ou nos próximos 30 dias) ou vencido. Vence no fim do dia do vencimento, no relógio do Brasil; o vencimento é um dia do calendário, lido em UTC, como no financeiro. Renovar é editar o vencimento.
+- **Pneus** (`GET` e `POST /api/veiculos/[id]/pneus`, `PATCH` e `DELETE .../[registroId]`): posição, marca e modelo, data e km de instalação, km de retirada (em branco enquanto está em uso) e observação. Registro simples, sem estoque.
+- **Checklist** (`GET` e `POST /api/veiculos/[id]/checklists`): oito itens fixos (pneus, freios, luzes, óleo, água, documentos, limpeza, extintor), cada um OK ou com problema, mais hodômetro e observação. Guarda quem fez e quando; não se altera nem se apaga. O **motorista** registra pelo app, na viagem (`/driver/viagem/[id]/checklist`, `POST /api/driver/checklists`): o veículo não vem do aparelho, é o da viagem, que precisa ser dele e estar em rota. O checklist do motorista precisa de sinal (não entra na fila offline).
+- **Custos** (`GET /api/veiculos/[id]/custos?de=AAAA-MM&ate=AAAA-MM`, **só administrador**; padrão do mês corrente e os dois anteriores, no máximo 36): manutenção **concluída**, abastecimento, total, km rodados, custo por km e consumo médio. Os km saem dos hodômetros dos abastecimentos, partindo do último abastecimento anterior ao período; sem dois abastecimentos em sequência não há km nem custo por km.
+
+**Alertas** (`/dashboard/frota`, no menu em Frota; `GET /api/frota`): documentos de veículo e **CNHs** vencidos ou a vencer em 30 dias, numa lista só (a CNH é lida do cadastro do motorista, `Driver.cnhExpiry`; motorista desativado não entra), e os veículos com a situação "Em manutenção". Para o administrador vai também o **custo do mês** corrente (manutenção concluída e abastecimento de todos os veículos); para a operação o campo nem vai na resposta.
+
+Permissão: tudo é da equipe interna (`ADMIN` e `OPERATION`), menos os custos, que são do administrador. Veículo de outra empresa responde 404, como um id inventado.
+
+Ainda não existe: integração com bomba ou cartão de combustível, multas, estoque de pneus, telemetria, aviso de vencimento por mensagem (o alerta é só na tela), manutenção preventiva programada por km, e anexo do documento (PDF ou foto). O abastecimento não lança despesa no Financeiro (só a manutenção lança), e a situação de uma manutenção já registrada não é alterada pela tela.
 
 ## Empresa
 

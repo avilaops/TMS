@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma, { transacao } from '@/lib/prisma';
+import { firstIssue } from '@/lib/usuarios';
+import { createMaintenanceSchema } from '@/lib/frota';
+import { acharVeiculo, veiculoNaoEncontrado } from '@/lib/frota-db';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,11 +29,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (error) return error;
 
   try {
-    const data = await req.json();
-    
-    if (!data.description || !data.cost || !data.date) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    const parsed = createMaintenanceSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
+    const data = parsed.data;
+
+    if (!(await acharVeiculo(id))) return veiculoNaoEncontrado();
 
     // Usamos transação para garantir que ambas as operações funcionem juntas
     const result = await transacao(async (tx) => {
@@ -39,9 +44,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         data: {
           vehicleId: id,
           description: data.description,
-          cost: parseFloat(data.cost),
-          date: new Date(data.date),
-          status: data.status || 'SCHEDULED'
+          cost: data.cost,
+          date: data.date,
+          status: data.status ?? 'SCHEDULED',
+          kind: data.kind ?? null,
+          odometer: data.odometer ?? null,
         }
       });
 
@@ -49,9 +56,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await tx.financialTransaction.create({
         data: {
           type: 'EXPENSE',
-          amount: parseFloat(data.cost),
+          amount: data.cost,
           description: `Manutenção: ${data.description} (Veículo ID: ${id.substring(0, 8)})`,
-          dueDate: new Date(data.date),
+          dueDate: data.date,
           status: 'PENDING'
         }
       });

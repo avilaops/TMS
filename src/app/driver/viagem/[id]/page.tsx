@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, CheckCircle2, Package, ShieldCheck, Loader2, PenTool } from "lucide-react";
+import { ArrowLeft, MapPin, CheckCircle2, Package, ShieldCheck, Loader2, PenTool, ClipboardCheck } from "lucide-react";
 import Link from "next/link";
 
 interface Parada {
@@ -99,6 +99,14 @@ export default function ViagemDetalhes() {
           <span>{Math.round(progress)}% Concluído</span>
         </div>
       </div>
+
+      {/* O checklist é do veículo desta viagem; a rota confere que ela é deste motorista. */}
+      <Link
+        href={`/driver/viagem/${manifesto.id}/checklist`}
+        className="flex items-center justify-center w-full bg-white text-gray-900 font-medium py-3 rounded-2xl border border-gray-200 shadow-sm"
+      >
+        <ClipboardCheck className="w-5 h-5 mr-2 text-blue-600" /> Checklist do veículo
+      </Link>
 
       <div className="space-y-4">
         <h3 className="font-bold text-gray-900 px-1">Entregas</h3>

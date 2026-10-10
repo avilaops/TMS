@@ -246,8 +246,8 @@ export default function VeiculosPage() {
                       <button onClick={() => openEdit(veiculo)} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
                         Editar
                       </button>
-                      <a href={`/dashboard/veiculos/${veiculo.id}/manutencao`} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-                        Ver Histórico
+                      <a href={`/dashboard/veiculos/${veiculo.id}`} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Manutenção e frota
                       </a>
                     </td>
                   </tr>

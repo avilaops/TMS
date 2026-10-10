@@ -54,6 +54,10 @@ model Tenant {
   contentMetrics ContentMetric[]
   webhook        Webhook?
   outboxEvents   OutboxEvent[]
+  fuelings       Fueling[]
+  vehicleDocuments VehicleDocument[]
+  tires          Tire[]
+  vehicleChecklists VehicleChecklist[]
 }
 
 model User {
@@ -78,6 +82,7 @@ model User {
   client    Client?  @relation(fields: [clientId], references: [id])
   statusChanges CollectionStatusHistory[]
   proofsReviewed ProofOfDelivery[]
+  vehicleChecklists VehicleChecklist[]
 
   @@index([clientId])
 
@@ -229,6 +234,7 @@ model Driver {
   vehicles  Vehicle[]
   manifests Manifest[]
   collections Collection[]
+  fuelings  Fueling[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -253,6 +259,10 @@ model Vehicle {
   driver       Driver?  @relation(fields: [driverId], references: [id])
   manifests    Manifest[]
   maintenances Maintenance[]
+  fuelings     Fueling[]
+  documents    VehicleDocument[]
+  tires        Tire[]
+  checklists   VehicleChecklist[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -408,6 +418,9 @@ model Maintenance {
   cost        Float
   date        DateTime
   status      String   @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED
+  // PREVENTIVE ou CORRECTIVE. Nulo nas manutenções anteriores a esta coluna.
+  kind        String?
+  odometer    Int?     // km no hodômetro quando o serviço foi feito
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -416,6 +429,103 @@ model Maintenance {
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// Frota
+//
+// O que se registra de cada veículo além da manutenção: abastecimentos,
+// documentos com vencimento, pneus e checklists. Consumo, custo por km e a
+// situação de cada documento não são gravados: saem das contas de
+// src/lib/frota.ts. A CNH do motorista (Driver.cnhExpiry) entra nos mesmos
+// alertas de vencimento, lida de onde já está.
+// ---------------------------------------------------------------------------
+
+model Fueling {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  vehicleId String
+  driverId  String?
+  date      DateTime // dia do calendário, gravado à meia-noite UTC
+  liters    Float
+  totalCost Float
+  odometer  Int      // km no hodômetro na hora de abastecer
+  station   String?  // posto
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
+  driver    Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([vehicleId, date])
+}
+
+model VehicleDocument {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  vehicleId String
+  type      String   // LICENSING, INSURANCE, ANTT, TACHOGRAPH, OTHER
+  number    String?
+  expiresAt DateTime // dia do calendário, gravado à meia-noite UTC
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([vehicleId])
+  @@index([tenantId, expiresAt])
+}
+
+// Registro simples de pneu, sem estoque: onde está, desde quando e, quando
+// sai, com quantos km saiu.
+model Tire {
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String   @id @default(uuid())
+  vehicleId   String
+  position    String   // livre: "Dianteiro esquerdo", "Eixo 2 direito interno"…
+  brandModel  String
+  installedAt DateTime // dia do calendário, gravado à meia-noite UTC
+  installedKm Int
+  removedKm   Int?     // nulo enquanto o pneu está no veículo
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([vehicleId])
+}
+
+model VehicleChecklist {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  vehicleId String
+  // Quem fez: usuário do painel ou do motorista. Nulo se o usuário foi apagado.
+  userId    String?
+  date      DateTime @default(now()) // instante em que foi registrado
+  odometer  Int?
+  // Um booleano por item fixo (CHECKLIST_ITENS em src/lib/frota.ts): true = OK, false = problema.
+  items     Json
+  notes     String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([vehicleId, date])
 }
 
 // Comprovante da entrega de uma carga, registrado pelo motorista na baixa.

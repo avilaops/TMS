@@ -63,6 +63,15 @@ suite("permissões das rotas internas", () => {
   let veiculos: typeof import("../src/app/api/veiculos/route");
   let veiculoPorId: typeof import("../src/app/api/veiculos/[id]/route");
   let manutencao: typeof import("../src/app/api/veiculos/[id]/manutencao/route");
+  let abastecimentos: typeof import("../src/app/api/veiculos/[id]/abastecimentos/route");
+  let abastecimento: typeof import("../src/app/api/veiculos/[id]/abastecimentos/[registroId]/route");
+  let documentosDoVeiculo: typeof import("../src/app/api/veiculos/[id]/documentos/route");
+  let documentoDoVeiculo: typeof import("../src/app/api/veiculos/[id]/documentos/[registroId]/route");
+  let pneus: typeof import("../src/app/api/veiculos/[id]/pneus/route");
+  let pneu: typeof import("../src/app/api/veiculos/[id]/pneus/[registroId]/route");
+  let checklists: typeof import("../src/app/api/veiculos/[id]/checklists/route");
+  let custosDoVeiculo: typeof import("../src/app/api/veiculos/[id]/custos/route");
+  let frota: typeof import("../src/app/api/frota/route");
   let pendentes: typeof import("../src/app/api/dashboard/coletas/pendentes/route");
   let coletaStatus: typeof import("../src/app/api/dashboard/coletas/[id]/status/route");
   let crm: typeof import("../src/app/api/dashboard/crm/route");
@@ -139,6 +148,15 @@ suite("permissões das rotas internas", () => {
     veiculos = await import("../src/app/api/veiculos/route");
     veiculoPorId = await import("../src/app/api/veiculos/[id]/route");
     manutencao = await import("../src/app/api/veiculos/[id]/manutencao/route");
+    abastecimentos = await import("../src/app/api/veiculos/[id]/abastecimentos/route");
+    abastecimento = await import("../src/app/api/veiculos/[id]/abastecimentos/[registroId]/route");
+    documentosDoVeiculo = await import("../src/app/api/veiculos/[id]/documentos/route");
+    documentoDoVeiculo = await import("../src/app/api/veiculos/[id]/documentos/[registroId]/route");
+    pneus = await import("../src/app/api/veiculos/[id]/pneus/route");
+    pneu = await import("../src/app/api/veiculos/[id]/pneus/[registroId]/route");
+    checklists = await import("../src/app/api/veiculos/[id]/checklists/route");
+    custosDoVeiculo = await import("../src/app/api/veiculos/[id]/custos/route");
+    frota = await import("../src/app/api/frota/route");
     pendentes = await import("../src/app/api/dashboard/coletas/pendentes/route");
     coletaStatus = await import("../src/app/api/dashboard/coletas/[id]/status/route");
     crm = await import("../src/app/api/dashboard/crm/route");
@@ -160,6 +178,7 @@ suite("permissões das rotas internas", () => {
     ids.CLIENT = (await criarUsuario("cliente", "CLIENT", { clientId: clienteId })).id;
 
     const semId = "00000000-0000-0000-0000-000000000000";
+    const registro = { params: Promise.resolve({ id: semId, registroId: semId }) };
 
     rotasStaff = [
       ["GET /api/clientes", () => clientes.GET()],
@@ -191,6 +210,21 @@ suite("permissões das rotas internas", () => {
       ["PATCH /api/veiculos/[id]", () => veiculoPorId.PATCH(req("PATCH", { status: "MAINTENANCE" }), ctx(semId))],
       ["GET /api/veiculos/[id]/manutencao", () => manutencao.GET(req(), ctx(semId))],
       ["POST /api/veiculos/[id]/manutencao", () => manutencao.POST(req("POST", {}), ctx(semId))],
+      ["GET /api/veiculos/[id]", () => veiculoPorId.GET(req(), ctx(semId))],
+      ["GET /api/veiculos/[id]/abastecimentos", () => abastecimentos.GET(req(), ctx(semId))],
+      ["POST /api/veiculos/[id]/abastecimentos", () => abastecimentos.POST(req("POST", {}), ctx(semId))],
+      ["DELETE /api/veiculos/[id]/abastecimentos/[registroId]", () => abastecimento.DELETE(req("DELETE"), registro)],
+      ["GET /api/veiculos/[id]/documentos", () => documentosDoVeiculo.GET(req(), ctx(semId))],
+      ["POST /api/veiculos/[id]/documentos", () => documentosDoVeiculo.POST(req("POST", {}), ctx(semId))],
+      ["PATCH /api/veiculos/[id]/documentos/[registroId]", () => documentoDoVeiculo.PATCH(req("PATCH", { notes: "x" }), registro)],
+      ["DELETE /api/veiculos/[id]/documentos/[registroId]", () => documentoDoVeiculo.DELETE(req("DELETE"), registro)],
+      ["GET /api/veiculos/[id]/pneus", () => pneus.GET(req(), ctx(semId))],
+      ["POST /api/veiculos/[id]/pneus", () => pneus.POST(req("POST", {}), ctx(semId))],
+      ["PATCH /api/veiculos/[id]/pneus/[registroId]", () => pneu.PATCH(req("PATCH", { notes: "x" }), registro)],
+      ["DELETE /api/veiculos/[id]/pneus/[registroId]", () => pneu.DELETE(req("DELETE"), registro)],
+      ["GET /api/veiculos/[id]/checklists", () => checklists.GET(req(), ctx(semId))],
+      ["POST /api/veiculos/[id]/checklists", () => checklists.POST(req("POST", {}), ctx(semId))],
+      ["GET /api/frota", () => frota.GET()],
       ["GET /api/dashboard/coletas/pendentes", () => pendentes.GET(req())],
       ["POST /api/dashboard/coletas/[id]/status", () => coletaStatus.POST(req("POST", {}), ctx(semId))],
       ["GET /api/dashboard/crm", () => crm.GET()],
@@ -207,6 +241,7 @@ suite("permissões das rotas internas", () => {
       ["GET /api/financeiro/cobranca", () => financeiroCobranca.GET()],
       ["GET /api/financeiro/[id]/recibo", () => financeiroRecibo.GET(req(), ctx(semId))],
       ["GET /api/relatorios", () => relatorios.GET()],
+      ["GET /api/veiculos/[id]/custos", () => custosDoVeiculo.GET(req(), ctx(semId))],
       ["PATCH /api/empresa", () => empresa.PATCH(req("PATCH", { name: "Invasora" }))],
       ["GET /api/empresa/webhook", () => empresaWebhook.GET()],
       ["PUT /api/empresa/webhook", () => empresaWebhook.PUT(req("PUT", { url: "https://invasor.exemplo.com/x" }))],

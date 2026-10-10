@@ -145,8 +145,8 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Cadastros de clientes, motoristas e veículos.
 - [x] Gestão de coletas e entregas.
 - [x] Status, manifestos e rastreamento.
-- [ ] Aplicativo do motorista (PWA).
-- [ ] Geração e aprovação de comprovantes (fotos e assinaturas).
+- [x] Aplicativo do motorista (PWA).
+- [x] Geração e aprovação de comprovantes (fotos e assinaturas).
 - [x] Área básica do cliente.
 
 ### Fase 2: Financeiro e Comercial
@@ -158,8 +158,8 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 
 ### Fase 3: Frota e Depósito
 - [ ] Conferência via bipagem e localização de volumes.
-- [ ] Controle de manutenção, abastecimento, pneus e documentos.
-- [ ] Custos detalhados de frota e checklists.
+- [x] Controle de manutenção, abastecimento, pneus e documentos.
+- [x] Custos detalhados de frota e checklists.
 
 ### Fase 4: Fiscal e Automações
 - [ ] Leitura de XML e documentos fiscais.

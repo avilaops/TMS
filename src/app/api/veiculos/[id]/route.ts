@@ -4,6 +4,24 @@ import prisma from '@/lib/prisma';
 import { INACTIVE_DRIVER_MESSAGE, VEHICLE_PUBLIC_INCLUDE, updateVehicleSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 
+/** O veículo, para o cabeçalho da tela de frota (`/dashboard/veiculos/[id]`). */
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { error } = await requireStaff();
+  if (error) return error;
+
+  try {
+    const { id } = await params;
+    const veiculo = await prisma.vehicle.findUnique({ where: { id }, include: VEHICLE_PUBLIC_INCLUDE });
+    if (!veiculo) {
+      return NextResponse.json({ error: 'Veículo não encontrado.' }, { status: 404 });
+    }
+    return NextResponse.json(veiculo);
+  } catch (error) {
+    console.error('Error fetching vehicle:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { error } = await requireStaff();
   if (error) return error;
