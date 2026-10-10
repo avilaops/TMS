@@ -2,14 +2,29 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Loader2, Route, Truck, Package, ChevronRight, Clock, MapPin } from "lucide-react";
+import { Loader2, Route, Truck, Package, ChevronRight, Clock, MapPin, Camera } from "lucide-react";
+import type { ComprovanteParaRefazer } from "@/lib/comprovantes";
+import { buscarComprovantesDoMotorista } from "@/lib/comprovantes-motorista";
 
 export default function DriverHome() {
   const [manifestos, setManifestos] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Comprovantes que a conferência devolveu a este motorista. A mesma consulta
+  // traz o perfil da empresa, que fica lembrado no aparelho para a baixa sem sinal.
+  const [refazer, setRefazer] = useState<ComprovanteParaRefazer[]>([]);
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    let ativo = true;
+    void buscarComprovantesDoMotorista().then((resposta) => {
+      if (ativo && resposta) setRefazer(resposta.refazer);
+    });
+    return () => {
+      ativo = false;
+    };
   }, []);
 
   const fetchData = async () => {
@@ -34,6 +49,29 @@ export default function DriverHome() {
         <h2 className="text-xl font-bold font-outfit text-gray-900 mb-1">Olá, Motorista! 👋</h2>
         <p className="text-gray-500 text-sm">Bem-vindo à sua jornada de entregas de hoje.</p>
       </div>
+
+      {refazer.length > 0 && (
+        <div data-comprovantes-para-refazer className="space-y-2">
+          <h3 className="font-bold text-gray-900 px-1 flex items-center">
+            <Camera className="w-5 h-5 mr-2 text-red-600" />
+            Comprovantes para refazer ({refazer.length})
+          </h3>
+          {refazer.map((comprovante) => (
+            <Link
+              key={comprovante.collectionId}
+              href={`/driver/entregas/${comprovante.collectionId}/refazer`}
+              className="flex items-center gap-3 bg-white rounded-2xl p-4 shadow-sm border border-red-200 active:scale-95 transition-transform"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-gray-900 truncate">{comprovante.receiver}</p>
+                <p className="text-xs text-gray-500 truncate">{comprovante.destination}</p>
+                <p className="text-sm text-red-700 break-words mt-1">{comprovante.reason}</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-red-600 shrink-0" />
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-4">
         <h3 className="font-bold text-gray-900 px-1 flex items-center">

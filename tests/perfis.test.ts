@@ -176,6 +176,8 @@ const ROTAS: Record<string, Capacidade> = {
   "PUT /api/empresa/fiscal/certificado": "empresa",
   "DELETE /api/empresa/fiscal/certificado": "empresa",
   "GET /api/empresa/cobranca": "empresa",
+  "GET /api/empresa/comprovantes": "empresa",
+  "PATCH /api/empresa/comprovantes": "empresa",
   "PATCH /api/empresa/cobranca": "empresa",
   "PATCH /api/empresa": "empresa",
   "GET /api/empresa/webhook": "empresa",
@@ -297,8 +299,12 @@ const FORA_DA_MATRIZ = [
   "/api/auth/[...nextauth]",
   "/api/cotacoes",
   "/api/driver/checklists",
+  // Perfil do comprovante e comprovantes devolvidos ao próprio motorista (`requireDriver`).
+  "/api/driver/comprovantes",
   "/api/driver/entregas/[id]/baixa",
   "/api/driver/entregas/[id]/ocorrencia",
+  // Reenvio de comprovante devolvido: só o motorista da viagem da carga (`requireDriver`).
+  "/api/driver/entregas/[id]/refazer",
   "/api/driver/manifestos",
   "/api/driver/manifestos/[id]/despesas",
   // Mapa da viagem e posição do GPS: só a viagem em rota do próprio motorista (`requireDriver`).

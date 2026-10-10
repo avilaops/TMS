@@ -21,6 +21,12 @@
  *  - demais 4xx    -> o servidor recusou e vai recusar de novo (entrega que não
  *                     é do motorista, dado inválido). Sai da fila e vira aviso;
  *  - 5xx ou falha de rede -> continua na fila para a próxima tentativa.
+ *
+ * Tamanho: a baixa leva até seis fotos, já reduzidas no aparelho
+ * (src/lib/foto.ts). Antes de guardar, o tamanho total é conferido; e se o
+ * aparelho não tiver espaço, a gravação falha com `BaixaNaoGuardada` e a tela
+ * avisa o motorista, que continua com o comprovante aberto. Nada se perde em
+ * silêncio.
  */
 
 const DB_NAME = "mello-driver";
@@ -224,6 +230,39 @@ export async function resolveSyncOwner(
   return { owner: null, sessionExpired: session.state === "none" };
 }
 
+/**
+ * Teto do texto de uma baixa na fila: seis fotos novas de 1,5 milhão de
+ * caracteres, a assinatura e os campos. Passar disto é sinal de foto que não
+ * foi reduzida.
+ */
+export const TAMANHO_MAXIMO_DA_BAIXA = 10_000_000;
+
+export const BAIXA_GRANDE_DEMAIS =
+  "As fotos desta baixa ficaram grandes demais para guardar no aparelho. Remova uma foto ou tire de novo, e finalize outra vez.";
+export const APARELHO_SEM_ESPACO =
+  "O aparelho está sem espaço para guardar esta baixa. Ela NÃO foi salva: não saia desta tela. Libere espaço no aparelho ou procure sinal e toque em Finalizar de novo.";
+export const FILA_INDISPONIVEL =
+  "Não foi possível guardar esta baixa no aparelho. Ela NÃO foi salva: não saia desta tela. Procure sinal e toque em Finalizar de novo.";
+
+/** A baixa não entrou na fila. A mensagem é a que o motorista lê. */
+export class BaixaNaoGuardada extends Error {}
+
+/** Tamanho, em caracteres, do que a baixa ocupa na fila (o corpo como vai para o servidor). */
+export function tamanhoDaBaixa(payload: Record<string, unknown>): number {
+  return JSON.stringify(payload).length;
+}
+
+/** O erro do armazenamento é falta de espaço? (O nome varia entre navegadores.) */
+export function ehFaltaDeEspaco(erro: unknown): boolean {
+  const nome = (erro as { name?: unknown } | null)?.name;
+  return nome === "QuotaExceededError" || nome === "NS_ERROR_DOM_QUOTA_REACHED";
+}
+
+/** A mensagem para o motorista quando a gravação na fila falha. */
+export function motivoDeNaoGuardar(erro: unknown): string {
+  return ehFaltaDeEspaco(erro) ? APARELHO_SEM_ESPACO : FILA_INDISPONIVEL;
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -244,16 +283,42 @@ function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequ
       new Promise<T>((resolve, reject) => {
         const transaction = db.transaction(STORE, mode);
         const request = run(transaction.objectStore(STORE));
-        request.onsuccess = () => resolve(request.result);
+        // Só vale quando a transação termina: sem espaço, o pedido "dá certo" e
+        // é a transação que aborta. Resolver antes diria que guardou o que não guardou.
+        const falhar = () => {
+          db.close();
+          reject(transaction.error ?? request.error);
+        };
         request.onerror = () => reject(request.error);
-        transaction.oncomplete = () => db.close();
+        transaction.oncomplete = () => {
+          db.close();
+          resolve(request.result);
+        };
+        transaction.onabort = falhar;
+        transaction.onerror = falhar;
       })
   );
 }
 
-export function enqueue(collectionId: string, payload: Record<string, unknown>, userId: string | null) {
+type Guardar = (item: PendingBaixa) => Promise<unknown>;
+
+const guardarNoAparelho: Guardar = (item) => tx("readwrite", (store) => store.put(item));
+
+/**
+ * Guarda a baixa na fila. Rejeita com `BaixaNaoGuardada` (com a mensagem para o
+ * motorista) quando ela é grande demais ou o aparelho não tem espaço: quem
+ * chama mostra o aviso e mantém a tela, em vez de seguir como se tivesse
+ * guardado. O `guardar` só existe para o teste trocar o IndexedDB.
+ */
+export async function enqueue(collectionId: string, payload: Record<string, unknown>, userId: string | null, guardar: Guardar = guardarNoAparelho) {
+  if (tamanhoDaBaixa(payload) > TAMANHO_MAXIMO_DA_BAIXA) throw new BaixaNaoGuardada(BAIXA_GRANDE_DEMAIS);
   const item = buildPending(collectionId, payload, userId);
-  return tx("readwrite", (store) => store.put(item)).then(() => item);
+  try {
+    await guardar(item);
+  } catch (erro) {
+    throw new BaixaNaoGuardada(motivoDeNaoGuardar(erro));
+  }
+  return item;
 }
 
 export async function listPending(): Promise<PendingBaixa[]> {

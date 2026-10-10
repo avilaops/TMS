@@ -56,7 +56,9 @@ export const COLLECTION_INCLUDE = {
   driver: { include: { user: { select: DRIVER_USER_SELECT } }, omit: DRIVER_OMIT },
   // Só o que a lista precisa para saber se há comprovante: foto e assinatura
   // pesam megabytes e ficam para a tela do comprovante.
-  proof: { select: { id: true, status: true } },
+  proof: { select: { id: true, status: true, exceptionType: true } },
+  // Tentativas de entrega sem sucesso registradas pelo motorista (src/lib/comprovantes.ts).
+  _count: { select: { deliveryAttempts: true } },
 } as const;
 
 const INVALID_BODY = "Dados inválidos.";

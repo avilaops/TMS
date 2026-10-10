@@ -6,6 +6,7 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Circle, Loader2, Printer, Truck, 
 import { formatCurrency, formatWeight } from "@/lib/format";
 import { janelaDaColeta } from "@/lib/coletas";
 import { BotaoDanfe } from "@/components/fiscal/botao-danfe";
+import { ROTULO_DA_FOTO, rotuloDaRelacao, rotuloDaRessalva, type TipoDeFoto } from "@/lib/comprovantes";
 
 type Detalhe = {
   id: string;
@@ -39,7 +40,13 @@ type Detalhe = {
     photoBase64: string | null;
     signatureBase64: string | null;
     createdAt: string;
+    // Quem recebeu em relação ao destinatário; nulo no comprovante antigo.
+    receiverRelation?: string | null;
+    // Fotos por tipo: só as da entrega e do canhoto chegam ao portal.
+    photos?: { id: string; kind: string; dataUrl: string; createdAt: string }[];
   } | null;
+  /** Ressalva da entrega (tipo e descrição). Aparece assim que a entrega é registrada. */
+  exception?: { type: string; note: string | null } | null;
 };
 
 const ROTULO: Record<string, string> = {
@@ -256,6 +263,13 @@ export default function PortalColetaPage({ params }: { params: Promise<{ id: str
           )}
         </div>
 
+        {coleta.exception && (
+          <div data-ressalva className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">Entrega com ressalva: {rotuloDaRessalva(coleta.exception.type) ?? coleta.exception.type}</p>
+            {coleta.exception.note && <p className="whitespace-pre-wrap break-words">{coleta.exception.note}</p>}
+          </div>
+        )}
+
         {!coleta.proof ? (
           <p className="mt-3 text-sm text-gray-500">
             {coleta.status === "DELIVERED"
@@ -265,7 +279,10 @@ export default function PortalColetaPage({ params }: { params: Promise<{ id: str
         ) : (
           <div className="mt-4 space-y-5">
             <dl className="grid gap-4 sm:grid-cols-3 text-sm">
-              <Dado rotulo="Recebido por" valor={coleta.proof.receiverName} />
+              <Dado
+                rotulo="Recebido por"
+                valor={`${coleta.proof.receiverName}${rotuloDaRelacao(coleta.proof.receiverRelation) ? ` (${rotuloDaRelacao(coleta.proof.receiverRelation)})` : ""}`}
+              />
               <Dado rotulo="Documento" valor={coleta.proof.receiverDoc} />
               <Dado rotulo="Registrado em" valor={dataHora.format(new Date(coleta.proof.createdAt))} />
             </dl>
@@ -277,6 +294,16 @@ export default function PortalColetaPage({ params }: { params: Promise<{ id: str
                   <img src={imagem(coleta.proof.photoBase64)} alt="Foto da entrega" className="w-full rounded-xl border border-gray-200" />
                 </figure>
               )}
+              {(coleta.proof.photos ?? []).map((foto) => {
+                const legenda = Object.hasOwn(ROTULO_DA_FOTO, foto.kind) ? ROTULO_DA_FOTO[foto.kind as TipoDeFoto] : "Foto";
+                return (
+                  <figure key={foto.id} data-foto={foto.kind}>
+                    <figcaption className="text-xs text-gray-500 mb-2">{legenda}</figcaption>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imagem(foto.dataUrl)} alt={legenda} className="w-full rounded-xl border border-gray-200" />
+                  </figure>
+                );
+              })}
               {coleta.proof.signatureBase64 && (
                 <figure>
                   <figcaption className="text-xs text-gray-500 mb-2">Assinatura de quem recebeu</figcaption>

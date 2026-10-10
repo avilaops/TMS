@@ -443,6 +443,10 @@ suite("conferência de comprovantes", () => {
         status: "SUBMITTED",
         receiverName: "Maria Recebedora",
         receiverDoc: "123.456.789-00",
+        // Comprovante antigo: sem relação de quem recebeu, sem ressalva e sem distância.
+        receiverRelation: null,
+        exceptionType: null,
+        distanceMeters: null,
         createdAt: proof.createdAt.toISOString(),
         reviewedAt: null,
         rejectionReason: null,
@@ -511,18 +515,19 @@ suite("conferência de comprovantes", () => {
     const abrir = async (collectionId: string) =>
       renderToStaticMarkup(await comprovantePagina.default({ params: Promise.resolve({ id: collectionId }) }));
 
-    it("aguardando conferência: mostra Aprovar e Recusar, e volta para a fila", async () => {
+    it("aguardando conferência: mostra Aprovar e Devolver ao motorista, e volta para a fila", async () => {
       const { collectionId } = await plantar();
 
       const html = await abrir(collectionId);
 
       expect(html).toContain("Aprovar");
-      expect(html).toContain("Recusar");
+      expect(html).toContain("Devolver ao motorista");
+      expect(html).not.toContain(">Recusar<");
       expect(html).not.toContain("Conferido por");
       expect(html).toContain('href="/dashboard/comprovantes"');
     });
 
-    it("aprovado: mostra quem conferiu e quando (fuso de São Paulo), sem botão", async () => {
+    it("aprovado: mostra quem conferiu e quando (fuso de São Paulo), sem botão de conferência", async () => {
       const { collectionId } = await plantar();
       comoAdmin();
       expect((await conferir(collectionId, { decision: "APPROVED" })).status).toBe(200);
@@ -533,11 +538,13 @@ suite("conferência de comprovantes", () => {
       expect(html).toContain("Conferido por");
       expect(html).toContain("admin");
       expect(html).toContain(quando);
-      expect(html).not.toContain("<button");
-      expect(html).not.toContain("Motivo da recusa");
+      // Os botões que sobram são os das fotos (ampliar e copiar o hash).
+      expect(html).not.toContain("Aprovar");
+      expect(html).not.toContain("Devolver ao motorista");
+      expect(html).not.toContain("Motivo da devolução");
     });
 
-    it("recusado: mostra também o motivo, sem botão", async () => {
+    it("devolvido ao motorista: mostra também o motivo e o histórico, sem botão de conferência", async () => {
       const { collectionId } = await plantar();
       expect((await conferir(collectionId, { decision: "REJECTED", reason: MOTIVO })).status).toBe(200);
 
@@ -545,9 +552,11 @@ suite("conferência de comprovantes", () => {
 
       expect(html).toContain("Conferido por");
       expect(html).toContain("operacao");
-      expect(html).toContain("Motivo da recusa");
+      expect(html).toContain("Motivo da devolução");
       expect(html).toContain(MOTIVO);
-      expect(html).not.toContain("<button");
+      expect(html).toContain("Histórico de devoluções");
+      expect(html).toContain("Aguardando as fotos novas do motorista");
+      expect(html).not.toContain("Aprovar");
     });
   });
 });

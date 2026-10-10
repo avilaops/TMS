@@ -50,6 +50,10 @@ model Tenant {
   pixKey          String?
   pixName         String?
   pixCity         String?
+  // O que o comprovante de entrega exige na baixa do motorista: LIVRE (foto e
+  // assinatura opcionais), ECOMMERCE (foto da carga no local) ou B2B (foto do
+  // canhoto assinado). Ver src/lib/comprovantes.ts.
+  podProfile      String @default("LIVRE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -97,6 +101,9 @@ model Tenant {
   fiscalIssuer       FiscalIssuer?
   cteNumberings      CteNumbering[]
   ctes               Cte[]
+  proofPhotos        ProofPhoto[]
+  proofRejections    ProofRejection[]
+  deliveryAttempts   DeliveryAttempt[]
 }
 
 model User {
@@ -121,6 +128,7 @@ model User {
   client    Client?  @relation(fields: [clientId], references: [id])
   statusChanges CollectionStatusHistory[]
   proofsReviewed ProofOfDelivery[]
+  proofRejections ProofRejection[]
   vehicleChecklists VehicleChecklist[]
   occurrencesOpened   Occurrence[] @relation("OccurrenceOpenedBy")
   occurrencesAssigned Occurrence[] @relation("OccurrenceAssignee")
@@ -436,6 +444,7 @@ model Collection {
   manifest    Manifest? @relation(fields: [manifestId], references: [id])
   statusHistory CollectionStatusHistory[]
   proof       ProofOfDelivery?
+  deliveryAttempts DeliveryAttempt[]
   quoteLead   QuoteLead?
   occurrences Occurrence[]
   volumeItems CollectionVolume[]
@@ -515,6 +524,7 @@ model Manifest {
   advances    CrewAdvance[]
   expenses    TripExpense[]
   positions   TripPosition[]
+  deliveryAttempts DeliveryAttempt[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -842,8 +852,20 @@ model ProofOfDelivery {
   receiverDoc     String
   latitude        Float?
   longitude       Float?
-  status          String   @default("SUBMITTED") // SUBMITTED, APPROVED, REJECTED
-  // Conferência no painel: quem decidiu, quando e, na recusa, o motivo.
+  // Quem recebeu em relação ao destinatário: DESTINATARIO, FUNCIONARIO,
+  // PORTARIA, FAMILIAR, VIZINHO, OUTRO. Nulo nos comprovantes antigos.
+  receiverRelation String?
+  // Ressalva no ato da entrega: AVARIA, FALTA, VIOLADA, OUTRA, com a descrição
+  // de quem entregou. Os dois nulos = entrega sem ressalva.
+  exceptionType   String?
+  exceptionNote   String?
+  // Distância, em metros, entre a posição da baixa e a coordenada do endereço
+  // de entrega. Nulo = sem posição ou sem coordenada. Só o painel lê.
+  distanceMeters  Int?
+  // SUBMITTED, APPROVED, REJECTED. REJECTED = devolvido ao motorista, que manda
+  // fotos novas e o comprovante volta para SUBMITTED. APPROVED é final.
+  status          String   @default("SUBMITTED")
+  // Conferência no painel: quem decidiu, quando e, na devolução, o motivo.
   reviewedAt      DateTime?
   reviewedById    String?
   rejectionReason String?
@@ -853,11 +875,88 @@ model ProofOfDelivery {
   // Relations
   collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   reviewedBy      User?      @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+  photos          ProofPhoto[]
+  rejections      ProofRejection[]
 
   @@index([status, createdAt])
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
+}
+
+// Foto de um comprovante de entrega (ENTREGA = carga no local, CANHOTO =
+// canhoto assinado, AVARIA, FACHADA) ou de uma tentativa sem sucesso (FACHADA).
+// Pertence a um dos dois: `proofId` ou `attemptId`. A imagem fica embutida
+// (data URL JPEG, PNG ou WebP) e o `sha256` é o dos bytes dela, calculado no
+// servidor. Foto substituída no reenvio não é apagada: fica com `replacedAt`.
+model ProofPhoto {
+  tenantId   String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id         String    @id @default(uuid())
+  proofId    String?
+  attemptId  String?
+  kind       String    // ENTREGA, CANHOTO, AVARIA, FACHADA
+  dataUrl    String    @db.Text
+  sha256     String
+  createdAt  DateTime  @default(now())
+  replacedAt DateTime?
+
+  proof      ProofOfDelivery? @relation(fields: [proofId], references: [id], onDelete: Cascade)
+  attempt    DeliveryAttempt? @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([proofId])
+  @@index([attemptId])
+}
+
+// Cada devolução de um comprovante ao motorista: quem devolveu, quando e por
+// quê. `resubmittedAt` marca quando o motorista respondeu com fotos novas;
+// nulo = ainda esperando por ele.
+model ProofRejection {
+  tenantId      String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String    @id @default(uuid())
+  proofId       String
+  reason        String
+  rejectedById  String?
+  rejectedAt    DateTime  @default(now())
+  resubmittedAt DateTime?
+
+  proof         ProofOfDelivery @relation(fields: [proofId], references: [id], onDelete: Cascade)
+  rejectedBy    User?           @relation(fields: [rejectedById], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([proofId, rejectedAt])
+}
+
+// Tentativa de entrega sem sucesso, registrada pelo motorista. Uma carga pode
+// ter várias. Nasce junto de um chamado (`occurrenceId`), que é por onde a
+// equipe trata. `clientKey` é a chave que o aparelho manda para o reenvio da
+// mesma tentativa não virar duas. A posição só o painel lê.
+model DeliveryAttempt {
+  tenantId       String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id             String   @id @default(uuid())
+  collectionId   String
+  manifestId     String?
+  occurrenceId   String?  @unique
+  // AUSENTE, ENDERECO_NAO_LOCALIZADO, RECUSADO, FECHADO, MUDOU_SE, AREA_DE_RISCO, OUTRO
+  reason         String
+  note           String?
+  latitude       Float?
+  longitude      Float?
+  distanceMeters Int?
+  clientKey      String?
+  createdAt      DateTime @default(now())
+
+  collection     Collection  @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  manifest       Manifest?   @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  occurrence     Occurrence? @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
+  photos         ProofPhoto[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, clientKey])
+  @@index([collectionId, createdAt])
 }
 
 model QuoteLead {
@@ -922,6 +1021,7 @@ model Occurrence {
   openedBy     User?       @relation("OccurrenceOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
   assignee     User?       @relation("OccurrenceAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   messages     OccurrenceMessage[]
+  deliveryAttempt DeliveryAttempt?
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])

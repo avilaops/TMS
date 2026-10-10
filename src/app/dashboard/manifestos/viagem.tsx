@@ -19,6 +19,7 @@ import {
 } from "@/lib/viagem";
 import { AVISO_DO_TRANSITO, avisoDaDistancia, type RespostaDoRoteiro } from "@/lib/roteiro";
 import { enderecoCompleto } from "@/lib/endereco";
+import { rotuloDaRessalva, textoDasTentativas } from "@/lib/comprovantes";
 import type { MapaDaViagem } from "@/lib/mapa";
 import { MapaDaViagemNaTela } from "@/components/mapa/mapa-da-viagem";
 import type { Manifesto } from "./carregar";
@@ -536,6 +537,22 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
                   <p className="text-xs text-gray-500 truncate">
                     {enderecoCompleto(carga, carga.destination)} · {carga.client?.tradeName || carga.client?.companyName}
                   </p>
+                  {/* O que o motorista registrou na rua: tentativa sem sucesso, ressalva e comprovante devolvido. */}
+                  {((carga._count?.deliveryAttempts ?? 0) > 0 || carga.proof?.exceptionType || carga.proof?.status === "REJECTED") && (
+                    <p data-entrega={carga.id} className="flex flex-wrap gap-x-2 text-[11px] font-medium">
+                      {(carga._count?.deliveryAttempts ?? 0) > 0 && (
+                        <a href={`/dashboard/entregas/${carga.id}/tentativas`} className="text-amber-700 dark:text-amber-400 underline">
+                          {textoDasTentativas(carga._count?.deliveryAttempts ?? 0)}
+                        </a>
+                      )}
+                      {carga.proof?.exceptionType && (
+                        <a href={`/dashboard/entregas/${carga.id}/comprovante`} className="text-amber-700 dark:text-amber-400 underline">
+                          Ressalva: {rotuloDaRessalva(carga.proof.exceptionType) ?? carga.proof.exceptionType}
+                        </a>
+                      )}
+                      {carga.proof?.status === "REJECTED" && <span className="text-red-700 dark:text-red-400">Comprovante devolvido ao motorista</span>}
+                    </p>
+                  )}
                 </div>
                 <span className={`hidden md:inline shrink-0 px-2 py-0.5 text-[11px] font-medium rounded-full border ${seloCarga.className}`}>{seloCarga.label}</span>
                 {ordenavel && (

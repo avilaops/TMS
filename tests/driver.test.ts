@@ -10,9 +10,6 @@ import {
   PHOTO_MESSAGE,
   PHOTO_TOO_BIG,
   baixaSchema,
-  photoProblem,
-  resolvePhotoType,
-  sniffPhotoType,
 } from "../src/lib/entregas";
 import {
   type PendingBaixa,
@@ -471,73 +468,10 @@ describe("fila offline: item gravado por versão anterior do aplicativo", () => 
   });
 });
 
-describe("foto do comprovante: conferência no aparelho, antes do envio", () => {
-  it.each(["image/jpeg", "image/png", "image/webp", "IMAGE/JPEG"])("%s serve", (type) => {
-    expect(photoProblem({ type, size: 3_000_000 })).toBeNull();
-  });
-
-  it.each(["image/heic", "image/heif", "image/gif", "image/svg+xml", "application/pdf", ""])(
-    "tipo %j → avisa o formato aceito",
-    (type) => {
-      expect(photoProblem({ type, size: 1000 })).toBe(PHOTO_MESSAGE);
-    },
-  );
-
-  const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
-  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);
-  const WEBP = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50]);
-  // HEIC: caixa `ftyp` com a marca `heic`.
-  const HEIC = Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]);
-  // WAV também começa com "RIFF", mas não é WebP.
-  const WAV = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x41, 0x56, 0x45]);
-
-  it("reconhece JPEG, PNG e WebP pelos primeiros bytes", () => {
-    expect(sniffPhotoType(JPEG)).toBe("image/jpeg");
-    expect(sniffPhotoType(PNG)).toBe("image/png");
-    expect(sniffPhotoType(WEBP)).toBe("image/webp");
-    for (const outro of [HEIC, WAV, new Uint8Array(), Uint8Array.from([0xff, 0xd8])]) {
-      expect(sniffPhotoType(outro)).toBeNull();
-    }
-  });
-
-  it("foto que chega sem tipo vale pelo que os bytes dizem", () => {
-    expect(photoProblem({ type: resolvePhotoType("", JPEG), size: 1000 })).toBeNull();
-    expect(photoProblem({ type: resolvePhotoType("", PNG), size: 1000 })).toBeNull();
-    expect(photoProblem({ type: resolvePhotoType("", WEBP), size: 1000 })).toBeNull();
-    // O tipo descoberto é o que o servidor aceita no prefixo `data:`.
-    expect(
-      baixaSchema.safeParse({
-        receiverName: "Maria",
-        receiverDoc: "12345",
-        photoBase64: `data:${resolvePhotoType("", JPEG)};base64,AAAA`,
-      }).success,
-    ).toBe(true);
-  });
-
-  it("sem tipo e sem ser foto aceita, continua recusada com a mensagem de formato", () => {
-    expect(photoProblem({ type: resolvePhotoType("", HEIC), size: 1000 })).toBe(PHOTO_MESSAGE);
-    expect(photoProblem({ type: resolvePhotoType("", new Uint8Array()), size: 1000 })).toBe(PHOTO_MESSAGE);
-  });
-
-  it("tipo declarado vale como veio: HEIC com bytes de JPEG segue recusado", () => {
-    expect(resolvePhotoType("image/heic", JPEG)).toBe("image/heic");
-    expect(resolvePhotoType("image/png", new Uint8Array())).toBe("image/png");
-  });
-
-  it("a mensagem diz o que enviar", () => {
-    expect(PHOTO_MESSAGE).toContain("JPEG, PNG ou WebP");
-  });
-
-  it("foto que passaria do limite do servidor é barrada pelo tamanho do arquivo", () => {
-    const prefixo = "data:image/jpeg;base64,".length;
-    const maiorQueCabe = Math.floor((MAX_PHOTO_CHARS - prefixo) / 4) * 3;
-
-    expect(photoProblem({ type: "image/jpeg", size: maiorQueCabe })).toBeNull();
-    expect(photoProblem({ type: "image/jpeg", size: maiorQueCabe + 1 })).toBe(PHOTO_TOO_BIG);
-  });
-});
-
-describe("limite de tamanho da foto no servidor", () => {
+// A conferência da foto no aparelho mudou de lugar: a foto agora é aberta e
+// reduzida pelo navegador (src/lib/foto.ts, testada em comprovante-padrao.test.ts).
+// Aqui fica o teto do formato antigo da baixa (`photoBase64`).
+describe("limite de tamanho da foto no servidor (formato antigo da baixa)", () => {
   const baixa = (photoBase64: string) =>
     baixaSchema.safeParse({ receiverName: "Maria Recebedora", receiverDoc: "123.456.789-00", photoBase64 });
   const foto = (tamanho: number) => {
@@ -923,11 +857,14 @@ suite("aplicativo do motorista", () => {
         status: "SUBMITTED",
         receiverName: "Maria Recebedora",
         receiverDoc: "123.456.789-00",
-        photoBase64: FOTO,
+        // A foto não fica mais na coluna antiga: vai para a tabela de fotos, como foto da entrega.
+        photoBase64: null,
         signatureBase64: ASSINATURA,
         latitude: -20.8113,
         longitude: -49.3758,
       });
+      const fotos = await prisma.proofPhoto.findMany({ where: { proofId: comprovante.id } });
+      expect(fotos.map((foto) => [foto.kind, foto.dataUrl])).toEqual([["ENTREGA", FOTO]]);
 
       const entrega = (await linhas(alvo)).filter((linha) => linha.toStatus === "DELIVERED");
       expect(entrega).toHaveLength(1);
@@ -1126,15 +1063,18 @@ suite("aplicativo do motorista", () => {
           // Os seis campos do pedido de coleta (janela, prioridade, cubagem e observação) e os quatro do
           // endereço de entrega (logradouro, número, bairro e CEP) aparecem na parada. A coordenada não vem
           // por aqui: o mapa do motorista tem rota própria (/api/driver/manifestos/[id]/mapa).
+          // `attempts`, `proofStatus` e `withException` dizem a situação da parada (tentativas sem
+          // sucesso, status do comprovante e se houve ressalva), sem foto nem dado de quem recebeu.
           [
-            "client", "cubicMeters", "deliveryDistrict", "deliveryNumber", "deliveryStreet", "deliveryZip", "destination", "id", "origin",
-            "pickupDate", "pickupFrom", "pickupNotes", "pickupTo", "priority", "receiver", "receiverName", "status", "volumes", "weight",
+            "attempts", "client", "cubicMeters", "deliveryDistrict", "deliveryNumber", "deliveryStreet", "deliveryZip", "destination", "id", "origin",
+            "pickupDate", "pickupFrom", "pickupNotes", "pickupTo", "priority", "proofStatus", "receiver", "receiverName", "status", "volumes", "weight",
+            "withException",
           ],
         );
         expect(coleta.client).toEqual({ tradeName: "Teste Driver", companyName: "Empresa Teste Driver LTDA" });
       }
-      expect(daViagem.collections[0]).toMatchObject({ status: "DELIVERED", receiverName: "Maria Recebedora" });
-      expect(daViagem.collections[1]).toMatchObject({ status: "ROUTE", receiverName: null });
+      expect(daViagem.collections[0]).toMatchObject({ status: "DELIVERED", receiverName: "Maria Recebedora", proofStatus: "SUBMITTED", withException: false, attempts: 0 });
+      expect(daViagem.collections[1]).toMatchObject({ status: "ROUTE", receiverName: null, proofStatus: null, withException: false, attempts: 0 });
 
       expect(temChave(lista, ["deliveries", "creditLimit", "cnpj", "email", "photoBase64", "signatureBase64", "proof"])).toBe(false);
       for (const proibido of ["creditLimit", "cnpj", "email", "photoBase64", CNPJ_TESTE, FOTO]) {

@@ -10,6 +10,7 @@ import type { ParametrosDeCobranca } from "@/lib/cobranca";
 import { AVISO_PIX_ESTATICO, LIMITE_DA_CIDADE, LIMITE_DO_NOME, TIPOS_DE_CHAVE, TIPO_DE_CHAVE_LABEL, type TipoDeChave } from "@/lib/pix";
 import { GATEWAY_INDISPONIVEL, type GatewayDaEmpresa } from "@/lib/cobranca-gateway";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
+import { Entrega } from "./entrega";
 import { Fiscal } from "./fiscal";
 
 /**
@@ -252,6 +253,9 @@ export default function EmpresaPage() {
           Salvar
         </button>
       </form>
+
+      {/* Perfil do comprovante de entrega: fica na aba Identidade, sem aba própria. */}
+      <Entrega escondida={aba !== "identidade"} />
 
       {/* No celular a aba Cobrança tem duas partes, para cada uma caber na tela. */}
       {aba === "cobranca" && (

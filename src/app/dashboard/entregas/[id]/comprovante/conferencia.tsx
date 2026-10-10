@@ -9,7 +9,10 @@ import {
   type ReviewDecision,
 } from '@/lib/entregas';
 
-/** Botões de aprovar e recusar o comprovante que aguarda conferência. */
+/**
+ * Botões da conferência do comprovante: aprovar (final) ou devolver ao
+ * motorista com o motivo, para ele mandar fotos novas.
+ */
 export function Conferencia({ collectionId }: { collectionId: string }) {
   const [recusando, setRecusando] = useState(false);
   const [motivo, setMotivo] = useState('');
@@ -51,7 +54,7 @@ export function Conferencia({ collectionId }: { collectionId: string }) {
       {recusando ? (
         <div className="space-y-2">
           <label htmlFor="motivo-da-recusa" className="text-sm font-medium">
-            Motivo da recusa
+            Motivo da devolução (o motorista lê)
           </label>
           <textarea
             id="motivo-da-recusa"
@@ -60,7 +63,7 @@ export function Conferencia({ collectionId }: { collectionId: string }) {
             maxLength={REJECTION_REASON_MAX}
             rows={3}
             className="w-full rounded-md border border-gray-300 p-2 text-sm"
-            placeholder="Ex.: foto ilegível, assinatura não confere com o recebedor."
+            placeholder="Ex.: canhoto ilegível, foto cortada, falta a assinatura."
           />
           <div className="flex gap-2">
             <Button
@@ -69,7 +72,7 @@ export function Conferencia({ collectionId }: { collectionId: string }) {
               variant="outline"
               className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
             >
-              Confirmar recusa
+              Confirmar devolução
             </Button>
             <Button
               onClick={() => {
@@ -94,7 +97,7 @@ export function Conferencia({ collectionId }: { collectionId: string }) {
             variant="outline"
             className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
           >
-            Recusar
+            Devolver ao motorista
           </Button>
         </div>
       )}

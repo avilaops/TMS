@@ -44,6 +44,10 @@ export async function GET() {
             // Só o nome de quem embarcou: limite de crédito e contato do
             // cliente não vão para o aparelho do motorista.
             client: { select: { tradeName: true, companyName: true } },
+            // Para a situação da parada: só o status do comprovante, se houve
+            // ressalva e quantas tentativas sem sucesso. Foto nenhuma vem por aqui.
+            proof: { select: { status: true, exceptionType: true } },
+            _count: { select: { deliveryAttempts: true } },
           },
           // A ordem das entregas que a operação definiu na viagem.
           orderBy: ORDEM_DAS_CARGAS,
@@ -51,7 +55,19 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json(manifestos);
+    // A parada sai com três campos planos no lugar do comprovante e da contagem:
+    // `proofStatus`, `withException` e `attempts` (src/lib/comprovantes.ts).
+    return NextResponse.json(
+      manifestos.map((manifesto) => ({
+        ...manifesto,
+        collections: manifesto.collections.map(({ proof, _count, ...carga }) => ({
+          ...carga,
+          proofStatus: proof?.status ?? null,
+          withException: Boolean(proof?.exceptionType),
+          attempts: _count.deliveryAttempts,
+        })),
+      })),
+    );
   } catch (error) {
     console.error('Erro ao buscar viagens do motorista:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

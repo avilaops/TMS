@@ -22,6 +22,10 @@ export interface Minuta {
   deliveryNumber?: string | null;
   deliveryDistrict?: string | null;
   deliveryZip?: string | null;
+  // Comprovante da entrega (só a situação e se houve ressalva) e quantas
+  // tentativas sem sucesso o motorista registrou (src/lib/comprovantes.ts).
+  proof?: { status: string; exceptionType: string | null } | null;
+  _count?: { deliveryAttempts: number };
 }
 
 export interface Motorista {

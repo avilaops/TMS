@@ -68,7 +68,13 @@ export async function GET() {
         vehicle: true,
         helper: { select: { id: true, name: true } },
         collections: {
-          include: { client: { select: { tradeName: true, companyName: true } } },
+          include: {
+            client: { select: { tradeName: true, companyName: true } },
+            // Para a viagem mostrar a entrega com ressalva, o comprovante
+            // devolvido e as tentativas sem sucesso de cada carga.
+            proof: { select: { status: true, exceptionType: true } },
+            _count: { select: { deliveryAttempts: true } },
+          },
           orderBy: ORDEM_DAS_CARGAS,
         },
       },

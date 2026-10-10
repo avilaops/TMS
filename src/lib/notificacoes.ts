@@ -29,6 +29,7 @@ export const TIPOS_DE_AVISO = [
   // Motorista
   "viagem.liberada",
   "viagem.carga-retirada",
+  "comprovante.devolvido",
   // Cliente do portal
   "coleta.confirmada",
   "coleta.recusada",
@@ -41,6 +42,8 @@ export const TIPOS_DE_AVISO = [
   "chamado.novo",
   "chamado.resposta-do-cliente",
   "comprovante.enviado",
+  "comprovante.refeito",
+  "comprovante.ressalva",
   "despesa.lancada",
   "fatura.paga-pelo-gateway",
   "cobranca.a-conferir",
@@ -251,6 +254,30 @@ export const avisoDeComprovante = (carga: { id: string; receiver: string; destin
   titulo: "Comprovante de entrega para conferir",
   texto: `${carga.receiver}, ${carga.destination}. Recebido por ${recebedor}.`,
   url: `/dashboard/entregas/${carga.id}/comprovante`,
+});
+
+/** Equipe: o motorista mandou fotos novas de um comprovante devolvido. */
+export const avisoDeComprovanteRefeito = (carga: { id: string; receiver: string; destination: string }): Conteudo => ({
+  tipo: "comprovante.refeito",
+  titulo: "Comprovante refeito para conferir",
+  texto: `${carga.receiver}, ${carga.destination}. O motorista mandou fotos novas.`,
+  url: `/dashboard/entregas/${carga.id}/comprovante`,
+});
+
+/** Equipe que atende chamados: a entrega foi feita com ressalva. Só o tipo: a descrição está no comprovante. */
+export const avisoDeRessalva = (carga: { id: string; receiver: string; destination: string }, ressalva: string): Conteudo => ({
+  tipo: "comprovante.ressalva",
+  titulo: `Entrega com ressalva: ${ressalva}`,
+  texto: `${carga.receiver}, ${carga.destination}.`,
+  url: `/dashboard/entregas/${carga.id}/comprovante`,
+});
+
+/** Motorista: o comprovante foi devolvido para ele refazer. Leva o motivo, que é para ele. */
+export const avisoDeComprovanteDevolvido = (carga: { id: string; receiver: string }, motivo: string): Conteudo => ({
+  tipo: "comprovante.devolvido",
+  titulo: "Comprovante devolvido: refazer",
+  texto: `${carga.receiver}: ${motivo}`,
+  url: `/driver/entregas/${carga.id}/refazer`,
 });
 
 /** Equipe do financeiro: o motorista lançou uma despesa na viagem. */

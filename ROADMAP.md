@@ -177,5 +177,6 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Pix dinâmico e boleto com baixa automática pelo Mercado Pago (cada empresa liga a própria conta).
 - [x] Roteirização automática por cidade (ordem sugerida das entregas).
 - [x] Roteirização por endereço, mapa e GPS do motorista com OpenStreetMap (trânsito só pelo link do Google Maps).
+- [x] Comprovante de entrega: fotos por tipo, ressalva, devolução ao motorista e tentativa sem sucesso (perfis Livre, E-commerce e Carga B2B). Falta: evento fiscal de comprovante de entrega na SEFAZ, leitura automática do canhoto e fotos fora do banco.
 - [x] Ordem das entregas, rota no mapa, despesas e resultado da viagem.
 - [x] Perfis de acesso: Diretoria, Financeiro, Comercial, Expedição e Conferência.

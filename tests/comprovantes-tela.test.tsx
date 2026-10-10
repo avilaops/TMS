@@ -129,7 +129,7 @@ describe("tela da fila de comprovantes", () => {
     expect(tela.textContent).not.toContain("Carregando comprovantes...");
   });
 
-  it("trocar o filtro busca de novo e mostra quem conferiu, quando e o motivo da recusa", async () => {
+  it("trocar o filtro busca de novo e mostra quem conferiu, quando e o motivo da devolução", async () => {
     const pedidos = api({
       SUBMITTED: { body: [comprovante()] },
       APPROVED: {
@@ -161,7 +161,7 @@ describe("tela da fila de comprovantes", () => {
     expect(tela.querySelector("tbody a")!.textContent).toBe("Ver comprovante");
     expect(tela.querySelector("tbody")!.textContent).not.toContain("Motivo:");
 
-    await clicar(filtro(tela, "Recusado"));
+    await clicar(filtro(tela, "Devolvidos ao motorista"));
     await ate(() =>
       expect(tela.querySelector("tbody")?.textContent).toContain("Motivo: Foto ilegível, não dá para ver a mercadoria."),
     );
@@ -186,8 +186,8 @@ describe("tela da fila de comprovantes", () => {
     await clicar(filtro(tela, "Aprovado"));
     await ate(() => expect(tela.textContent).toContain("Nenhum comprovante aprovado."));
 
-    await clicar(filtro(tela, "Recusado"));
-    await ate(() => expect(tela.textContent).toContain("Nenhum comprovante recusado."));
+    await clicar(filtro(tela, "Devolvidos ao motorista"));
+    await ate(() => expect(tela.textContent).toContain("Nenhum comprovante devolvido ao motorista."));
   });
 
   it.each([
@@ -222,5 +222,37 @@ describe("tela da fila de comprovantes", () => {
 
     await ate(() => expect(tela.querySelector("tbody")?.textContent).toContain("EM_ANALISE"));
     expect(tela.querySelector("tbody a")!.textContent).toBe("Ver comprovante");
+  });
+
+  it("filtros 'Com ressalva' e 'Devolvidos ao motorista'; a linha destaca a ressalva, a relação de quem recebeu e a baixa longe do endereço", async () => {
+    const pedidos = api({
+      SUBMITTED: { body: [comprovante({ receiverRelation: "PORTARIA", distanceMeters: 320 })] },
+      "/api/comprovantes?ressalva=1": {
+        body: [comprovante({ id: "pod-3", status: "APPROVED", receiverRelation: "VIZINHO", exceptionType: "AVARIA", distanceMeters: 1249 })],
+      },
+    });
+    const tela = await montar(<ComprovantesPage />);
+    await ate(() => expect(tela.querySelectorAll("tbody tr")).toHaveLength(1));
+
+    expect([...tela.querySelectorAll("button[aria-pressed]")].map((botao) => botao.textContent)).toEqual([
+      "Aguardando conferência",
+      "Com ressalva",
+      "Devolvidos ao motorista",
+      "Aprovado",
+    ]);
+    // Sem ressalva e perto do endereço: nem selo, nem aviso. A relação aparece junto do documento.
+    const comum = tela.querySelector("tbody tr")!;
+    expect(comum.textContent).toContain("123.456.789-00 · Portaria");
+    expect(comum.querySelector("[data-ressalva]")).toBeNull();
+    expect(comum.querySelector("[data-longe-do-endereco]")).toBeNull();
+    expect(comum.hasAttribute("data-com-ressalva")).toBe(false);
+
+    await clicar(filtro(tela, "Com ressalva"));
+    await ate(() => expect(tela.querySelector("[data-ressalva]")?.textContent).toBe("Ressalva: Avaria"));
+    const comRessalva = tela.querySelector("tbody tr")!;
+    expect(comRessalva.hasAttribute("data-com-ressalva")).toBe(true);
+    expect(comRessalva.textContent).toContain("123.456.789-00 · Vizinho");
+    expect(comRessalva.querySelector("[data-longe-do-endereco]")?.textContent).toBe("Baixa a 1,2 km do endereço");
+    expect(pedidos).toEqual(["/api/comprovantes?status=SUBMITTED", "/api/comprovantes?ressalva=1"]);
   });
 });

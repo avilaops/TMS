@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useSyncExternalStore } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, CheckCircle2, Package, ShieldCheck, Loader2, PenTool, ClipboardCheck, AlertTriangle, Navigation, Receipt, Map as IconeDeMapa, LocateFixed, LocateOff } from "lucide-react";
+import { ArrowLeft, MapPin, CheckCircle2, Package, Loader2, PenTool, ClipboardCheck, AlertTriangle, Navigation, Receipt, Map as IconeDeMapa, LocateFixed, LocateOff, Camera, PackageX } from "lucide-react";
 import Link from "next/link";
 import { linkDaRota } from "@/lib/viagem";
 import { janelaDaColeta } from "@/lib/coletas";
 import { enderecoCompleto } from "@/lib/endereco";
+import { rotuloDaSituacao, situacaoDaParada, type SituacaoDaParada } from "@/lib/comprovantes";
 import type { MapaDaViagem } from "@/lib/mapa";
 import { haQuantoTempo } from "@/lib/posicao";
 import { GPS_DESLIGADO, assinarGps, desligarGps, estadoDoGps, ligarGps, retomarGps } from "@/lib/gps-motorista";
@@ -33,7 +34,21 @@ interface Parada {
   deliveryDistrict: string | null;
   deliveryZip: string | null;
   client: { tradeName: string | null; companyName: string } | null;
+  // Para a situação da parada (src/lib/comprovantes.ts): o status do
+  // comprovante, se houve ressalva e quantas tentativas sem sucesso.
+  proofStatus?: string | null;
+  withException?: boolean;
+  attempts?: number;
 }
+
+// Como cada situação aparece de relance: o cartão e o selo.
+const APARENCIA: Record<SituacaoDaParada, { cartao: string; selo: string }> = {
+  PENDENTE: { cartao: "border-gray-100", selo: "bg-gray-100 text-gray-700" },
+  INSUCESSO: { cartao: "border-amber-300 bg-amber-50/40", selo: "bg-amber-100 text-amber-800" },
+  ENTREGUE: { cartao: "border-green-200 bg-green-50/30", selo: "bg-green-100 text-green-700" },
+  RESSALVA: { cartao: "border-amber-300 bg-amber-50/40", selo: "bg-amber-100 text-amber-800" },
+  REFAZER: { cartao: "border-red-300 bg-red-50/40", selo: "bg-red-100 text-red-700" },
+};
 
 interface Viagem {
   id: string;
@@ -241,21 +256,24 @@ export default function ViagemDetalhes() {
 
         {manifesto.collections.map((coleta, index) => {
           const isDelivered = coleta.status === 'DELIVERED';
+          const situacao = situacaoDaParada(coleta);
+          const aparencia = APARENCIA[situacao];
 
           return (
             <div
               key={coleta.id}
-              className={`bg-white rounded-3xl p-5 shadow-sm border ${isDelivered ? 'border-green-200 bg-green-50/30' : 'border-gray-100'}`}
+              data-parada={coleta.id}
+              data-situacao={situacao}
+              className={`bg-white rounded-3xl p-5 shadow-sm border ${aparencia.cartao}`}
             >
-              <div className="flex justify-between items-start mb-3">
-                <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${isDelivered ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+              <div className="flex justify-between items-center gap-2 mb-3">
+                <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-gray-100 text-gray-700 shrink-0">
                   Parada {index + 1}
                 </span>
-                {isDelivered && (
-                  <span className="flex items-center text-green-600 text-xs font-bold">
-                    <ShieldCheck className="w-4 h-4 mr-1" /> Realizada
-                  </span>
-                )}
+                {/* De relance: pendente, entregue, com ressalva, tentativa sem sucesso (com o número) ou para refazer. */}
+                <span data-situacao-da-parada className={`text-xs font-bold px-3 py-1.5 rounded-full text-right ${aparencia.selo}`}>
+                  {rotuloDaSituacao(coleta)}
+                </span>
               </div>
 
               <h4 className="font-bold text-gray-900 mb-1">{coleta.receiver}</h4>
@@ -301,13 +319,33 @@ export default function ViagemDetalhes() {
                 </div>
               )}
 
-              {/* Avaria, atraso, recusa: vira chamado para a equipe, ligado a esta carga. */}
-              <Link
-                href={`/driver/entregas/${coleta.id}/ocorrencia`}
-                className="mt-2 w-full flex items-center justify-center py-2.5 rounded-2xl border border-gray-200 text-sm font-medium text-gray-700"
-              >
-                <AlertTriangle className="w-4 h-4 mr-2 text-amber-600" /> Registrar ocorrência
-              </Link>
+              {situacao === "REFAZER" && (
+                <Link
+                  href={`/driver/entregas/${coleta.id}/refazer`}
+                  className="mt-2 w-full flex items-center justify-center py-2.5 rounded-2xl bg-red-600 text-sm font-medium text-white"
+                >
+                  <Camera className="w-4 h-4 mr-2" /> Refazer comprovante
+                </Link>
+              )}
+
+              <div className={`mt-2 grid gap-2 ${isDelivered ? "grid-cols-1" : "grid-cols-2"}`}>
+                {/* Foi até lá e não entregou: motivo padronizado e foto da fachada. A carga continua na viagem. */}
+                {!isDelivered && (
+                  <Link
+                    href={`/driver/entregas/${coleta.id}/insucesso`}
+                    className="min-w-0 flex items-center justify-center py-2.5 rounded-2xl border border-gray-200 text-sm font-medium text-gray-700"
+                  >
+                    <PackageX className="w-4 h-4 mr-2 shrink-0 text-amber-600" /> Não entreguei
+                  </Link>
+                )}
+                {/* Avaria, atraso, recusa: vira chamado para a equipe, ligado a esta carga. */}
+                <Link
+                  href={`/driver/entregas/${coleta.id}/ocorrencia`}
+                  className="min-w-0 flex items-center justify-center py-2.5 rounded-2xl border border-gray-200 text-sm font-medium text-gray-700"
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2 shrink-0 text-amber-600" /> {isDelivered ? "Registrar ocorrência" : "Ocorrência"}
+                </Link>
+              </div>
             </div>
           )
         })}

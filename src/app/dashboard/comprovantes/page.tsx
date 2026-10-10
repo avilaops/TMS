@@ -4,14 +4,31 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PROOF_STATUS, PROOF_STATUSES } from '@/lib/entregas';
 import { statusBadge } from '@/lib/format';
+import { avisoDeDistancia, rotuloDaRelacao, rotuloDaRessalva } from '@/lib/comprovantes';
 
 type ProofStatus = (typeof PROOF_STATUSES)[number];
+// Os filtros da tela: as três situações do comprovante e, à parte, as entregas
+// com ressalva (em qualquer situação).
+type Filtro = ProofStatus | 'RESSALVA';
+const FILTROS: readonly Filtro[] = ['SUBMITTED', 'RESSALVA', 'REJECTED', 'APPROVED'];
+const ROTULO_DO_FILTRO: Record<Filtro, string> = {
+  SUBMITTED: PROOF_STATUS.SUBMITTED.label,
+  RESSALVA: 'Com ressalva',
+  REJECTED: 'Devolvidos ao motorista',
+  APPROVED: PROOF_STATUS.APPROVED.label,
+};
+const consultaDoFiltro = (filtro: Filtro) => (filtro === 'RESSALVA' ? 'ressalva=1' : `status=${filtro}`);
 
 type Comprovante = {
   id: string;
   status: string;
   receiverName: string;
   receiverDoc: string;
+  // Opcionais: comprovante antigo não tem relação nem ressalva, e a distância
+  // só existe quando a baixa trouxe posição e a carga tem coordenada.
+  receiverRelation?: string | null;
+  exceptionType?: string | null;
+  distanceMeters?: number | null;
   createdAt: string;
   reviewedAt: string | null;
   rejectionReason: string | null;
@@ -27,18 +44,19 @@ type Comprovante = {
 
 // O que a última busca trouxe, e para qual filtro: enquanto o filtro da tela
 // for outro, a lista ainda está carregando.
-type Carga = { status: ProofStatus; itens: Comprovante[]; erro: string | null };
+type Carga = { status: Filtro; itens: Comprovante[]; erro: string | null };
 
-const EMPTY_MESSAGE: Record<ProofStatus, string> = {
+const EMPTY_MESSAGE: Record<Filtro, string> = {
   SUBMITTED: 'Nenhum comprovante aguardando conferência.',
+  RESSALVA: 'Nenhuma entrega com ressalva.',
   APPROVED: 'Nenhum comprovante aprovado.',
-  REJECTED: 'Nenhum comprovante recusado.',
+  REJECTED: 'Nenhum comprovante devolvido ao motorista.',
 };
 
 const dataHora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
 export default function ComprovantesPage() {
-  const [status, setStatus] = useState<ProofStatus>('SUBMITTED');
+  const [status, setStatus] = useState<Filtro>('SUBMITTED');
   const [carga, setCarga] = useState<Carga | null>(null);
 
   useEffect(() => {
@@ -48,7 +66,7 @@ export default function ComprovantesPage() {
       let itens: Comprovante[] = [];
       let erro: string | null = null;
       try {
-        const res = await fetch(`/api/comprovantes?status=${status}`);
+        const res = await fetch(`/api/comprovantes?${consultaDoFiltro(status)}`);
         const data = await res.json().catch(() => null);
         if (res.ok && Array.isArray(data)) itens = data;
         else erro = data?.error || 'Não foi possível carregar os comprovantes.';
@@ -69,11 +87,11 @@ export default function ComprovantesPage() {
     <div className="container mx-auto p-6 max-w-6xl">
       <div className="mb-6">
         <h1 className="text-3xl font-bold">Comprovantes de Entrega</h1>
-        <p className="text-gray-500">Confira o comprovante enviado pelo motorista e aprove ou recuse.</p>
+        <p className="text-gray-500">Confira o comprovante enviado pelo motorista e aprove ou devolva para ele refazer.</p>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6">
-        {PROOF_STATUSES.map((opcao) => (
+        {FILTROS.map((opcao) => (
           <button
             key={opcao}
             type="button"
@@ -85,7 +103,7 @@ export default function ComprovantesPage() {
                 : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
             }`}
           >
-            {PROOF_STATUS[opcao].label}
+            {ROTULO_DO_FILTRO[opcao]}
           </button>
         ))}
       </div>
@@ -112,8 +130,11 @@ export default function ComprovantesPage() {
               {carga.itens.map((comprovante) => {
                 const selo = statusBadge(PROOF_STATUS, comprovante.status);
                 const { collection } = comprovante;
+                const relacao = rotuloDaRelacao(comprovante.receiverRelation);
+                const ressalva = comprovante.exceptionType ? (rotuloDaRessalva(comprovante.exceptionType) ?? comprovante.exceptionType) : null;
+                const longe = avisoDeDistancia(comprovante.distanceMeters);
                 return (
-                  <tr key={comprovante.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
+                  <tr key={comprovante.id} data-com-ressalva={ressalva ? '' : undefined} className={`grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row ${ressalva ? 'bg-amber-50/60' : ''}`}>
                     <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3">
                       <p className="font-semibold">{collection.client.tradeName || collection.client.companyName}</p>
                       <p className="text-gray-500">
@@ -125,13 +146,26 @@ export default function ComprovantesPage() {
                     </td>
                     <td data-rotulo="Recebedor" className="min-w-0 md:table-cell md:px-4 md:py-3 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                       <p>{comprovante.receiverName}</p>
-                      <p className="text-gray-500">{comprovante.receiverDoc}</p>
+                      <p className="text-gray-500">
+                        {comprovante.receiverDoc}
+                        {relacao ? ` · ${relacao}` : ''}
+                      </p>
                     </td>
                     <td data-rotulo="Data da baixa" className="min-w-0 md:table-cell md:px-4 md:py-3 whitespace-nowrap before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{dataHora(comprovante.createdAt)}</td>
                     <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3">
                       <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full border ${selo.className}`}>
                         {selo.label}
                       </span>
+                      {ressalva && (
+                        <span data-ressalva className="ml-1 inline-block px-2.5 py-1 text-xs font-semibold rounded-full border bg-amber-100 text-amber-800 border-amber-300">
+                          Ressalva: {ressalva}
+                        </span>
+                      )}
+                      {longe && (
+                        <p data-longe-do-endereco className="mt-1 text-xs font-medium text-amber-700">
+                          Baixa {longe}
+                        </p>
+                      )}
                       {comprovante.reviewedAt && (
                         <p className="mt-1 text-xs text-gray-500">
                           {comprovante.reviewedBy?.name ?? 'Usuário removido'} · {dataHora(comprovante.reviewedAt)}

@@ -15,6 +15,7 @@ import {
 } from "@/lib/coletas";
 import { COLLECTION_STATUS, statusBadge } from "@/lib/format";
 import { cepFormatado } from "@/lib/endereco";
+import { textoDasTentativas } from "@/lib/comprovantes";
 
 interface Cliente {
   id: string;
@@ -58,7 +59,9 @@ interface Coleta {
   deliveryDistrict: string | null;
   deliveryZip: string | null;
   // Comprovante registrado pelo motorista na baixa; nulo na baixa feita pelo painel.
-  proof?: { id: string; status: string } | null;
+  proof?: { id: string; status: string; exceptionType?: string | null } | null;
+  // Tentativas de entrega sem sucesso registradas pelo motorista.
+  _count?: { deliveryAttempts: number };
   client: Cliente;
   driver?: Motorista | null;
 }
@@ -495,7 +498,16 @@ export default function ColetasPage() {
                             href={`/dashboard/entregas/${coleta.id}/comprovante`}
                             className="px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
                           >
-                            Comprovante
+                            {coleta.proof.exceptionType ? 'Comprovante (com ressalva)' : 'Comprovante'}
+                          </Link>
+                        )}
+                        {(coleta._count?.deliveryAttempts ?? 0) > 0 && (
+                          <Link
+                            href={`/dashboard/entregas/${coleta.id}/tentativas`}
+                            data-tentativas={coleta.id}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors"
+                          >
+                            {textoDasTentativas(coleta._count?.deliveryAttempts ?? 0)}
                           </Link>
                         )}
                         {/* Etiquetas dos volumes: da coleta confirmada até a carga sair do depósito. */}
