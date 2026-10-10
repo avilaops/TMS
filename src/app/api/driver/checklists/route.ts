@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireDriver } from '@/lib/driver';
 import { firstIssue } from '@/lib/usuarios';
-import { CHECKLIST_SELECT, createDriverChecklistSchema } from '@/lib/frota';
+import { CHECKLIST_SELECT, createDriverChecklistSchema, problemasDoChecklist } from '@/lib/frota';
+import { origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 /**
  * Checklist do veículo feito pelo motorista no app. O veículo não vem no corpo:
@@ -10,7 +11,7 @@ import { CHECKLIST_SELECT, createDriverChecklistSchema } from '@/lib/frota';
  * (em rota). Assim ele não registra checklist de veículo que não está com ele.
  */
 export async function POST(req: Request) {
-  const { driverId, userId, error } = await requireDriver();
+  const { driverId, userId, ator, error } = await requireDriver();
   if (error) return error;
 
   try {
@@ -29,6 +30,17 @@ export async function POST(req: Request) {
     const checklist = await prisma.vehicleChecklist.create({
       data: { vehicleId: viagem.vehicleId, userId, items: data.items, odometer: data.odometer ?? null, notes: data.notes ?? null },
       select: CHECKLIST_SELECT,
+    });
+
+    const problemas = problemasDoChecklist(checklist.items);
+    await registrarAuditoriaDepois(prisma, {
+      ator,
+      origem: origemDaRequisicao(req),
+      acao: 'checklist.registrar',
+      entidade: 'veiculo',
+      entidadeId: viagem.vehicleId,
+      resumo: `Checklist do veículo registrado pelo motorista: ${problemas.length === 0 ? 'tudo OK' : `problema em ${problemas.join(', ')}`}`,
+      depois: { odometer: checklist.odometer, notes: checklist.notes, itensComProblema: problemas },
     });
 
     return NextResponse.json(checklist, { status: 201 });

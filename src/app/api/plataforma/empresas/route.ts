@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { sistema } from "@/lib/prisma";
+import { paraEmpresa, sistema } from "@/lib/prisma";
 import { criarEmpresaSchema, EMPRESA_SELECT, requireEquipe } from "@/lib/plataforma";
 import { dadosDoConvite, liberarAcesso, senhaSemUso } from "@/lib/acessos";
+import { atorDaPlataforma, origemDaRequisicao, registrarAuditoriaDepois } from "@/lib/auditoria";
 
 // Cadastro de empresas (tenants). Roda pelo caminho de sistema porque é
 // justamente o que existe acima das empresas; quem protege é `requireEquipe`.
@@ -48,6 +49,17 @@ export async function POST(req: Request) {
     });
 
     console.info(`Plataforma: empresa ${data.slug} criada por ${conta.email}.`);
+
+    // A linha fica na trilha da empresa que nasceu: é o administrador dela quem a lê.
+    await registrarAuditoriaDepois(paraEmpresa(empresa.id).db, {
+      ator: atorDaPlataforma(conta),
+      origem: origemDaRequisicao(req),
+      acao: "empresa.criar",
+      entidade: "empresa",
+      entidadeId: empresa.id,
+      resumo: `Empresa ${empresa.name} criada pela plataforma`,
+      depois: { slug: empresa.slug, name: empresa.name, cnpj: empresa.cnpj, adminEmail: data.adminEmail },
+    });
 
     // O administrador entra pelo login único: garante a conta lá e libera o TMS.
     const acesso = await liberarAcesso({ email: data.adminEmail, nome: data.adminName }, { empresa: data.name, convidadoPor: conta.nome });

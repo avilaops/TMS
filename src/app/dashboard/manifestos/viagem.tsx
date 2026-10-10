@@ -599,7 +599,7 @@ function AcertoDaViagemFinalizada({ manifestId }: { manifestId: string }) {
       .then(async (res) => {
         if (!ativo) return;
         if (res.ok) setEstado(await res.json());
-        else if (res.status === 403) setEstado({ erro: "O acerto da viagem é restrito ao perfil Administrador." });
+        else if (res.status === 403) setEstado({ erro: "Seu perfil não tem acesso ao acerto da viagem." });
         else setEstado({ erro: await mensagemDeErro(res, "Não foi possível carregar o acerto.") });
       })
       .catch(() => {

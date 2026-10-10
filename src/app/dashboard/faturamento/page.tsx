@@ -197,7 +197,7 @@ export default function Faturamento() {
     return (
       <div className={`${CARD} p-8`}>
         <h1 className="font-outfit font-bold text-lg">Acesso negado</h1>
-        <p className="text-sm text-gray-500 mt-1">O faturamento é restrito ao perfil Administrador.</p>
+        <p className="text-sm text-gray-500 mt-1">Seu perfil não tem acesso a esta área.</p>
       </div>
     );
   }

@@ -114,7 +114,7 @@ export default function CobrancaPage() {
             <ShieldAlert className="w-5 h-5 text-red-600" />
             Acesso negado
           </CardTitle>
-          <CardDescription>A cobrança é restrita ao perfil Administrador.</CardDescription>
+          <CardDescription>Seu perfil não tem acesso a esta área.</CardDescription>
         </CardHeader>
       </Card>
     );

@@ -14,6 +14,7 @@ import {
 import { firstIssue } from "@/lib/usuarios";
 import { withTrackingCode } from "@/lib/tracking";
 import { freteDaColeta } from "@/lib/frete-coleta";
+import { origemDaRequisicao, registrarAuditoria } from "@/lib/auditoria";
 
 // Recusa que precisa desfazer a transação: o lead já foi marcado CONVERTED
 // quando ela é lançada, e o rollback devolve o status anterior.
@@ -36,6 +37,7 @@ export async function POST(
 
   try {
     const { id } = await params;
+    const origem = origemDaRequisicao(req);
     const parsed = convertLeadSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
@@ -111,6 +113,16 @@ export async function POST(
           where: { id },
           data: { collectionId: collection.id },
           include: LEAD_INCLUDE,
+        });
+
+        await registrarAuditoria(tx, {
+          ator: user,
+          origem,
+          acao: "cotacao.converter",
+          entidade: "cotacao",
+          entidadeId: id,
+          resumo: `Cotação de ${lead.companyName} convertida na carga ${collection.trackingCode ?? ""}`,
+          depois: { status: "CONVERTED", cargaId: collection.id, trackingCode: collection.trackingCode, clientId: collection.clientId },
         });
 
         return { lead: convertido, collection };

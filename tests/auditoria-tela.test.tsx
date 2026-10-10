@@ -125,7 +125,7 @@ describe("tela de auditoria", () => {
     api(({ url }) => (url === "/api/usuarios" ? { status: 403, body: {} } : { status: 403, body: { error: "Acesso negado" } }));
     const negada = await montar(<AuditoriaPage />);
     await ate(() => expect(negada.textContent).toContain("Acesso negado"));
-    expect(negada.textContent).toContain("Só o perfil Administrador vê a auditoria.");
+    expect(negada.textContent).toContain("Seu perfil não tem acesso a esta área.");
     expect(negada.querySelector("table")).toBeNull();
     await desmontarTudo();
 
@@ -244,6 +244,6 @@ describe("tela de mensageria", () => {
 
     api(() => ({ status: 403, body: { error: "Acesso negado" } }));
     const negada = await montar(<MensagensPage />);
-    await ate(() => expect(negada.textContent).toContain("Só o perfil Administrador vê a mensageria."));
+    await ate(() => expect(negada.textContent).toContain("Seu perfil não tem acesso a esta área."));
   });
 });

@@ -9,6 +9,7 @@ import {
   baixaSchema,
 } from '@/lib/entregas';
 import { recordStatusChanges } from '@/lib/historico';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /**
  * Baixa de entrega pelo motorista, com o comprovante.
@@ -28,11 +29,12 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { driverId, userId, error } = await requireDriver();
+  const { driverId, userId, ator, error } = await requireDriver();
   if (error) return error;
 
   try {
     const collectionId = (await params).id;
+    const origem = origemDaRequisicao(req);
 
     const parsed = baixaSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -67,8 +69,8 @@ export async function POST(
     const proofId = await transacao(async (tx) => {
       // Grava só se a carga ainda estiver em rota nesta viagem: de duas baixas
       // simultâneas, ou de baixa e retirada ao mesmo tempo, uma encontra zero linhas.
-      // Comprovante e linha do histórico vão na mesma transação: ou ficam as
-      // três gravações, ou nenhuma.
+      // Comprovante, linha do histórico e linha da auditoria vão na mesma
+      // transação: ou ficam as quatro gravações, ou nenhuma.
       const { count } = await tx.collection.updateMany({
         where: { id: collectionId, status: 'ROUTE', manifest: { driverId, status: 'ROUTE' } },
         data: { status: 'DELIVERED', receiverName },
@@ -82,6 +84,17 @@ export async function POST(
       await recordStatusChanges(tx, [
         { collectionId, fromStatus: 'ROUTE', toStatus: 'DELIVERED', userId },
       ]);
+      // Só o nome de quem recebeu: documento, foto, assinatura e localização ficam no comprovante.
+      await registrarAuditoria(tx, {
+        ator,
+        origem,
+        acao: 'entrega.baixar',
+        entidade: 'coleta',
+        entidadeId: collectionId,
+        resumo: `Entrega baixada pelo motorista, recebida por ${receiverName}`,
+        antes: { status: 'ROUTE' },
+        depois: { status: 'DELIVERED', receiverName },
+      });
       return proof.id;
     });
 

@@ -45,7 +45,7 @@ export default function FaturaPage({ params }: { params: Promise<{ id: string }>
     fetch(`/api/faturas/${id}`)
       .then(async (res) => {
         if (res.status === 404) return setErro("Fatura não encontrada.");
-        if (res.status === 401 || res.status === 403) return setErro("O faturamento é restrito ao perfil Administrador.");
+        if (res.status === 401 || res.status === 403) return setErro("Seu perfil não tem acesso a esta área.");
         if (!res.ok) throw new Error();
         setFatura((await res.json()) as Fatura);
       })

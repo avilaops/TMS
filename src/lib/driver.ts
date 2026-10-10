@@ -2,16 +2,19 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma, { SemEmpresaError } from "@/lib/prisma";
+import type { Ator } from "@/lib/auditoria";
 
 /**
  * Resolve o cadastro de motorista do usuário logado.
  *
  * Toda rota de /api/driver precisa passar por aqui e filtrar pelo `driverId`
  * devolvido — é o que impede um motorista de ver (ou dar baixa em) a viagem
- * de outro. O `userId` é o usuário desse motorista, para o histórico de status.
+ * de outro. O `userId` é o usuário desse motorista, para o histórico de status,
+ * e o `ator` é ele no formato da auditoria (src/lib/auditoria.ts).
  */
 export async function requireDriver(): Promise<
-  { driverId: string; userId: string; error: null } | { driverId: null; userId: null; error: NextResponse }
+  | { driverId: string; userId: string; ator: Ator; error: null }
+  | { driverId: null; userId: null; ator: null; error: NextResponse }
 > {
   const session = await getServerSession(authOptions);
 
@@ -19,6 +22,7 @@ export async function requireDriver(): Promise<
     return {
       driverId: null,
       userId: null,
+      ator: null,
       error: NextResponse.json({ error: "Não autorizado" }, { status: 401 }),
     };
   }
@@ -27,7 +31,7 @@ export async function requireDriver(): Promise<
   const driver = await prisma.driver
     .findUnique({
       where: { userId: session.user.id },
-      select: { id: true, active: true },
+      select: { id: true, active: true, user: { select: { name: true } } },
     })
     .catch((error: unknown) => {
       if (error instanceof SemEmpresaError) return null;
@@ -38,6 +42,7 @@ export async function requireDriver(): Promise<
     return {
       driverId: null,
       userId: null,
+      ator: null,
       error: NextResponse.json(
         { error: "Usuário não possui cadastro de motorista." },
         { status: 403 }
@@ -49,9 +54,15 @@ export async function requireDriver(): Promise<
     return {
       driverId: null,
       userId: null,
+      ator: null,
       error: NextResponse.json({ error: "Motorista inativo." }, { status: 403 }),
     };
   }
 
-  return { driverId: driver.id, userId: session.user.id, error: null };
+  return {
+    driverId: driver.id,
+    userId: session.user.id,
+    ator: { id: session.user.id, name: driver.user.name, role: "DRIVER" },
+    error: null,
+  };
 }

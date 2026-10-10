@@ -4,6 +4,7 @@ import prisma, { transacao } from '@/lib/prisma';
 import { firstIssue } from '@/lib/usuarios';
 import { createMaintenanceSchema } from '@/lib/frota';
 import { acharVeiculo, veiculoNaoEncontrado } from '@/lib/frota-db';
+import { escolher, origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -25,10 +26,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireStaff({ pode: 'frota' });
+  const { user, error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {
+    const origem = origemDaRequisicao(req);
     const parsed = createMaintenanceSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
@@ -61,6 +63,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           dueDate: data.date,
           status: 'PENDING'
         }
+      });
+
+      // 3. Registra na auditoria, na mesma transação
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'manutencao.registrar',
+        entidade: 'veiculo',
+        entidadeId: id,
+        resumo: `Manutenção registrada: ${maintenance.description}`,
+        depois: escolher(maintenance, ['description', 'cost', 'date', 'status', 'kind', 'odometer']),
       });
 
       return maintenance;

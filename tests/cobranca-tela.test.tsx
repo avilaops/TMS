@@ -136,7 +136,7 @@ describe("tela da cobrança", () => {
     const { tela } = await abrirCobranca([{ status: 403, body: { error: "Acesso negado" } }]);
 
     expect(tela.textContent).toContain("Acesso negado");
-    expect(tela.textContent).toContain("restrita ao perfil Administrador");
+    expect(tela.textContent).toContain("Seu perfil não tem acesso a esta área.");
     expect(tela.querySelectorAll("[data-cartao]")).toHaveLength(0);
     expect(tela.querySelector("table")).toBeNull();
     expect(tela.textContent).not.toContain("Nenhum valor a receber em aberto.");
@@ -148,7 +148,7 @@ describe("tela da cobrança", () => {
 
     expect(tela.textContent).toContain("Sessão expirada");
     expect(tela.querySelector('a[href="/login"]')).not.toBeNull();
-    expect(tela.textContent).not.toContain("Administrador");
+    expect(tela.textContent).not.toContain("Seu perfil");
     expect(tela.querySelectorAll("[data-cartao]")).toHaveLength(0);
   });
 
@@ -421,7 +421,7 @@ describe("tela do recibo", () => {
 
     const semPerfil = await abrirRecibo({ status: 403, body: { error: "Acesso negado" } });
     expect(semPerfil.textContent).toContain("Acesso negado");
-    expect(semPerfil.textContent).toContain("restrito ao perfil Administrador");
+    expect(semPerfil.textContent).toContain("Seu perfil não tem acesso a esta área.");
     expect(campo(semPerfil, "valor")).toBeNull();
   });
 });

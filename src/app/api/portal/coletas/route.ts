@@ -5,6 +5,7 @@ import { withTrackingCode } from '@/lib/tracking';
 import { freteDaColeta } from '@/lib/frete-coleta';
 import { JANELA_INVERTIDA, janelaInvertida, pedidoDeColetaSchema } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
+import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const COLLECTION_FIELDS = {
   id: true,
@@ -49,7 +50,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { clientId, userId, error } = await requirePortalClient();
+  const { clientId, userId, ator, error } = await requirePortalClient();
   if (error) return error;
 
   try {
@@ -125,6 +126,36 @@ export async function POST(req: Request) {
         select: COLLECTION_FIELDS,
       })
     );
+
+    await registrarAuditoriaDepois(prisma, {
+      ator,
+      origem: origemDaRequisicao(req),
+      acao: 'coleta.pedir',
+      entidade: 'coleta',
+      entidadeId: collection.id,
+      resumo: `Coleta ${collection.trackingCode ?? ''} pedida pelo portal para ${collection.receiver}`,
+      depois: {
+        clientId,
+        ...escolher(collection, [
+          'trackingCode',
+          'status',
+          'sender',
+          'receiver',
+          'origin',
+          'destination',
+          'volumes',
+          'weight',
+          'invoiceValue',
+          'pickupDate',
+          'pickupFrom',
+          'pickupTo',
+          'priority',
+          'cubicMeters',
+          'pickupNotes',
+          'freightValue',
+        ]),
+      },
+    });
 
     return NextResponse.json({ success: true, collection }, { status: 201 });
   } catch (error) {

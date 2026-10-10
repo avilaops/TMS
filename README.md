@@ -56,7 +56,7 @@ São nove perfis (enum `Role`): os sete da equipe interna, que entram em `/dashb
 - **Administrador e Operação não mudaram** com a chegada dos outros cinco: toda rota que era "equipe interna" continua com os dois, e toda rota que era "só administrador" continua sem a Operação. Nas seções abaixo, "equipe interna" e "administrador" descrevem esses dois; os demais seguem a tabela.
 - **Diretoria** faz tudo o que a Operação faz e **lê** o que é dinheiro; não lança, não baixa, não fatura, não mexe em preço, usuário, empresa nem integração.
 - **Financeiro** não opera carga: não cria nem altera minuta, manifesto, veículo ou motorista. O percentual de comissão do motorista ele lê, mas só o administrador altera (mudar exige também o cadastro de motoristas).
-- **Atribuir perfil** é do administrador, em `/dashboard/usuarios`. Motorista continua nascendo pelo cadastro de motoristas, e cliente continua exigindo a empresa vinculada. A trava do último administrador vale para qualquer destino, e toda troca fica na auditoria (`usuario.perfil`, com o perfil de antes e o de depois).
+- **Atribuir perfil** é do administrador, em `/dashboard/usuarios`. No celular o cadastro de usuário novo fica recolhido atrás do botão "Novo usuário", para a lista caber na primeira tela. Tela aberta por quem não tem a capacidade mostra "Seu perfil não tem acesso a esta área.", sem citar perfil. Motorista continua nascendo pelo cadastro de motoristas, e cliente continua exigindo a empresa vinculada. A trava do último administrador vale para qualquer destino, e toda troca fica na auditoria (`usuario.perfil`, com o perfil de antes e o de depois).
 - **Responsável por chamado** pode ser qualquer usuário de um perfil que atende chamados (todos os internos menos o Financeiro).
 - **Rota nova** precisa de uma capacidade: [tests/perfis.test.ts](tests/perfis.test.ts) lê todas as rotas de `src/app/api`, recusa `requireStaff` sem capacidade e confere, perfil por perfil, o 403 e a passagem em cada uma.
 
@@ -121,6 +121,8 @@ Todas estão documentadas em [.env.example](.env.example). As essenciais:
 | `NEXTAUTH_SECRET` | Assinatura do JWT de sessão |
 | `AVILAOPS_CLIENT_ID`, `AVILAOPS_CLIENT_SECRET` | Cliente OIDC do TMS no auth (o segredo é o `OIDC_SEGREDO_TMS` de lá) |
 | `TMS_EMPRESA_PADRAO` | Slug da empresa das rotas públicas de cotação e lead quando a requisição não informa `empresa` |
+| `FISCAL_MCP_URL` | Endereço do serviço fiscal que gera o DANFE em PDF (`https://fiscal.avilaops.com/mcp`). Opcional: sem ela o recurso fica desligado e o botão não aparece |
+| `FISCAL_MCP_TOKEN` | Opcional: enviado como `Authorization: Bearer` ao serviço fiscal, para quando ele exigir autenticação |
 | `TENANT_SLUG`, `TENANT_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed: cria a empresa e o administrador dela |
 
 ## Várias empresas no mesmo sistema (multi-tenant)
@@ -354,6 +356,7 @@ Importação do XML da NF-e para guardar a nota e criar a carga com os dados del
 - **Ligar a uma carga que já existe:** pela tela da nota, com o código de rastreio. Se a carga já tem chave de NF-e, ela precisa ser a da nota. Se não tem e ainda pode ser editada (a regra do painel, `isEditable`), a chave da nota é gravada nela; carga que já embarcou recebe só o anexo.
 - **Consultar:** lista das notas (número, emitente, destinatário, valor, carga ligada, data), busca por chave, número, CNPJ/CPF ou razão social, e download do XML original.
 - **Portal do cliente:** em `/portal/coletas/[id]` o cliente baixa o XML das notas ligadas às cargas dele.
+- **DANFE em PDF:** ao lado de "Baixar XML", na nota aberta do painel e na carga do portal, o botão "DANFE (PDF)" gera o documento na hora a partir do XML guardado (ver "DANFE em PDF" abaixo).
 
 | Rota | Quem | O que faz |
 | --- | --- | --- |
@@ -361,19 +364,32 @@ Importação do XML da NF-e para guardar a nota e criar a carga com os dados del
 | `POST /api/fiscal/notas` | equipe | Importa um XML (`{ xml }`); devolve a nota, a carga sugerida e a carga que já tem a chave |
 | `GET /api/fiscal/notas/[id]` | equipe | A nota e, se ainda sem carga, a sugestão |
 | `GET /api/fiscal/notas/[id]/xml` | equipe | O XML original, como anexo |
+| `GET /api/fiscal/notas/[id]/danfe` | quem baixa o XML (`fiscalVer`) | O DANFE em PDF, como anexo (`<chave>-danfe.pdf`) |
 | `POST /api/fiscal/notas/[id]/carga` | equipe | Cria a carga sugerida e liga a nota a ela |
 | `POST /api/fiscal/notas/[id]/ligar` | equipe | Liga a nota a uma carga pelo `trackingCode` |
 | `GET /api/fiscal/cte` | equipe | Cargas em rota ou entregues, com os dados que um CT-e precisa |
 | `POST /api/fiscal/cte` | equipe | Registra à mão `cteNumber` e `cteKey` de um CT-e emitido em outro sistema; os dois vazios desfazem |
 | `GET /api/portal/coletas/[id]/notas/[notaId]` | cliente | O XML de uma nota de uma carga dele |
+| `GET /api/portal/coletas/[id]/notas/[notaId]/danfe` | cliente | O DANFE em PDF de uma nota de uma carga dele |
 
 A tabela é criada por [prisma/sql/017-documentos-fiscais.sql](prisma/sql/017-documentos-fiscais.sql).
+
+### DANFE em PDF
+
+O PDF não é montado aqui: quem o gera é o servidor fiscal da casa ("MCP Fiscal Brasil"), pela ferramenta `gerar_danfe`, que recebe o XML da NF-e e devolve o PDF em base64. O cliente fica em [src/lib/fiscal-mcp.ts](src/lib/fiscal-mcp.ts), sem dependência nova: três `POST` JSON-RPC (`initialize`, que devolve o cabeçalho `mcp-session-id`; `notifications/initialized`; `tools/call`), com a resposta lida em JSON ou em `text/event-stream`.
+
+- **Ligar:** `FISCAL_MCP_URL=https://fiscal.avilaops.com/mcp` no ambiente (o mesmo serviço responde em `https://mcp.avilaops.com/fiscal`). Sem a variável o recurso fica **desligado**: as rotas respondem 503 e as telas não mostram o botão (a nota aberta e a carga do portal trazem `danfe: true|false`). `FISCAL_MCP_TOKEN`, opcional, vai como `Authorization: Bearer` (hoje o serviço não exige autenticação). `FISCAL_MCP_TIMEOUT_MS`, opcional, troca o tempo limite da conversa, que é de 20 segundos.
+- **Acesso:** o mesmo do XML. No painel, a capacidade `fiscalVer`; no portal, só nota ligada a uma carga do cliente logado (a de outro cliente, a sem carga e a de outra transportadora respondem 404, e o serviço fiscal nem é chamado).
+- **Falhas**, cada uma com a sua frase na tela: serviço desligado (503), serviço fora do ar ou resposta fora do protocolo (502), XML recusado pela ferramenta ou resposta que não é um PDF (502) e tempo esgotado (504). O texto que o serviço devolve no erro vai só para o log do servidor.
+- **O que sai daqui:** o XML da nota é enviado ao serviço fiscal a cada pedido. O PDF não é guardado: é gerado de novo a cada clique, e a resposta vai como anexo, sem cache.
+
+Ainda não existe: o botão na linha da lista de notas (só na nota aberta), guardar o PDF gerado, gerar vários de uma vez e DACTE.
 
 ### CT-e: este sistema não emite
 
 **Não há emissão de CT-e.** Emitir exige o certificado digital A1 da transportadora, credenciamento na SEFAZ e homologação, e nada disso existe aqui. A tela `/dashboard/fiscal/cte` diz isso no topo, lista as cargas em rota ou entregues com os dados que um CT-e precisa (todas como "não emitido", com o que falta: chave da NF-e, valor da mercadoria, frete) e deixa **registrar à mão** o número e a chave de um CT-e emitido em outro sistema, nos campos `cteNumber`, `cteKey` e `cteStatus` da carga. A chave é conferida (44 dígitos, dígito verificador, modelo 57 e o mesmo número informado), mas nada é enviado nem consultado na SEFAZ. As telas e as rotas anteriores, que simulavam a emissão com chave sorteada, foram retiradas.
 
-Ainda não existe: emissão de CT-e e de MDF-e, consulta à SEFAZ (situação da nota, download pela chave), manifestação do destinatário, DANFE em PDF, leitura de XML de CT-e ou de NFC-e, importação por e-mail ou em arquivo compactado, mais de uma NF-e criando uma carga só, desfazer a ligação entre nota e carga e apagar nota importada. Anexar a nota a uma carga não muda o valor da NF nem o frete dela.
+Ainda não existe: emissão de CT-e e de MDF-e, consulta à SEFAZ (situação da nota, download pela chave), manifestação do destinatário, leitura de XML de CT-e ou de NFC-e, importação por e-mail ou em arquivo compactado, mais de uma NF-e criando uma carga só, desfazer a ligação entre nota e carga e apagar nota importada. Anexar a nota a uma carga não muda o valor da NF nem o frete dela.
 
 ## Empresa
 
@@ -429,7 +445,7 @@ O campo `pixCopiaECola` (texto do Pix Copia e Cola estático, com o valor do tí
 
 O aviso de título vencido sai uma vez por título e por vencimento; a procura roda a cada 10 minutos. Ao cadastrar o endereço, os títulos que já estavam vencidos são avisados nessa primeira procura.
 
-**Exemplo de destino:** [n8n/avisos-por-whatsapp.js](n8n/avisos-por-whatsapp.js) é o fluxo do n8n em uso na Mello, que transforma cada aviso num resumo de WhatsApp para o responsável.
+**Exemplo de destino:** [n8n/avisos-por-whatsapp.js](n8n/avisos-por-whatsapp.js) é o fluxo do n8n em uso na Mello, que transforma cada aviso num resumo de WhatsApp para o responsável: status de carga, fatura (na emissão, com o Pix copia e cola quando há chave cadastrada), título vencido (também com o Pix) e chamado aberto ou com status trocado. O arquivo é a referência; o fluxo publicado no n8n é atualizado à parte.
 
 Ainda não há escolha de quais tipos receber, nem repetição do aviso de título vencido (o lembrete periódico fica por conta do fluxo no destino).
 
@@ -458,7 +474,9 @@ Toda ação importante grava uma linha em `AuditLog`: quem fez (o id e, guardado
 - **IP:** o primeiro valor de `x-forwarded-for` (o proxy na frente do sistema precisa preenchê-lo); sem cabeçalho, fica vazio.
 - **Tela** `/dashboard/auditoria` (menu Sistema, só `ADMIN`): da mais recente para a mais antiga, 30 por vez ("Carregar mais"), com filtro por período, usuário, tipo de registro, ação e id do registro. Abrir uma linha mostra antes e depois lado a lado.
 
-O que é registrado: criar, alterar, desativar e reativar **cliente**, **motorista** e **ajudante**, e trocar o percentual de comissão do motorista; registrar, alterar e excluir **ausência**; registrar, acertar e reabrir **adiantamento**; os parâmetros de cobrança da empresa; criar e alterar **veículo**, e registrar abastecimento e documento dele; criar e alterar **usuário**, trocar perfil, pedir a liberação de acesso e revogar o do e-mail antigo de um motorista; criar, alterar e mudar status de **carga**, e informar frete à mão; criar, alterar, liberar, cancelar e finalizar **manifesto**, e retirar carga dele; emitir, pagar, reabrir e cancelar **fatura**; criar, alterar, pagar, reabrir e excluir **lançamento**; aprovar e recusar **comprovante**; nome e símbolo da **empresa** e o endereço da **integração**; criar e alterar **tabela de frete** e trocar as cidades dela (quantas havia e quantas ficaram, não cada preço); abrir **chamado** e mudar status, prioridade ou responsável; concluir **conferência** no depósito; importar **nota fiscal** e criar carga a partir dela; e reenviar aviso.
+**Quem assina.** A equipe assina com o usuário dela. O **motorista** (aplicativo) e o **cliente** (portal) também: `requireDriver` e `requirePortalClient` devolvem o `ator` da linha. O que vem do **cadastro de empresas da plataforma** fica na trilha da empresa afetada, sem `userId` (a conta do login único não é usuário de empresa nenhuma), com o nome e o e-mail da conta e o perfil `PLATAFORMA`.
+
+O que é registrado: criar, alterar, desativar e reativar **cliente**, **motorista** e **ajudante**, e trocar o percentual de comissão do motorista; registrar, alterar e excluir **ausência**; registrar, acertar e reabrir **adiantamento**; os parâmetros de cobrança da empresa; criar e alterar **veículo**, e registrar abastecimento e documento dele; criar e alterar **usuário**, trocar perfil, pedir a liberação de acesso e revogar o do e-mail antigo de um motorista; criar, alterar e mudar status de **carga**, e informar frete à mão; criar, alterar, liberar, cancelar e finalizar **manifesto**, e retirar carga dele; emitir, pagar, reabrir e cancelar **fatura**; criar, alterar, pagar, reabrir e excluir **lançamento**; aprovar e recusar **comprovante**; nome e símbolo da **empresa** e o endereço da **integração**; criar e alterar **tabela de frete** e trocar as cidades dela (quantas havia e quantas ficaram, não cada preço); abrir **chamado** e mudar status, prioridade ou responsável; concluir **conferência** no depósito e criar ou alterar **posição**; importar **nota fiscal**, criar carga a partir dela, ligá-la a uma carga que já existe e registrar ou desfazer **CT-e**; alterar **cotação** no funil e convertê-la em carga; registrar **manutenção**, registrar, alterar e excluir **pneu**, excluir abastecimento e alterar ou excluir documento de veículo; o que o **motorista** faz no aplicativo (baixa de entrega, só com o nome de quem recebeu; ocorrência; checklist, com os itens com problema); o que o **cliente** faz no portal (pedir coleta e abrir atendimento); criar, alterar, desativar e reativar **empresa** pela plataforma; e reenviar aviso.
 
 | Rota | Quem | O que faz |
 | --- | --- | --- |
@@ -466,11 +484,11 @@ O que é registrado: criar, alterar, desativar e reativar **cliente**, **motoris
 
 A tabela é criada por [prisma/sql/018-auditoria.sql](prisma/sql/018-auditoria.sql); rode `npm run db:rls` depois dela.
 
-Ainda não é registrado: o que o **motorista** faz no aplicativo (baixa de entrega, ocorrência, checklist) e o que o **cliente** faz no portal (pedir coleta, abrir e responder atendimento); cotação e CRM (inclusive converter cotação em carga); mensagem em chamado; leitura de volume, posição e cadastro de posições do depósito; registrar CT-e e ligar nota a carga que já existe; manutenção, pneu e checklist de veículo, e alterar ou apagar abastecimento e documento; o teste da integração; e o cadastro de empresas da plataforma. A troca de status de carga feita por esses caminhos continua no histórico de status da carga (`CollectionStatusHistory`), com o usuário. Também não existe: entrada e saída do sistema (login), exportar a trilha e prazo de guarda com descarte.
+Ainda não é registrado: mensagem em chamado (painel e portal); cotação e lead recebidos do site; leitura de volume e troca de posição de volume no depósito; checklist de veículo lançado pelo painel; despesa de viagem lida pelo motorista, o perfil dele e os destinatários frequentes do portal; e o teste da integração. A troca de status de carga continua também no histórico de status da carga (`CollectionStatusHistory`), com o usuário. Também não existe: entrada e saída do sistema (login), exportar a trilha e prazo de guarda com descarte.
 
 ## Portal do cliente
 
-Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu, consulta faturas e abre atendimento (`/portal/atendimento`, na seção Atendimento e ocorrências). Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, o XML das notas fiscais ligadas à carga, para baixar, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
+Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu, consulta faturas e abre atendimento (`/portal/atendimento`, na seção Atendimento e ocorrências). Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, o XML das notas fiscais ligadas à carga, para baixar (e o DANFE em PDF, quando o serviço fiscal está ligado), e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
 
 Além disso, o cliente tem (regras em [src/lib/portal-cliente.ts](src/lib/portal-cliente.ts)):
 
@@ -483,7 +501,7 @@ Além disso, o cliente tem (regras em [src/lib/portal-cliente.ts](src/lib/portal
 
 Cada rota do portal filtra pelo cliente da sessão: destinatário, carga ou título de outro cliente da mesma transportadora responde 404 ou simplesmente não aparece, e o `clientId` que vier no corpo é ignorado. Entre transportadoras, quem separa é o banco.
 
-Ainda não existe no portal: QR Code do Pix, exportação em PDF ou XLSX, o cliente alterar ou cancelar um pedido já enviado, endereço e contato do destinatário gravados na carga (o destinatário frequente preenche só o nome e a cidade), cotação gravada como histórico e registro, na trilha de auditoria, do que o cliente faz no portal.
+Ainda não existe no portal: QR Code do Pix, exportação em PDF ou XLSX, o cliente alterar ou cancelar um pedido já enviado, endereço e contato do destinatário gravados na carga (o destinatário frequente preenche só o nome e a cidade), cotação gravada como histórico e registro, na trilha de auditoria, das mensagens de atendimento e dos destinatários frequentes (pedir coleta e abrir atendimento já são registrados).
 
 As colunas e a tabela deste módulo (pedido de coleta, destinatários e chave Pix) são criadas por [prisma/sql/021-portal-pix.sql](prisma/sql/021-portal-pix.sql); rode `npm run db:rls` depois dela.
 

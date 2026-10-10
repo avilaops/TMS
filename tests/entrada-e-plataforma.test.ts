@@ -52,6 +52,8 @@ suite("entrada pelo login único e plataforma", () => {
 
   async function limpar() {
     const { sistema } = banco;
+    // O cadastro de empresas grava na auditoria da empresa afetada, assinado pela conta da plataforma.
+    await sistema.auditLog.deleteMany({ where: { OR: [{ tenant: { slug: SLUG } }, { userRole: "PLATAFORMA", userName: { contains: PREFIXO } }] } });
     await sistema.user.deleteMany({ where: { OR: [{ email: { startsWith: PREFIXO } }, { tenant: { slug: SLUG } }] } });
     await sistema.tenant.deleteMany({ where: { slug: SLUG } });
   }
@@ -178,6 +180,20 @@ suite("entrada pelo login único e plataforma", () => {
 
       const lista = (await (await plataforma.GET()).json()) as { slug: string }[];
       expect(lista.map((e) => e.slug)).toContain(SLUG);
+
+      // A criação fica na trilha da empresa que nasceu, assinada pela conta da plataforma (sem usuário).
+      const linhas = await banco.sistema.auditLog.findMany({ where: { tenantId: corpo.id } });
+      expect(linhas).toHaveLength(1);
+      expect(linhas[0]).toMatchObject({
+        action: "empresa.criar",
+        entity: "empresa",
+        entityId: corpo.id,
+        userId: null,
+        userName: `Pessoa <${email("hugo")}>`,
+        userRole: "PLATAFORMA",
+        before: null,
+        after: { slug: SLUG, name: nova.name, adminEmail: nova.adminEmail.toLowerCase() },
+      });
     });
 
     it("identificador repetido 409; dados inválidos 400; nada fica pela metade", async () => {
@@ -199,6 +215,13 @@ suite("entrada pelo login único e plataforma", () => {
       try {
         expect((await plataformaPorId.PATCH(req("PATCH", { active: false }), ctx(EMPRESA_OUTRA.id))).status).toBe(200);
         expect(await auth.resolverEntrada(conta("ines"))).toEqual({ situacao: "sem-cadastro" });
+
+        // A alteração fica na trilha da empresa afetada, e não na de outra.
+        const daPlataforma = { userRole: "PLATAFORMA", userName: `Pessoa <${email("hugo")}>`, action: "empresa.alterar" };
+        const desativada = await banco.sistema.auditLog.findMany({ where: daPlataforma });
+        expect(desativada).toHaveLength(1);
+        expect(desativada[0]).toMatchObject({ tenantId: EMPRESA_OUTRA.id, entity: "empresa", entityId: EMPRESA_OUTRA.id, userId: null, before: { active: true }, after: { active: false } });
+        expect(desativada[0].summary).toContain("desativada pela plataforma");
         expect(await banco.sistema.user.count({ where: { email: email("ines") } })).toBe(1);
 
         expect((await plataformaPorId.PATCH(req("PATCH", { active: true }), ctx(EMPRESA_OUTRA.id))).status).toBe(200);
@@ -206,6 +229,9 @@ suite("entrada pelo login único e plataforma", () => {
 
         expect((await plataformaPorId.PATCH(req("PATCH", {}), ctx(EMPRESA_OUTRA.id))).status).toBe(400);
         expect((await plataformaPorId.PATCH(req("PATCH", { active: false }), ctx("00000000-0000-4000-8000-000000000000"))).status).toBe(404);
+
+        // Reativar gerou a segunda linha; o pedido vazio e a empresa que não existe, nenhuma.
+        expect(await banco.sistema.auditLog.count({ where: daPlataforma })).toBe(2);
       } finally {
         silencio.mockRestore();
         await banco.sistema.tenant.update({ where: { id: EMPRESA_OUTRA.id }, data: { active: true } });

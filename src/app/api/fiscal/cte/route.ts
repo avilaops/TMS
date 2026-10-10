@@ -11,6 +11,7 @@ import {
   STATUS_COM_CTE,
   registrarCteSchema,
 } from '@/lib/nfe';
+import { nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 // Este sistema NÃO emite CT-e. Emitir exige certificado digital A1 da
 // transportadora, credenciamento na SEFAZ e homologação, e nada disso existe
@@ -44,7 +45,7 @@ export async function GET() {
  * desfazem o registro. Nada é enviado à SEFAZ.
  */
 export async function POST(req: Request) {
-  const { error } = await requireStaff({ pode: 'fiscal' });
+  const { user, error } = await requireStaff({ pode: 'fiscal' });
   if (error) return error;
 
   try {
@@ -54,17 +55,23 @@ export async function POST(req: Request) {
     }
     const { collectionId, cteNumber, cteKey } = parsed.data;
 
-    const carga = await prisma.collection.findFirst({ where: { id: collectionId }, select: { status: true } });
+    const carga = await prisma.collection.findFirst({
+      where: { id: collectionId },
+      // O CT-e de antes vai para a auditoria.
+      select: { status: true, trackingCode: true, cteNumber: true, cteKey: true, cteStatus: true },
+    });
     if (!carga) return NextResponse.json({ error: CTE_CARGA_NAO_ENCONTRADA }, { status: 404 });
     if (!(STATUS_COM_CTE as readonly string[]).includes(carga.status)) {
       return NextResponse.json({ error: CTE_CARGA_NAO_SAIU }, { status: 409 });
     }
 
+    let gravadas = 0;
     try {
-      await prisma.collection.updateMany({
+      const { count } = await prisma.collection.updateMany({
         where: { id: collectionId, status: { in: [...STATUS_COM_CTE] } },
         data: { cteNumber, cteKey, cteStatus: cteKey === null ? 'PENDING' : 'ISSUED' },
       });
+      gravadas = count;
     } catch (err) {
       // A chave de CT-e é única no sistema inteiro.
       if (isUniqueViolation(err)) return NextResponse.json({ error: CTE_CHAVE_REPETIDA }, { status: 409 });
@@ -72,6 +79,24 @@ export async function POST(req: Request) {
     }
 
     const atualizada = await prisma.collection.findFirst({ where: { id: collectionId }, select: CARGA_PARA_CTE_SELECT });
+
+    const antes = { cteNumber: carga.cteNumber, cteKey: carga.cteKey, cteStatus: carga.cteStatus };
+    const depois = { cteNumber, cteKey, cteStatus: cteKey === null ? 'PENDING' : 'ISSUED' };
+    if (gravadas > 0 && !nadaMudou(antes, depois)) {
+      await registrarAuditoriaDepois(prisma, {
+        ator: user,
+        origem: origemDaRequisicao(req),
+        acao: 'cte.registrar',
+        entidade: 'coleta',
+        entidadeId: collectionId,
+        resumo:
+          cteKey === null
+            ? `Registro de CT-e desfeito na carga ${carga.trackingCode ?? ''}`
+            : `CT-e nº ${cteNumber ?? ''} registrado na carga ${carga.trackingCode ?? ''}`,
+        antes,
+        depois,
+      });
+    }
     return NextResponse.json(atualizada);
   } catch (err) {
     console.error('Erro ao registrar CT-e:', err);

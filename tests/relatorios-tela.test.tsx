@@ -110,7 +110,7 @@ describe("tela dos relatórios", () => {
     const { tela } = await abrir({ status: 403, body: { error: "Acesso negado" } });
 
     expect(tela.textContent).toContain("Acesso negado");
-    expect(tela.textContent).toContain("restritos ao perfil Administrador");
+    expect(tela.textContent).toContain("Seu perfil não tem acesso a esta área.");
     expect(tela.querySelectorAll("[data-cartao]")).toHaveLength(0);
     expect(tela.textContent).not.toContain("R$");
   });
@@ -120,7 +120,7 @@ describe("tela dos relatórios", () => {
 
     expect(tela.textContent).toContain("Sessão expirada");
     expect(tela.querySelector('a[href="/login"]')).not.toBeNull();
-    expect(tela.textContent).not.toContain("Administrador");
+    expect(tela.textContent).not.toContain("Seu perfil");
     expect(tela.querySelectorAll("[data-cartao]")).toHaveLength(0);
   });
 

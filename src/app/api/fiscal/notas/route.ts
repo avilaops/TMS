@@ -14,6 +14,7 @@ import {
   lerNfe,
 } from '@/lib/nfe';
 import { sugestaoDaNota } from '@/lib/nfe-db';
+import { danfeLigado } from '@/lib/fiscal-mcp';
 import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 // O XML viaja dentro de um JSON: aspas e quebras de linha escapadas aumentam o
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
       depois: escolher(nota, ['accessKey', 'number', 'series', 'issuerName', 'recipientName', 'totalValue']),
     });
 
-    return NextResponse.json({ nota, ...(await sugestaoDaNota(prisma, nota)) }, { status: 201 });
+    return NextResponse.json({ nota, ...(await sugestaoDaNota(prisma, nota)), danfe: danfeLigado() }, { status: 201 });
   } catch (err) {
     console.error('Erro ao importar nota fiscal:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

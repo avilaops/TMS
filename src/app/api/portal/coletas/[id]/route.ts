@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePortalClient } from '@/lib/portal';
+import { danfeLigado } from '@/lib/fiscal-mcp';
 
 /**
  * Uma coleta do cliente logado, com a linha do tempo e o comprovante de entrega.
@@ -79,6 +80,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         ...resto,
         // Em conferência ou recusado: o cliente só fica sabendo que ainda não há comprovante liberado.
         proof: proof?.status === 'APPROVED' ? proof : null,
+        // O serviço que gera o DANFE das notas está ligado? Sem ele a tela não mostra o botão.
+        danfe: danfeLigado(),
       },
       { headers: { 'Cache-Control': 'private, no-store' } }
     );

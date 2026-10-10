@@ -44,15 +44,24 @@ export const ACOES = {
   "adiantamento.reabrir": "Acerto de adiantamento desfeito",
   "veiculo.criar": "Veículo criado",
   "veiculo.alterar": "Veículo alterado",
+  "manutencao.registrar": "Manutenção registrada",
+  "pneu.registrar": "Pneu registrado",
+  "pneu.alterar": "Pneu alterado",
+  "pneu.excluir": "Pneu excluído",
+  "checklist.registrar": "Checklist de veículo registrado",
   "usuario.criar": "Usuário criado",
   "usuario.alterar": "Usuário alterado",
   "usuario.perfil": "Perfil de usuário trocado",
   "usuario.acesso.liberar": "Liberação de acesso",
   "usuario.acesso.revogar": "Acesso revogado",
   "coleta.criar": "Carga criada",
+  "coleta.pedir": "Coleta pedida pelo portal",
   "coleta.alterar": "Carga alterada",
   "coleta.status": "Status da carga alterado",
   "coleta.frete": "Frete informado à mão",
+  "entrega.baixar": "Baixa de entrega pelo motorista",
+  "cotacao.alterar": "Cotação alterada",
+  "cotacao.converter": "Cotação convertida em carga",
   "manifesto.criar": "Manifesto criado",
   "manifesto.alterar": "Manifesto alterado",
   "manifesto.retirar-carga": "Carga retirada do manifesto",
@@ -76,6 +85,7 @@ export const ACOES = {
   "lancamento.excluir": "Lançamento excluído",
   "comprovante.aprovar": "Comprovante aprovado",
   "comprovante.recusar": "Comprovante recusado",
+  "empresa.criar": "Empresa criada",
   "empresa.alterar": "Empresa alterada",
   "empresa.cobranca": "Parâmetros de cobrança alterados",
   "integracao.alterar": "Endereço de integração gravado",
@@ -87,10 +97,17 @@ export const ACOES = {
   "ocorrencia.status": "Status do chamado alterado",
   "ocorrencia.alterar": "Chamado alterado",
   "deposito.concluir": "Conferência concluída",
+  "posicao.criar": "Posição do depósito criada",
+  "posicao.alterar": "Posição do depósito alterada",
   "nota.importar": "Nota fiscal importada",
   "nota.carga": "Carga criada a partir da nota",
+  "nota.ligar": "Nota fiscal ligada a uma carga",
+  "cte.registrar": "CT-e registrado",
   "abastecimento.registrar": "Abastecimento registrado",
+  "abastecimento.excluir": "Abastecimento excluído",
   "documento-veiculo.registrar": "Documento de veículo registrado",
+  "documento-veiculo.alterar": "Documento de veículo alterado",
+  "documento-veiculo.excluir": "Documento de veículo excluído",
   "aviso.reenviar": "Aviso reenviado",
 } as const;
 
@@ -106,6 +123,8 @@ export const ENTIDADES = {
   veiculo: "Veículo",
   usuario: "Usuário",
   coleta: "Carga",
+  cotacao: "Cotação",
+  posicao: "Posição do depósito",
   manifesto: "Manifesto",
   "despesa-viagem": "Despesa de viagem",
   fatura: "Fatura",
@@ -263,6 +282,9 @@ export const CAMPOS_DA_COLETA = [
   "freightManual",
 ] as const;
 
+/** O que entra em `antes`/`depois` de um pneu. */
+export const CAMPOS_DO_PNEU = ["position", "brandModel", "installedAt", "installedKm", "removedKm", "notes"] as const;
+
 /** O que entra em `antes`/`depois` de um lançamento do financeiro. */
 export const CAMPOS_DO_LANCAMENTO = [
   "type",
@@ -346,11 +368,27 @@ export function origemDaRequisicao(req?: { headers?: { get(nome: string): string
 
 /* --------------------------------- Registrar --------------------------------- */
 
-/** Quem fez. É o que `requireStaff` devolve. */
+/** Quem fez. É o que `requireStaff` devolve (e, para motorista e cliente, `requireDriver` e `requirePortalClient`). */
 export type Ator = { id: string; name: string; role: string };
 
+/** O perfil gravado na linha quando quem fez foi a equipe da plataforma (cadastro de empresas). */
+export const PERFIL_DA_PLATAFORMA = "PLATAFORMA";
+
+/**
+ * Quem fez, quando a ação veio da plataforma: a conta do login único não é
+ * usuário de empresa nenhuma, então a linha fica sem `userId`, com o nome e o
+ * e-mail da conta no lugar do nome.
+ */
+export type AtorDaPlataforma = { id: null; name: string; role: typeof PERFIL_DA_PLATAFORMA };
+
+export const atorDaPlataforma = (conta: { nome: string; email: string }): AtorDaPlataforma => ({
+  id: null,
+  name: `${conta.nome} <${conta.email}>`,
+  role: PERFIL_DA_PLATAFORMA,
+});
+
 export type Registro = {
-  ator: Ator;
+  ator: Ator | AtorDaPlataforma;
   origem: Origem;
   acao: Acao;
   entidade: Entidade;
@@ -587,6 +625,21 @@ export const ROTULOS_DOS_CAMPOS: Record<string, string> = {
   settledAt: "Acertado em",
   multaPct: "Multa (%)",
   jurosPct: "Juros ao mês (%)",
+  cteNumber: "Número do CT-e",
+  cteKey: "Chave do CT-e",
+  cteStatus: "Situação do CT-e",
+  position: "Posição",
+  brandModel: "Marca e modelo",
+  installedAt: "Instalado em",
+  installedKm: "Km na instalação",
+  removedKm: "Km na retirada",
+  cost: "Custo",
+  kind: "Tipo de serviço",
+  code: "Código",
+  estimatedValue: "Valor estimado",
+  itensComProblema: "Itens com problema",
+  slug: "Identificador",
+  adminEmail: "E-mail do administrador",
 };
 
 export const rotuloDoCampo = (campo: string) => ROTULOS_DOS_CAMPOS[campo] ?? campo;

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertCircle, ArrowLeft, CheckCircle2, Circle, Loader2, Printer, Truck, XCircle } from "lucide-react";
 import { formatCurrency, formatWeight } from "@/lib/format";
 import { janelaDaColeta } from "@/lib/coletas";
+import { BotaoDanfe } from "@/components/fiscal/botao-danfe";
 
 type Detalhe = {
   id: string;
@@ -30,6 +31,8 @@ type Detalhe = {
   statusHistory: { toStatus: string; createdAt: string }[];
   manifest: { driver: { user: { name: string } } } | null;
   fiscalDocuments: { id: string; number: number; series: number; accessKey: string }[];
+  /** O serviço que gera o DANFE está ligado? */
+  danfe?: boolean;
   proof: {
     receiverName: string;
     receiverDoc: string;
@@ -169,6 +172,7 @@ export default function PortalColetaPage({ params }: { params: Promise<{ id: str
                   <a href={`/api/portal/coletas/${coleta.id}/notas/${nota.id}`} download className="text-orange-600 hover:underline">
                     Baixar XML
                   </a>
+                  {coleta.danfe && <BotaoDanfe endereco={`/api/portal/coletas/${coleta.id}/notas/${nota.id}/danfe`} className="text-orange-600" />}
                 </li>
               ))}
             </ul>

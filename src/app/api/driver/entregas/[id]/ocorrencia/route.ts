@@ -6,6 +6,7 @@ import { firstIssue } from '@/lib/usuarios';
 import { DELIVERY_NOT_FOUND_MESSAGE } from '@/lib/entregas';
 import { driverOccurrenceSchema, tituloDoMotorista } from '@/lib/ocorrencias';
 import { abrirOcorrencia } from '@/lib/ocorrencias-db';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /**
  * Ocorrência registrada pelo motorista numa entrega (o `[id]` é o da carga).
@@ -16,11 +17,12 @@ import { abrirOcorrencia } from '@/lib/ocorrencias-db';
  * equipe, e o portal só mostra chamado que tem o cliente como dono.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { driverId, userId, error } = await requireDriver();
+  const { driverId, userId, ator, error } = await requireDriver();
   if (error) return error;
 
   try {
     const collectionId = (await params).id;
+    const origem = origemDaRequisicao(req);
     const parsed = driverOccurrenceSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
@@ -34,15 +36,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       });
       if (!carga) throw new Refusal(DELIVERY_NOT_FOUND_MESSAGE, 404);
 
-      return abrirOcorrencia(tx, {
+      const title = tituloDoMotorista(type, carga.receiver);
+      const criada = await abrirOcorrencia(tx, {
         type,
-        title: tituloDoMotorista(type, carga.receiver),
+        title,
         description,
         collectionId: carga.id,
         clientId: null,
         openedById: userId,
         origin: 'STAFF',
       });
+
+      await registrarAuditoria(tx, {
+        ator,
+        origem,
+        acao: 'ocorrencia.abrir',
+        entidade: 'ocorrencia',
+        entidadeId: criada.id,
+        resumo: `Chamado nº ${criada.number} aberto pelo motorista: ${title}`,
+        depois: { number: criada.number, type, title, cargaId: carga.id },
+      });
+      return criada;
     });
 
     return NextResponse.json({ success: true, id: ocorrencia.id, number: ocorrencia.number }, { status: 201 });

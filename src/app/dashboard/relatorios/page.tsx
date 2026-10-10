@@ -89,7 +89,7 @@ export default function RelatoriosPage() {
             <ShieldAlert className="w-5 h-5 text-red-600" />
             Acesso negado
           </CardTitle>
-          <CardDescription>Os relatórios são restritos ao perfil Administrador.</CardDescription>
+          <CardDescription>Seu perfil não tem acesso a esta área.</CardDescription>
         </CardHeader>
       </Card>
     );

@@ -13,6 +13,7 @@ import {
   NOTA_SELECT,
   ligarNotaSchema,
 } from '@/lib/nfe';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 const MUDOU = 'A carga foi alterada enquanto você ligava a nota. Tente de novo.';
 
@@ -25,11 +26,12 @@ const MUDOU = 'A carga foi alterada enquanto você ligava a nota. Tente de novo.
  * dados dela não mudam depois do manifesto.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff({ pode: 'fiscal' });
+  const { user, error } = await requireStaff({ pode: 'fiscal' });
   if (error) return error;
 
   try {
     const { id } = await params;
+    const origem = origemDaRequisicao(req);
     const parsed = ligarNotaSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
@@ -63,6 +65,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
       const { count } = await tx.fiscalDocument.updateMany({ where: { id, collectionId: null }, data: { collectionId: carga.id } });
       if (count === 0) throw new Refusal(NOTA_JA_LIGADA, 409);
+
+      await registrarAuditoria(tx, {
+        ator: user,
+        origem,
+        acao: 'nota.ligar',
+        entidade: 'nota',
+        entidadeId: id,
+        resumo: `Nota fiscal ligada à carga ${trackingCode}`,
+        depois: { accessKey: atual.accessKey, cargaId: carga.id, trackingCode },
+      });
 
       return tx.fiscalDocument.findFirstOrThrow({ where: { id }, select: NOTA_SELECT });
     });

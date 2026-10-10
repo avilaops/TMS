@@ -136,7 +136,7 @@ export default function NotasFiscaisPage() {
   };
 
   const aoMudar = (nota: NotaImportada) => {
-    setAberta({ nota, sugestao: null, cargaComAChave: null });
+    setAberta((atual) => ({ nota, sugestao: null, cargaComAChave: null, danfe: atual?.danfe }));
     setEnvios((atuais) => atuais.map((envio) => (envio.nota?.id === nota.id ? { ...envio, nota, aberta: null } : envio)));
     setVersao((v) => v + 1);
   };

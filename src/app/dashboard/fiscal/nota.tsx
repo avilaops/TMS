@@ -6,6 +6,7 @@ import { Download, Loader2, X } from "lucide-react";
 import { COLLECTION_STATUS, formatCurrency, formatDate, formatDocument, formatWeight, statusBadge } from "@/lib/format";
 import { cidadeUf, type CargaDaNota, type NotaImportada, type SugestaoDeCarga } from "@/lib/nfe";
 import { BOTAO_AZUL, BOTAO_CLARO, INPUT, LABEL, erroDe } from "../deposito/comum";
+import { BotaoDanfe } from "@/components/fiscal/botao-danfe";
 import { chaveEmBlocos, numeroDaNota } from "./comum";
 
 /**
@@ -15,7 +16,13 @@ import { chaveEmBlocos, numeroDaNota } from "./comum";
  * de rastreio. No celular ocupa a tela inteira.
  */
 
-export type NotaAberta = { nota: NotaImportada; sugestao: SugestaoDeCarga | null; cargaComAChave: CargaDaNota | null };
+export type NotaAberta = {
+  nota: NotaImportada;
+  sugestao: SugestaoDeCarga | null;
+  cargaComAChave: CargaDaNota | null;
+  /** O serviço que gera o DANFE está ligado (`FISCAL_MCP_URL`)? Sem ele o botão não aparece. */
+  danfe?: boolean;
+};
 
 export type ClienteDaLista = { id: string; companyName: string; tradeName: string | null; cnpj: string; active: boolean };
 
@@ -129,14 +136,9 @@ export function PainelDaNota({
               {chaveEmBlocos(nota.accessKey)}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <a href={`/api/fiscal/notas/${nota.id}/xml`} download className="p-2 text-blue-600" aria-label="Baixar o XML" title="Baixar o XML">
-              <Download className="w-5 h-5" />
-            </a>
-            <button type="button" onClick={aoFechar} className="p-2 text-gray-500" aria-label="Fechar">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button type="button" onClick={aoFechar} className="shrink-0 p-2 text-gray-500" aria-label="Fechar">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
@@ -148,6 +150,14 @@ export function PainelDaNota({
             <Dado rotulo="Volumes e peso" valor={`${nota.volumes ?? "-"} · ${formatWeight(nota.grossWeight)}`} />
             <Dado rotulo="Natureza" valor={nota.operationNature ?? "-"} />
           </dl>
+
+          <div data-arquivos className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-blue-600">
+            <a href={`/api/fiscal/notas/${nota.id}/xml`} download className="inline-flex items-center gap-1 hover:underline">
+              <Download className="w-4 h-4" />
+              Baixar XML
+            </a>
+            {aberta.danfe && <BotaoDanfe endereco={`/api/fiscal/notas/${nota.id}/danfe`} />}
+          </div>
 
           {feito && (
             <p role="status" className="px-3 py-2 text-sm text-emerald-800 border border-emerald-200 rounded-lg bg-emerald-50">

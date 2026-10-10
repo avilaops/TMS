@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { Loader2, Plus, ShieldAlert, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +61,9 @@ export default function UsuariosPage() {
   const [denied, setDenied] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
+  // No celular o formulário de cadastro fica recolhido atrás do botão "Novo usuário",
+  // para a lista caber na primeira tela. No computador ele está sempre aberto.
+  const [formOpen, setFormOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Edição em linha: um usuário por vez.
@@ -119,6 +122,7 @@ export default function UsuariosPage() {
       if (res.ok) {
         const criado = (await res.json()) as { name: string; acesso?: Acesso };
         setForm(EMPTY_FORM);
+        setFormOpen(false);
         setFeedback({ ok: true, text: "Usuário criado." });
         if (criado.acesso) setAcesso({ nome: criado.name, acesso: criado.acesso });
         reload();
@@ -201,7 +205,7 @@ export default function UsuariosPage() {
             Acesso negado
           </CardTitle>
           <CardDescription>
-            A gestão de usuários é restrita ao perfil Administrador.
+            Seu perfil não tem acesso a esta área.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -213,9 +217,15 @@ export default function UsuariosPage() {
 
   return (
     <div className="space-y-3 md:space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Usuários</h1>
-        <p className="text-gray-500 text-sm mt-1">Quem entra no sistema e com qual perfil</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Usuários</h1>
+          <p className="text-gray-500 text-sm mt-1">Quem entra no sistema e com qual perfil</p>
+        </div>
+        <Button type="button" className="md:hidden shrink-0" aria-expanded={formOpen} onClick={() => setFormOpen((aberto) => !aberto)}>
+          {formOpen ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          {formOpen ? "Fechar" : "Novo usuário"}
+        </Button>
       </div>
 
       {feedback && (
@@ -229,7 +239,7 @@ export default function UsuariosPage() {
 
       {acesso && <AvisoDeAcesso nome={acesso.nome} acesso={acesso.acesso} onFechar={() => setAcesso(null)} />}
 
-      <Card>
+      <Card data-novo-usuario className={`${formOpen ? "flex" : "hidden"} md:flex`}>
         <CardHeader>
           <CardTitle>Novo usuário</CardTitle>
           <CardDescription>
@@ -301,7 +311,8 @@ export default function UsuariosPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      {/* Com o cadastro aberto, a lista sai da tela do celular. */}
+      <Card data-lista className={`${formOpen ? "hidden" : "flex"} md:flex`}>
         <CardHeader>
           <CardTitle>Usuários cadastrados</CardTitle>
         </CardHeader>

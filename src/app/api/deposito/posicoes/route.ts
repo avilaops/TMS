@@ -4,6 +4,7 @@ import { requireStaff } from '@/lib/staff';
 import { isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { POSICAO_REPETIDA, POSICAO_SELECT, createLocationSchema } from '@/lib/deposito';
+import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 /** As posições do depósito, as ativas primeiro, com quantos volumes há em cada uma. */
 export async function GET() {
@@ -24,7 +25,7 @@ export async function GET() {
 
 /** Cadastra uma posição. O código é único na empresa. */
 export async function POST(req: Request) {
-  const { error } = await requireStaff({ pode: 'deposito' });
+  const { user, error } = await requireStaff({ pode: 'deposito' });
   if (error) return error;
 
   try {
@@ -37,6 +38,16 @@ export async function POST(req: Request) {
       data: { code: parsed.data.code, description: parsed.data.description ?? null },
       select: POSICAO_SELECT,
     });
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'posicao.criar',
+      entidade: 'posicao',
+      entidadeId: posicao.id,
+      resumo: `Posição ${posicao.code} do depósito criada`,
+      depois: escolher(posicao, ['code', 'description', 'active']),
+    });
+
     return NextResponse.json(posicao, { status: 201 });
   } catch (err) {
     if (isUniqueViolation(err)) return NextResponse.json({ error: POSICAO_REPETIDA }, { status: 409 });

@@ -5,6 +5,7 @@ import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { PORTAL_OCCURRENCE_SELECT, portalOccurrenceSchema } from '@/lib/ocorrencias';
 import { abrirOcorrencia } from '@/lib/ocorrencias-db';
+import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /**
  * Atendimento no portal: os chamados da empresa do cliente logado.
@@ -32,10 +33,11 @@ export async function GET() {
 
 /** Abre um chamado. A carga é opcional e precisa ser uma das cargas deste cliente. */
 export async function POST(req: Request) {
-  const { clientId, userId, error } = await requirePortalClient();
+  const { clientId, userId, ator, error } = await requirePortalClient();
   if (error) return error;
 
   try {
+    const origem = origemDaRequisicao(req);
     const parsed = portalOccurrenceSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
@@ -57,6 +59,16 @@ export async function POST(req: Request) {
         clientId,
         openedById: userId,
         origin: 'CLIENT',
+      });
+
+      await registrarAuditoria(tx, {
+        ator,
+        origem,
+        acao: 'ocorrencia.abrir',
+        entidade: 'ocorrencia',
+        entidadeId: criada.id,
+        resumo: `Chamado nº ${criada.number} aberto pelo cliente no portal: ${data.title}`,
+        depois: { number: criada.number, type: data.type, title: data.title, clientId, cargaId: data.collectionId ?? null },
       });
       return tx.occurrence.findUniqueOrThrow({ where: { id: criada.id }, select: PORTAL_OCCURRENCE_SELECT });
     });

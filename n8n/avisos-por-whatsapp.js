@@ -34,6 +34,8 @@ const STATUS = {
   CANCELLED: 'Coleta cancelada',
   REJECTED: 'Coleta recusada',
 };
+const TIPO_DO_CHAMADO = { DELAY: 'Atraso', DAMAGE: 'Avaria', LOSS: 'Extravio', BILLING: 'Cobrança', REDELIVERY: 'Reentrega', OTHER: 'Outro' };
+const STATUS_DO_CHAMADO = { OPEN: 'Aberto', ANALYSIS: 'Em análise', IN_PROGRESS: 'Em tratamento', RESOLVED: 'Resolvido', CLOSED: 'Encerrado' };
 const reais = (v) => (typeof v === 'number' ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'a cotar');
 const data = (d) => (d ? d.split('-').reverse().join('/') : 'sem vencimento');
 const saida = [];
@@ -55,6 +57,8 @@ for (const item of \$input.all()) {
     linhas.push('*' + titulo + ' nº ' + f.numero + '*');
     linhas.push((f.cliente?.nome ?? 'Cliente') + ' · ' + reais(f.total) + ' · vence ' + data(f.vencimento));
     linhas.push(f.cargas + (f.cargas === 1 ? ' carga' : ' cargas'));
+    // Só na emissão, e só quando a empresa tem chave Pix: o código vai numa linha própria, para copiar inteiro.
+    if (aviso.tipo === 'fatura.emitida' && f.pixCopiaECola) linhas.push('Pix copia e cola:\\n' + f.pixCopiaECola);
   } else if (aviso.tipo === 'cobranca.vencida' && d.titulo && d.titulo.emAberto) {
     const t = d.titulo;
     linhas.push('*Título vencido*');
@@ -62,6 +66,15 @@ for (const item of \$input.all()) {
     linhas.push('Venceu em ' + data(t.vencimento) + ' (' + t.diasDeAtraso + (t.diasDeAtraso === 1 ? ' dia' : ' dias') + ' de atraso)');
     linhas.push(t.fatura ? 'Fatura nº ' + t.fatura.numero : t.descricao);
     if (t.cliente?.telefone) linhas.push('Contato: ' + (t.cliente.contato ? t.cliente.contato + ' · ' : '') + t.cliente.telefone);
+    if (t.pixCopiaECola) linhas.push('Pix copia e cola:\\n' + t.pixCopiaECola);
+  } else if ((aviso.tipo === 'ocorrencia.aberta' || aviso.tipo === 'ocorrencia.status') && d.ocorrencia) {
+    const o = d.ocorrencia;
+    const status = STATUS_DO_CHAMADO[o.status] ?? o.status;
+    linhas.push('*Chamado nº ' + o.numero + (aviso.tipo === 'ocorrencia.aberta' ? ' aberto' : ': ' + status) + '*');
+    linhas.push((TIPO_DO_CHAMADO[o.tipo] ?? o.tipo) + ' · ' + o.titulo + (o.prioridade === 'HIGH' ? ' · prioridade alta' : ''));
+    linhas.push((o.cliente?.nome ?? 'Sem cliente') + (o.abertaPor === 'CLIENT' ? ' · aberto pelo portal' : ''));
+    if (o.carga) linhas.push('Carga ' + (o.carga.rastreio?.codigo ?? 'sem código') + ' · ' + o.carga.destinatario + ' · ' + o.carga.destino);
+    if (o.painel) linhas.push('Abrir: ' + o.painel);
   } else if (aviso.tipo === 'teste') {
     linhas.push('*Teste do TMS recebido*');
     linhas.push('A integração com o n8n está funcionando.');

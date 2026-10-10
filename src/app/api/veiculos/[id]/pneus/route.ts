@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { firstIssue } from '@/lib/usuarios';
 import { TIRE_SELECT, createTireSchema } from '@/lib/frota';
 import { acharVeiculo, veiculoNaoEncontrado } from '@/lib/frota-db';
+import { CAMPOS_DO_PNEU, escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 /** Pneus do veículo: os que estão nele primeiro, depois os retirados, pela instalação mais recente. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -27,7 +28,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireStaff({ pode: 'frota' });
+  const { user, error } = await requireStaff({ pode: 'frota' });
   if (error) return error;
 
   try {
@@ -51,6 +52,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         notes: data.notes ?? null,
       },
       select: TIRE_SELECT,
+    });
+
+    await registrarAuditoriaDepois(prisma, {
+      ator: user,
+      origem: origemDaRequisicao(req),
+      acao: 'pneu.registrar',
+      entidade: 'veiculo',
+      entidadeId: id,
+      resumo: `Pneu ${pneu.brandModel} registrado na posição ${pneu.position}`,
+      depois: escolher(pneu, CAMPOS_DO_PNEU),
     });
 
     return NextResponse.json(pneu, { status: 201 });

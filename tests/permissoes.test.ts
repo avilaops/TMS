@@ -53,6 +53,7 @@ suite("permissões das rotas internas", () => {
   let fiscalNotas: typeof import("../src/app/api/fiscal/notas/route");
   let fiscalNota: typeof import("../src/app/api/fiscal/notas/[id]/route");
   let fiscalNotaXml: typeof import("../src/app/api/fiscal/notas/[id]/xml/route");
+  let fiscalNotaDanfe: typeof import("../src/app/api/fiscal/notas/[id]/danfe/route");
   let fiscalNotaCarga: typeof import("../src/app/api/fiscal/notas/[id]/carga/route");
   let fiscalNotaLigar: typeof import("../src/app/api/fiscal/notas/[id]/ligar/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
@@ -170,6 +171,7 @@ suite("permissões das rotas internas", () => {
     fiscalNotas = await import("../src/app/api/fiscal/notas/route");
     fiscalNota = await import("../src/app/api/fiscal/notas/[id]/route");
     fiscalNotaXml = await import("../src/app/api/fiscal/notas/[id]/xml/route");
+    fiscalNotaDanfe = await import("../src/app/api/fiscal/notas/[id]/danfe/route");
     fiscalNotaCarga = await import("../src/app/api/fiscal/notas/[id]/carga/route");
     fiscalNotaLigar = await import("../src/app/api/fiscal/notas/[id]/ligar/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
@@ -259,6 +261,7 @@ suite("permissões das rotas internas", () => {
       ["POST /api/fiscal/notas", () => fiscalNotas.POST(req("POST", {}))],
       ["GET /api/fiscal/notas/[id]", () => fiscalNota.GET(req(), ctx(semId))],
       ["GET /api/fiscal/notas/[id]/xml", () => fiscalNotaXml.GET(req(), ctx(semId))],
+      ["GET /api/fiscal/notas/[id]/danfe", () => fiscalNotaDanfe.GET(req(), ctx(semId))],
       ["POST /api/fiscal/notas/[id]/carga", () => fiscalNotaCarga.POST(req("POST", {}), ctx(semId))],
       ["POST /api/fiscal/notas/[id]/ligar", () => fiscalNotaLigar.POST(req("POST", {}), ctx(semId))],
       ["GET /api/fiscal/cte", () => fiscalCte.GET()],
