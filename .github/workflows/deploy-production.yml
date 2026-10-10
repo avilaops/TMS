@@ -76,6 +76,9 @@ jobs:
     env:
       # Pull request constroi e valida; so o push na main publica a imagem.
       PUBLISH: ${{ github.event_name != 'pull_request' }}
+      # Vazios quando o repositorio nao tem os segredos: o login e pulado.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     outputs:
       image: ${{ steps.result.outputs.image }}
     steps:
@@ -93,6 +96,16 @@ jobs:
             [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]]
           fi
           printf 'IMAGE_NAME=ghcr.io/%s\n' "${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      # O construtor de imagens (moby/buildkit) so existe no Docker Hub, que
+      # recusa ou demora a responder ao runner sem login. Com os segredos
+      # DOCKERHUB_USERNAME e DOCKERHUB_TOKEN no repositorio, o login acontece
+      # antes; sem eles o passo e pulado e tudo segue como antes.
+      - name: Autenticar no Docker Hub
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
       - name: Preparar Docker
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
       - name: Autenticar no GHCR
