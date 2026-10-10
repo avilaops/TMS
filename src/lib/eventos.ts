@@ -7,6 +7,7 @@ import { RECEBEDOR_SELECT, pixCopiaECola, pixDoTitulo, recebedorDaEmpresa, txidD
 import { enviarPushPendentes } from "@/lib/notificacoes-push";
 import { cobrancasEmAberto } from "@/lib/cobranca-gateway";
 import { conferirCobrancasEmAberto } from "@/lib/cobranca-gateway-db";
+import { localizarEnderecosPendentes } from "@/lib/geo-db";
 
 /**
  * Entrega dos eventos (OutboxEvent) no endereço que cada empresa cadastrou.
@@ -340,14 +341,32 @@ const global = globalThis as { tmsDespachante?: ReturnType<typeof setInterval> }
 
 /**
  * Liga o despachante dentro do servidor (src/instrumentation.ts): a cada volta
- * entrega os eventos para sistemas de fora e manda por push os avisos das
- * pessoas (src/lib/notificacoes-push.ts).
+ * entrega os eventos para sistemas de fora, manda por push os avisos das
+ * pessoas (src/lib/notificacoes-push.ts) e, à parte, procura a coordenada de
+ * alguns endereços de entrega (src/lib/geo-db.ts).
  */
 export function iniciarDespacho(): void {
   if (global.tmsDespachante) return;
   let rodando = false;
+  let localizando = false;
   let voltas = 0;
   global.tmsDespachante = setInterval(() => {
+    // A localização de endereços corre à parte, com a própria trava e o próprio
+    // `catch`: depende de um serviço de fora (Nominatim), que pode demorar ou
+    // cair, e não pode segurar nem derrubar eventos, cobranças e push. Sem
+    // `GEO_CONTATO` a volta não faz nada.
+    if (!localizando) {
+      localizando = true;
+      localizarEnderecosPendentes()
+        .then((volta) => {
+          if (volta.erro) console.error("Localização de endereços em pausa por 10 minutos:", volta.erro);
+        })
+        .catch((erro) => console.error("Erro ao localizar endereços de entrega:", erro instanceof Error ? erro.message : "erro desconhecido"))
+        .finally(() => {
+          localizando = false;
+        });
+    }
+
     if (rodando) return;
     rodando = true;
     const varrer = voltas % VOLTAS_ENTRE_VARREDURAS === 0;

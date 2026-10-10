@@ -89,6 +89,13 @@ function atenderOffline(event) {
 
   const url = new URL(request.url);
 
+  // Só o que é deste site passa daqui. Os blocos de imagem do mapa
+  // (OpenStreetMap, ou o servidor de NEXT_PUBLIC_MAPA_TILES) vêm de outro
+  // endereço e NÃO são guardados: a política de uso do OSM não permite baixar
+  // blocos em massa, e um mapa guardado encheria o aparelho. Sem rede o mapa
+  // fica em branco e a lista de paradas segue funcionando.
+  if (url.origin !== self.location.origin) return;
+
   // Navegação dentro do app do motorista: rede primeiro.
   if (isDriverNavigation(request, url)) {
     event.respondWith(

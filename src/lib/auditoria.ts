@@ -289,6 +289,10 @@ export const CAMPOS_DA_COLETA = [
   "priority",
   "cubicMeters",
   "pickupNotes",
+  "deliveryStreet",
+  "deliveryNumber",
+  "deliveryDistrict",
+  "deliveryZip",
   "freightValue",
   "freightManual",
 ] as const;

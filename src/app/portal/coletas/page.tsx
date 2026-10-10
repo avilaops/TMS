@@ -13,6 +13,7 @@ import {
 } from "@/lib/format";
 import { PRIORIDADES, PRIORIDADE_LABEL, janelaDaColeta } from "@/lib/coletas";
 import type { Destinatario } from "@/lib/portal-cliente";
+import { cepFormatado, enderecoDoTexto } from "@/lib/endereco";
 import { readPortal, type PortalCollection } from "../types";
 import { BOTAO, BOTAO_SECUNDARIO, CAMPO, Campo, NaoCarregou, ROTULO } from "../comum";
 
@@ -30,6 +31,11 @@ const EMPTY_FORM = {
   pickupTo: "",
   priority: "NORMAL",
   pickupNotes: "",
+  // Endereço da entrega, além da cidade: opcional.
+  deliveryStreet: "",
+  deliveryNumber: "",
+  deliveryDistrict: "",
+  deliveryZip: "",
 };
 
 // O que a Cotação manda no endereço ao "Pedir coleta com estes dados".
@@ -68,6 +74,7 @@ function Coletas() {
   const [form, setForm] = useState(daCotacao ?? EMPTY_FORM);
   // Janela, prioridade e observação são opcionais e ficam recolhidas: o pedido cabe na tela do celular.
   const [pedidoAberto, setPedidoAberto] = useState(false);
+  const [enderecoAberto, setEnderecoAberto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [success, setSuccess] = useState("");
@@ -115,6 +122,7 @@ function Coletas() {
       setForm(EMPTY_FORM);
       setFormOpen(false);
       setPedidoAberto(false);
+      setEnderecoAberto(false);
       setSuccess("Solicitação enviada. A transportadora confirma a coleta pelo WhatsApp.");
       // Tira do endereço os dados da cotação: recarregar não reabre o pedido já enviado.
       if (daCotacao) router.replace("/portal/coletas");
@@ -132,7 +140,19 @@ function Coletas() {
 
   const escolherDestinatario = (id: string) => {
     const escolhido = destinatarios.find((d) => d.id === id);
-    if (escolhido) setForm((current) => ({ ...current, receiver: escolhido.name, destination: escolhido.city }));
+    if (!escolhido) return;
+    // O endereço do destinatário é um texto só: vira as partes do endereço de entrega, para a pessoa conferir.
+    const endereco = enderecoDoTexto(escolhido.address);
+    setForm((current) => ({
+      ...current,
+      receiver: escolhido.name,
+      destination: escolhido.city,
+      deliveryStreet: endereco.deliveryStreet ?? "",
+      deliveryNumber: endereco.deliveryNumber ?? "",
+      deliveryDistrict: endereco.deliveryDistrict ?? "",
+      deliveryZip: cepFormatado(endereco.deliveryZip),
+    }));
+    if (endereco.deliveryStreet) setEnderecoAberto(true);
   };
 
   // O arquivo vem pelo `fetch` para o erro (período inválido, sessão expirada) aparecer na tela.
@@ -268,6 +288,27 @@ function Coletas() {
             <Campo rotulo="Peso (kg)" type="number" min="0.1" step="0.1" value={form.weight} onChange={setField("weight")} required />
             <Campo rotulo="Valor da nota (opcional)" type="number" min="0" step="0.01" value={form.invoiceValue} onChange={setField("invoiceValue")} />
             <Campo rotulo="Cubagem (m³, opcional)" type="number" min="0" step="0.001" value={form.cubicMeters} onChange={setField("cubicMeters")} />
+          </div>
+
+          <div className="rounded-xl border border-gray-100">
+            <button
+              type="button"
+              aria-expanded={enderecoAberto}
+              data-secao="endereco"
+              onClick={() => setEnderecoAberto((aberto) => !aberto)}
+              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700"
+            >
+              <span>Endereço da entrega (opcional)</span>
+              <span aria-hidden className="text-gray-400">{enderecoAberto ? "−" : "+"}</span>
+            </button>
+            {enderecoAberto && (
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3">
+                <Campo rotulo="Logradouro" maxLength={200} value={form.deliveryStreet} onChange={setField("deliveryStreet")} placeholder="Rua das Flores" />
+                <Campo rotulo="Número" maxLength={20} value={form.deliveryNumber} onChange={setField("deliveryNumber")} />
+                <Campo rotulo="Bairro" maxLength={100} value={form.deliveryDistrict} onChange={setField("deliveryDistrict")} />
+                <Campo rotulo="CEP" inputMode="numeric" maxLength={9} value={form.deliveryZip} onChange={setField("deliveryZip")} placeholder="00000-000" />
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-gray-100">

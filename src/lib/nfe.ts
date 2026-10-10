@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createCollectionSchema } from "@/lib/coletas";
+import { enderecoDoTexto, type EnderecoDaEntrega } from "@/lib/endereco";
 
 // Documentos fiscais: leitura do XML de NF-e (modelo 55), sugestão da carga a
 // partir da nota e o registro manual de CT-e emitido em outro sistema.
@@ -418,7 +419,8 @@ export type SugestaoDeCarga = {
   invoiceValue: number;
   /** O que o operador precisa resolver antes de confirmar. */
   avisos: string[];
-};
+  // O endereço de entrega, lido do endereço do destinatário da nota (src/lib/endereco.ts).
+} & EnderecoDaEntrega;
 
 const AVISO_SEM_CLIENTE = "Nenhum cliente cadastrado tem o CNPJ do emitente ou do destinatário: escolha o cliente pagador.";
 const AVISO_DOIS_CLIENTES = "Emitente e destinatário são clientes cadastrados e a nota não diz quem paga o frete: escolha o cliente pagador.";
@@ -478,6 +480,7 @@ export function sugerirCarga(nota: NotaLida, clientes: readonly ClienteParaSuges
     invoiceKey: nota.accessKey,
     invoiceValue: nota.totalValue,
     avisos,
+    ...enderecoDoTexto(nota.recipientAddress),
   };
 }
 

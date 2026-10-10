@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Loader2, X } from "lucide-react";
 import { COLLECTION_STATUS, formatCurrency, formatDate, formatDocument, formatWeight, statusBadge } from "@/lib/format";
 import { cidadeUf, type CargaDaNota, type NotaImportada, type SugestaoDeCarga } from "@/lib/nfe";
+import { cepFormatado, enderecoEmLinha, type EnderecoDaEntrega } from "@/lib/endereco";
 import { BOTAO_AZUL, BOTAO_CLARO, INPUT, LABEL, erroDe } from "../deposito/comum";
 import { BotaoDanfe } from "@/components/fiscal/botao-danfe";
 import { chaveEmBlocos, numeroDaNota } from "./comum";
@@ -29,6 +30,14 @@ export type ClienteDaLista = { id: string; companyName: string; tradeName: strin
 type Aba = "criar" | "ligar";
 
 type Form = { clientId: string; sender: string; receiver: string; origin: string; destination: string; volumes: string; weight: string };
+
+/** O endereço de entrega que a nota traz: vai junto na criação da carga e é corrigido depois, em Cargas. */
+const enderecoDaSugestao = (sugestao: SugestaoDeCarga | null): EnderecoDaEntrega => ({
+  deliveryStreet: sugestao?.deliveryStreet ?? null,
+  deliveryNumber: sugestao?.deliveryNumber ?? null,
+  deliveryDistrict: sugestao?.deliveryDistrict ?? null,
+  deliveryZip: sugestao?.deliveryZip ?? null,
+});
 
 const paraForm = (sugestao: SugestaoDeCarga | null): Form => ({
   clientId: sugestao?.clientId ?? "",
@@ -115,7 +124,7 @@ export function PainelDaNota({
 
   const criar = (e: React.FormEvent) => {
     e.preventDefault();
-    void enviar("carga", form, FALHA_AO_CRIAR, (ligada) => `Carga criada com o código ${ligada.collection?.trackingCode ?? ""}.`);
+    void enviar("carga", { ...form, ...enderecoDaSugestao(sugestao) }, FALHA_AO_CRIAR, (ligada) => `Carga criada com o código ${ligada.collection?.trackingCode ?? ""}.`);
   };
 
   const ligar = (e: React.FormEvent) => {
@@ -259,6 +268,12 @@ export function PainelDaNota({
                       <input required inputMode="decimal" className={INPUT} {...campo("weight")} />
                     </label>
                   </div>
+                  {sugestao?.deliveryStreet && (
+                    <p data-endereco-da-nota className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                      Entrega: {enderecoEmLinha(sugestao)}
+                      {cepFormatado(sugestao.deliveryZip) ? `, ${cepFormatado(sugestao.deliveryZip)}` : ""} (da nota; corrija depois em Cargas)
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500">
                     Valor da NF ({formatCurrency(nota.totalValue)}) e chave vêm da nota. O frete sai da tabela do cliente.
                   </p>

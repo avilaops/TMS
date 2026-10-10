@@ -114,6 +114,7 @@ suite("permissões das rotas internas", () => {
   let viagemDados: typeof import("../src/app/api/manifestos/[id]/dados/route");
   let viagemOrdem: typeof import("../src/app/api/manifestos/[id]/ordem/route");
   let viagemRoteiro: typeof import("../src/app/api/manifestos/[id]/roteiro/route");
+  let viagemMapa: typeof import("../src/app/api/manifestos/[id]/mapa/route");
   let conciliacao: typeof import("../src/app/api/financeiro/conciliacao/route");
   let conciliacaoLinha: typeof import("../src/app/api/financeiro/conciliacao/[id]/route");
   let conciliacaoCerteiros: typeof import("../src/app/api/financeiro/conciliacao/certeiros/route");
@@ -240,6 +241,7 @@ suite("permissões das rotas internas", () => {
     viagemDados = await import("../src/app/api/manifestos/[id]/dados/route");
     viagemOrdem = await import("../src/app/api/manifestos/[id]/ordem/route");
     viagemRoteiro = await import("../src/app/api/manifestos/[id]/roteiro/route");
+    viagemMapa = await import("../src/app/api/manifestos/[id]/mapa/route");
     conciliacao = await import("../src/app/api/financeiro/conciliacao/route");
     conciliacaoLinha = await import("../src/app/api/financeiro/conciliacao/[id]/route");
     conciliacaoCerteiros = await import("../src/app/api/financeiro/conciliacao/certeiros/route");
@@ -352,6 +354,7 @@ suite("permissões das rotas internas", () => {
       ["PATCH /api/manifestos/[id]/dados", () => viagemDados.PATCH(req("PATCH", { notes: "Invasor" }), ctx(semId))],
       ["PUT /api/manifestos/[id]/ordem", () => viagemOrdem.PUT(req("PUT", { collectionIds: [semId] }), ctx(semId))],
       ["POST /api/manifestos/[id]/roteiro", () => viagemRoteiro.POST(req("POST", {}), ctx(semId))],
+      ["GET /api/manifestos/[id]/mapa", () => viagemMapa.GET(req(), ctx(semId))],
       ["GET /api/manifestos/[id]/despesas", () => viagemDespesas.GET(req(), ctx(semId))],
       ["POST /api/manifestos/[id]/despesas", () => viagemDespesas.POST(req("POST", { type: "TOLL", amount: "10", date: "2026-01-10" }), ctx(semId))],
       ["DELETE /api/manifestos/[id]/despesas/[despesaId]", () => viagemDespesa.DELETE(req("DELETE"), despesaDaViagem)],

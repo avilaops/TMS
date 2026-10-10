@@ -76,6 +76,8 @@ describe("aba Rota: sugerir ordem", () => {
     origem: "São José do Rio Preto/SP",
     voltar: true,
     cidades: { a: "Votuporanga/SP", b: "Catanduva/SP", c: null },
+    porEndereco: 0,
+    medida: "reta",
   };
 
   const abrirRota = async (viagem: Manifesto, alteraViagem = true, onChange = () => {}) => {
@@ -102,7 +104,9 @@ describe("aba Rota: sugerir ordem", () => {
 
     const texto = tela.querySelector("[data-sugestao-de-ordem]")!.textContent ?? "";
     expect(tela.querySelector("[data-distancias]")!.textContent).toBe("412,3 km hoje → 350,1 km na ordem sugerida");
-    expect(texto).toContain("em linha reta, entre centros das cidades");
+    expect(texto).toContain("em linha reta, entre os endereços localizados ou os centros das cidades: não é o km de estrada");
+    // Trânsito não existe em fonte aberta: a tela diz, e aponta o Google Maps.
+    expect(texto).toContain("Trânsito não entra na conta");
     expect(texto).toContain("Saindo de São José do Rio Preto/SP.");
     expect(tela.querySelector("[data-sem-localizacao]")!.textContent).toContain("1 entrega sem localização ficou no fim");
     expect(paradas(tela, "data-parada-sugerida")).toEqual(["b", "a", "c"]);

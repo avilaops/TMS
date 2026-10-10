@@ -29,6 +29,12 @@ export type ColetaNova = {
   priority?: string;
   cubicMeters?: number | null;
   pickupNotes?: string | null;
+  // Endereço da entrega (src/lib/endereco.ts): tudo opcional. A coordenada é
+  // procurada depois, em segundo plano (src/lib/geo-db.ts).
+  deliveryStreet?: string | null;
+  deliveryNumber?: string | null;
+  deliveryDistrict?: string | null;
+  deliveryZip?: string | null;
 };
 
 /** Por que a coleta não pode nascer (cliente ou motorista inativo ou de fora), ou `null`. */
@@ -77,6 +83,10 @@ export async function criarColetaConfirmada(db: ColetasDb, dados: ColetaNova, us
       priority: dados.priority ?? "NORMAL",
       cubicMeters: dados.cubicMeters ?? null,
       pickupNotes: dados.pickupNotes ?? null,
+      deliveryStreet: dados.deliveryStreet ?? null,
+      deliveryNumber: dados.deliveryNumber ?? null,
+      deliveryDistrict: dados.deliveryDistrict ?? null,
+      deliveryZip: dados.deliveryZip ?? null,
       ...frete,
       freightDetails: frete.freightDetails ?? undefined,
       // Quem cria pelo painel é o operador que aprovaria: nasce confirmada.

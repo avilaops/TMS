@@ -297,7 +297,14 @@ describe("documentos fiscais: regras", () => {
         invoiceKey: chaveDe(1234),
         invoiceValue: 1534.56,
         avisos: [],
+        // O endereço de entrega sai do endereço do destinatário da nota; o complemento ("Loja 2") fica de fora.
+        deliveryStreet: "Av. Brasil",
+        deliveryNumber: "S/N",
+        deliveryDistrict: "Centro",
+        deliveryZip: "15130000",
       });
+      // Nota sem endereço do destinatário: a carga nasce só com a cidade.
+      expect(sugerirCarga({ ...nota, recipientAddress: null }, [emitente])).toMatchObject({ deliveryStreet: null, deliveryNumber: null, deliveryDistrict: null, deliveryZip: null });
     });
 
     it("o pagador é o cliente cujo CNPJ é o do emitente ou o do destinatário, com ou sem máscara no cadastro", () => {

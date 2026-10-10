@@ -14,6 +14,7 @@ import { firstIssue } from '@/lib/usuarios';
 import { freteDaColeta, type FreteDaColeta } from '@/lib/frete-coleta';
 import { Prisma } from '@prisma/client';
 import { CAMPOS_DA_COLETA, escolher, nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
+import { enderecoMudou } from '@/lib/endereco';
 
 const NOT_FOUND = 'Coleta não encontrada.';
 const IN_MANIFEST = 'Esta coleta já está em um manifesto e não pode mais ser alterada.';
@@ -79,6 +80,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         pickupDate: true,
         priority: true,
         pickupNotes: true,
+        deliveryStreet: true,
+        deliveryNumber: true,
+        deliveryDistrict: true,
+        deliveryZip: true,
       }
     });
     if (!target) {
@@ -158,6 +163,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         priority: data.priority,
         cubicMeters: data.cubicMeters,
         pickupNotes: data.pickupNotes,
+        deliveryStreet: data.deliveryStreet,
+        deliveryNumber: data.deliveryNumber,
+        deliveryDistrict: data.deliveryDistrict,
+        deliveryZip: data.deliveryZip,
+        // Endereço ou cidade mudou: a coordenada antiga deixa de valer e a carga
+        // volta para a fila da localização (src/lib/geo-db.ts).
+        ...(enderecoMudou(target, data) && { deliveryLat: null, deliveryLon: null, geoSource: null, geoAt: null }),
         ...(frete && {
           freightValue: frete.freightValue,
           freightDeadlineHours: frete.freightDeadlineHours,

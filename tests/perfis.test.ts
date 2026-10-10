@@ -230,6 +230,7 @@ const ROTAS: Record<string, Capacidade> = {
   "POST /api/manifestos/[id]/finalizar": "manifestos",
   "POST /api/manifestos/[id]/liberar": "manifestos",
   "PUT /api/manifestos/[id]/ordem": "manifestos",
+  "GET /api/manifestos/[id]/mapa": "manifestosVer",
   "POST /api/manifestos/[id]/roteiro": "manifestos",
   "PATCH /api/manifestos/[id]": "manifestos",
   "GET /api/manifestos": "manifestosVer",
@@ -289,6 +290,9 @@ const FORA_DA_MATRIZ = [
   "/api/driver/entregas/[id]/ocorrencia",
   "/api/driver/manifestos",
   "/api/driver/manifestos/[id]/despesas",
+  // Mapa da viagem e posição do GPS: só a viagem em rota do próprio motorista (`requireDriver`).
+  "/api/driver/manifestos/[id]/mapa",
+  "/api/driver/manifestos/[id]/posicao",
   "/api/driver/perfil",
   "/api/empresas",
   "/api/health",

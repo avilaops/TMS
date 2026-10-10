@@ -19,6 +19,7 @@ import {
 } from '@/lib/offline-queue';
 import { PHOTO_MIME_TYPES, photoProblem, resolvePhotoType } from '@/lib/entregas';
 import { createStrokeTracker } from '@/lib/assinatura';
+import { enviarPosicaoAgora } from '@/lib/gps-motorista';
 
 export default function DeliveryProofPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -204,6 +205,10 @@ export default function DeliveryProofPage({ params }: { params: Promise<{ id: st
         const data = await res.json().catch(() => null);
         throw new Error(data?.error || 'Erro ao registrar baixa');
       }
+
+      // Com a localização compartilhada, a posição sai também na hora da entrega
+      // (além do envio a cada 30 segundos). Sem compartilhamento, não faz nada.
+      void enviarPosicaoAgora();
 
       router.push('/driver');
       router.refresh();

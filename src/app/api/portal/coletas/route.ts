@@ -5,6 +5,7 @@ import { withTrackingCode } from '@/lib/tracking';
 import { freteDaColeta } from '@/lib/frete-coleta';
 import { JANELA_INVERTIDA, janelaInvertida, pedidoDeColetaSchema } from '@/lib/coletas';
 import { firstIssue } from '@/lib/usuarios';
+import { enderecoDaEntregaSchema } from '@/lib/endereco';
 import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 import { avisarDepois, avisarEquipe, avisoDePedidoDeColeta } from '@/lib/notificacoes';
 
@@ -30,6 +31,12 @@ const COLLECTION_FIELDS = {
   priority: true,
   cubicMeters: true,
   pickupNotes: true,
+  // O endereço de entrega que ele informou. A coordenada achada a partir dele
+  // não vem: no portal não há mapa nem posição de motorista.
+  deliveryStreet: true,
+  deliveryNumber: true,
+  deliveryDistrict: true,
+  deliveryZip: true,
 } as const;
 
 export async function GET() {
@@ -91,6 +98,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: JANELA_INVERTIDA }, { status: 400 });
     }
 
+    // Endereço da entrega (logradouro, número, bairro e CEP): opcional.
+    const lido = enderecoDaEntregaSchema.safeParse(body);
+    if (!lido.success) {
+      return NextResponse.json({ error: firstIssue(lido.error) }, { status: 400 });
+    }
+    const endereco = lido.data;
+
     const frete = await freteDaColeta(prisma, {
       clientId,
       destination: String(destination),
@@ -117,6 +131,10 @@ export async function POST(req: Request) {
           priority: pedido.priority ?? 'NORMAL',
           cubicMeters: pedido.cubicMeters ?? null,
           pickupNotes: pedido.pickupNotes ?? null,
+          deliveryStreet: endereco.deliveryStreet ?? null,
+          deliveryNumber: endereco.deliveryNumber ?? null,
+          deliveryDistrict: endereco.deliveryDistrict ?? null,
+          deliveryZip: endereco.deliveryZip ?? null,
           ...frete,
           freightDetails: frete.freightDetails ?? undefined,
           status: 'PENDING',
@@ -153,6 +171,10 @@ export async function POST(req: Request) {
           'priority',
           'cubicMeters',
           'pickupNotes',
+          'deliveryStreet',
+          'deliveryNumber',
+          'deliveryDistrict',
+          'deliveryZip',
           'freightValue',
         ]),
       },

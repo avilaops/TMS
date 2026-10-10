@@ -102,6 +102,7 @@ DECLARE
     "PushSubscription": ["userId", "User"],
     "BankStatementLine": ["transactionId", "FinancialTransaction"],
     "PaymentCharge": ["invoiceId", "Invoice"],
+    "TripPosition": ["manifestId", "Manifest"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';
@@ -154,6 +155,19 @@ DO $$
 BEGIN
   IF to_regclass('public."AuditLog"') IS NOT NULL THEN
     REVOKE UPDATE, DELETE ON "AuditLog" FROM tms_app;
+  END IF;
+END
+$$;
+
+-- Cache da localizacao de enderecos ("GeoCache"): e do sistema, sem `tenantId`
+-- (a coordenada de um endereco e dado publico, igual para todas as empresas).
+-- Sem a coluna, o laco acima nao cria politica nem da permissao; o REVOKE deixa
+-- escrito que o papel da aplicacao nao le nem grava ali: so o caminho de
+-- sistema (src/lib/geo-db.ts).
+DO $$
+BEGIN
+  IF to_regclass('public."GeoCache"') IS NOT NULL THEN
+    REVOKE ALL ON "GeoCache" FROM tms_app;
   END IF;
 END
 $$;

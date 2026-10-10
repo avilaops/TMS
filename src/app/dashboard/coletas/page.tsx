@@ -14,6 +14,7 @@ import {
   type CollectionStatus,
 } from "@/lib/coletas";
 import { COLLECTION_STATUS, statusBadge } from "@/lib/format";
+import { cepFormatado } from "@/lib/endereco";
 
 interface Cliente {
   id: string;
@@ -51,6 +52,11 @@ interface Coleta {
   priority: string;
   cubicMeters: number | null;
   pickupNotes: string | null;
+  // Endereço da entrega, além da cidade. Tudo opcional (src/lib/endereco.ts).
+  deliveryStreet: string | null;
+  deliveryNumber: string | null;
+  deliveryDistrict: string | null;
+  deliveryZip: string | null;
   // Comprovante registrado pelo motorista na baixa; nulo na baixa feita pelo painel.
   proof?: { id: string; status: string } | null;
   client: Cliente;
@@ -113,6 +119,10 @@ const EMPTY_FORM = {
   priority: "NORMAL",
   cubicMeters: "",
   pickupNotes: "",
+  deliveryStreet: "",
+  deliveryNumber: "",
+  deliveryDistrict: "",
+  deliveryZip: "",
 };
 
 // A coleta como o formulário de edição a mostra, sem o cliente (que não muda).
@@ -135,7 +145,14 @@ const toEditForm = (coleta: Coleta) => ({
   priority: coleta.priority || "NORMAL",
   cubicMeters: coleta.cubicMeters === null ? "" : String(coleta.cubicMeters),
   pickupNotes: coleta.pickupNotes ?? "",
+  deliveryStreet: coleta.deliveryStreet ?? "",
+  deliveryNumber: coleta.deliveryNumber ?? "",
+  deliveryDistrict: coleta.deliveryDistrict ?? "",
+  deliveryZip: cepFormatado(coleta.deliveryZip),
 });
+
+// O formulário tem algum dado do endereço de entrega? É o que abre a seção ao editar.
+const temEndereco = (form: typeof EMPTY_FORM) => Boolean(form.deliveryStreet || form.deliveryNumber || form.deliveryDistrict || form.deliveryZip);
 
 // O formulário tem algum dado do pedido? É o que abre a seção ao editar.
 const temPedido = (form: typeof EMPTY_FORM) =>
@@ -173,6 +190,7 @@ export default function ColetasPage() {
   // Os dados do pedido (janela, prioridade, cubagem) ficam recolhidos: são
   // opcionais, e o formulário principal precisa caber na tela do celular.
   const [pedidoAberto, setPedidoAberto] = useState(false);
+  const [enderecoAberto, setEnderecoAberto] = useState(false);
 
   // A tela já nasce com `isLoading` ligado: a primeira carga só busca.
   const loadData = () =>
@@ -204,6 +222,7 @@ export default function ColetasPage() {
     setEditOriginal(null);
     setFormData(EMPTY_FORM);
     setPedidoAberto(false);
+    setEnderecoAberto(false);
   };
 
   const openEdit = (coleta: Coleta) => {
@@ -212,6 +231,7 @@ export default function ColetasPage() {
     setEditOriginal(original);
     setFormData({ clientId: coleta.client?.id ?? "", ...original });
     setPedidoAberto(temPedido({ clientId: "", ...original }));
+    setEnderecoAberto(temEndereco({ clientId: "", ...original }));
     setIsModalOpen(true);
   };
 
@@ -696,6 +716,40 @@ export default function ColetasPage() {
                     <div className="space-y-0.5 md:space-y-1.5 min-w-0 lg:col-span-3">
                       <label htmlFor="coleta-observacao" className={ROTULO_DO_PEDIDO}>Observação</label>
                       <input id="coleta-observacao" type="text" maxLength={500} value={formData.pickupNotes} onChange={(e) => setFormData({...formData, pickupNotes: e.target.value})} placeholder="Ex.: procurar o João na doca 2" className={CAMPO_DO_PEDIDO} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Endereço da entrega: opcional e recolhido. Com ele a ordem das entregas e o mapa usam o ponto do endereço, não o centro da cidade. */}
+              <div className="rounded-xl border border-gray-100 dark:border-gray-800">
+                <button
+                  type="button"
+                  aria-expanded={enderecoAberto}
+                  data-secao="endereco"
+                  onClick={() => setEnderecoAberto((aberto) => !aberto)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  <span>Endereço da entrega (opcional)</span>
+                  <span aria-hidden className="text-gray-400">{enderecoAberto ? "−" : "+"}</span>
+                </button>
+                {enderecoAberto && (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3">
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-rua" className={ROTULO_DO_PEDIDO}>Logradouro</label>
+                      <input id="coleta-rua" type="text" maxLength={200} value={formData.deliveryStreet} onChange={(e) => setFormData({...formData, deliveryStreet: e.target.value})} placeholder="Rua das Flores" className={CAMPO_DO_PEDIDO} />
+                    </div>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-numero" className={ROTULO_DO_PEDIDO}>Número</label>
+                      <input id="coleta-numero" type="text" maxLength={20} value={formData.deliveryNumber} onChange={(e) => setFormData({...formData, deliveryNumber: e.target.value})} className={CAMPO_DO_PEDIDO} />
+                    </div>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-bairro" className={ROTULO_DO_PEDIDO}>Bairro</label>
+                      <input id="coleta-bairro" type="text" maxLength={100} value={formData.deliveryDistrict} onChange={(e) => setFormData({...formData, deliveryDistrict: e.target.value})} className={CAMPO_DO_PEDIDO} />
+                    </div>
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label htmlFor="coleta-cep" className={ROTULO_DO_PEDIDO}>CEP</label>
+                      <input id="coleta-cep" type="text" inputMode="numeric" maxLength={9} value={formData.deliveryZip} onChange={(e) => setFormData({...formData, deliveryZip: e.target.value})} placeholder="00000-000" className={CAMPO_DO_PEDIDO} />
                     </div>
                   </div>
                 )}

@@ -173,6 +173,6 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Conciliação bancária por extrato OFX importado.
 - [x] Pix dinâmico e boleto com baixa automática pelo Mercado Pago (cada empresa liga a própria conta).
 - [x] Roteirização automática por cidade (ordem sugerida das entregas).
-- [ ] Roteirização por endereço, com mapa, trânsito e GPS do motorista (precisa de serviço de mapas contratado).
+- [x] Roteirização por endereço, mapa e GPS do motorista com OpenStreetMap (trânsito só pelo link do Google Maps).
 - [x] Ordem das entregas, rota no mapa, despesas e resultado da viagem.
 - [x] Perfis de acesso: Diretoria, Financeiro, Comercial, Expedição e Conferência.

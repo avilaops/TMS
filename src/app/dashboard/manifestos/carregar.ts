@@ -17,6 +17,11 @@ export interface Minuta {
   client: Cliente;
   status: string;
   manifestId: string | null;
+  // Endereço da entrega, além da cidade. Tudo opcional (src/lib/endereco.ts).
+  deliveryStreet?: string | null;
+  deliveryNumber?: string | null;
+  deliveryDistrict?: string | null;
+  deliveryZip?: string | null;
 }
 
 export interface Motorista {
@@ -50,6 +55,8 @@ export interface Manifesto {
   notes?: string | null;
   departedAt?: string | null;
   finishedAt?: string | null;
+  // Quando o motorista compartilhou a posição pela última vez (src/lib/posicao.ts).
+  lastPositionAt?: string | null;
 }
 
 export type ManifestosData = {

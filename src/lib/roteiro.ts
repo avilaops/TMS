@@ -3,21 +3,28 @@ import { chaveDaCidade } from "@/lib/frete";
 import { normalizeText } from "@/lib/normalization";
 
 /**
- * Roteirização por cidade: a ordem sugerida das entregas de uma viagem.
+ * Roteirização: a ordem sugerida das entregas de uma viagem.
  *
  * O que esta conta é, e o que não é:
- * - Trabalha com a CIDADE de cada entrega, não com o endereço. A distância é em
- *   linha reta (haversine) entre os centros das cidades: serve para pôr as
- *   cidades numa ordem que não vai e volta, não para dizer quantos km o caminhão
- *   roda. Não conhece estrada, trânsito, pedágio nem janela de entrega.
+ * - Cada entrega fica num ponto: a coordenada do ENDEREÇO da carga, quando ele
+ *   foi localizado (src/lib/geo-db.ts), senão o centro da CIDADE do destino.
+ *   Com endereço, as entregas de uma mesma cidade também entram na ordem.
+ * - A distância padrão é em linha reta (haversine): serve para pôr as paradas
+ *   numa ordem que não vai e volta, não para dizer quantos km o caminhão roda.
+ *   Quem chama pode passar outra medida (`distancia`): a rota usa a distância
+ *   por estrada de um servidor OSRM quando `ROTA_URL` está definida
+ *   (src/lib/rota-osrm.ts). Em nenhum caso conhece trânsito, pedágio nem janela
+ *   de entrega: trânsito não existe em fonte aberta.
  * - A ordem sai de "vizinho mais próximo" seguido de melhoria 2-opt. Entregas
- *   na mesma cidade ficam juntas, na ordem em que já estavam entre si.
- * - Carga cuja cidade não foi achada ("sem localização") vai para o fim, na
- *   ordem atual, e é devolvida à parte para a tela avisar.
+ *   no mesmo ponto (mesma cidade sem endereço, ou a mesma coordenada) ficam
+ *   juntas, na ordem em que já estavam entre si.
+ * - Carga sem endereço localizado e cuja cidade não foi achada ("sem
+ *   localização") vai para o fim, na ordem atual, e é devolvida à parte para a
+ *   tela avisar.
  *
- * Tudo aqui é puro: as coordenadas chegam por parâmetro (`IndiceDeCidades`). A
- * tabela dos municípios mora em `src/lib/municipios.ts`, que só o servidor
- * importa; a tela importa daqui só os tipos.
+ * Tudo aqui é puro: as coordenadas chegam por parâmetro (`IndiceDeCidades` e os
+ * campos da carga). A tabela dos municípios mora em `src/lib/municipios.ts`,
+ * que só o servidor importa; a tela importa daqui só os tipos.
  */
 
 export type Cidade = { nome: string; uf: string; lat: number; lon: number };
@@ -145,7 +152,10 @@ export function textoMaisComum(textos: readonly (string | null | undefined)[]): 
 const RAIO_DA_TERRA_KM = 6371.0088;
 const emRadianos = (graus: number) => (graus * Math.PI) / 180;
 
-type Ponto = Pick<Cidade, "lat" | "lon">;
+export type Ponto = Pick<Cidade, "lat" | "lon">;
+
+/** A medida entre dois pontos, em km. Padrão: linha reta (`distanciaKm`). */
+export type Distancia = (a: Ponto, b: Ponto) => number;
 
 /** Distância em linha reta entre dois pontos, em km (fórmula de haversine). */
 export function distanciaKm(a: Ponto, b: Ponto): number {
@@ -159,17 +169,17 @@ export function distanciaKm(a: Ponto, b: Ponto): number {
  * O comprimento do caminho `partida → pontos, na ordem → retorno`. Sem partida
  * o caminho começa no primeiro ponto; sem retorno termina no último.
  */
-export function comprimentoKm(pontos: readonly Ponto[], partida: Ponto | null, retorno: Ponto | null): number {
+export function comprimentoKm(pontos: readonly Ponto[], partida: Ponto | null, retorno: Ponto | null, distancia: Distancia = distanciaKm): number {
   const caminho = [...(partida ? [partida] : []), ...pontos, ...(retorno ? [retorno] : [])];
   let total = 0;
-  for (let i = 1; i < caminho.length; i += 1) total += distanciaKm(caminho[i - 1], caminho[i]);
+  for (let i = 1; i < caminho.length; i += 1) total += distancia(caminho[i - 1], caminho[i]);
   return total;
 }
 
 /* -------------------------------- Ordem sugerida ------------------------------ */
 
 /** Vizinho mais próximo: da partida (ou do primeiro ponto), sempre para o ponto mais perto que falta. */
-function vizinhoMaisProximo<T extends Ponto>(pontos: readonly T[], partida: Ponto | null): T[] {
+function vizinhoMaisProximo<T extends Ponto>(pontos: readonly T[], partida: Ponto | null, distancia: Distancia): T[] {
   const faltam = [...pontos];
   const ordem: T[] = [];
   let atual: Ponto | null = partida;
@@ -181,7 +191,7 @@ function vizinhoMaisProximo<T extends Ponto>(pontos: readonly T[], partida: Pont
     let melhor = 0;
     let menor = Infinity;
     for (let i = 0; i < faltam.length; i += 1) {
-      const d = distanciaKm(atual as Ponto, faltam[i]);
+      const d = distancia(atual as Ponto, faltam[i]);
       // Só troca se for menor de verdade: no empate fica o que veio antes na ordem atual.
       if (d < menor - 1e-9) {
         menor = d;
@@ -197,13 +207,14 @@ function vizinhoMaisProximo<T extends Ponto>(pontos: readonly T[], partida: Pont
 /**
  * 2-opt: inverte um trecho da ordem sempre que isso encurta o caminho, até não
  * haver mais ganho. Só as duas pontas do trecho mudam de vizinho, então o ganho
- * sai de quatro distâncias. Sem partida, o primeiro ponto fica preso no lugar
- * (é de onde o caminho sai).
+ * sai de quatro distâncias (por isso a medida precisa ser simétrica: ida igual
+ * à volta). Sem partida, o primeiro ponto fica preso no lugar (é de onde o
+ * caminho sai).
  */
-function doisOpt<T extends Ponto>(ordem: readonly T[], partida: Ponto | null, retorno: Ponto | null): T[] {
+function doisOpt<T extends Ponto>(ordem: readonly T[], partida: Ponto | null, retorno: Ponto | null, distancia: Distancia): T[] {
   const rota = [...ordem];
   const n = rota.length;
-  const d = (a: Ponto | null, b: Ponto | null) => (a && b ? distanciaKm(a, b) : 0);
+  const d = (a: Ponto | null, b: Ponto | null) => (a && b ? distancia(a, b) : 0);
   const primeiro = partida ? 0 : 1;
 
   let melhorou = n > 1;
@@ -229,6 +240,8 @@ export type ParadaDoRoteiro = {
   id: string;
   /** A cidade da entrega, ou `null` quando não foi achada. */
   cidade: Cidade | null;
+  /** A coordenada do endereço da entrega, quando ele foi localizado. Vale no lugar do centro da cidade. */
+  ponto?: Ponto | null;
   /** Já entregue: fica onde está, no começo, e não entra na conta. */
   feita?: boolean;
 };
@@ -236,17 +249,22 @@ export type ParadaDoRoteiro = {
 export type Roteiro = {
   /** Todas as cargas, na ordem sugerida: feitas, localizadas e, no fim, as sem localização. */
   ordem: string[];
-  /** Km em linha reta, entre centros das cidades, na ordem atual e na sugerida. Uma casa decimal. */
+  /** Km na ordem atual e na sugerida, na medida usada (linha reta, ou estrada). Uma casa decimal. */
   distanciaAntesKm: number;
   distanciaDepoisKm: number;
-  /** Cargas a entregar cuja cidade não foi achada. */
+  /** Cargas a entregar sem endereço localizado e cuja cidade não foi achada. */
   naoLocalizadas: string[];
   /** `false` quando a ordem atual já é a melhor que a conta achou (ou não há o que ordenar). */
   mudou: boolean;
 };
 
 const umaCasa = (valor: number) => Math.round(valor * 10) / 10;
-const mesmaCidade = (a: Cidade, b: Cidade) => a.nome === b.nome && a.uf === b.uf;
+
+/** Onde a parada fica para a conta: o endereço localizado, senão o centro da cidade, senão em lugar nenhum. */
+export const lugarDaParada = (parada: Pick<ParadaDoRoteiro, "cidade" | "ponto">): Ponto | null => parada.ponto ?? parada.cidade;
+
+/** A mesma chave para o mesmo lugar: é o que junta as cargas numa parada só e o que acha o ponto na matriz por estrada. */
+export const chaveDoPonto = (ponto: Ponto) => `${ponto.lat.toFixed(6)},${ponto.lon.toFixed(6)}`;
 
 /**
  * A ordem sugerida das entregas.
@@ -254,41 +272,46 @@ const mesmaCidade = (a: Cidade, b: Cidade) => a.nome === b.nome && a.uf === b.uf
  * - `origem`: de onde o caminhão sai (e para onde volta, com `voltar`). Sem ela
  *   o caminho começa na primeira entrega da ordem atual, que fica onde está.
  * - `partida`: de onde o caminho começa quando não é a origem (viagem já na rua:
- *   a cidade da última entrega feita). Padrão: a origem.
+ *   o lugar da última entrega feita). Padrão: a origem.
  * - `voltar`: conta a volta à origem (padrão: sim). Muda a ordem: sem a volta, a
  *   melhor rota termina longe; com ela, fecha o laço.
+ * - `distancia`: a medida entre dois pontos (padrão: linha reta).
  *
  * A sugestão nunca é pior que a ordem atual: se a conta não achar caminho mais
  * curto, devolve a ordem atual com `mudou: false`.
  */
 export function sugerirRoteiro(
   paradas: readonly ParadaDoRoteiro[],
-  { origem, partida, voltar = true }: { origem: Cidade | null; partida?: Cidade | null; voltar?: boolean },
+  { origem, partida, voltar = true, distancia = distanciaKm }: { origem: Ponto | null; partida?: Ponto | null; voltar?: boolean; distancia?: Distancia },
 ): Roteiro {
   const feitas = paradas.filter((parada) => parada.feita);
   const aEntregar = paradas.filter((parada) => !parada.feita);
-  const localizadas = aEntregar.filter((parada): parada is ParadaDoRoteiro & { cidade: Cidade } => parada.cidade !== null);
-  const semLocal = aEntregar.filter((parada) => parada.cidade === null);
+  const localizadas = aEntregar.flatMap((parada) => {
+    const lugar = lugarDaParada(parada);
+    return lugar ? [{ id: parada.id, lugar }] : [];
+  });
+  const semLocal = aEntregar.filter((parada) => lugarDaParada(parada) === null);
 
   const inicio = partida ?? origem;
   const retorno = voltar ? origem : null;
 
-  // Uma parada por cidade, na ordem em que as cidades aparecem; as cargas de cada uma ficam juntas.
-  const grupos: { cidade: Cidade; lat: number; lon: number; ids: string[] }[] = [];
+  // Uma parada por lugar, na ordem em que os lugares aparecem; as cargas de cada um ficam juntas.
+  const grupos: { chave: string; lat: number; lon: number; ids: string[] }[] = [];
   for (const parada of localizadas) {
-    const grupo = grupos.find((g) => mesmaCidade(g.cidade, parada.cidade));
+    const chave = chaveDoPonto(parada.lugar);
+    const grupo = grupos.find((g) => g.chave === chave);
     if (grupo) grupo.ids.push(parada.id);
-    else grupos.push({ cidade: parada.cidade, lat: parada.cidade.lat, lon: parada.cidade.lon, ids: [parada.id] });
+    else grupos.push({ chave, lat: parada.lugar.lat, lon: parada.lugar.lon, ids: [parada.id] });
   }
 
-  const antes = comprimentoKm(localizadas.map((parada) => parada.cidade), inicio, retorno);
+  const antes = comprimentoKm(localizadas.map((parada) => parada.lugar), inicio, retorno, distancia);
 
   // Dois pontos de partida para o 2-opt: o vizinho mais próximo e a própria ordem atual. Fica o menor.
-  const candidatas = [doisOpt(vizinhoMaisProximo(grupos, inicio), inicio, retorno), doisOpt(grupos, inicio, retorno)];
+  const candidatas = [doisOpt(vizinhoMaisProximo(grupos, inicio, distancia), inicio, retorno, distancia), doisOpt(grupos, inicio, retorno, distancia)];
   let melhor = candidatas[0];
-  let depois = comprimentoKm(melhor, inicio, retorno);
+  let depois = comprimentoKm(melhor, inicio, retorno, distancia);
   for (const candidata of candidatas.slice(1)) {
-    const comprimento = comprimentoKm(candidata, inicio, retorno);
+    const comprimento = comprimentoKm(candidata, inicio, retorno, distancia);
     if (comprimento < depois - 1e-9) {
       melhor = candidata;
       depois = comprimento;
@@ -316,19 +339,49 @@ export function sugerirRoteiro(
 /** Corpo de `POST /api/manifestos/[id]/roteiro`. Sem corpo vale o padrão: com a volta à origem. */
 export const roteiroSchema = z.object({ voltar: z.boolean("Informe se a rota volta à origem.").optional() }, "Dados inválidos.");
 
+/** De onde veio o ponto da parada: do endereço da carga, ou do centro da cidade do destino. */
+export type PrecisaoDoPonto = "endereco" | "cidade";
+
+export type PontoDaParada = Ponto & { precisao: PrecisaoDoPonto };
+
+/** A medida da distância: linha reta (padrão) ou estrada (com `ROTA_URL`). */
+export type MedidaDaDistancia = "reta" | "estrada";
+
 /** O que `POST /api/manifestos/[id]/roteiro` devolve. Não grava nada: quem aplica é `PUT .../ordem`. */
 export type RespostaDoRoteiro = Roteiro & {
   /** A cidade de origem achada ("Mirassol/SP"), ou `null`. */
   origem: string | null;
   voltar: boolean;
-  /** A cidade achada de cada carga, pelo id; `null` é sem localização. */
+  /** A cidade achada de cada carga, pelo id; `null` é cidade não reconhecida. */
   cidades: Record<string, string | null>;
+  /** Quantas cargas a entregar entraram na conta pelo endereço, e não pelo centro da cidade. */
+  porEndereco: number;
+  /** Como a distância foi medida. */
+  medida: MedidaDaDistancia;
 };
 
-/** A frase que acompanha a distância em toda tela: ninguém pode ler esse número como km de estrada. */
-export const AVISO_DA_DISTANCIA = "em linha reta, entre centros das cidades";
+/**
+ * A frase que acompanha a distância em toda tela: ninguém pode ler esse número
+ * como km rodado, nem como tempo de viagem.
+ */
+export function avisoDaDistancia(medida: MedidaDaDistancia): string {
+  return medida === "estrada"
+    ? "por estrada, pelo mapa do OpenStreetMap, sem contar trânsito"
+    : "em linha reta, entre os endereços localizados ou os centros das cidades: não é o km de estrada";
+}
 
-export type CargaDaViagem = { id: string; origin: string; destination: string; status: string };
+/** A frase sobre trânsito que acompanha o mapa e a ordem sugerida. */
+export const AVISO_DO_TRANSITO = "Trânsito não entra na conta: não existe em fonte aberta. Para ver o trânsito, abra a rota no Google Maps.";
+
+export type CargaDaViagem = {
+  id: string;
+  origin: string;
+  destination: string;
+  status: string;
+  /** A coordenada do endereço da entrega, quando localizada. */
+  deliveryLat?: number | null;
+  deliveryLon?: number | null;
+};
 
 /** A UF escrita mais vezes nos textos ("Mirassol - SP"), ou `null` se nenhum traz UF. */
 function ufMaisEscrita(textos: readonly string[]): string | null {
@@ -342,16 +395,32 @@ function ufMaisEscrita(textos: readonly string[]): string | null {
   return melhor;
 }
 
+/** A coordenada gravada na carga, ou `null` se não há (ou se o que há não é coordenada). */
+export function pontoDaCarga(carga: Pick<CargaDaViagem, "deliveryLat" | "deliveryLon">): Ponto | null {
+  const { deliveryLat: lat, deliveryLon: lon } = carga;
+  if (typeof lat !== "number" || typeof lon !== "number" || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+}
+
+export type LugaresDaViagem = {
+  /** A cidade de origem (a mais comum entre as cargas), ou `null`. */
+  origem: Cidade | null;
+  /** As paradas na ordem atual, cada uma com a cidade e o ponto do endereço. */
+  paradas: ParadaDoRoteiro[];
+  /** O lugar da última entrega feita: é de onde o caminho parte com a viagem na rua. */
+  partida: Ponto | null;
+};
+
 /**
- * O roteiro de uma viagem a partir das cargas dela, já na ordem atual.
+ * Onde fica cada coisa de uma viagem, a partir das cargas dela, já na ordem atual.
  *
  * - A origem é a origem mais comum das cargas.
  * - Cidade sem UF e com nome repetido em vários estados é procurada na UF da
  *   origem; se a própria origem é ambígua, na UF mais escrita nas cargas.
- * - Carga entregue não muda de lugar; com alguma entregue, o caminho parte da
- *   cidade da última entrega feita (é onde o caminhão está), não da origem.
+ * - Carga entregue não muda de lugar; com alguma entregue, o caminho parte do
+ *   lugar da última entrega feita (é onde o caminhão está), não da origem.
  */
-export function roteiroDaViagem(cargas: readonly CargaDaViagem[], indice: IndiceDeCidades, { voltar = true }: { voltar?: boolean } = {}): RespostaDoRoteiro {
+export function lugaresDaViagem(cargas: readonly CargaDaViagem[], indice: IndiceDeCidades): LugaresDaViagem {
   const textoDaOrigem = textoMaisComum(cargas.map((carga) => carga.origin));
   let origem = localizarCidade(textoDaOrigem, indice);
   const ufPreferida = origem?.uf ?? ufMaisEscrita(cargas.flatMap((carga) => [carga.origin, carga.destination]));
@@ -360,14 +429,48 @@ export function roteiroDaViagem(cargas: readonly CargaDaViagem[], indice: Indice
   const paradas: ParadaDoRoteiro[] = cargas.map((carga) => ({
     id: carga.id,
     cidade: localizarCidade(carga.destination, indice, ufPreferida),
+    ponto: pontoDaCarga(carga),
     feita: carga.status === "DELIVERED",
   }));
-  const ultimaFeita = paradas.filter((parada) => parada.feita && parada.cidade).pop();
+  const ultimaFeita = paradas.filter((parada) => parada.feita && lugarDaParada(parada)).pop();
 
+  return { origem, paradas, partida: ultimaFeita ? lugarDaParada(ultimaFeita) : null };
+}
+
+/** O ponto de cada parada como o mapa e a rota recebem: a coordenada e de onde ela veio. `null` é sem localização. */
+export function pontoDaParada(parada: Pick<ParadaDoRoteiro, "cidade" | "ponto">): PontoDaParada | null {
+  if (parada.ponto) return { lat: parada.ponto.lat, lon: parada.ponto.lon, precisao: "endereco" };
+  return parada.cidade ? { lat: parada.cidade.lat, lon: parada.cidade.lon, precisao: "cidade" } : null;
+}
+
+/** Todos os pontos que entram na conta de uma viagem, sem repetir: é o que a matriz por estrada precisa conhecer. */
+export function pontosDaConta(lugares: LugaresDaViagem): Ponto[] {
+  const pontos = new Map<string, Ponto>();
+  const incluir = (ponto: Ponto | null) => {
+    if (ponto) pontos.set(chaveDoPonto(ponto), { lat: ponto.lat, lon: ponto.lon });
+  };
+  incluir(lugares.origem);
+  incluir(lugares.partida);
+  for (const parada of lugares.paradas) if (!parada.feita) incluir(lugarDaParada(parada));
+  return [...pontos.values()];
+}
+
+/**
+ * O roteiro de uma viagem a partir das cargas dela, já na ordem atual. Com
+ * `distancia` (a medida por estrada), a resposta diz `medida: "estrada"`.
+ */
+export function roteiroDaViagem(
+  cargas: readonly CargaDaViagem[],
+  indice: IndiceDeCidades,
+  { voltar = true, distancia, lugares = lugaresDaViagem(cargas, indice) }: { voltar?: boolean; distancia?: Distancia | null; lugares?: LugaresDaViagem } = {},
+): RespostaDoRoteiro {
+  const { origem, paradas, partida } = lugares;
   return {
-    ...sugerirRoteiro(paradas, { origem, partida: ultimaFeita?.cidade ?? null, voltar }),
+    ...sugerirRoteiro(paradas, { origem, partida, voltar, distancia: distancia ?? distanciaKm }),
     origem: origem ? nomeDaCidade(origem) : null,
     voltar,
     cidades: Object.fromEntries(paradas.map((parada) => [parada.id, parada.cidade ? nomeDaCidade(parada.cidade) : null])),
+    porEndereco: paradas.filter((parada) => !parada.feita && parada.ponto).length,
+    medida: distancia ? "estrada" : "reta",
   };
 }

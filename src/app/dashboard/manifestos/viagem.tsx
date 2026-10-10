@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Loader2, MapPin, Route, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, List, Loader2, Map as IconeDeMapa, MapPin, Route, Trash2 } from "lucide-react";
 import { COLLECTION_STATUS, MANIFEST_STATUS, formatCalendarDate, formatCurrency, formatDate, statusBadge } from "@/lib/format";
 import { diaNoBrasil } from "@/lib/financeiro";
 import { acertoPorExtenso, nomeDaPessoa, rotuloDoMotivo, type Acerto } from "@/lib/equipe";
@@ -17,7 +17,10 @@ import {
   rotuloDaDespesa,
   type AcertoDaViagem,
 } from "@/lib/viagem";
-import { AVISO_DA_DISTANCIA, type RespostaDoRoteiro } from "@/lib/roteiro";
+import { AVISO_DO_TRANSITO, avisoDaDistancia, type RespostaDoRoteiro } from "@/lib/roteiro";
+import { enderecoCompleto } from "@/lib/endereco";
+import type { MapaDaViagem } from "@/lib/mapa";
+import { MapaDaViagemNaTela } from "@/components/mapa/mapa-da-viagem";
 import type { Manifesto } from "./carregar";
 
 /**
@@ -277,13 +280,46 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
   const [erro, setErro] = useState("");
   // A ordem sugerida, enquanto a pessoa decide se aplica: nada é gravado até o "Aplicar".
   const [sugestao, setSugestao] = useState<RespostaDoRoteiro | null>(null);
+  // Lista ou mapa: um de cada vez, para a aba caber na tela do celular.
+  const [ver, setVer] = useState<"lista" | "mapa">("lista");
+  const [mapa, setMapa] = useState<MapaDaViagem | null>(null);
+  const [erroDoMapa, setErroDoMapa] = useState("");
   const ordenavel = manifesto.status === "ASSEMBLING" || manifesto.status === "ROUTE";
 
   const porId = new Map(manifesto.collections.map((carga) => [carga.id, carga]));
   const cargas = ordem.flatMap((id) => porId.get(id) ?? []);
   // No mapa só o que falta entregar; com tudo entregue, a rota inteira.
   const aEntregar = cargas.filter((carga) => carga.status !== "DELIVERED");
-  const link = linkDaRota((aEntregar.length > 0 ? aEntregar : cargas).map((carga) => carga.destination));
+  // Com endereço na carga o link leva o endereço inteiro; sem ele, a cidade, como antes.
+  const link = linkDaRota((aEntregar.length > 0 ? aEntregar : cargas).map((carga) => enderecoCompleto(carga, carga.destination)));
+
+  // O mapa é lido ao abrir (e relido a cada mudança da ordem) e, com a viagem em rota,
+  // de novo a cada 30 segundos, que é o passo em que a posição do motorista chega.
+  const chaveDaOrdem = ordem.join();
+  useEffect(() => {
+    if (ver !== "mapa") return;
+    let vivo = true;
+    const ler = async () => {
+      try {
+        const res = await fetch(`/api/manifestos/${manifesto.id}/mapa`);
+        if (!vivo) return;
+        if (res.ok) {
+          setMapa((await res.json()) as MapaDaViagem);
+          setErroDoMapa("");
+        } else {
+          setErroDoMapa(await mensagemDeErro(res, "Erro ao carregar o mapa da viagem."));
+        }
+      } catch {
+        if (vivo) setErroDoMapa("Erro ao carregar o mapa da viagem.");
+      }
+    };
+    void ler();
+    const relogio = manifesto.status === "ROUTE" ? setInterval(() => void ler(), 30_000) : null;
+    return () => {
+      vivo = false;
+      if (relogio) clearInterval(relogio);
+    };
+  }, [ver, manifesto.id, manifesto.status, chaveDaOrdem]);
 
   const mover = async (id: string, sentido: "subir" | "descer") => {
     const nova = moverParada(ordem, id, sentido);
@@ -361,9 +397,11 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
               <>A ordem atual já é a mais curta que a conta achou: {km(sugestao.distanciaAntesKm)}</>
             )}
           </p>
-          <p className="text-xs text-gray-600 dark:text-gray-300">
-            Distância {AVISO_DA_DISTANCIA}: não é o km de estrada.{" "}
-            {sugestao.origem ? `Saindo de ${sugestao.origem}.` : "A origem não foi localizada: a conta começa na primeira entrega."}
+          <p className="text-xs text-gray-600 dark:text-gray-300" data-medida={sugestao.medida}>
+            Distância {avisoDaDistancia(sugestao.medida)}.{" "}
+            {sugestao.origem ? `Saindo de ${sugestao.origem}.` : "A origem não foi localizada: a conta começa na primeira entrega."}{" "}
+            {sugestao.porEndereco > 0 && `${sugestao.porEndereco === 1 ? "1 entrega entrou" : `${sugestao.porEndereco} entregas entraram`} pelo endereço. `}
+            {AVISO_DO_TRANSITO}
           </p>
           <label className="mt-1 flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
             <input type="checkbox" checked={sugestao.voltar} disabled={ocupado} onChange={(e) => sugerir(e.target.checked)} />
@@ -372,8 +410,8 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
         </div>
         {semLocal.size > 0 && (
           <p className="text-xs text-amber-700 dark:text-amber-400" data-sem-localizacao>
-            {semLocal.size === 1 ? "1 entrega sem localização ficou" : `${semLocal.size} entregas sem localização ficaram`} no fim: a cidade do destino não foi
-            reconhecida.
+            {semLocal.size === 1 ? "1 entrega sem localização ficou" : `${semLocal.size} entregas sem localização ficaram`} no fim: nem o endereço nem a cidade do
+            destino foram localizados.
           </p>
         )}
         {erro && (
@@ -434,6 +472,15 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
             <Route className="w-4 h-4" /> Sugerir ordem
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setVer(ver === "mapa" ? "lista" : "mapa")}
+          aria-pressed={ver === "mapa"}
+          data-ver-mapa
+          className="shrink-0 flex items-center gap-1.5 border border-gray-200 dark:border-gray-700 text-sm font-medium text-blue-700 dark:text-blue-400 px-3 py-1.5 rounded-xl"
+        >
+          {ver === "mapa" ? <List className="w-4 h-4" /> : <IconeDeMapa className="w-4 h-4" />} {ver === "mapa" ? "Lista" : "Mapa"}
+        </button>
         {link.url && (
           <a
             href={link.url}
@@ -442,7 +489,7 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
             data-rota-no-mapa
             className="shrink-0 flex items-center gap-1.5 border border-gray-200 dark:border-gray-700 text-sm font-medium text-blue-700 dark:text-blue-400 px-3 py-1.5 rounded-xl"
           >
-            <MapPin className="w-4 h-4" /> Abrir rota no mapa
+            <MapPin className="w-4 h-4" /> Google Maps
           </a>
         )}
       </div>
@@ -457,47 +504,67 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
         </p>
       )}
 
-      <ol className="space-y-1.5">
-        {cargas.map((carga, posicao) => {
-          const seloCarga = statusBadge(COLLECTION_STATUS, carga.status);
-          return (
-            <li key={carga.id} data-parada={carga.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-2">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center justify-center">
-                {posicao + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{carga.receiver}</p>
-                <p className="text-xs text-gray-500 truncate">
-                  {carga.destination} · {carga.client?.tradeName || carga.client?.companyName}
-                </p>
-              </div>
-              <span className={`hidden md:inline shrink-0 px-2 py-0.5 text-[11px] font-medium rounded-full border ${seloCarga.className}`}>{seloCarga.label}</span>
-              {ordenavel && (
-                <div className="shrink-0 flex gap-1">
-                  <button
-                    type="button"
-                    aria-label={`Subir a entrega ${posicao + 1}`}
-                    disabled={ocupado || posicao === 0}
-                    onClick={() => mover(carga.id, "subir")}
-                    className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-30"
-                  >
-                    <ArrowUp className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Descer a entrega ${posicao + 1}`}
-                    disabled={ocupado || posicao === cargas.length - 1}
-                    onClick={() => mover(carga.id, "descer")}
-                    className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-30"
-                  >
-                    <ArrowDown className="w-4 h-4" />
-                  </button>
+      {ver === "mapa" ? (
+        <div data-aba-do-mapa className="space-y-1">
+          {erroDoMapa && (
+            <p role="alert" className="text-sm text-red-600">
+              {erroDoMapa}
+            </p>
+          )}
+          {mapa ? (
+            <MapaDaViagemNaTela mapa={mapa} className="h-[46vh] md:h-80" />
+          ) : (
+            !erroDoMapa && <p className="text-sm text-gray-500">Carregando o mapa…</p>
+          )}
+          {mapa && !mapa.localizaEndereco && (
+            <p data-sem-geo className="text-[11px] text-amber-700 dark:text-amber-400">
+              A localização por endereço está desligada neste servidor (falta a variável GEO_CONTATO): as paradas aparecem no centro da cidade.
+            </p>
+          )}
+        </div>
+      ) : (
+        <ol className="space-y-1.5">
+          {cargas.map((carga, posicao) => {
+            const seloCarga = statusBadge(COLLECTION_STATUS, carga.status);
+            return (
+              <li key={carga.id} data-parada={carga.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-2">
+                <span className="shrink-0 w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center justify-center">
+                  {posicao + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{carga.receiver}</p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {enderecoCompleto(carga, carga.destination)} · {carga.client?.tradeName || carga.client?.companyName}
+                  </p>
                 </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+                <span className={`hidden md:inline shrink-0 px-2 py-0.5 text-[11px] font-medium rounded-full border ${seloCarga.className}`}>{seloCarga.label}</span>
+                {ordenavel && (
+                  <div className="shrink-0 flex gap-1">
+                    <button
+                      type="button"
+                      aria-label={`Subir a entrega ${posicao + 1}`}
+                      disabled={ocupado || posicao === 0}
+                      onClick={() => mover(carga.id, "subir")}
+                      className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-30"
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Descer a entrega ${posicao + 1}`}
+                      disabled={ocupado || posicao === cargas.length - 1}
+                      onClick={() => mover(carga.id, "descer")}
+                      className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-30"
+                    >
+                      <ArrowDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }

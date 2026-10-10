@@ -91,7 +91,7 @@ export const CAPACIDADES = {
   /** Informar o frete de uma carga à mão (a tela de faturamento usa). */
   coletasFrete: ["ADMIN", "DIRECTOR", "OPERATION", "FINANCE"],
 
-  /** Ler manifestos (viagens) e as despesas lançadas neles. */
+  /** Ler manifestos (viagens), as despesas lançadas neles, o mapa da viagem e a última posição do motorista. */
   manifestosVer: ["ADMIN", "DIRECTOR", "OPERATION", "EXPEDITION", "FINANCE"],
   /** Montar, alterar, liberar, cancelar e finalizar viagem; lançar e excluir despesa pendente. */
   manifestos: ["ADMIN", "DIRECTOR", "OPERATION", "EXPEDITION"],

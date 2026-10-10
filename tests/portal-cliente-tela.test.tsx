@@ -158,7 +158,7 @@ describe("cotação pelo portal", () => {
 describe("pedido de coleta no portal", () => {
   const LISTA = "GET /api/portal/coletas";
   const DESTINATARIOS = "GET /api/portal/destinatarios";
-  const DESTINATARIO = { id: "d1", name: "Loja do Zé", document: null, city: "Jaci - SP", address: null, contactName: null, phone: null };
+  const DESTINATARIO = { id: "d1", name: "Loja do Zé", document: null, city: "Jaci - SP", address: "Rua das Flores, 120 - Centro, CEP 15155-000", contactName: null, phone: null };
   const COLETA = {
     id: "c1",
     sender: "Fábrica",
@@ -193,7 +193,7 @@ describe("pedido de coleta no portal", () => {
     expect(tela.querySelector('form[aria-label="Pedido de coleta"]')).toBeNull();
   });
 
-  it("vindo da cotação abre preenchido; o destinatário frequente preenche nome e cidade; envia os campos do pedido", async () => {
+  it("vindo da cotação abre preenchido; o destinatário frequente preenche nome, cidade e endereço de entrega; envia os campos do pedido", async () => {
     estado.consulta = "destination=Mirassol+-+SP&weight=12%2C5&volumes=3";
     const pedidos = api({
       [LISTA]: { body: [] },
@@ -212,6 +212,12 @@ describe("pedido de coleta no portal", () => {
     // Rótulo exato: "Destinatário frequente" é a lista de cima.
     expect((campo(formulario, /^Destinatário$/) as HTMLInputElement).value).toBe("Loja do Zé");
     expect((campo(formulario, "Cidade de destino") as HTMLInputElement).value).toBe("Jaci - SP");
+    // O endereço do destinatário (um texto só) abre a seção e preenche as partes do endereço de entrega, para conferir.
+    expect((campo(formulario, "Logradouro") as HTMLInputElement).value).toBe("Rua das Flores");
+    expect((campo(formulario, "Número") as HTMLInputElement).value).toBe("120");
+    expect((campo(formulario, "Bairro") as HTMLInputElement).value).toBe("Centro");
+    expect((campo(formulario, "CEP") as HTMLInputElement).value).toBe("15155-000");
+    await digitar(campo(formulario, "Número"), "122");
 
     await digitar(campo(formulario, "Remetente"), "Fábrica");
     await digitar(campo(formulario, "Cidade de origem"), "Rio Preto - SP");
@@ -241,6 +247,10 @@ describe("pedido de coleta no portal", () => {
       pickupTo: "",
       priority: "URGENT",
       pickupNotes: "Doca 2",
+      deliveryStreet: "Rua das Flores",
+      deliveryNumber: "122",
+      deliveryDistrict: "Centro",
+      deliveryZip: "15155-000",
     });
     // Os dados da cotação saem do endereço: recarregar não reabre o pedido enviado.
     expect(estado.trocas).toEqual(["/portal/coletas"]);

@@ -36,6 +36,11 @@ export async function GET() {
             priority: true,
             cubicMeters: true,
             pickupNotes: true,
+            // O endereço da entrega, para o cartão da parada e o link do mapa.
+            deliveryStreet: true,
+            deliveryNumber: true,
+            deliveryDistrict: true,
+            deliveryZip: true,
             // Só o nome de quem embarcou: limite de crédito e contato do
             // cliente não vão para o aparelho do motorista.
             client: { select: { tradeName: true, companyName: true } },

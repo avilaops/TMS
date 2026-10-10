@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DRIVER_OMIT, DRIVER_USER_SELECT } from "@/lib/usuarios";
+import { CAMPOS_DE_ENDERECO } from "@/lib/endereco";
 
 // Regras da coleta no painel: quais status existem, quais trocas o operador
 // pode fazer e o que as rotas aceitam gravar. Este arquivo também é importado
@@ -229,6 +230,8 @@ export const createCollectionSchema = z.object(
     invoiceValue,
     driverId,
     ...CAMPOS_DO_PEDIDO,
+    // Endereço da entrega, além da cidade: opcional (src/lib/endereco.ts).
+    ...CAMPOS_DE_ENDERECO,
   },
   INVALID_BODY,
 );
@@ -248,6 +251,7 @@ export const updateCollectionSchema = z
       invoiceValue,
       driverId,
       ...CAMPOS_DO_PEDIDO,
+      ...CAMPOS_DE_ENDERECO,
       // Frete informado à mão. Número fixa o valor; vazio ou `null` devolve o
       // cálculo para a tabela de frete.
       freightValue: z.preprocess(

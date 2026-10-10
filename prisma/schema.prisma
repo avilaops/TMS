@@ -93,6 +93,7 @@ model Tenant {
   bankStatementLines BankStatementLine[]
   paymentGateway     PaymentGateway?
   paymentCharges     PaymentCharge[]
+  tripPositions      TripPosition[]
 }
 
 model User {
@@ -393,6 +394,22 @@ model Collection {
   cubicMeters  Float?
   pickupNotes  String?
 
+  // Endereço da entrega, além da cidade (`destination`). Tudo opcional: vem do
+  // pedido (painel e portal) ou da NF-e. `deliveryZip` guarda só os 8 dígitos.
+  // Ver src/lib/endereco.ts.
+  deliveryStreet   String?
+  deliveryNumber   String?
+  deliveryDistrict String?
+  deliveryZip      String?
+  // Coordenada do endereço, achada em segundo plano pelo despachante
+  // (src/lib/geo-db.ts). `geoSource`: ADDRESS = achou o endereço; NONE = procurou
+  // e não achou (a rota usa o centro da cidade). Nulo = ainda não procurada.
+  // Mudar o endereço ou a cidade zera os quatro campos.
+  deliveryLat      Float?
+  deliveryLon      Float?
+  geoSource        String?
+  geoAt            DateTime?
+
   // Codigo publico de rastreio: 10 digitos sorteados com CSPRNG (src/lib/tracking.ts).
   // E o segundo fator do rastreio publico, junto do CNPJ do cliente. Opcional no
   // schema porque as coletas criadas antes desta mudanca recebem o codigo por
@@ -475,6 +492,14 @@ model Manifest {
   departedAt         DateTime?
   finishedAt         DateTime?
 
+  // Última posição que o motorista compartilhou pelo app, com a viagem em rota
+  // (src/lib/posicao.ts). `lastAccuracy` é a precisão em metros que o aparelho
+  // informou. Só o painel lê: o rastreio público e o portal não mostram.
+  lastLat            Float?
+  lastLon            Float?
+  lastAccuracy       Float?
+  lastPositionAt     DateTime?
+
   // Relations
   driver      Driver    @relation(fields: [driverId], references: [id])
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
@@ -482,10 +507,30 @@ model Manifest {
   collections Collection[]
   advances    CrewAdvance[]
   expenses    TripExpense[]
+  positions   TripPosition[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
   @@index([tenantId, status])
+}
+
+// Histórico enxuto das posições do motorista numa viagem: no máximo
+// `MAXIMO_DE_PONTOS` por viagem (src/lib/posicao.ts), os mais antigos saem.
+// Não vai para a auditoria nem para fora do painel.
+model TripPosition {
+  tenantId   String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id         String   @id @default(uuid())
+  manifestId String
+  lat        Float
+  lon        Float
+  accuracy   Float?
+  recordedAt DateTime @default(now())
+
+  manifest   Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([manifestId, recordedAt])
 }
 
 model FinancialTransaction {
@@ -1385,4 +1430,20 @@ model PaymentCharge {
   @@index([tenantId])
   @@index([invoiceId])
   @@index([status, createdAt])
+}
+
+// Cache da localização de endereços (src/lib/geo-db.ts). NÃO tem `tenantId` de
+// propósito: a coordenada de um endereço é dado público, igual para todas as
+// empresas, e o cache é do sistema (evita repetir a consulta ao Nominatim, que
+// aceita no máximo uma por segundo). Sem `tenantId` a tabela fica sem política
+// e sem permissão para o papel da aplicação: só o cliente `sistema` lê e grava.
+// Guarda apenas o texto normalizado do endereço e a coordenada: nada que diga
+// de que empresa, cliente ou carga veio a pergunta.
+model GeoCache {
+  // O endereço normalizado: "rua das flores 120|mirassol|sp" (src/lib/endereco.ts).
+  key       String   @id
+  // Nulos quando o serviço respondeu que não achou: também é resposta, e não se pergunta de novo.
+  lat       Float?
+  lon       Float?
+  createdAt DateTime @default(now())
 }

@@ -110,6 +110,10 @@ const SUGESTAO: SugestaoDeCarga = {
   invoiceKey: CHAVE,
   invoiceValue: 1534.56,
   avisos: [],
+  deliveryStreet: "Av. Brasil",
+  deliveryNumber: "450",
+  deliveryDistrict: "Centro",
+  deliveryZip: "15130000",
 };
 
 const CARGA = { id: "c1", trackingCode: "1234567890", status: "CONFIRMED", origin: "São José do Rio Preto - SP", destination: "Mirassol - SP" };
@@ -173,6 +177,9 @@ describe("tela de notas fiscais", () => {
     const valores = [...painel.querySelectorAll<HTMLInputElement>("form input")].map((campo) => campo.value);
     expect(valores).toEqual(["Fábrica de Tintas", "Mercado Bom Preço", "São José do Rio Preto - SP", "Mirassol - SP", "3", "42.5"]);
 
+    // O endereço de entrega lido da nota aparece numa linha e vai junto na criação da carga.
+    expect(painel.querySelector("[data-endereco-da-nota]")!.textContent).toContain("Entrega: Av. Brasil, 450 - Centro, 15130-000");
+
     await enviar(painel.querySelector("form")!);
     await ate(() => expect(painel.textContent).toContain("Carga criada com o código 1234567890."));
     expect(pedidos.find((p) => p.url === "/api/fiscal/notas/n1/carga")?.body).toEqual({
@@ -183,6 +190,10 @@ describe("tela de notas fiscais", () => {
       destination: "Mirassol - SP",
       volumes: "3",
       weight: "42.5",
+      deliveryStreet: "Av. Brasil",
+      deliveryNumber: "450",
+      deliveryDistrict: "Centro",
+      deliveryZip: "15130000",
     });
     // Com a carga criada, o formulário sai e fica a carga.
     expect(painel.querySelector("form")).toBeNull();
