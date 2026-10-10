@@ -29,6 +29,7 @@ import { assinaturaConfere } from "../src/lib/cte/assinar";
 import { DE_OUTRO_CNPJ, SENHA_ERRADA, VENCIDO } from "../src/lib/cte/certificado";
 import { lerChaveDoCte } from "../src/lib/cte/chave";
 import { usarSefazDeTeste } from "../src/lib/cte/sefaz";
+import { chaveDeExemplo } from "./mdfe-apoio";
 import { chaveValida, type CargaParaCte } from "../src/lib/nfe";
 import { EMPRESA_OUTRA, EMPRESA_PADRAO } from "./empresas-de-teste";
 import { REMETENTE, certificadoDeTeste, chaveDeNfe, errosNoEsquema, impressaoDigital, nfeDeExemplo, subirSefazDeMentira, type CertificadoDeTeste, type SefazDeMentira } from "./cte-apoio";
@@ -558,6 +559,11 @@ suite("rotas da emissão de CT-e", () => {
       expect((await conferir(pendente.id)).corpo.pendencias).toEqual([SO_CARGA_QUE_SAIU]);
       expect(await emitir(pendente.id)).toMatchObject({ status: 409, corpo: { error: SO_CARGA_QUE_SAIU } });
 
+      // Coletada e fora de viagem: ainda não. A mensagem diz o caminho.
+      const coletada = await novaCarga({ status: "COLLECTED" });
+      expect((await conferir(coletada.id)).corpo.pendencias).toEqual([SO_CARGA_QUE_SAIU]);
+      expect(SO_CARGA_QUE_SAIU).toContain("antes de liberar a saída");
+
       const semFrete = await novaCarga({ freightValue: null });
       expect((await conferir(semFrete.id)).corpo.pendencias).toEqual(["A carga está sem valor de frete: é o valor da prestação do CT-e."]);
       const semNota = await novaCarga({ semNota: true });
@@ -576,6 +582,58 @@ suite("rotas da emissão de CT-e", () => {
   /* ---------------------------------- Emissão --------------------------------- */
 
   describe("emissão", () => {
+    it("carga alocada numa viagem em montagem recebe CT-e ANTES da saída (Ajuste SINIEF 09/07); viagem cancelada não", async () => {
+      await prepararEmpresa({ ambiente: "PRODUCAO", confirmacaoDoCnpj: CNPJ_DA_PADRAO, proximoNumero: "60" });
+      const usuario = await banco.default.user.create({ data: { name: `${PREFIXO}motorista`, email: `${PREFIXO}motorista@exemplo.br`, password: HASH_FALSO, role: "DRIVER" } });
+      const motorista = await banco.default.driver.create({ data: { userId: usuario.id, cpf: "52998224725", cnh: "12345678900", cnhExpiry: new Date("2030-01-01"), category: "E" } });
+      const veiculo = await banco.default.vehicle.create({ data: { plate: "CTE1A23", model: "Truck de teste", type: "TRUCK", capacity: 14000 } });
+      const viagem = await banco.default.manifest.create({ data: { driverId: motorista.id, vehicleId: veiculo.id, status: "ASSEMBLING" }, select: { id: true } });
+      try {
+        const carga = await novaCarga({ status: "COLLECTED" });
+        const fora = await novaCarga({ status: "COLLECTED" });
+        await banco.sistema.collection.update({ where: { id: carga.id }, data: { manifestId: viagem.id } });
+
+        // A lista da tela de CT-e traz a carga alocada, e não a que está fora de viagem.
+        entrarComo("OPERATION");
+        const lista = (await lida<CargaParaCte[]>(await listaRota.GET())).corpo.map((cada) => cada.id);
+        expect(lista).toContain(carga.id);
+        expect(lista).not.toContain(fora.id);
+
+        const conferida = await conferir(carga.id);
+        expect(conferida.corpo.pendencias).toEqual([]);
+        // O veículo e o motorista da viagem vão na observação do documento.
+        const emitido = await emitir(carga.id);
+        expect(emitido.status).toBe(200);
+        expect(emitido.corpo).toMatchObject({ autorizado: true, cte: { ambiente: "PRODUCAO", numero: 60, situacao: "AUTHORIZED" } });
+        const [gravado] = await cteDe(carga.id);
+        expect(gravado.xmlSent).toContain(`<xObs>Veiculo placa CTE1A23. Motorista ${PREFIXO}motorista.</xObs>`);
+        // Em produção a carga fica com o CT-e: é o que a liberação da saída confere.
+        expect(await cargaDoBanco(carga.id)).toEqual({ cteKey: gravado.accessKey, cteNumber: 60, cteStatus: "ISSUED" });
+        expect((await banco.sistema.collection.findUniqueOrThrow({ where: { id: carga.id }, select: { status: true } })).status).toBe("COLLECTED");
+
+        // O registro manual (CT-e de outro sistema) segue a mesma regra.
+        const deFora = { cteNumber: 777, cteKey: chaveDeExemplo("57", 777, "35", "60701190000104") };
+        entrarComo("OPERATION");
+        expect((await lida(await listaRota.POST(req("POST", { collectionId: fora.id, ...deFora })))).status).toBe(409);
+        await banco.sistema.collection.update({ where: { id: fora.id }, data: { manifestId: viagem.id } });
+        expect((await lida(await listaRota.POST(req("POST", { collectionId: fora.id, ...deFora })))).status).toBe(200);
+        expect(await cargaDoBanco(fora.id)).toMatchObject({ cteNumber: 777, cteStatus: "ISSUED" });
+
+        // Viagem cancelada não é viagem em montagem.
+        const terceira = await novaCarga({ status: "COLLECTED" });
+        await banco.sistema.collection.update({ where: { id: terceira.id }, data: { manifestId: viagem.id } });
+        await banco.sistema.manifest.update({ where: { id: viagem.id }, data: { status: "CANCELLED" } });
+        expect((await conferir(terceira.id)).corpo.pendencias).toEqual([SO_CARGA_QUE_SAIU]);
+        expect(await emitir(terceira.id)).toMatchObject({ status: 409, corpo: { error: SO_CARGA_QUE_SAIU } });
+      } finally {
+        await banco.sistema.collection.updateMany({ where: { manifestId: viagem.id }, data: { manifestId: null } });
+        await banco.sistema.manifest.deleteMany({ where: { id: viagem.id } });
+        await banco.sistema.vehicle.deleteMany({ where: { id: veiculo.id } });
+        await banco.sistema.driver.deleteMany({ where: { id: motorista.id } });
+        await banco.sistema.user.deleteMany({ where: { id: usuario.id } });
+      }
+    });
+
     it("autorizada em homologação: grava o protocolo e o cteProc, avisa a equipe e o n8n, e NÃO mexe no CT-e da carga", async () => {
       await prepararEmpresa({ proximoNumero: "40" });
       await banco.default.webhook.create({ data: { url: enderecoDoN8n, secret: "segredo-do-teste" } });

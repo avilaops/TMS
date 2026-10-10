@@ -1,14 +1,15 @@
-import { ALIQUOTAS_DE_2026, NOME_EM_HOMOLOGACAO, type ParteDoResumo, type ResumoDoCte } from "@/lib/cte";
+import { ALIQUOTAS_DE_2026, NOME_EM_HOMOLOGACAO, ONDE_CONFIGURAR, problemaDoIbsCbs, type ParteDoResumo, type ResumoDoCte } from "@/lib/cte";
 import { FORMATO_DO_ENDERECO, enderecoDoPagador } from "@/lib/cobranca-gateway";
 import { enderecoDoTexto } from "@/lib/endereco";
 import { chaveValida, limparChave, participantesDaNota, partesDaChave, type EnderecoDaNota, type ParticipanteDaNota } from "@/lib/nfe";
 import { normalizeText } from "@/lib/normalization";
 import type { Municipio } from "@/lib/municipios";
 import {
+  BLOQUEIO_DO_DIFAL,
   cfopDaPrestacao,
   ibsCbsDaPrestacao,
-  icmsDaPrestacao,
   observacaoDaViagem,
+  resolverIcms,
   type DadosDoCte,
   type EmitenteDoCte,
   type EnderecoDoCte,
@@ -17,6 +18,7 @@ import {
   type TomadorDoCte,
 } from "@/lib/cte/montar";
 import { dataHoraDoXml } from "@/lib/cte/chave";
+import { semResponsavelTecnico, type ResponsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { centavos, digitos } from "@/lib/cte/texto";
 
 /**
@@ -187,8 +189,24 @@ function componentesDoFrete(detalhes: unknown): { nome: string; valor: number }[
   });
 }
 
-/** Monta os dados do CT-e da carga, ou diz o que falta. */
-export function prepararCte(carga: CargaDoCte, emitente: EmitenteDoCte | null, enderecoDoQrCode: string | null, achar: AcharMunicipio, agora: Date = new Date()): Preparo {
+export const AVISO_DO_ICMS_DE_OUTRA_UF = (uf: string) =>
+  `A prestação começa em ${uf}, fora da UF do emitente: o ICMS vai no grupo ICMSOutraUF, devido a ${uf}, com a alíquota interestadual. O recolhimento do imposto a ${uf} é por conta da empresa: confirme com o contador como fazer.`;
+export const AVISO_DO_ICMS_RETIDO =
+  "ICMS por substituição tributária (situação 60): o CT-e informa a base e o valor retidos, e o sistema não desconta esse ICMS da base do IBS/CBS. Confirme com o contador.";
+
+/**
+ * Monta os dados do CT-e da carga, ou diz o que falta. `responsavelTecnico`:
+ * os dados da desenvolvedora do sistema (src/lib/cte/responsavel-tecnico.ts);
+ * `null` = o CT-e vai sem o grupo, com aviso.
+ */
+export function prepararCte(
+  carga: CargaDoCte,
+  emitente: EmitenteDoCte | null,
+  enderecoDoQrCode: string | null,
+  achar: AcharMunicipio,
+  agora: Date = new Date(),
+  responsavelTecnico: ResponsavelTecnico | null = null,
+): Preparo {
   if (!emitente || !enderecoDoQrCode) return { dados: null, pendencias: [SEM_EMITENTE], avisos: [], resumo: null };
 
   const pendencias: string[] = [];
@@ -289,17 +307,30 @@ export function prepararCte(carga: CargaDoCte, emitente: EmitenteDoCte | null, e
     avisos.push(`Em homologação, a SEFAZ exige que o nome do remetente e do destinatário seja "${NOME_EM_HOMOLOGACAO}": é assim que vai no XML.`);
   }
 
-  const cfop = origem && destino ? cfopDaPrestacao({ ...emitente, uf: emitente.endereco.uf }, origem.uf, destino.uf) : "";
-  const icms = frete !== null ? icmsDaPrestacao(emitente, frete) : null;
-  const ibsCbs = frete !== null && icms ? ibsCbsDaPrestacao(emitente, frete, icms) : null;
+  const ufDoEmitente = emitente.endereco.uf;
+  const cfop = origem && destino ? cfopDaPrestacao({ ...emitente, uf: ufDoEmitente }, origem.uf, destino.uf) : "";
+
+  /* ICMS: o grupo depende de onde a prestação começa e termina; o que o sistema não sabe calcular bloqueia. */
+  const resolvido = frete !== null && origem && destino ? resolverIcms({ ...emitente, uf: ufDoEmitente }, frete, origem.uf, destino.uf) : null;
+  if (resolvido && "bloqueio" in resolvido) pendencias.push(resolvido.bloqueio);
+  const icms = resolvido && "icms" in resolvido ? resolvido.icms : null;
+  if (icms?.grupo === "ICMSOutraUF" && origem) avisos.push(AVISO_DO_ICMS_DE_OUTRA_UF(origem.uf));
+  if (icms?.retido) avisos.push(AVISO_DO_ICMS_RETIDO);
+  // O diferencial de alíquota da prestação interestadual a não contribuinte (EC 87/2015) não é calculado: bloqueia.
+  if (tomador && contribuinte === "9" && origem && destino && origem.uf !== destino.uf) pendencias.push(BLOQUEIO_DO_DIFAL);
 
   /* IBS e CBS */
   const parametros = emitente.ibsCbs;
+  // Uma configuração antiga pode ter um par que não vale (o CST 400, por exemplo): a emissão para até a correção.
+  const problemaDoPar = parametros ? problemaDoIbsCbs(parametros.cst, parametros.classe) : null;
+  if (problemaDoPar) pendencias.push(`${problemaDoPar} Corrija em ${ONDE_CONFIGURAR}.`);
+  const ibsCbs = frete !== null && icms && !problemaDoPar ? ibsCbsDaPrestacao(emitente, frete, icms) : null;
   if (!parametros && emitente.regime === "3") {
     avisos.push("A empresa é do regime normal e não tem CST e classificação tributária do IBS/CBS: a SEFAZ rejeita o CT-e sem esse grupo (rejeição 310, já em vigor em homologação). Preencha em Empresa → Fiscal.");
   }
+  if (!responsavelTecnico) avisos.push(semResponsavelTecnico("cte"));
   // Em 2026 a SEFAZ só aceita as alíquotas de teste (rejeições 316, 321 e 326); em homologação aceita também as de 2027.
-  const de2026 = parametros && dataHoraDoXml(agora).startsWith("2026") && ibsCbs?.valores;
+  const de2026 = parametros && dataHoraDoXml(agora, ufDoEmitente).startsWith("2026") && ibsCbs?.valores;
   if (de2026 && (parametros.ibsUf !== ALIQUOTAS_DE_2026.ibsUf || parametros.ibsMunicipio !== ALIQUOTAS_DE_2026.ibsMunicipio || parametros.cbs !== ALIQUOTAS_DE_2026.cbs)) {
     avisos.push("As alíquotas de IBS e CBS da empresa não são as de 2026 (IBS da UF 0,1%, IBS do município 0% e CBS 0,9%): em produção a SEFAZ rejeita o CT-e emitido em 2026 com outras alíquotas.");
   }
@@ -324,7 +355,7 @@ export function prepararCte(carga: CargaDoCte, emitente: EmitenteDoCte | null, e
     destino: destino ? `${destino.nome} - ${destino.uf}` : carga.destination,
     valorDaPrestacao: frete,
     valorDaCarga,
-    icms: icms && { situacao: icms.situacao, aliquota: icms.aliquota, valor: icms.valor },
+    icms: icms && { situacao: icms.situacao, grupo: icms.grupo, base: icms.base, aliquota: icms.aliquota, valor: icms.valor, retido: icms.retido },
     ibsCbs: ibsCbs && {
       cst: ibsCbs.cst,
       classe: ibsCbs.classe,
@@ -360,6 +391,7 @@ export function prepararCte(carga: CargaDoCte, emitente: EmitenteDoCte | null, e
       documento: carga.trackingCode,
       observacao: observacaoDaViagem(carga.viagem),
       enderecoDoQrCode,
+      responsavelTecnico,
     },
     pendencias: [],
     avisos,

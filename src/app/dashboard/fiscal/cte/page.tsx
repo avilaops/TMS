@@ -15,6 +15,7 @@ import {
   type ConferenciaDoCte,
   type CteEmitido,
   type ResultadoDaEmissao,
+  type ResumoDoCte,
   type SituacaoDaEmissao,
   type StatusDoServico,
 } from "@/lib/cte";
@@ -25,7 +26,7 @@ import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL, ROTULO, erroDe } from "../
 import { Negado, chaveEmBlocos } from "../comum";
 
 /**
- * CT-e: as cargas que já saíram (em rota ou entregues), com a situação do CT-e
+ * CT-e: as cargas alocadas numa viagem (antes da saída), em rota ou entregues, com a situação do CT-e
  * de cada uma. Daqui se confere e se emite o CT-e pela SEFAZ, se baixa o XML
  * autorizado e se cancela. O registro manual de um CT-e emitido em outro
  * sistema continua existindo.
@@ -91,6 +92,13 @@ async function buscarConferencia(collectionId: string): Promise<ConferenciaDoCte
 }
 
 /** "Conferir e emitir": o que vai no documento, o que falta, e o botão que transmite. */
+/** O ICMS do documento numa linha: a situação (ou o grupo, quando é devido a outra UF) e, havendo valor, a conta. */
+function linhaDoIcms(icms: NonNullable<ResumoDoCte["icms"]>): string {
+  const situacao = icms.grupo === "ICMSOutraUF" ? "Devido à UF de início (ICMSOutraUF)" : SITUACOES_DO_ICMS[icms.situacao];
+  if (!(icms.valor > 0)) return situacao;
+  return `${situacao} · ${icms.aliquota}% de ${formatCurrency(icms.base)} = ${formatCurrency(icms.valor)}${icms.retido ? " (retido)" : ""}`;
+}
+
 function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFechar: () => void; aoMudar: () => void }) {
   const [conferencia, setConferencia] = useState<ConferenciaDoCte | null>(null);
   const [erro, setErro] = useState("");
@@ -197,7 +205,7 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
               </Linha>
               <Linha rotulo="Prestação (frete)">{resumo.valorDaPrestacao === null ? "a cotar" : formatCurrency(resumo.valorDaPrestacao)}</Linha>
               <Linha rotulo="Valor da carga">{formatCurrency(resumo.valorDaCarga)}</Linha>
-              <Linha rotulo="ICMS">{resumo.icms ? `${SITUACOES_DO_ICMS[resumo.icms.situacao]}${resumo.icms.valor > 0 ? ` · ${resumo.icms.aliquota}% = ${formatCurrency(resumo.icms.valor)}` : ""}` : "a calcular"}</Linha>
+              <Linha rotulo="ICMS">{resumo.icms ? linhaDoIcms(resumo.icms) : "a calcular"}</Linha>
               <Linha rotulo="IBS / CBS">
                 {resumo.ibsCbs
                   ? `${CST_DO_IBSCBS[resumo.ibsCbs.cst]?.rotulo ?? resumo.ibsCbs.cst}${resumo.ibsCbs.base === null ? "" : ` · ${formatCurrency(resumo.ibsCbs.ibs)} / ${formatCurrency(resumo.ibsCbs.cbs)}`}`
@@ -471,7 +479,7 @@ export default function CtePage() {
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">CT-e</h1>
-          <p className="hidden md:block text-gray-500 text-sm mt-1">Cargas em rota ou entregues: conferir, emitir, baixar o XML e cancelar o CT-e</p>
+          <p className="hidden md:block text-gray-500 text-sm mt-1">Cargas em viagem (antes da saída), em rota ou entregues: conferir, emitir, baixar o XML e cancelar o CT-e</p>
         </div>
         <Link href="/dashboard/fiscal" className={`${BOTAO_CLARO} shrink-0`}>
           <ArrowLeft className="w-4 h-4" />
@@ -498,7 +506,7 @@ export default function CtePage() {
           {cargas.length === 0 ? (
             <div className="p-10 text-center text-gray-500">
               <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p>Nenhuma carga em rota ou entregue.</p>
+              <p>Nenhuma carga alocada em viagem, em rota ou entregue.</p>
             </div>
           ) : (
             <table className="block md:table w-full text-sm">

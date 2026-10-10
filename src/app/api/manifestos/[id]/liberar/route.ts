@@ -14,15 +14,28 @@ import { ManifestError, lockManifest } from '@/lib/manifestos-db';
 import { recordStatusChanges } from '@/lib/historico';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 import { avisar, avisarStatusAoCliente, avisoDeViagemLiberada, usuarioDoMotorista } from '@/lib/notificacoes';
-import { AVISO_DE_VIAGEM_SEM_MDFE } from '@/lib/mdfe';
-import { exigenciaSemMdfe } from '@/lib/mdfe-db';
+import { AVISO_DE_VIAGEM_SEM_MDFE, fraseDoBloqueioDaSaida, type FaltasParaSair } from '@/lib/mdfe';
+import { documentosDaSaida, exigenciaSemMdfe } from '@/lib/mdfe-db';
+
+/** A saída foi bloqueada por falta de documento fiscal: a resposta 409 leva a lista do que falta. */
+class SaidaBloqueada extends ManifestError {
+  constructor(readonly faltas: FaltasParaSair) {
+    super(409, fraseDoBloqueioDaSaida(faltas));
+  }
+}
 
 /**
  * Libera a saída: as cargas passam para "em rota" e o veículo fica ocupado.
  *
- * A falta de MDF-e NÃO bloqueia a saída: quando a viagem exige o documento
- * (sai do município ou do estado) e não há um autorizado em produção, a
- * resposta leva `aviso`, que a tela mostra.
+ * DOCUMENTOS FISCAIS: o CT-e de cada carga e o MDF-e da viagem têm de estar
+ * autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).
+ * - Empresa com emitente fiscal em PRODUÇÃO (emite pelo TMS): sem o CT-e de
+ *   cada carga que precisa dele, ou sem o MDF-e quando a viagem o exige, a
+ *   saída NÃO é liberada: 409, com `faltas` (as cargas sem CT-e e se falta o
+ *   MDF-e), que a tela mostra com o atalho para emitir.
+ * - Empresa em homologação ou sem emitente configurado (emite em outro
+ *   sistema): a saída é liberada; quando a viagem exige MDF-e e não há um
+ *   autorizado em produção, a resposta leva `aviso`.
  */
 export async function POST(
   req: Request,
@@ -73,6 +86,10 @@ export async function POST(
       if (embarcando.length === 0) throw new ManifestError(409, EMPTY_MANIFEST_MESSAGE);
       const ids = embarcando.map((c) => c.id);
 
+      // Com a viagem e as cargas seguradas: o que falta de documento não muda até o fim da transação.
+      const documentos = await documentosDaSaida(tx, manifestId);
+      if (documentos.bloqueia) throw new SaidaBloqueada(documentos.faltas);
+
       await tx.collection.updateMany({
         where: { id: { in: ids }, manifestId, status: 'COLLECTED' },
         data: { status: 'ROUTE' },
@@ -109,6 +126,9 @@ export async function POST(
     const exigencia = await exigenciaSemMdfe(prisma, manifestId).catch(() => null);
     return NextResponse.json({ success: true, manifest, aviso: exigencia ? AVISO_DE_VIAGEM_SEM_MDFE[exigencia] : null });
   } catch (error) {
+    if (error instanceof SaidaBloqueada) {
+      return NextResponse.json({ error: error.message, faltas: error.faltas }, { status: error.status });
+    }
     if (error instanceof ManifestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

@@ -1618,8 +1618,11 @@ model FiscalIssuer {
   environment  String   @default("HOMOLOGACAO") // HOMOLOGACAO, PRODUCAO
   cfopInState  String
   cfopOutState String
-  icmsCst      String   // 00, 40, 41, 90 ou SN (Simples Nacional)
+  icmsCst      String   // 00, 20, 40, 41, 60, 90 ou SN (Simples Nacional)
+  // A alíquota INTERNA, em %; a interestadual é calculada (Resolução do Senado 22/1989).
   icmsRate     Float    @default(0)
+  // Percentual de redução da base de cálculo (pRedBC), só na situação 20.
+  icmsBaseReduction Float?
 
   // IBS e CBS da Reforma Tributária (grupo imp/IBSCBS do CT-e). CST e
   // classificação nulos = o CT-e vai sem o grupo. As alíquotas, em %, são as do

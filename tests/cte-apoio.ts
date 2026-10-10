@@ -9,6 +9,7 @@ import { digitoDaChave } from "../src/lib/nfe";
 import { validateXML } from "xmllint-wasm";
 import { OID_DAS_POLITICAS, OID_DO_CNPJ, PREFIXO_DO_A1 } from "../src/lib/cte/certificado";
 import type { DadosDoCte, EmitenteDoCte, ParticipanteDoCte } from "../src/lib/cte/montar";
+import type { ResponsavelTecnico } from "../src/lib/cte/responsavel-tecnico";
 
 /**
  * Apoio dos testes do CT-e: certificado autoassinado com as marcas de um e-CNPJ
@@ -215,6 +216,56 @@ export function dadosDeExemplo(trocas: Partial<DadosDoCte> = {}): DadosDoCte {
     ...trocas,
   };
 }
+
+/** Um responsável técnico de mentira, no formato do esquema (`TRespTec`). Os dados de verdade vêm das variáveis RESPTEC_*. */
+export const RESPONSAVEL_TECNICO: ResponsavelTecnico = { cnpj: "60701190000104", contato: "Suporte de Teste", email: "suporte@desenvolvedora.example", telefone: "1730001000" };
+
+const MIRASSOL = { codigoMunicipio: "3530300", municipio: "Mirassol", uf: "SP" };
+const SALVADOR = { codigoMunicipio: "2927408", municipio: "Salvador", uf: "BA" };
+const BELO_HORIZONTE = { codigoMunicipio: "3106200", municipio: "Belo Horizonte", uf: "MG" };
+const RIO_DE_JANEIRO = { codigoMunicipio: "3304557", municipio: "Rio de Janeiro", uf: "RJ" };
+const CURITIBA = { codigoMunicipio: "4106902", municipio: "Curitiba", uf: "PR" };
+
+/** O emitente de exemplo instalado em outra UF (endereço e QR Code de lá). */
+const emitenteEm = (uf: "MT" | "AC"): EmitenteDoCte => ({
+  ...EMITENTE,
+  endereco:
+    uf === "MT"
+      ? { logradouro: "Av. do CPA", numero: "500", bairro: "Centro Político", codigoMunicipio: "5103403", municipio: "Cuiabá", uf: "MT", cep: "78049000" }
+      : { logradouro: "Av. Ceará", numero: "900", bairro: "Centro", codigoMunicipio: "1200401", municipio: "Rio Branco", uf: "AC", cep: "69900000" },
+});
+const CUIABA = { codigoMunicipio: "5103403", municipio: "Cuiabá", uf: "MT" };
+const RIO_BRANCO = { codigoMunicipio: "1200401", municipio: "Rio Branco", uf: "AC" };
+
+/**
+ * Os cenários de CT-e que os testes validam no esquema oficial e que são
+ * passados, à mão, pelo validador do serviço fiscal da casa
+ * (`validar_xml_fiscal`). O nome de cada um diz a regra que ele exercita.
+ */
+export const CENARIOS_DO_CTE: Record<string, () => DadosDoCte> = {
+  // Os que já existiam.
+  "interestadual-12-sp-mg": () => dadosDeExemplo(),
+  "interno-aliquota-interna": () => dadosDeExemplo({ fim: MIRASSOL }),
+  "isenta-40": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "40", aliquota: 0 } }),
+  "nao-tributada-41": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "41", aliquota: 0 } }),
+  "outras-90": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "90", aliquota: 7 } }),
+  "simples-nacional": () => dadosDeExemplo({ emitente: { ...EMITENTE, regime: "1", icms: "SN", aliquota: 0, ibsCbs: null } }),
+  "producao": () => dadosDeExemplo({ emitente: { ...EMITENTE, ambiente: "PRODUCAO" }, enderecoDoQrCode: "https://nfe.fazenda.sp.gov.br/CTeConsulta/qrCode" }),
+  "sem-nfe": () => dadosDeExemplo({ chavesDeNfe: [], fim: MIRASSOL }),
+  "cnpj-alfanumerico": () => dadosDeExemplo({ emitente: { ...EMITENTE, cnpj: "12ABC34501DE35" } }),
+  "ibscbs-410-imune": () => dadosDeExemplo({ emitente: { ...EMITENTE, ibsCbs: { ...EMITENTE.ibsCbs!, cst: "410", classe: "410004" } } }),
+  // As correções da revisão contra o MOC 4.00.
+  "interestadual-7-sp-ba": () => dadosDeExemplo({ fim: SALVADOR }),
+  "outra-uf-6932-mg-rj-12": () => dadosDeExemplo({ inicio: BELO_HORIZONTE, fim: RIO_DE_JANEIRO }),
+  "outra-uf-6932-pr-ba-7": () => dadosDeExemplo({ inicio: CURITIBA, fim: SALVADOR }),
+  "icms-20-reducao-de-base": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "20", reducaoDaBase: 20 } }),
+  "icms-60-substituicao": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "60" } }),
+  "ibscbs-200-aliquota-zero": () => dadosDeExemplo({ emitente: { ...EMITENTE, ibsCbs: { ...EMITENTE.ibsCbs!, cst: "200", classe: "200001" } } }),
+  "ibscbs-200-reducao-40": () => dadosDeExemplo({ emitente: { ...EMITENTE, ibsCbs: { ...EMITENTE.ibsCbs!, cst: "200", classe: "200050" } } }),
+  "emitente-utc-4-mt": () => dadosDeExemplo({ emitente: emitenteEm("MT"), inicio: CUIABA, fim: BELO_HORIZONTE, enderecoDoQrCode: "https://homologacao.sefaz.mt.gov.br/cte/qrcode" }),
+  "emitente-utc-5-ac": () => dadosDeExemplo({ emitente: emitenteEm("AC"), inicio: RIO_BRANCO, fim: BELO_HORIZONTE, enderecoDoQrCode: "https://dfe-portal.svrs.rs.gov.br/cte/qrCode" }),
+  "com-responsavel-tecnico": () => dadosDeExemplo({ responsavelTecnico: RESPONSAVEL_TECNICO }),
+};
 
 /** A chave de acesso de uma NF-e de exemplo (modelo 55, do remetente de exemplo), com o dígito verificador certo. */
 export function chaveDeNfe(numero: number): string {

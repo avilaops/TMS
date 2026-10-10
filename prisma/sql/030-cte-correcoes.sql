@@ -1,0 +1,12 @@
+-- Correções do CT-e apontadas na revisão contra o MOC 4.00: uma coluna nova,
+-- opcional, em "FiscalIssuer":
+--   "icmsBaseReduction": o percentual de redução da base de cálculo do ICMS
+--     (campo pRedBC do grupo ICMS20), para a empresa que usa a situação
+--     tributária 20. Nula nas outras situações.
+-- A coluna "icmsRate", que já existia, passa a ser lida como a alíquota INTERNA
+-- do ICMS: a interestadual é calculada pelo sistema (Resolução do Senado
+-- 22/1989). Nenhum valor gravado muda.
+-- Só acrescenta: nenhuma linha existente muda, e não há tabela nova (não é
+-- preciso rodar o `npm run db:rls` por causa dela).
+-- AlterTable
+ALTER TABLE "FiscalIssuer" ADD COLUMN     "icmsBaseReduction" DOUBLE PRECISION;

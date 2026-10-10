@@ -43,11 +43,12 @@ import { CertificadoError, VENCIDO, conferenciaDoCnpj, conferirCertificado, lerC
 import { enderecosDaUf } from "@/lib/cte/enderecos";
 import { TIPO_DO_CANCELAMENTO, montarCancelamento, montarCte, montarProcCte, type EmitenteDoCte } from "@/lib/cte/montar";
 import { prepararCte, type CargaDoCte, type Preparo } from "@/lib/cte/preparar";
+import { responsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { CSTAT, consultarCte, decidir, enviarCte, enviarEvento, eventoRegistrado, statusDoServico, type Decisao, type Destino, type Esperado, type Protocolo } from "@/lib/cte/sefaz";
 import { SefazError, type Credencial } from "@/lib/cte/soap";
 import { danfeLigado } from "@/lib/fiscal-mcp";
 import { municipioDoTexto } from "@/lib/municipios";
-import { STATUS_COM_CTE } from "@/lib/nfe";
+import { cargaRecebeCte } from "@/lib/nfe";
 import { avisarEquipe, avisoDeCte } from "@/lib/notificacoes";
 
 /**
@@ -110,6 +111,7 @@ export const EMITENTE_SELECT = {
   cfopOutState: true,
   icmsCst: true,
   icmsRate: true,
+  icmsBaseReduction: true,
   ibsCbsCst: true,
   ibsCbsClass: true,
   ibsStateRate: true,
@@ -145,6 +147,7 @@ export function emitenteDaLinha(linha: LinhaDoEmitente): EmitenteDoCte {
     cfopFora: linha.cfopOutState,
     icms: linha.icmsCst as SituacaoDoIcms,
     aliquota: linha.icmsRate,
+    reducaoDaBase: linha.icmsBaseReduction,
     ibsCbs:
       linha.ibsCbsCst && linha.ibsCbsClass
         ? { cst: linha.ibsCbsCst, classe: linha.ibsCbsClass, ibsUf: linha.ibsStateRate, ibsMunicipio: linha.ibsCityRate, cbs: linha.cbsRate, pis: linha.pisRate, cofins: linha.cofinsRate }
@@ -204,6 +207,7 @@ export async function fiscalDaEmpresa(empresa: Empresa): Promise<FiscalDaEmpresa
     cfopFora: emitente.cfopFora,
     icms: emitente.icms,
     aliquota: emitente.aliquota,
+    reducaoDaBase: linha.icmsBaseReduction,
     ibsCbsCst: linha.ibsCbsCst,
     ibsCbsClasse: linha.ibsCbsClass,
     ibsUf: linha.ibsStateRate,
@@ -244,6 +248,7 @@ const paraAuditoria = (linha: LinhaDoEmitente | null) =>
     cfopOutState: linha.cfopOutState,
     icmsCst: linha.icmsCst,
     icmsRate: linha.icmsRate,
+    icmsBaseReduction: linha.icmsBaseReduction,
     ibsCbsCst: linha.ibsCbsCst,
     ibsCbsClass: linha.ibsCbsClass,
     ibsStateRate: linha.ibsStateRate,
@@ -300,6 +305,7 @@ export async function salvarDadosFiscais(empresa: Empresa, dados: DadosFiscaisDo
       cfopOutState: dados.cfopFora,
       icmsCst: dados.icms,
       icmsRate: dados.aliquota,
+      icmsBaseReduction: dados.reducaoDaBase ?? null,
       ibsCbsCst: dados.ibsCbsCst ?? null,
       ibsCbsClass: dados.ibsCbsClasse ?? null,
       ibsStateRate: dados.ibsUf,
@@ -493,7 +499,7 @@ const CARGA_SELECT = {
     select: { companyName: true, tradeName: true, cnpj: true, ie: true, email: true, phone: true, address: true, receivers: { select: { name: true, document: true, address: true }, take: 500 } },
   },
   fiscalDocuments: { select: { accessKey: true, xml: true }, orderBy: { createdAt: "asc" }, take: 50 },
-  manifest: { select: { vehicle: { select: { plate: true } }, driver: { select: { user: { select: { name: true } } } } } },
+  manifest: { select: { status: true, vehicle: { select: { plate: true } }, driver: { select: { user: { select: { name: true } } } } } },
 } as const;
 
 type LinhaDaCarga = Prisma.CollectionGetPayload<{ select: typeof CARGA_SELECT }>;
@@ -558,12 +564,12 @@ async function situacaoDaCarga(db: LeituraDb, tenantId: string, collectionId: st
   const emitente = doEmitente ? emitenteDaLinha(doEmitente) : null;
   const certificado = doEmitente ? certificadoDaLinha(doEmitente) : null;
   const enderecos = emitente ? enderecosDaUf(emitente.endereco.uf, emitente.ambiente) : null;
-  const preparo = prepararCte(cargaDoCte(linha), emitente, enderecos?.qrCode ?? null, municipioDoTexto);
+  const preparo = prepararCte(cargaDoCte(linha), emitente, enderecos?.qrCode ?? null, municipioDoTexto, new Date(), responsavelTecnico());
 
   const daEmpresa = faltasDoCertificado(certificado);
 
   const daCarga: string[] = [];
-  if (!(STATUS_COM_CTE as readonly string[]).includes(linha.status)) daCarga.push(SO_CARGA_QUE_SAIU);
+  if (!cargaRecebeCte(linha)) daCarga.push(SO_CARGA_QUE_SAIU);
   if (emitente) {
     const autorizado = await db.cte.findFirst({ where: { collectionId, environment: emitente.ambiente, status: "AUTHORIZED" }, select: { id: true } });
     if (autorizado) daCarga.push(JA_AUTORIZADO);

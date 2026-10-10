@@ -43,6 +43,9 @@ import {
   type SituacaoDoMdfe,
   type StatusDoServico,
   type TipoDeEmitente,
+  faltasParaSair,
+  haFaltasParaSair,
+  type FaltasParaSair,
 } from "@/lib/mdfe";
 import { AUTORIZADOR_DO_MDFE, ENDERECO_DO_QR_CODE } from "@/lib/mdfe/enderecos";
 import {
@@ -61,6 +64,7 @@ import {
 import { prepararMdfe, ufsDeDescarga, type CargaDaViagem, type PreparoDoMdfe, type SeguroPadrao, type VeiculoDaViagem, type ViagemDoMdfe } from "@/lib/mdfe/preparar";
 import { CSTAT, REJEICOES_POR_NAO_ENCERRADO, consultarMdfe, consultarNaoEncerrados, enviarEvento, enviarMdfe, statusDoServico, type DestinoDoMdfe } from "@/lib/mdfe/sefaz";
 import { municipioDoTexto } from "@/lib/municipios";
+import { responsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { avisarEquipe, avisoDeMdfe, avisoDeMdfeEmAberto } from "@/lib/notificacoes";
 import { sistema } from "@/lib/prisma";
 import { codigoDaViagem } from "@/lib/viagem";
@@ -434,6 +438,7 @@ async function prepararUf(db: LeituraDb, lido: Lido, ufDeDescarga: string, entra
     seguroPadrao: lido.seguroPadrao,
     reboques: await lerReboques(db, entradas.reboques ?? []),
     enderecoDoQrCode: ENDERECO_DO_QR_CODE,
+    responsavelTecnico: responsavelTecnico(),
     achar: municipioDoTexto,
   });
   const daViagem = lido.linha.status === "CANCELLED" ? [VIAGEM_CANCELADA] : [];
@@ -511,6 +516,49 @@ export async function exigenciaSemMdfe(db: Pick<Tx, "manifest" | "mdfe">, manife
   // Só o de produção tem valor fiscal: o de homologação não cobre a viagem.
   const autorizado = await db.mdfe.findFirst({ where: { manifestId, environment: PRODUCAO, status: { in: ["AUTHORIZED", "CLOSED"] } }, select: { id: true } });
   return autorizado ? null : exigencia;
+}
+
+export type DocumentosDaSaida = {
+  faltas: FaltasParaSair;
+  /** A empresa emite pelo TMS em produção e falta documento: a saída não é liberada. */
+  bloqueia: boolean;
+};
+
+/**
+ * O que falta de documento fiscal para a viagem sair (`faltasParaSair`), e se
+ * isso bloqueia a saída. Bloqueia só quando a empresa tem emitente fiscal
+ * configurado em PRODUÇÃO: aí o CT-e de cada carga e o MDF-e da viagem são
+ * emitidos por aqui, e têm de estar autorizados antes de o veículo sair. Em
+ * homologação, ou sem emitente (a empresa emite em outro sistema), nada
+ * bloqueia.
+ *
+ * Vale como CT-e da carga o de produção: o autorizado por este sistema ou o
+ * registrado à mão (os dois deixam a carga com `cteStatus` "ISSUED").
+ */
+export async function documentosDaSaida(db: Pick<Tx, "manifest" | "mdfe" | "fiscalIssuer">, manifestId: string): Promise<DocumentosDaSaida> {
+  const semFaltas: DocumentosDaSaida = { faltas: { ctes: [], mdfe: null }, bloqueia: false };
+  const doEmitente = await db.fiscalIssuer.findFirst({ select: { environment: true, mdfeEmitterType: true } });
+  if (!doEmitente || ambienteDaLinha(doEmitente.environment) !== PRODUCAO) return semFaltas;
+  const viagem = await db.manifest.findUnique({
+    where: { id: manifestId },
+    select: { collections: { orderBy: { createdAt: "asc" }, select: { id: true, trackingCode: true, origin: true, destination: true, cteKey: true, cteStatus: true } } },
+  });
+  if (!viagem) return semFaltas;
+  const cargas = viagem.collections.map((carga) => {
+    const origem = municipioDoTexto(carga.origin);
+    const destino = municipioDoTexto(carga.destination);
+    return {
+      id: carga.id,
+      codigo: carga.trackingCode ?? carga.id.slice(0, 8),
+      ufDeOrigem: origem?.uf ?? null,
+      ufDeDestino: destino?.uf ?? null,
+      mesmoMunicipio: origem !== null && destino !== null && origem.codigo === destino.codigo,
+      cteAutorizado: carga.cteKey !== null && carga.cteStatus === "ISSUED",
+    };
+  });
+  const autorizado = await db.mdfe.findFirst({ where: { manifestId, environment: PRODUCAO, status: { in: ["AUTHORIZED", "CLOSED"] } }, select: { id: true } });
+  const faltas = faltasParaSair(cargas, tipoDaLinha(doEmitente.mdfeEmitterType), autorizado !== null);
+  return { faltas, bloqueia: haFaltasParaSair(faltas) };
 }
 
 /** Os MDF-e autorizados (e não encerrados) da viagem, no ambiente de produção: é o que se oferece encerrar ao finalizar a viagem. */

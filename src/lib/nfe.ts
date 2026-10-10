@@ -700,8 +700,32 @@ export const nomeDoArquivoXml = (chave: string) => `${chave.replace(/\D/g, "")}-
 // O registro manual do número e da chave de um CT-e emitido em outro sistema.
 // A emissão pelo próprio TMS está em src/lib/cte.ts e src/lib/cte/.
 
-/** Cargas que já saíram: é a partir da saída que o CT-e precisa existir. */
+/** Cargas que já saíram (em rota ou entregues). */
 export const STATUS_COM_CTE = ["ROUTE", "DELIVERED"] as const;
+
+/**
+ * Que carga recebe CT-e (emitido aqui ou registrado à mão).
+ *
+ * O CT-e tem de estar autorizado ANTES do início da prestação (Ajuste SINIEF
+ * 09/07: o documento só existe com a autorização de uso, e é o DACTE dele que
+ * acompanha a carga). Por isso a carga já alocada
+ * numa viagem ainda em montagem (coletada, antes de a saída ser liberada)
+ * também recebe: é a ordem alocar na viagem → emitir CT-e → emitir MDF-e →
+ * liberar a saída. As que já saíram continuam recebendo, como antes.
+ *
+ * A carga coletada e ainda fora de viagem continua sem CT-e: é a alocação que
+ * diz que o transporte vai acontecer (e dá o veículo e o motorista da
+ * observação do documento).
+ */
+export const CARGA_QUE_RECEBE_CTE = {
+  OR: [{ status: { in: [...STATUS_COM_CTE] } }, { status: "COLLECTED", manifest: { is: { status: "ASSEMBLING" } } }],
+};
+
+/** A mesma regra de `CARGA_QUE_RECEBE_CTE`, para a carga já lida. */
+export function cargaRecebeCte(carga: { status: string; manifest: { status: string } | null }): boolean {
+  if ((STATUS_COM_CTE as readonly string[]).includes(carga.status)) return true;
+  return carga.status === "COLLECTED" && carga.manifest?.status === "ASSEMBLING";
+}
 
 export const MODELO_CTE = "57";
 
@@ -712,7 +736,7 @@ const CTE_CHAVE_DE_OUTRO_MODELO = "Esta chave não é de CT-e (modelo 57). Confi
 const CTE_CHAVE_DE_OUTRO_NUMERO = "O número informado não é o que está na chave do CT-e.";
 const CTE_INCOMPLETO = "Informe o número e a chave do CT-e, ou deixe os dois em branco para desfazer o registro.";
 export const CTE_CARGA_NAO_ENCONTRADA = "Carga não encontrada.";
-export const CTE_CARGA_NAO_SAIU = "Só carga em rota ou entregue recebe o registro de CT-e.";
+export const CTE_CARGA_NAO_SAIU = "Só carga alocada numa viagem, em rota ou entregue recebe o registro de CT-e.";
 export const CTE_CHAVE_REPETIDA = "Esta chave de CT-e já está registrada em outra carga.";
 
 const vazioParaNulo = (valor: unknown) => (typeof valor === "string" && valor.trim() === "" ? null : valor);

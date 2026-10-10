@@ -20,7 +20,9 @@ import {
   SO_AUTORIZADO_TEM_XML,
   TRANSPORTE_JA_INICIADO,
   VIAGEM_NAO_ENCONTRADA,
+  fraseDoBloqueioDaSaida,
   type ConferenciaDoMdfe,
+  type FaltasParaSair,
   type ConfiguracaoDoMdfe,
   type MdfeEmitido,
   type MdfesDaViagem,
@@ -116,6 +118,7 @@ suite("rotas da emissão de MDF-e", () => {
   let encerrarRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/encerrar/route");
   let cancelarRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/cancelar/route");
   let condutorRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/condutor/route");
+  let liberarRota: typeof import("../src/app/api/manifestos/[id]/liberar/route");
   let eventos: typeof import("../src/lib/eventos");
 
   const sessao = vi.mocked(getServerSession);
@@ -210,7 +213,9 @@ suite("rotas da emissão de MDF-e", () => {
    */
   async function novaViagem(destinos: (keyof typeof DESTINOS)[] = ["MG", "UDI"], trocas: { veiculoId?: string; semCte?: boolean; ambienteDoCte?: string; status?: string; comNfe?: boolean } = {}) {
     const veiculoId = trocas.veiculoId ?? (await novoVeiculo()).id;
-    const viagem = await banco.default.manifest.create({ data: { driverId: motoristaId, vehicleId: veiculoId, status: trocas.status ?? "ROUTE", departedAt: new Date() }, select: { id: true } });
+    // Em montagem a viagem ainda não saiu: as cargas estão coletadas, alocadas nela.
+    const emMontagem = trocas.status === "ASSEMBLING";
+    const viagem = await banco.default.manifest.create({ data: { driverId: motoristaId, vehicleId: veiculoId, status: trocas.status ?? "ROUTE", departedAt: emMontagem ? null : new Date() }, select: { id: true } });
     const cargas: { id: string; chave: string | null }[] = [];
     for (const destino of destinos) {
       const numero = 7000 + (sequencia += 1);
@@ -228,7 +233,7 @@ suite("rotas da emissão de MDF-e", () => {
           invoiceValue: 10000,
           invoiceKey: trocas.comNfe ? chaveDeExemplo("55", numero, "35", CNPJ_DA_PADRAO) : null,
           freightValue: 800,
-          status: "ROUTE",
+          status: emMontagem ? "COLLECTED" : "ROUTE",
           trackingCode: `96${String(Date.now() % 1_000_000).padStart(6, "0")}${String(numero % 100).padStart(2, "0")}`,
         },
         select: { id: true },
@@ -334,6 +339,7 @@ suite("rotas da emissão de MDF-e", () => {
     encerrarRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/encerrar/route");
     cancelarRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/cancelar/route");
     condutorRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/condutor/route");
+    liberarRota = await import("../src/app/api/manifestos/[id]/liberar/route");
     eventos = await import("../src/lib/eventos");
     await limpar();
 
@@ -1065,6 +1071,143 @@ suite("rotas da emissão de MDF-e", () => {
       expect((await lida<StatusDoServico>(await statusRota.GET())).corpo).toMatchObject({ emOperacao: false, cStat: 108 });
       sefaz.modo = "mudo";
       expect((await lida<StatusDoServico>(await statusRota.GET())).corpo).toMatchObject({ emOperacao: false, cStat: null });
+    });
+  });
+
+  /* ------------------- Documentos fiscais antes da saída --------------------- */
+
+  describe("liberar a saída: CT-e e MDF-e autorizados antes (Ajustes SINIEF 09/07 e 21/10)", () => {
+    type Bloqueio = Corpo & { success?: boolean; aviso?: string | null; faltas?: FaltasParaSair };
+    const sair = async (manifestId: string, perfil: Perfil = "OPERATION") => {
+      entrarComo(perfil);
+      return lida<Bloqueio>(await liberarRota.POST(req("POST"), ctx(manifestId)));
+    };
+    const situacao = async (manifestId: string) => {
+      const viagem = await banco.sistema.manifest.findUniqueOrThrow({ where: { id: manifestId }, select: { status: true, collections: { select: { status: true } } } });
+      return { viagem: viagem.status, cargas: [...new Set(viagem.collections.map((carga) => carga.status))] };
+    };
+    const EM_MONTAGEM = { viagem: "ASSEMBLING", cargas: ["COLLECTED"] };
+    const EM_ROTA = { viagem: "ROUTE", cargas: ["ROUTE"] };
+    const emProducao = () => prepararEmpresa({ ambiente: "PRODUCAO", confirmacaoDoCnpj: CNPJ_DA_PADRAO });
+    /** O CT-e de produção das cargas, gravado como a emissão o deixa: autorizado, com o XML, e a carga com a chave. */
+    const autorizarCtes = async (viagem: { cargas: { id: string }[] }) => {
+      for (const carga of viagem.cargas) {
+        const cte = await banco.sistema.cte.findFirstOrThrow({ where: { collectionId: carga.id }, select: { accessKey: true, number: true } });
+        await banco.sistema.collection.update({ where: { id: carga.id }, data: { cteKey: cte.accessKey, cteNumber: cte.number, cteStatus: "ISSUED" } });
+      }
+    };
+
+    it("produção sem CT-e: 409 com a lista das cargas e do MDF-e, e nada muda", async () => {
+      await emProducao();
+      const viagem = await novaViagem(["MG", "UDI"], { status: "ASSEMBLING", semCte: true });
+      const resposta = await sair(viagem.id);
+      expect(resposta.status).toBe(409);
+      const codigos = (await banco.sistema.collection.findMany({ where: { manifestId: viagem.id }, orderBy: { createdAt: "asc" }, select: { id: true, trackingCode: true } })).map((carga) => ({ id: carga.id, codigo: carga.trackingCode }));
+      expect(resposta.corpo.faltas).toEqual({ ctes: codigos, mdfe: "interestadual" });
+      expect(resposta.corpo.error).toBe(fraseDoBloqueioDaSaida(resposta.corpo.faltas!));
+      expect(resposta.corpo.error).toContain("CT-e autorizado de 2 cargas");
+      expect(await situacao(viagem.id)).toEqual(EM_MONTAGEM);
+      expect(await trilha("manifesto.liberar")).toHaveLength(0);
+      // O veículo continua livre.
+      expect((await banco.sistema.vehicle.findUniqueOrThrow({ where: { id: viagem.veiculoId }, select: { status: true } })).status).not.toBe("ON_ROUTE");
+    });
+
+    it("produção com CT-e e sem MDF-e: 409 só com o MDF-e; CT-e de homologação não conta", async () => {
+      await emProducao();
+      // CT-e autorizado só em homologação: a carga continua sem CT-e com valor fiscal.
+      const deTeste = await novaViagem(["MG"], { status: "ASSEMBLING" });
+      expect((await sair(deTeste.id)).corpo.faltas).toMatchObject({ ctes: [{ id: deTeste.cargas[0].id }], mdfe: "interestadual" });
+
+      const viagem = await novaViagem(["MG", "UDI"], { status: "ASSEMBLING", ambienteDoCte: "PRODUCAO" });
+      await autorizarCtes(viagem);
+      const resposta = await sair(viagem.id);
+      expect(resposta.status).toBe(409);
+      expect(resposta.corpo.faltas).toEqual({ ctes: [], mdfe: "interestadual" });
+      expect(resposta.corpo.error).toContain("Falta: MDF-e autorizado da viagem.");
+      expect(await situacao(viagem.id)).toEqual(EM_MONTAGEM);
+
+      // O CT-e registrado à mão (emitido em outro sistema) também vale como CT-e da carga.
+      const deFora = await novaViagem(["MG"], { status: "ASSEMBLING", semCte: true });
+      await banco.sistema.collection.update({ where: { id: deFora.cargas[0].id }, data: { cteKey: chaveDeExemplo("57", 4321), cteNumber: 4321, cteStatus: "ISSUED" } });
+      expect((await sair(deFora.id)).corpo.faltas).toEqual({ ctes: [], mdfe: "interestadual" });
+    });
+
+    it("produção com o CT-e de cada carga e o MDF-e autorizados: libera, sem aviso", async () => {
+      await emProducao();
+      const viagem = await novaViagem(["MG", "UDI"], { status: "ASSEMBLING", ambienteDoCte: "PRODUCAO" });
+      await autorizarCtes(viagem);
+      // O MDF-e é emitido com a viagem ainda em montagem: é a ordem nova.
+      const emitido = await emitir(viagem.id);
+      expect(emitido.corpo).toMatchObject({ autorizado: true, mdfe: { ambiente: "PRODUCAO", situacao: "AUTHORIZED" } });
+      const resposta = await sair(viagem.id);
+      expect(resposta.status).toBe(200);
+      expect(resposta.corpo).toMatchObject({ success: true, aviso: null });
+      expect(await situacao(viagem.id)).toEqual(EM_ROTA);
+      expect(await trilha("manifesto.liberar")).toHaveLength(1);
+    });
+
+    it("carga própria (tipo de emitente 2) em produção: não exige CT-e, só o MDF-e", async () => {
+      await emProducao();
+      await configurar({ tipoDeEmitente: "2" });
+      const viagem = await novaViagem(["MG"], { status: "ASSEMBLING", semCte: true, comNfe: true });
+      expect((await sair(viagem.id)).corpo.faltas).toEqual({ ctes: [], mdfe: "interestadual" });
+    });
+
+    it("homologação: só o aviso, como antes; a saída é liberada sem CT-e e sem MDF-e", async () => {
+      await prepararEmpresa();
+      const viagem = await novaViagem(["MG", "UDI"], { status: "ASSEMBLING", semCte: true });
+      const resposta = await sair(viagem.id);
+      expect(resposta.status).toBe(200);
+      expect(resposta.corpo).toMatchObject({ success: true, aviso: AVISO_DE_VIAGEM_SEM_MDFE.interestadual });
+      expect(resposta.corpo.faltas).toBeUndefined();
+      expect(await situacao(viagem.id)).toEqual(EM_ROTA);
+      expect(await mdfeDb.documentosDaSaida(banco.default, viagem.id)).toEqual({ faltas: { ctes: [], mdfe: null }, bloqueia: false });
+    });
+
+    it("empresa sem emitente fiscal (emite em outro sistema): libera, só com o aviso", async () => {
+      const viagem = await novaViagem(["MG"], { status: "ASSEMBLING", semCte: true });
+      expect(await banco.sistema.fiscalIssuer.count({ where: DAS_EMPRESAS })).toBe(0);
+      const resposta = await sair(viagem.id);
+      expect(resposta.status).toBe(200);
+      expect(resposta.corpo).toMatchObject({ success: true, aviso: AVISO_DE_VIAGEM_SEM_MDFE.interestadual });
+      expect(await situacao(viagem.id)).toEqual(EM_ROTA);
+    });
+
+    it("isolamento: o emitente em produção de uma empresa não bloqueia a outra, e uma não libera a viagem da outra", async () => {
+      await emProducao();
+      const daPadrao = await novaViagem(["MG"], { status: "ASSEMBLING", semCte: true });
+
+      // A outra empresa não tem emitente: a viagem dela sai, com o aviso.
+      const outra = banco.paraEmpresa(EMPRESA_OUTRA.id).db;
+      const usuario = await outra.user.create({ data: { name: `${PREFIXO}motorista-da-outra`, email: `${PREFIXO}motorista-da-outra@exemplo.br`, password: HASH_FALSO, role: "DRIVER" } });
+      const motorista = await outra.driver.create({ data: { userId: usuario.id, cpf: "11144477735", cnh: "98765432100", cnhExpiry: new Date("2030-01-01"), category: "E" } });
+      const veiculo = await outra.vehicle.create({ data: { plate: "MDF9Z99", model: "Truck da outra", type: "TRUCK", capacity: 14000 } });
+      const cliente = await outra.client.create({ data: { companyName: `${PREFIXO}Cliente da Outra Ltda`, cnpj: "07526557000100" } });
+      const daOutra = await outra.manifest.create({ data: { driverId: motorista.id, vehicleId: veiculo.id, status: "ASSEMBLING" }, select: { id: true } });
+      await outra.collection.create({
+        data: { clientId: cliente.id, manifestId: daOutra.id, sender: "Remetente", receiver: "Destinatário", origin: "São José do Rio Preto - SP", destination: "Belo Horizonte - MG", volumes: 1, weight: 10, status: "COLLECTED", trackingCode: `97${String(Date.now() % 100_000_000).padStart(8, "0")}` },
+      });
+      try {
+        // Cada uma só enxerga a própria viagem.
+        expect((await sair(daPadrao.id, "ADMIN_DA_OUTRA")).status).toBe(404);
+        expect((await sair(daOutra.id, "OPERATION")).status).toBe(404);
+
+        const liberada = await sair(daOutra.id, "ADMIN_DA_OUTRA");
+        expect(liberada.status).toBe(200);
+        expect(liberada.corpo).toMatchObject({ success: true, aviso: AVISO_DE_VIAGEM_SEM_MDFE.interestadual });
+        expect(await situacao(daOutra.id)).toEqual(EM_ROTA);
+
+        // E a da empresa em produção continua bloqueada.
+        expect((await sair(daPadrao.id)).status).toBe(409);
+        expect(await situacao(daPadrao.id)).toEqual(EM_MONTAGEM);
+      } finally {
+        await banco.sistema.collection.deleteMany({ where: { manifestId: daOutra.id } });
+        await banco.sistema.manifest.deleteMany({ where: { id: daOutra.id } });
+        await banco.sistema.vehicle.deleteMany({ where: { id: veiculo.id } });
+        await banco.sistema.driver.deleteMany({ where: { id: motorista.id } });
+        await banco.sistema.user.deleteMany({ where: { id: usuario.id } });
+        await banco.sistema.client.deleteMany({ where: { id: cliente.id } });
+      }
     });
   });
 

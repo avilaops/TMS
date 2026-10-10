@@ -1,4 +1,5 @@
 import { cnpjValido } from "@/lib/cte";
+import { semResponsavelTecnico, type ResponsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { digitos } from "@/lib/cte/texto";
 import {
   CIOT_OBRIGATORIO_DESDE,
@@ -253,6 +254,8 @@ export type Contexto = {
   /** Os veículos escolhidos como reboque, já lidos do cadastro (os que não existem ficam de fora). */
   reboques: readonly VeiculoDaViagem[];
   enderecoDoQrCode: string;
+  /** A desenvolvedora do sistema (src/lib/cte/responsavel-tecnico.ts). Nulo ou ausente: o MDF-e vai sem o grupo `infRespTec`, com aviso. */
+  responsavelTecnico?: ResponsavelTecnico | null;
   achar: AcharMunicipio;
   agora?: Date;
 };
@@ -424,6 +427,8 @@ export function prepararMdfe(viagem: ViagemDoMdfe, ufDeDescarga: string, entrada
   const pesoKg = daUf.reduce((soma, documento) => soma + documento.pesoKg, 0);
   if (daUf.length > 0 && !(valorDaCarga > 0)) avisos.push("O valor total da carga está zerado: confira o valor das notas nas cargas.");
   if (daUf.length > 0 && !(pesoKg > 0)) avisos.push("O peso total da carga está zerado: confira o peso das cargas.");
+  // MOC do MDF-e, Anexo I, regra F120 (rejeição 720): a UF pode exigir o grupo do responsável técnico.
+  if (!contexto.responsavelTecnico) avisos.push(semResponsavelTecnico("mdfe"));
 
   if (viagem.cargas.length === 0) pendencias.push(VIAGEM_SEM_CARGA);
   else if (daUf.length === 0) pendencias.push(`A viagem não tem carga com descarga em ${ufDeDescarga}.`);
@@ -504,6 +509,7 @@ export function prepararMdfe(viagem: ViagemDoMdfe, ufDeDescarga: string, entrada
     lacres: entradasInformadas.lacres ?? [],
     observacao: `Viagem ${viagem.codigo}`,
     enderecoDoQrCode: contexto.enderecoDoQrCode,
+    responsavelTecnico: contexto.responsavelTecnico ?? null,
   };
 
   return { ufDeDescarga, dados, pendencias: [], avisos, resumo, entradas };

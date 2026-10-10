@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ate, clicar, desmontarTudo, montar, porTexto } from "./tela";
-import { FISCAL_INDISPONIVEL, type ConferenciaDoCte, type CteEmitido, type DadosFiscais, type FiscalDaEmpresa, type ResumoDoCte } from "../src/lib/cte";
+import { EXPLICACAO_DO_ICMS, FISCAL_INDISPONIVEL, IBSCBS_COM_ESTORNO, IBSCBS_CST_400, type ConferenciaDoCte, type CteEmitido, type DadosFiscais, type FiscalDaEmpresa, type ResumoDoCte } from "../src/lib/cte";
 import type { CargaParaCte } from "../src/lib/nfe";
 
 /**
@@ -123,7 +123,7 @@ const resumo: ResumoDoCte = {
   destino: "Mirassol - SP",
   valorDaPrestacao: 120,
   valorDaCarga: 1534.56,
-  icms: { situacao: "00", aliquota: 12, valor: 14.4 },
+  icms: { situacao: "00", grupo: "ICMS00", base: 120, aliquota: 12, valor: 14.4, retido: false },
   ibsCbs: { cst: "000", classe: "000001", base: 105.6, ibs: 0.11, cbs: 0.95 },
   peso: 42.5,
   volumes: 3,
@@ -200,7 +200,7 @@ describe("tela de CT-e", () => {
     expect(texto).toContain("Fábrica de Tintas LTDA · 99.444.333/0001-81");
     expect(texto).toContain("o remetente · contribuinte");
     expect(texto).toMatch(/R\$\s120,00/);
-    expect(texto).toMatch(/12% = R\$\s14,40/);
+    expect(texto).toMatch(/12% de R\$\s120,00 = R\$\s14,40/);
     expect(texto).toMatch(/000 - Tributação integral · R\$\s0,11 \/ R\$\s0,95/);
     expect(dialogo.querySelector("[data-avisos]")!.textContent).toContain("Em homologação");
     expect(dialogo.querySelector("[data-pendencias]")).toBeNull();
@@ -383,6 +383,7 @@ const DADOS: DadosFiscais = {
   cfopFora: "6353",
   icms: "00",
   aliquota: 12,
+  reducaoDaBase: null,
   ibsCbsCst: "000",
   ibsCbsClasse: "000001",
   ibsUf: 0.1,
@@ -455,6 +456,64 @@ describe("Empresa → Fiscal", () => {
     await ate(() => expect(secao(tela).querySelector('[role="status"]')?.textContent).toBe("Dados fiscais salvos."));
     // Já em produção, o campo de confirmação some.
     expect(secao(tela).querySelector("[data-confirmar-producao]")).toBeNull();
+  });
+
+  it("tributos: CFOP e classificação em lista, a explicação do ICMS, a redução só na situação 20, e a configuração antiga com CST 400 pede a correção", async () => {
+    const pedidos = api({
+      ...RESTO_DA_EMPRESA,
+      "/api/empresa/fiscal": { body: { disponivel: true, dados: { ...DADOS, ibsCbsCst: "400", ibsCbsClasse: "400001", cfopDentro: "5102" }, certificado: null } },
+      "PUT /api/empresa/fiscal": { body: { disponivel: true, dados: DADOS, certificado: null } },
+    });
+    const tela = await montar(<EmpresaPage />);
+    await ate(() => expect(secao(tela)).not.toBeNull());
+    const opcoes = (nome: string) => [...campo(tela, nome).querySelectorAll("option")].map((opcao) => opcao.value);
+
+    // O que estava gravado e deixou de valer aparece marcado, com o pedido de correção.
+    expect(campo(tela, "ibsCbsCst").value).toBe("400");
+    expect(secao(tela).querySelector("[data-ibscbs-invalido]")!.textContent).toBe(IBSCBS_CST_400);
+    expect(opcoes("ibsCbsCst")).toEqual(["", "400", "000", "200", "410"]);
+    expect(campo(tela, "cfopDentro").value).toBe("5102");
+    expect(campo(tela, "cfopDentro").querySelector("option")!.textContent).toContain("não vale mais");
+    expect(opcoes("cfopFora")).toEqual(["6351", "6352", "6353", "6354", "6355", "6356", "6357", "6359", "6360"]);
+
+    // Trocar o CST troca a classificação pela primeira que vale com ele, e o aviso some.
+    await digitar(campo(tela, "ibsCbsCst"), "200");
+    expect(opcoes("ibsCbsClasse")).toEqual(["200001", "200020", "200050"]);
+    expect(campo(tela, "ibsCbsClasse").value).toBe("200001");
+    expect(secao(tela).querySelector("[data-ibscbs-invalido]")).toBeNull();
+    await digitar(campo(tela, "ibsCbsCst"), "410");
+    expect(opcoes("ibsCbsClasse")).toHaveLength(8);
+    // A 410026 exige o estorno de crédito, que o sistema não monta.
+    await digitar(campo(tela, "ibsCbsClasse"), "410026");
+    expect(secao(tela).querySelector("[data-ibscbs-invalido]")!.textContent).toBe(IBSCBS_COM_ESTORNO);
+    await digitar(campo(tela, "ibsCbsCst"), "000");
+    await digitar(campo(tela, "cfopDentro"), "5353");
+
+    // A explicação acompanha a situação do ICMS; a redução da base só existe na 20.
+    const explicacao = () => secao(tela).querySelector("[data-explicacao-icms]")!.textContent!;
+    expect(explicacao()).toContain(EXPLICACAO_DO_ICMS["00"]);
+    expect(explicacao()).toContain("interestadual (7% ou 12%), calculada pelo sistema");
+    expect(secao(tela).querySelector('[data-campo="reducaoDaBase"]')).toBeNull();
+    expect(opcoes("icms")).toEqual(["00", "20", "40", "41", "60", "90", "SN"]);
+    await digitar(campo(tela, "icms"), "60");
+    expect(explicacao()).toContain(EXPLICACAO_DO_ICMS["60"]);
+    // Situação sem alíquota não fala da interestadual.
+    await digitar(campo(tela, "icms"), "40");
+    expect(explicacao()).toBe(EXPLICACAO_DO_ICMS["40"]);
+    await digitar(campo(tela, "icms"), "20");
+    expect(explicacao()).toContain(EXPLICACAO_DO_ICMS["20"]);
+    await digitar(campo(tela, "reducaoDaBase"), "20");
+
+    await enviar(secao(tela).querySelector<HTMLFormElement>("[data-form-fiscal]")!);
+    await ate(() => expect(secao(tela).querySelector('[role="status"]')?.textContent).toBe("Dados fiscais salvos."));
+    expect(pedidos.at(-1)).toMatchObject({ method: "PUT", body: { icms: "20", aliquota: "12", reducaoDaBase: "20", cfopDentro: "5353", cfopFora: "6353", ibsCbsCst: "000", ibsCbsClasse: "000001" } });
+
+    // Sair da situação 20 limpa a redução.
+    await digitar(campo(tela, "icms"), "20");
+    await digitar(campo(tela, "reducaoDaBase"), "15");
+    await digitar(campo(tela, "icms"), "00");
+    await enviar(secao(tela).querySelector<HTMLFormElement>("[data-form-fiscal]")!);
+    await ate(() => expect(pedidos.at(-1)).toMatchObject({ body: { icms: "00", reducaoDaBase: "" } }));
   });
 
   it("envia o certificado em base64 com a senha, limpa a senha da tela e mostra só titular, CNPJ e validade; remover apaga", async () => {

@@ -16,6 +16,9 @@ import {
   encerrarSchema,
   entradasSchema,
   exigenciaDeMdfe,
+  faltasParaSair,
+  fraseDoBloqueioDaSaida,
+  haFaltasParaSair,
   seloDoMdfe,
 } from "../src/lib/mdfe";
 import { assinarXml, assinaturaConfere, resumoDaAssinatura } from "../src/lib/cte/assinar";
@@ -57,8 +60,9 @@ import {
 } from "../src/lib/mdfe/sefaz";
 import { municipioDoTexto } from "../src/lib/municipios";
 import { montarCte } from "../src/lib/cte/montar";
-import { certificadoDeTeste, dadosDeExemplo, impressaoDigital, type CertificadoDeTeste } from "./cte-apoio";
-import { EMITENTE_DO_MDFE, RODO, SEGURO, chaveDeExemplo, detalheDoEvento, errosNoEsquemaDoMdfe, mdfeDeExemplo, modalDoXml, subirSefazDoMdfe, type SefazDoMdfe } from "./mdfe-apoio";
+import { semResponsavelTecnico } from "../src/lib/cte/responsavel-tecnico";
+import { RESPONSAVEL_TECNICO, certificadoDeTeste, dadosDeExemplo, impressaoDigital, type CertificadoDeTeste } from "./cte-apoio";
+import { CENARIOS_DO_MDFE, EMITENTE_DO_MDFE, RODO, SEGURO, chaveDeExemplo, detalheDoEvento, errosNoEsquemaDoMdfe, mdfeDeExemplo, modalDoXml, subirSefazDoMdfe, type SefazDoMdfe } from "./mdfe-apoio";
 
 /**
  * Emissão de MDF-e, na parte que não precisa de banco: a chave de acesso, a
@@ -908,5 +912,134 @@ describe("web services do MDF-e contra o servidor local", () => {
     const base64 = compactar(mdfe.xml);
     expect(base64).toMatch(/^[A-Za-z0-9+/]+={0,2}$/);
     expect(gunzipSync(Buffer.from(base64, "base64")).toString("utf8")).toBe(mdfe.xml);
+  });
+});
+
+/* ------------------- Correções da revisão fiscal do MDF-e ---------------------- */
+
+describe("correções da revisão: fuso da UF do emitente e responsável técnico", () => {
+  // 01/11/2026 às 03:30 UTC: 00:30 de 01/11 em Brasília, 23:30 de 31/10 em Cuiabá, 22:30 de 31/10 em Rio Branco.
+  const virada = new Date("2026-11-01T03:30:00.000Z");
+  const emitenteEm = (uf: "MT" | "AC") => ({
+    ...EMITENTE_DO_MDFE,
+    endereco:
+      uf === "MT"
+        ? { logradouro: "Av. do CPA", numero: "500", bairro: "Centro Político", codigoMunicipio: "5103403", municipio: "Cuiabá", uf: "MT", cep: "78049000" }
+        : { logradouro: "Av. Ceará", numero: "900", bairro: "Centro", codigoMunicipio: "1200401", municipio: "Rio Branco", uf: "AC", cep: "69900000" },
+  });
+
+  it.each(Object.keys(CENARIOS_DO_MDFE))("o cenário %s passa no esquema oficial, assinado, com o modal", async (nome) => {
+    expect(await erros(CENARIOS_DO_MDFE[nome]())).toEqual([]);
+  });
+
+  it("emitente em UF de UTC-4 (MT): dhEmi e dhIniViagem no fuso da UF, e a chave com o AAMM do dhEmi", async () => {
+    const dados = mdfeDeExemplo({ emitente: emitenteEm("MT"), emissao: virada, inicioDaViagem: new Date("2026-11-01T05:00:00.000Z") });
+    expect(await erros(dados)).toEqual([]);
+    const { xml, chave } = assinado(dados);
+    expect(xml).toContain("<cUF>51</cUF>");
+    expect(xml).toContain("<dhEmi>2026-10-31T23:30:00-04:00</dhEmi>");
+    expect(xml).toContain("<dhIniViagem>2026-11-01T01:00:00-04:00</dhIniViagem>");
+    expect(chave.slice(0, 6)).toBe("512610");
+    expect(chaveValida(chave)).toBe(true);
+  });
+
+  it("emitente em UF de UTC-5 (AC), e o de UTC-3 no mesmo instante cai no mês seguinte", async () => {
+    const dados = mdfeDeExemplo({ emitente: emitenteEm("AC"), emissao: virada, inicioDaViagem: null });
+    expect(await erros(dados)).toEqual([]);
+    const ac = assinado(dados);
+    expect(ac.xml).toContain("<dhEmi>2026-10-31T22:30:00-05:00</dhEmi>");
+    expect(ac.chave.slice(0, 6)).toBe("122610");
+
+    const sp = assinado(mdfeDeExemplo({ emissao: virada }));
+    expect(sp.xml).toContain("<dhEmi>2026-11-01T00:30:00-03:00</dhEmi>");
+    expect(sp.chave.slice(0, 6)).toBe("352611");
+    expect(chaveDoMdfe({ uf: "AM", emissao: virada, cnpj: "11222333000181", serie: 1, numero: 1, codigo: "00000001" }).slice(0, 6)).toBe("132610");
+  });
+
+  it("os eventos vão no fuso da UF do emitente (a que abre a chave do MDF-e), e passam no esquema", async () => {
+    const quando = new Date("2026-10-11T12:00:00.000Z");
+    const comum = { cnpj: "11222333000181", ambiente: "HOMOLOGACAO" as const, quando, protocolo: "951260000000001" };
+    const assinar = (xml: string) => assinarXml(xml, ALVO_DO_EVENTO_DO_MDFE, chaveDeAssinatura());
+
+    const deMt = montarEncerramento({ ...comum, chave: chaveDeExemplo("58", 7, "51"), dia: "2026-10-11", municipio: { codigo: "3106200", uf: "MG" } });
+    expect(deMt.xml).toContain("<cOrgao>51</cOrgao>");
+    expect(deMt.xml).toContain("<dhEvento>2026-10-11T08:00:00-04:00</dhEvento>");
+    expect(await errosNoEsquemaDoMdfe(assinar(deMt.xml), "eventoMDFe_v3.00.xsd")).toEqual([]);
+
+    const doAc = montarCancelamento({ ...comum, chave: chaveDeExemplo("58", 7, "12"), justificativa: "Viagem cancelada pelo cliente antes da saída" });
+    expect(doAc.xml).toContain("<dhEvento>2026-10-11T07:00:00-05:00</dhEvento>");
+    expect(await errosNoEsquemaDoMdfe(assinar(doAc.xml), "eventoMDFe_v3.00.xsd")).toEqual([]);
+
+    const deRo = montarInclusaoDeCondutor({ ...comum, chave: chaveDeExemplo("58", 7, "11"), sequencia: 1, condutor: { nome: "Maria de Souza", cpf: "11144477735" } });
+    expect(deRo.xml).toContain("<dhEvento>2026-10-11T08:00:00-04:00</dhEvento>");
+    const deSp = montarInclusaoDeCondutor({ ...comum, chave: chaveDeExemplo("58", 7, "35"), sequencia: 1, condutor: { nome: "Maria de Souza", cpf: "11144477735" } });
+    expect(deSp.xml).toContain("<dhEvento>2026-10-11T09:00:00-03:00</dhEvento>");
+    expect(() => montarCancelamento({ ...comum, chave: chaveDeExemplo("58", 7, "99"), justificativa: "Viagem cancelada pelo cliente antes da saída" })).toThrow(ChaveInvalida);
+  });
+
+  it("infRespTec: com os dados o grupo vai depois de infAdic e passa no esquema; sem eles o MDF-e vai sem o grupo", async () => {
+    const com = assinado(mdfeDeExemplo({ responsavelTecnico: RESPONSAVEL_TECNICO }));
+    expect(await erros(mdfeDeExemplo({ responsavelTecnico: RESPONSAVEL_TECNICO }))).toEqual([]);
+    expect(com.xml).toContain(
+      "<infAdic><infCpl>Viagem A1B2C3</infCpl></infAdic><infRespTec><CNPJ>60701190000104</CNPJ><xContato>Suporte de Teste</xContato><email>suporte@desenvolvedora.example</email><fone>1730001000</fone></infRespTec></infMDFe>",
+    );
+    const sem = assinado();
+    expect(await erros()).toEqual([]);
+    expect(sem.xml).not.toContain("infRespTec");
+    expect(sem.xml).toContain("</infAdic></infMDFe>");
+    // Sem observação o grupo continua no lugar: depois do total.
+    const semObservacao = assinado(mdfeDeExemplo({ observacao: null, responsavelTecnico: RESPONSAVEL_TECNICO }));
+    expect(await errosNoEsquemaDoMdfe(semObservacao.xml, "mdfe_v3.00.xsd")).toEqual([]);
+    expect(semObservacao.xml).toContain("</tot><infRespTec>");
+    // O validador recusa o grupo fora do tipo.
+    const errado = com.xml.replace("<fone>1730001000</fone></infRespTec>", "<fone>17-3000</fone></infRespTec>");
+    expect((await errosNoEsquemaDoMdfe(errado, "mdfe_v3.00.xsd")).join(" ")).toMatch(/fone/);
+  });
+
+  it("a conferência avisa quando o servidor não tem os dados do responsável técnico, e leva o grupo quando tem", () => {
+    const sem = prepararMdfe(viagem([carga(1), carga(2)]), "MG", ENTRADAS, contexto());
+    expect(sem.pendencias).toEqual([]);
+    expect(sem.avisos).toContain(semResponsavelTecnico("mdfe"));
+    expect(semResponsavelTecnico("mdfe")).toContain("(720)");
+    expect(sem.dados?.responsavelTecnico).toBeNull();
+
+    const com = prepararMdfe(viagem([carga(1), carga(2)]), "MG", ENTRADAS, contexto({ responsavelTecnico: RESPONSAVEL_TECNICO }));
+    expect(com.avisos).not.toContain(semResponsavelTecnico("mdfe"));
+    expect(com.dados?.responsavelTecnico).toEqual(RESPONSAVEL_TECNICO);
+    expect(montarMdfe({ ...com.dados!, numero: 3, codigo: "12345678", emissao: new Date("2026-10-10T15:00:00.000Z") }).xml).toContain("<infRespTec><CNPJ>60701190000104</CNPJ>");
+  });
+});
+
+/* ----------------------- Documentos antes da saída ----------------------------- */
+
+describe("o que falta de documento fiscal para a viagem sair (Ajustes SINIEF 09/07 e 21/10)", () => {
+  const interestadual = { id: "c1", codigo: "TRK1", ufDeOrigem: "SP", ufDeDestino: "MG", mesmoMunicipio: false, cteAutorizado: false };
+  const intermunicipal = { id: "c2", codigo: "TRK2", ufDeOrigem: "SP", ufDeDestino: "SP", mesmoMunicipio: false, cteAutorizado: false };
+  const municipal = { id: "c3", codigo: "TRK3", ufDeOrigem: "SP", ufDeDestino: "SP", mesmoMunicipio: true, cteAutorizado: false };
+
+  it("transportadora: CT-e de cada carga que sai do município, e MDF-e quando a viagem o exige", () => {
+    expect(faltasParaSair([interestadual, intermunicipal, municipal], "1", false)).toEqual({ ctes: [{ id: "c1", codigo: "TRK1" }, { id: "c2", codigo: "TRK2" }], mdfe: "interestadual" });
+    expect(faltasParaSair([{ ...interestadual, cteAutorizado: true }, intermunicipal], "1", false)).toEqual({ ctes: [{ id: "c2", codigo: "TRK2" }], mdfe: "interestadual" });
+    expect(faltasParaSair([{ ...intermunicipal, cteAutorizado: true }], "1", false)).toEqual({ ctes: [], mdfe: "intermunicipal" });
+    const tudo = faltasParaSair([{ ...interestadual, cteAutorizado: true }], "1", true);
+    expect(tudo).toEqual({ ctes: [], mdfe: null });
+    expect(haFaltasParaSair(tudo)).toBe(false);
+    // Dentro do município não há CT-e nem MDF-e a exigir.
+    expect(haFaltasParaSair(faltasParaSair([municipal], "1", false))).toBe(false);
+    // Cidade fora da tabela: não dá para dizer que é municipal, então exige.
+    expect(faltasParaSair([{ ...municipal, ufDeOrigem: null, mesmoMunicipio: false }], "1", false)).toEqual({ ctes: [{ id: "c3", codigo: "TRK3" }], mdfe: "intermunicipal" });
+  });
+
+  it("carga própria (tipo 2) não emite CT-e: só o MDF-e é exigido", () => {
+    expect(faltasParaSair([interestadual, intermunicipal], "2", false)).toEqual({ ctes: [], mdfe: "interestadual" });
+    expect(haFaltasParaSair(faltasParaSair([interestadual], "2", true))).toBe(false);
+  });
+
+  it("a frase do bloqueio diz o que falta e cita os Ajustes", () => {
+    expect(fraseDoBloqueioDaSaida({ ctes: [{ id: "c1", codigo: "TRK1" }], mdfe: "interestadual" })).toBe(
+      "A saída não foi liberada. Falta: CT-e autorizado de 1 carga (TRK1) e MDF-e autorizado da viagem. Os documentos têm de estar autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).",
+    );
+    expect(fraseDoBloqueioDaSaida({ ctes: [{ id: "c1", codigo: "TRK1" }, { id: "c2", codigo: "TRK2" }], mdfe: null })).toContain("Falta: CT-e autorizado de 2 cargas (TRK1, TRK2).");
+    expect(fraseDoBloqueioDaSaida({ ctes: [], mdfe: "intermunicipal" })).toContain("Falta: MDF-e autorizado da viagem.");
   });
 });

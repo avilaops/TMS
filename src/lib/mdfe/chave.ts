@@ -25,7 +25,7 @@ export const MODELO_DO_MDFE = "58";
 
 export type PartesDaChaveDoMdfe = {
   uf: string;
-  /** Instante da emissão: entram o ano e o mês no relógio de Brasília. */
+  /** Instante da emissão: entram o ano e o mês no relógio da UF do emitente (o mesmo do `dhEmi`). */
   emissao: Date;
   /** CNPJ do emitente, 14 posições. */
   cnpj: string;
@@ -47,7 +47,7 @@ export function chaveDoMdfe(partes: PartesDaChaveDoMdfe): string {
 
   const corpo = [
     uf,
-    anoEMes(partes.emissao),
+    anoEMes(partes.emissao, partes.uf),
     partes.cnpj,
     MODELO_DO_MDFE,
     String(partes.serie).padStart(3, "0"),

@@ -36,18 +36,104 @@ export const REGIMES = {
 } as const;
 export type Regime = keyof typeof REGIMES;
 
-/** Situação tributária do ICMS que a empresa usa por padrão em todo CT-e. */
+/**
+ * Situação tributária do ICMS que a empresa usa por padrão em todo CT-e (os
+ * grupos de `imp/ICMS` do leiaute 4.00, MOC, Anexo I, campos 199 a 233).
+ */
 export const SITUACOES_DO_ICMS = {
   "00": "00 - Tributação normal",
+  "20": "20 - Base de cálculo reduzida",
   "40": "40 - Isenta",
   "41": "41 - Não tributada",
+  "60": "60 - Cobrado por substituição tributária",
   "90": "90 - Outras",
   SN: "Simples Nacional",
 } as const;
 export type SituacaoDoIcms = keyof typeof SITUACOES_DO_ICMS;
 
+/** O que cada situação quer dizer, para a tela de configuração. Quem escolhe é o contador. */
+export const EXPLICACAO_DO_ICMS: Record<SituacaoDoIcms, string> = {
+  "00": "ICMS destacado sobre o valor inteiro do frete, com a alíquota interna (dentro do estado) ou a interestadual (calculada pelo sistema).",
+  "20": "ICMS destacado sobre a base reduzida: informe o percentual de redução que a legislação do seu estado dá ao transporte.",
+  "40": "Prestação isenta de ICMS pela legislação do estado: o CT-e vai sem base, alíquota e valor.",
+  "41": "Prestação não tributada pelo ICMS: o CT-e vai sem base, alíquota e valor.",
+  "60": "O ICMS é recolhido por outra empresa (o tomador ou um terceiro), por substituição tributária: o CT-e informa a base e o valor retidos.",
+  "90": "Outras situações que o contador indicar: ICMS destacado sobre o valor inteiro do frete, no grupo ICMS90.",
+  SN: "Empresa do Simples Nacional: o CT-e não destaca ICMS.",
+};
+
+/** Situações em que o CT-e leva alíquota (e, por isso, a configuração exige a alíquota interna). */
+export const ICMS_COM_ALIQUOTA: readonly SituacaoDoIcms[] = ["00", "20", "60", "90"];
+
 /** Regimes em que o ICMS do CT-e vai no grupo do Simples Nacional (`ICMSSN`). */
 export const REGIMES_DO_SIMPLES: readonly Regime[] = ["1", "4"];
+
+/* ------------------------- Alíquota interestadual do ICMS ---------------------- */
+
+/**
+ * Resolução do Senado Federal nº 22/1989:
+ * - art. 1º: "nas operações e prestações interestaduais, será de doze por cento";
+ * - parágrafo único: "nas operações e prestações realizadas nas Regiões Sul e
+ *   Sudeste, destinadas às Regiões Norte, Nordeste e Centro-Oeste e ao Estado
+ *   do Espírito Santo", sete por cento (a partir de 1990).
+ *
+ * O Espírito Santo é do Sudeste, mas a resolução o põe do lado de quem recebe
+ * os 7%: saindo dele vale a regra geral (12%), e ele não está na lista de
+ * origem abaixo.
+ *
+ * Não está aqui: a alíquota própria do transporte aéreo, que este sistema não
+ * emite (só modal rodoviário).
+ */
+const SUL_E_SUDESTE_SEM_ES: readonly string[] = ["MG", "RJ", "SP", "PR", "SC", "RS"];
+/** Norte, Nordeste, Centro-Oeste e o Espírito Santo. */
+const DESTINO_DOS_SETE: readonly string[] = [
+  ...["AC", "AM", "AP", "PA", "RO", "RR", "TO"],
+  ...["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"],
+  ...["DF", "GO", "MT", "MS"],
+  "ES",
+];
+
+/**
+ * A alíquota interestadual do ICMS da prestação que começa em `ufDeInicio` e
+ * termina em `ufDeFim`, em %: 7 ou 12. `null` quando não é interestadual (a
+ * mesma UF: vale a alíquota interna, que é de cada estado) ou quando alguma UF
+ * não existe.
+ */
+export function aliquotaInterestadual(ufDeInicio: string, ufDeFim: string): 7 | 12 | null {
+  const ufs = UFS as readonly string[];
+  if (!ufs.includes(ufDeInicio) || !ufs.includes(ufDeFim) || ufDeInicio === ufDeFim) return null;
+  return SUL_E_SUDESTE_SEM_ES.includes(ufDeInicio) && DESTINO_DOS_SETE.includes(ufDeFim) ? 7 : 12;
+}
+
+/* -------------------------------- CFOP de transporte --------------------------- */
+
+/**
+ * Os CFOP de prestação de serviço de transporte (grupos 5.350 e 6.350).
+ * Fonte: Tabela de CFOP do Portal Nacional da NF-e (Documentos > Diversos),
+ * IT 2023.002 v2.10, de 04/09/2026, códigos com o indicador "transporte",
+ * lidos pela ferramenta `consultar_cfop` do serviço fiscal da casa. Não existem
+ * 5358/6358.
+ *
+ * 5932 e 6932 (prestação iniciada em UF diversa daquela onde o prestador está
+ * inscrito) também são de transporte, mas não se configuram: o sistema os usa
+ * sozinho quando a prestação começa fora da UF do emitente (MOC 4.00, Anexo I,
+ * regra G051), e a SEFAZ os rejeita quando ela começa na UF do emitente (regra
+ * G052, rejeição 908).
+ */
+export const CFOP_DE_TRANSPORTE: Record<string, string> = {
+  "351": "para execução de serviço da mesma natureza",
+  "352": "a estabelecimento industrial",
+  "353": "a estabelecimento comercial",
+  "354": "a prestador de serviço de comunicação",
+  "355": "a geradora ou distribuidora de energia elétrica",
+  "356": "a produtor rural",
+  "357": "a não contribuinte",
+  "359": "a contribuinte ou não, mercadoria dispensada de nota fiscal",
+  "360": "a contribuinte substituto do serviço de transporte",
+};
+export const CFOP_DE_OUTRA_UF = { dentro: "5932", fora: "6932" } as const;
+
+const cfopDeTransporte = (inicio: "5" | "6", codigo: string) => codigo.startsWith(inicio) && Object.hasOwn(CFOP_DE_TRANSPORTE, codigo.slice(1));
 
 const INVALIDO = "Dados inválidos.";
 const CNPJ_MESSAGE = "Informe um CNPJ válido (14 posições, com os dígitos verificadores certos).";
@@ -58,11 +144,15 @@ const RNTRC_MESSAGE = "O RNTRC precisa ter 8 dígitos.";
 const SERIE_MESSAGE = "A série precisa ser um número de 0 a 999.";
 const NUMERO_MESSAGE = "O próximo número precisa ser um inteiro de 1 a 999999999.";
 const ALIQUOTA_MESSAGE = "A alíquota precisa ser um número de 0 a 100.";
-const CFOP_DENTRO_MESSAGE = "O CFOP dentro do estado precisa ter 4 dígitos e começar com 5.";
-const CFOP_FORA_MESSAGE = "O CFOP fora do estado precisa ter 4 dígitos e começar com 6.";
+const CODIGOS_DE_TRANSPORTE = Object.keys(CFOP_DE_TRANSPORTE).join(", ");
+export const CFOP_DENTRO_MESSAGE = `O CFOP dentro do estado precisa ser de prestação de serviço de transporte: 5 seguido de ${CODIGOS_DE_TRANSPORTE}. O 5932 o sistema usa sozinho.`;
+export const CFOP_FORA_MESSAGE = `O CFOP fora do estado precisa ser de prestação de serviço de transporte: 6 seguido de ${CODIGOS_DE_TRANSPORTE}. O 6932 o sistema usa sozinho.`;
 export const SIMPLES_PEDE_SN = "Empresa do Simples Nacional usa a situação tributária \"Simples Nacional\".";
 export const SN_SO_NO_SIMPLES = "A situação \"Simples Nacional\" só vale para empresa do Simples Nacional.";
-export const TRIBUTADO_PEDE_ALIQUOTA = "Informe a alíquota do ICMS (maior que zero) para a situação escolhida.";
+export const TRIBUTADO_PEDE_ALIQUOTA = "Informe a alíquota interna do ICMS (maior que zero) para a situação escolhida.";
+const REDUCAO_MESSAGE = "A redução da base precisa ser um número maior que 0 e menor que 100, com até 2 casas.";
+export const REDUCAO_OBRIGATORIA = "Informe o percentual de redução da base de cálculo do ICMS (situação 20).";
+export const REDUCAO_SO_NA_20 = "A redução da base de cálculo só vale para a situação 20 do ICMS.";
 
 /**
  * IBS e CBS (Reforma Tributária do Consumo) no CT-e: NT 2025.001 do CT-e
@@ -76,15 +166,56 @@ export const TRIBUTADO_PEDE_ALIQUOTA = "Informe a alíquota do ICMS (maior que z
 export const ALIQUOTAS_DE_2026 = { ibsUf: 0.1, ibsMunicipio: 0, cbs: 0.9 } as const;
 
 /**
- * As situações tributárias do IBS/CBS que este sistema monta hoje, e se cada
- * uma leva o grupo de valores (`gIBSCBS`). As outras (alíquota reduzida,
- * diferimento, suspensão, monofásica...) pedem grupos que ainda não são
- * montados aqui (`gRed`, `gDif`, `gTribRegular`).
+ * As situações tributárias do IBS/CBS que valem no CT-e (modelo 57), se cada
+ * uma leva o grupo de valores (`gIBSCBS`) e se, dentro dele, leva a redução de
+ * alíquota (`gRed`, exigida pela regra 009 da NT 2025.001, rejeição 366, e
+ * vedada nas demais pela regra 010, rejeição 367).
  */
-export const CST_DO_IBSCBS: Record<string, { rotulo: string; comValores: boolean }> = {
-  "000": { rotulo: "000 - Tributação integral", comValores: true },
-  "400": { rotulo: "400 - Isenção", comValores: false },
-  "410": { rotulo: "410 - Imunidade e não incidência", comValores: false },
+export const CST_DO_IBSCBS: Record<string, { rotulo: string; comValores: boolean; comReducao: boolean }> = {
+  "000": { rotulo: "000 - Tributação integral", comValores: true, comReducao: false },
+  "200": { rotulo: "200 - Alíquota reduzida", comValores: true, comReducao: true },
+  "410": { rotulo: "410 - Imunidade e não incidência", comValores: false, comReducao: false },
+};
+
+/**
+ * Os pares CST × cClassTrib que a SEFAZ aceita no CT-e (regras 003, 004 e 004a
+ * da NT 2025.001: rejeições 312, 313 e 388).
+ *
+ * Fonte: Tabela de Classificação Tributária do IBS e da CBS, Portal Nacional
+ * da NF-e (Documentos > Diversos), Informe Técnico 2025.002 v1.70, publicada em
+ * 01/10/2026, filtrada pelo indicador do CT-e. São 12 linhas; a redução é o
+ * percentual de redução de alíquota da própria tabela (`pRedAliq`, o único
+ * valor que a regra 009a aceita para cada classificação, rejeição 389).
+ *
+ * O CST 400 (isenção) NÃO vale em CT-e: as classificações dele são do
+ * transporte coletivo de passageiros (BP-e e NFS-e).
+ *
+ * Quando a tabela mudar, atualize esta lista: a ferramenta
+ * `consultar_classificacao_tributaria { documento: "cte" }` do serviço fiscal
+ * da casa devolve a tabela vigente.
+ */
+export type ClassificacaoDoIbsCbs = {
+  cst: string;
+  nome: string;
+  /** Percentual de redução de alíquota (`gRed/pRedAliq`). `null`: a classificação não leva `gRed`. */
+  reducao: number | null;
+  /** A classificação exige o grupo `gEstornoCred`, que este sistema não monta. */
+  estorno?: true;
+};
+
+export const CLASSIFICACOES_DO_IBSCBS: Record<string, ClassificacaoDoIbsCbs> = {
+  "000001": { cst: "000", nome: "Situações tributadas integralmente pelo IBS e CBS", reducao: null },
+  "200001": { cst: "200", nome: "Transporte de bens até as zonas de processamento de exportação e de bens exportados a partir delas (LC 214/2025, art. 103)", reducao: 100 },
+  "200020": { cst: "200", nome: "Operação de cooperativa optante por regime específico do IBS e CBS (art. 271)", reducao: 100 },
+  "200050": { cst: "200", nome: "Transporte aéreo regional coletivo de passageiros ou de carga (art. 287)", reducao: 40 },
+  "410001": { cst: "410", nome: "Bonificações que constem no documento fiscal e não dependam de evento posterior", reducao: null },
+  "410003": { cst: "410", nome: "Doações sem contraprestação em benefício do doador", reducao: null },
+  "410004": { cst: "410", nome: "Exportações de bens e serviços", reducao: null },
+  "410015": { cst: "410", nome: "Fornecimento por transportador autônomo não contribuinte", reducao: null },
+  "410026": { cst: "410", nome: "Doação com anulação de crédito", reducao: null, estorno: true },
+  "410027": { cst: "410", nome: "Exportação de serviço ou de bem imaterial", reducao: null },
+  "410035": { cst: "410", nome: "Fornecimento realizado por nanoempreendedor", reducao: null },
+  "410999": { cst: "410", nome: "Operações não onerosas sem previsão de tributação, não especificadas anteriormente", reducao: null },
 };
 
 const IBSCBS_CST_MESSAGE = "O CST do IBS/CBS precisa ter 3 dígitos.";
@@ -92,7 +223,30 @@ const IBSCBS_CLASSE_MESSAGE = "A classificação tributária do IBS/CBS (cClassT
 const ALIQUOTA_DA_REFORMA_MESSAGE = "As alíquotas de IBS, CBS, PIS e COFINS precisam ser números de 0 a 100, com até 4 casas.";
 export const IBSCBS_INCOMPLETO = "Informe o CST e a classificação tributária do IBS/CBS, ou deixe os dois em branco.";
 export const IBSCBS_OBRIGATORIO = "Empresa do regime normal precisa informar o CST e a classificação tributária do IBS/CBS: sem eles a SEFAZ rejeita o CT-e (310).";
-export const IBSCBS_CST_FORA_DA_LISTA = "CST do IBS/CBS que este sistema ainda não monta. Hoje: 000, 400 e 410.";
+export const IBSCBS_CST_400 = "O CST 400 (isenção) do IBS/CBS não vale em CT-e: a SEFAZ rejeita (388). Escolha com o contador entre 000, 200 e 410, e a classificação correspondente.";
+export const IBSCBS_CST_FORA_DA_LISTA = "CST do IBS/CBS que não vale em CT-e. Os que valem: 000, 200 e 410.";
+export const IBSCBS_COM_ESTORNO = "A classificação 410026 exige o grupo de estorno de crédito (gEstornoCred), que este sistema não monta. Consulte o contador.";
+
+const classesDoCst = (cst: string) =>
+  Object.entries(CLASSIFICACOES_DO_IBSCBS)
+    .filter(([, classificacao]) => classificacao.cst === cst)
+    .map(([codigo]) => codigo);
+
+/**
+ * O que há de errado no par CST × cClassTrib do IBS/CBS, numa frase para a
+ * pessoa, ou `null` quando o par vale no CT-e e este sistema o monta. É a mesma
+ * conferência na gravação da configuração, na conferência do CT-e (uma
+ * configuração antiga pode ter ficado com um par que deixou de valer) e na tela.
+ */
+export function problemaDoIbsCbs(cst: string, classe: string): string | null {
+  if (cst === "400") return IBSCBS_CST_400;
+  if (!Object.hasOwn(CST_DO_IBSCBS, cst)) return IBSCBS_CST_FORA_DA_LISTA;
+  const classificacao = Object.hasOwn(CLASSIFICACOES_DO_IBSCBS, classe) ? CLASSIFICACOES_DO_IBSCBS[classe] : null;
+  if (!classificacao || classificacao.cst !== cst) {
+    return `A classificação ${classe} não vale com o CST ${cst} no CT-e (a SEFAZ rejeita: 312, 313 ou 388). Com o CST ${cst} valem: ${classesDoCst(cst).join(", ")}.`;
+  }
+  return classificacao.estorno ? IBSCBS_COM_ESTORNO : null;
+}
 
 const soDigitos = (valor: unknown) => (typeof valor === "string" ? valor.replace(/\D/g, "") : valor);
 
@@ -147,9 +301,23 @@ const aliquotaDaReforma = (padrao: number) =>
       .refine((numero) => Number.isInteger(Math.round(numero * 1e6) / 100), ALIQUOTA_DA_REFORMA_MESSAGE),
   );
 
-// O CFOP do esquema (`TCfop`): 4 dígitos, sem "00" no fim.
+// O CFOP da configuração: um dos de prestação de serviço de transporte (`CFOP_DE_TRANSPORTE`).
 const cfop = (inicio: "5" | "6", mensagem: string) =>
-  z.preprocess(soDigitos, z.string(mensagem).regex(new RegExp(`^${inicio}[0-9]([0-9][1-9]|[1-9][0-9])$`), mensagem));
+  z.preprocess(
+    soDigitos,
+    z.string(mensagem).refine((codigo) => cfopDeTransporte(inicio, codigo), mensagem),
+  );
+
+// Percentual de redução da base do ICMS (`pRedBC`, `TDec_0302Opc`): em branco = sem redução; até 2 casas.
+const reducaoDaBase = z.preprocess(
+  (valor) => (valor === undefined || valor === null || (typeof valor === "string" && valor.trim() === "") ? null : numeroDoFormulario(valor)),
+  z
+    .number(REDUCAO_MESSAGE)
+    .gt(0, REDUCAO_MESSAGE)
+    .lt(100, REDUCAO_MESSAGE)
+    .refine((numero) => Number.isInteger(Math.round(numero * 1e4) / 100), REDUCAO_MESSAGE)
+    .nullable(),
+);
 
 /**
  * Os dados fiscais do emitente (Empresa → Fiscal). O município entra como
@@ -182,7 +350,9 @@ export const dadosFiscaisSchema = z
       cfopDentro: cfop("5", CFOP_DENTRO_MESSAGE),
       cfopFora: cfop("6", CFOP_FORA_MESSAGE),
       icms: z.enum(Object.keys(SITUACOES_DO_ICMS) as [SituacaoDoIcms, ...SituacaoDoIcms[]], "Escolha a situação tributária do ICMS."),
+      // A alíquota INTERNA (prestação que começa e termina na UF do emitente). A interestadual é calculada (`aliquotaInterestadual`).
       aliquota: z.preprocess(numeroDoFormulario, z.number(ALIQUOTA_MESSAGE).min(0, ALIQUOTA_MESSAGE).max(100, ALIQUOTA_MESSAGE)),
+      reducaoDaBase,
       confirmacaoDoCnpj: z.preprocess(cnpjLimpo, z.string(INVALIDO).max(20, INVALIDO).optional()),
       // IBS e CBS da Reforma Tributária (grupo `imp/IBSCBS`). CST e classificação em branco = o CT-e vai sem o grupo.
       ibsCbsCst: z.preprocess((valor) => emBrancoViraNulo(soDigitos(valor)), z.string(IBSCBS_CST_MESSAGE).regex(/^\d{3}$/, IBSCBS_CST_MESSAGE).nullish()),
@@ -199,14 +369,21 @@ export const dadosFiscaisSchema = z
     const simples = REGIMES_DO_SIMPLES.includes(dados.regime);
     if (simples && dados.icms !== "SN") contexto.addIssue({ code: "custom", message: SIMPLES_PEDE_SN, path: ["icms"] });
     if (!simples && dados.icms === "SN") contexto.addIssue({ code: "custom", message: SN_SO_NO_SIMPLES, path: ["icms"] });
-    if ((dados.icms === "00" || dados.icms === "90") && !(dados.aliquota > 0)) {
+    if (ICMS_COM_ALIQUOTA.includes(dados.icms) && !(dados.aliquota > 0)) {
       contexto.addIssue({ code: "custom", message: TRIBUTADO_PEDE_ALIQUOTA, path: ["aliquota"] });
     }
+    const reducao = dados.reducaoDaBase ?? null;
+    if (dados.icms === "20" && reducao === null) contexto.addIssue({ code: "custom", message: REDUCAO_OBRIGATORIA, path: ["reducaoDaBase"] });
+    if (dados.icms !== "20" && reducao !== null) contexto.addIssue({ code: "custom", message: REDUCAO_SO_NA_20, path: ["reducaoDaBase"] });
     const cst = dados.ibsCbsCst ?? null;
     const classe = dados.ibsCbsClasse ?? null;
-    if ((cst === null) !== (classe === null)) contexto.addIssue({ code: "custom", message: IBSCBS_INCOMPLETO, path: ["ibsCbsCst"] });
-    else if (cst === null && dados.regime === "3") contexto.addIssue({ code: "custom", message: IBSCBS_OBRIGATORIO, path: ["ibsCbsCst"] });
-    else if (cst !== null && !Object.hasOwn(CST_DO_IBSCBS, cst)) contexto.addIssue({ code: "custom", message: IBSCBS_CST_FORA_DA_LISTA, path: ["ibsCbsCst"] });
+    if (cst === null || classe === null) {
+      if ((cst === null) !== (classe === null)) contexto.addIssue({ code: "custom", message: IBSCBS_INCOMPLETO, path: ["ibsCbsCst"] });
+      else if (dados.regime === "3") contexto.addIssue({ code: "custom", message: IBSCBS_OBRIGATORIO, path: ["ibsCbsCst"] });
+      return;
+    }
+    const problema = problemaDoIbsCbs(cst, classe);
+    if (problema) contexto.addIssue({ code: "custom", message: problema, path: [Object.hasOwn(CST_DO_IBSCBS, cst) ? "ibsCbsClasse" : "ibsCbsCst"] });
   });
 
 export type DadosFiscaisDoFormulario = z.infer<typeof dadosFiscaisSchema>;
@@ -236,7 +413,10 @@ export type DadosFiscais = {
   cfopDentro: string;
   cfopFora: string;
   icms: SituacaoDoIcms;
+  /** Alíquota interna do ICMS, em %. */
   aliquota: number;
+  /** Percentual de redução da base do ICMS (só na situação 20). */
+  reducaoDaBase: number | null;
   /** CST e classificação tributária do IBS/CBS. Os dois nulos = CT-e sem o grupo `IBSCBS`. */
   ibsCbsCst: string | null;
   ibsCbsClasse: string | null;
@@ -373,7 +553,13 @@ export type ResumoDoCte = {
   destino: string;
   valorDaPrestacao: number | null;
   valorDaCarga: number | null;
-  icms: { situacao: SituacaoDoIcms; aliquota: number; valor: number } | null;
+  /**
+   * O ICMS do documento. `grupo` é o grupo do XML (`ICMSOutraUF` quando a
+   * prestação começa fora da UF do emitente); `retido`: o valor é o do ICMS
+   * retido por substituição tributária, que não é devido pelo emitente.
+   * `null`: sem frete, ou o sistema não sabe o ICMS desta prestação (há pendência).
+   */
+  icms: { situacao: SituacaoDoIcms; grupo: string; base: number; aliquota: number; valor: number; retido: boolean } | null;
   /** IBS e CBS do documento. `null`: o CT-e vai sem o grupo. `base` nula: CST sem valores (isenção, imunidade). */
   ibsCbs: { cst: string; classe: string; base: number | null; ibs: number; cbs: number } | null;
   peso: number;
@@ -438,7 +624,7 @@ export type StatusDoServico = {
 
 export const CTE_NAO_ENCONTRADO = "CT-e não encontrado.";
 export const CARGA_NAO_ENCONTRADA = "Carga não encontrada.";
-export const SO_CARGA_QUE_SAIU = "Só carga em rota ou entregue recebe CT-e.";
+export const SO_CARGA_QUE_SAIU = "Só carga alocada numa viagem, em rota ou entregue recebe CT-e. Aloque a carga numa viagem (Manifestos) e emita o CT-e antes de liberar a saída.";
 export const JA_AUTORIZADO = "Esta carga já tem CT-e autorizado neste ambiente.";
 export const JA_REGISTRADO_DE_FORA = "Esta carga já tem um CT-e de outro sistema registrado à mão. Desfaça o registro antes de emitir por aqui.";
 export const EMISSAO_EM_ANDAMENTO = "Já há uma emissão desta carga em andamento. Aguarde a resposta da SEFAZ.";

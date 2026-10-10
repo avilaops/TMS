@@ -5,7 +5,7 @@ import type { TLSSocket } from "node:tls";
 import { gunzipSync } from "node:zlib";
 import { digitoDaChave } from "../src/lib/nfe";
 import type { DadosDoMdfe, EmitenteDoMdfe, RodoviarioDoMdfe, SeguroDoMdfe } from "../src/lib/mdfe/montar";
-import { certificadoDoServidor, errosNoEsquema } from "./cte-apoio";
+import { RESPONSAVEL_TECNICO, certificadoDoServidor, errosNoEsquema } from "./cte-apoio";
 
 /**
  * Apoio dos testes do MDF-e: validação contra os esquemas oficiais
@@ -94,6 +94,26 @@ export function mdfeDeExemplo(trocas: Partial<DadosDoMdfe> = {}): DadosDoMdfe {
     ...trocas,
   };
 }
+
+const emitenteEm = (uf: "MT" | "AC"): EmitenteDoMdfe => ({
+  ...EMITENTE_DO_MDFE,
+  endereco:
+    uf === "MT"
+      ? { logradouro: "Av. do CPA", numero: "500", bairro: "Centro Político", codigoMunicipio: "5103403", municipio: "Cuiabá", uf: "MT", cep: "78049000" }
+      : { logradouro: "Av. Ceará", numero: "900", bairro: "Centro", codigoMunicipio: "1200401", municipio: "Rio Branco", uf: "AC", cep: "69900000" },
+});
+
+/**
+ * Os cenários de MDF-e das correções da revisão fiscal, que os testes validam
+ * no esquema oficial e que são passados, à mão, pelo validador do serviço
+ * fiscal da casa (`validar_xml_fiscal`).
+ */
+export const CENARIOS_DO_MDFE: Record<string, () => DadosDoMdfe> = {
+  "sem-responsavel-tecnico": () => mdfeDeExemplo(),
+  "com-responsavel-tecnico": () => mdfeDeExemplo({ responsavelTecnico: RESPONSAVEL_TECNICO }),
+  "emitente-utc-4-mt": () => mdfeDeExemplo({ emitente: emitenteEm("MT"), responsavelTecnico: RESPONSAVEL_TECNICO }),
+  "emitente-utc-5-ac": () => mdfeDeExemplo({ emitente: emitenteEm("AC") }),
+};
 
 /* ---------------------------- A SEFAZ de mentira ----------------------------- */
 

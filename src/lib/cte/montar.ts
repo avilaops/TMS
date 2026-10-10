@@ -1,6 +1,17 @@
-import { CST_DO_IBSCBS, NOME_EM_HOMOLOGACAO, REGIMES_DO_SIMPLES, type Ambiente, type Regime, type SituacaoDoIcms } from "@/lib/cte";
-import { CODIGO_DA_UF, MODELO_DO_CTE, TIPO_DE_EMISSAO_NORMAL, chaveDoCte, dataHoraDoXml } from "@/lib/cte/chave";
+import {
+  CFOP_DE_OUTRA_UF,
+  CLASSIFICACOES_DO_IBSCBS,
+  CST_DO_IBSCBS,
+  NOME_EM_HOMOLOGACAO,
+  REGIMES_DO_SIMPLES,
+  aliquotaInterestadual,
+  type Ambiente,
+  type Regime,
+  type SituacaoDoIcms,
+} from "@/lib/cte";
+import { CODIGO_DA_UF, MODELO_DO_CTE, TIPO_DE_EMISSAO_NORMAL, chaveDoCte, dataHoraDoEvento, dataHoraDoXml } from "@/lib/cte/chave";
 import { codigoDoAmbiente } from "@/lib/cte/enderecos";
+import { responsavelTecnicoDoXml, type ResponsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { centavos, decimal, digitos, escapar, grupo, tag, textoDoXml } from "@/lib/cte/texto";
 
 /**
@@ -23,8 +34,15 @@ import { centavos, decimal, digitos, escapar, grupo, tag, textoDoXml } from "@/l
  * configurados (NT 2025.001 do CT-e, v1.14b; a NT 2026.002 passou a exigir o
  * grupo do regime normal, rejeição 310, em homologação desde 01/07/2026).
  *
- * O que NÃO vai: redução de alíquota, diferimento, devolução, tributação
- * regular e compras governamentais do IBS/CBS; o valor líquido da prestação
+ * ICMS: o grupo sai da situação tributária da empresa, da UF do emitente e das
+ * UF de início e de fim da prestação (`resolverIcms`). As datas com hora vão no
+ * fuso da UF do emitente (src/lib/cte/chave.ts). O responsável técnico
+ * (`infRespTec`) vai quando o servidor tem os dados dele.
+ *
+ * O que NÃO vai: a partilha do ICMS com a UF de término (`ICMSUFFim`, o
+ * DIFAL do transporte a não contribuinte: a emissão é bloqueada nesse caso);
+ * diferimento, devolução, estorno de crédito, tributação regular e compras
+ * governamentais do IBS/CBS; o valor líquido da prestação
  * (`vTPrestLiq`, facultativo, NT 2026.004); e o veículo e o motorista como
  * grupos próprios (o modal rodoviário do CT-e 4.00 não os tem: eles são do
  * MDF-e; aqui vão, quando existem, na observação).
@@ -62,7 +80,10 @@ export type EmitenteDoCte = {
   cfopDentro: string;
   cfopFora: string;
   icms: SituacaoDoIcms;
+  /** Alíquota INTERNA do ICMS (prestação que começa e termina na UF do emitente), em %. */
   aliquota: number;
+  /** Percentual de redução da base do ICMS (`pRedBC`), só na situação 20. */
+  reducaoDaBase?: number | null;
   /** IBS e CBS: a classificação que o contador dá e as alíquotas do ano, em %. `null`: o CT-e vai sem o grupo `IBSCBS`. */
   ibsCbs: ParametrosDoIbsCbs | null;
 };
@@ -123,18 +144,47 @@ export type DadosDoCte = {
   observacao?: string | null;
   /** Endereço da consulta por QR Code do autorizador (src/lib/cte/enderecos.ts). */
   enderecoDoQrCode: string;
+  /** A desenvolvedora do sistema (`infRespTec`). Nulo ou ausente: o CT-e vai sem o grupo. */
+  responsavelTecnico?: ResponsavelTecnico | null;
 };
 
 export type CteMontado = { xml: string; chave: string; id: string; cfop: string; icms: IcmsDoCte; ibsCbs: IbsCbsDoCte | null };
 
-/** O IBS e a CBS do documento. `valores` nulo: a situação tributária não leva o grupo de valores (isenção, imunidade). */
+/**
+ * O IBS e a CBS do documento. `valores` nulo: a situação tributária não leva o
+ * grupo de valores (imunidade e não incidência). `reducao`: o percentual de
+ * redução de alíquota da classificação (CST 200), ou `null`; com redução, os
+ * valores saem da alíquota efetiva.
+ */
 export type IbsCbsDoCte = {
   cst: string;
   classe: string;
-  valores: { base: number; ibsUf: number; ibsMunicipio: number; cbs: number; aliquotaDoIbsUf: number; aliquotaDoIbsMunicipio: number; aliquotaDaCbs: number } | null;
+  valores: {
+    base: number;
+    ibsUf: number;
+    ibsMunicipio: number;
+    cbs: number;
+    aliquotaDoIbsUf: number;
+    aliquotaDoIbsMunicipio: number;
+    aliquotaDaCbs: number;
+    reducao: number | null;
+    /** Alíquotas efetivas (`pAliqEfet`), só com redução. */
+    efetivaDoIbsUf: number;
+    efetivaDoIbsMunicipio: number;
+    efetivaDaCbs: number;
+  } | null;
 };
 
-export type IcmsDoCte = { situacao: SituacaoDoIcms; base: number; aliquota: number; valor: number };
+/** O grupo de `imp/ICMS` que o CT-e leva. */
+export type GrupoDoIcms = "ICMS00" | "ICMS20" | "ICMS45" | "ICMS60" | "ICMS90" | "ICMSOutraUF" | "ICMSSN";
+
+/**
+ * O ICMS do documento. `base`, `aliquota` e `valor` são os do grupo (zero no
+ * que não destaca). `reducao`: o `pRedBC` da situação 20. `retido`: o valor é o
+ * do ICMS retido por substituição tributária (`vICMSSTRet`), que quem recolhe é
+ * o substituto, não o emitente.
+ */
+export type IcmsDoCte = { situacao: SituacaoDoIcms; grupo: GrupoDoIcms; base: number; aliquota: number; valor: number; reducao: number | null; retido: boolean };
 
 /* ------------------------------------ Regras ---------------------------------- */
 
@@ -146,17 +196,88 @@ export type IcmsDoCte = { situacao: SituacaoDoIcms; base: number; aliquota: numb
  */
 export function cfopDaPrestacao(emitente: Pick<EmitenteDoCte, "cfopDentro" | "cfopFora"> & { uf: string }, inicio: string, fim: string): string {
   const dentro = inicio === fim;
-  if (emitente.uf !== inicio) return dentro ? "5932" : "6932";
+  if (emitente.uf !== inicio) return dentro ? CFOP_DE_OUTRA_UF.dentro : CFOP_DE_OUTRA_UF.fora;
   return dentro ? emitente.cfopDentro : emitente.cfopFora;
 }
 
-/** O ICMS da prestação pela configuração da empresa. Base = valor da prestação. */
-export function icmsDaPrestacao(emitente: Pick<EmitenteDoCte, "icms" | "aliquota">, valorDaPrestacao: number): IcmsDoCte {
-  const tributado = emitente.icms === "00" || emitente.icms === "90";
-  const base = tributado ? centavos(valorDaPrestacao) : 0;
-  const aliquota = tributado ? emitente.aliquota : 0;
-  return { situacao: emitente.icms, base, aliquota, valor: centavos((base * aliquota) / 100) };
+export const CONSULTE_O_CONTADOR = "Consulte o contador.";
+
+/** A prestação começa em outra UF e termina nela mesma: a alíquota é a interna de lá, que o sistema não tem. */
+export const bloqueioDaAliquotaDeOutraUf = (uf: string) =>
+  `A prestação começa e termina em ${uf}, fora da UF do emitente: o ICMS é devido a ${uf} pela alíquota interna de lá (grupo ICMSOutraUF), que este sistema não tem de fonte confiável. A emissão está bloqueada. ${CONSULTE_O_CONTADOR}`;
+
+/** A prestação começa em outra UF e a empresa usa uma situação que é benefício ou regime da UF dela. */
+export const bloqueioDaSituacaoEmOutraUf = (uf: string, situacao: SituacaoDoIcms) =>
+  `A prestação começa em ${uf}, fora da UF do emitente: o ICMS é devido a ${uf}, e a situação ${situacao} configurada (redução, isenção, não tributação ou substituição tributária) é da legislação da UF do emitente, não se presume em ${uf}. A emissão está bloqueada. ${CONSULTE_O_CONTADOR}`;
+
+/**
+ * Prestação interestadual com tomador não contribuinte do ICMS: a EC 87/2015
+ * criou o diferencial de alíquota para a UF de término (grupo `ICMSUFFim` do
+ * leiaute: "prestações interestaduais para consumidor final, não contribuinte
+ * do ICMS", MOC 4.00, Anexo I, campo 236). O sistema não tem a alíquota
+ * interna nem o fundo de combate à pobreza da UF de término, e as exceções (o
+ * frete por conta do remetente, o Simples Nacional) dependem de norma que não
+ * foi possível conferir na fonte: o caso fica bloqueado.
+ */
+export const BLOQUEIO_DO_DIFAL =
+  `Prestação interestadual com tomador não contribuinte do ICMS: pode haver diferencial de alíquota para a UF de término (grupo ICMSUFFim), que este sistema não calcula. A emissão está bloqueada. Se o tomador é contribuinte, preencha a inscrição estadual no cadastro do cliente; senão, ${CONSULTE_O_CONTADOR.toLowerCase()}`;
+
+type EmitenteDoIcms = Pick<EmitenteDoCte, "icms" | "aliquota" | "regime" | "reducaoDaBase"> & { uf: string };
+
+/**
+ * O ICMS da prestação, ou o motivo pelo qual o sistema não o calcula
+ * (`bloqueio`: a emissão para, com a frase para a pessoa).
+ *
+ * - Simples Nacional (pelo regime ou pela situação): `ICMSSN`, sem valores.
+ * - Prestação que começa na UF do emitente: o grupo da situação configurada
+ *   (00, 20, 45 para 40/41, 60 ou 90). A alíquota é a interna da configuração
+ *   quando a prestação termina na mesma UF, e a interestadual da Resolução do
+ *   Senado 22/1989 (7% ou 12%, `aliquotaInterestadual`) quando termina em outra.
+ * - Prestação que começa em OUTRA UF (CFOP 5932/6932): o ICMS é devido à UF de
+ *   início, no grupo `ICMSOutraUF` (MOC 4.00, Anexo I, campo 225: "ICMS devido
+ *   à UF de origem da prestação, quando diferente da UF do emitente"), CST 90.
+ *   Interestadual: alíquota da Resolução 22/1989 a partir da UF de início. Dentro
+ *   da outra UF: bloqueio (a alíquota interna de lá não é conhecida). Situação
+ *   20, 40, 41 ou 60: bloqueio (o benefício é da UF do emitente).
+ *
+ * Base: o valor da prestação (com a redução, na situação 20).
+ */
+export function resolverIcms(emitente: EmitenteDoIcms, valorDaPrestacao: number, ufDeInicio: string, ufDeFim: string): { icms: IcmsDoCte } | { bloqueio: string } {
+  const semValores = (grupoDoIcms: GrupoDoIcms): { icms: IcmsDoCte } => ({ icms: { situacao: emitente.icms, grupo: grupoDoIcms, base: 0, aliquota: 0, valor: 0, reducao: null, retido: false } });
+  // O grupo do Simples vale pelo regime, não só pela escolha: quem é do Simples não destaca ICMS no CT-e.
+  if (emitente.icms === "SN" || REGIMES_DO_SIMPLES.includes(emitente.regime)) return semValores("ICMSSN");
+
+  const total = centavos(valorDaPrestacao);
+  const interestadual = aliquotaInterestadual(ufDeInicio, ufDeFim);
+  const destacado = (grupoDoIcms: GrupoDoIcms, base: number, aliquota: number, reducao: number | null = null, retido = false): { icms: IcmsDoCte } => ({
+    icms: { situacao: emitente.icms, grupo: grupoDoIcms, base, aliquota, valor: centavos((base * aliquota) / 100), reducao, retido },
+  });
+
+  if (ufDeInicio !== emitente.uf) {
+    if (emitente.icms !== "00" && emitente.icms !== "90") return { bloqueio: bloqueioDaSituacaoEmOutraUf(ufDeInicio, emitente.icms) };
+    if (interestadual === null) return { bloqueio: bloqueioDaAliquotaDeOutraUf(ufDeInicio) };
+    return destacado("ICMSOutraUF", total, interestadual);
+  }
+
+  if (emitente.icms === "40" || emitente.icms === "41") return semValores("ICMS45");
+  const aliquota = interestadual ?? emitente.aliquota;
+  if (emitente.icms === "20") {
+    const reducao = emitente.reducaoDaBase ?? 0;
+    return destacado("ICMS20", centavos(total * (1 - reducao / 100)), aliquota, reducao);
+  }
+  if (emitente.icms === "60") return destacado("ICMS60", total, aliquota, null, true);
+  return destacado(emitente.icms === "90" ? "ICMS90" : "ICMS00", total, aliquota);
 }
+
+/** O ICMS da prestação. Caso bloqueado é erro de programação aqui: quem chama já conferiu com `resolverIcms`. */
+export function icmsDaPrestacao(emitente: EmitenteDoIcms, valorDaPrestacao: number, ufDeInicio: string, ufDeFim: string): IcmsDoCte {
+  const resolvido = resolverIcms(emitente, valorDaPrestacao, ufDeInicio, ufDeFim);
+  if ("bloqueio" in resolvido) throw new Error(resolvido.bloqueio);
+  return resolvido.icms;
+}
+
+/** Alíquota com até 4 casas, sem resto de ponto flutuante. */
+const quatroCasas = (valor: number) => Math.round((valor + Number.EPSILON) * 1e4) / 1e4;
 
 /**
  * O IBS e a CBS da prestação. `null` quando a empresa não tem a classificação
@@ -168,25 +289,44 @@ export function icmsDaPrestacao(emitente: Pick<EmitenteDoCte, "icms" | "aliquota
  * UB16-10 da NT 2025.002). A NT do CT-e não confere a base; confere os valores
  * contra ela: valor = base × alíquota, com tolerância de 1 centavo (regras 014,
  * 022 e 029, rejeições 318, 323 e 327).
+ *
+ * O ICMS retido por substituição tributária (situação 60) NÃO é descontado da
+ * base: quem o recolhe é o substituto, e a norma não diz que ele sai do valor
+ * da prestação do substituído. A conferência avisa: é ponto para o contador.
+ *
+ * Com redução de alíquota (CST 200): a alíquota efetiva é a alíquota × (1 −
+ * redução/100), e o valor sai dela (NT 2025.001, regras 009b, 017b e 024b, e a
+ * "Observação 2" das regras 014, 022 e 029). O percentual de redução é o da
+ * tabela de classificação (`CLASSIFICACOES_DO_IBSCBS`).
  */
-export function ibsCbsDaPrestacao(emitente: Pick<EmitenteDoCte, "ibsCbs">, valorDaPrestacao: number, icms: Pick<IcmsDoCte, "valor">): IbsCbsDoCte | null {
+export function ibsCbsDaPrestacao(emitente: Pick<EmitenteDoCte, "ibsCbs">, valorDaPrestacao: number, icms: Pick<IcmsDoCte, "valor" | "retido">): IbsCbsDoCte | null {
   const parametros = emitente.ibsCbs;
   if (!parametros) return null;
-  if (!CST_DO_IBSCBS[parametros.cst]?.comValores) return { cst: parametros.cst, classe: parametros.classe, valores: null };
+  const situacao = CST_DO_IBSCBS[parametros.cst];
+  if (!situacao?.comValores) return { cst: parametros.cst, classe: parametros.classe, valores: null };
+  const reducao = situacao.comReducao ? (CLASSIFICACOES_DO_IBSCBS[parametros.classe]?.reducao ?? 0) : null;
+  const fator = 1 - (reducao ?? 0) / 100;
+  const efetivaDoIbsUf = quatroCasas(parametros.ibsUf * fator);
+  const efetivaDoIbsMunicipio = quatroCasas(parametros.ibsMunicipio * fator);
+  const efetivaDaCbs = quatroCasas(parametros.cbs * fator);
   const pis = centavos((valorDaPrestacao * parametros.pis) / 100);
   const cofins = centavos((valorDaPrestacao * parametros.cofins) / 100);
-  const base = Math.max(0, centavos(valorDaPrestacao - icms.valor - pis - cofins));
+  const base = Math.max(0, centavos(valorDaPrestacao - (icms.retido ? 0 : icms.valor) - pis - cofins));
   return {
     cst: parametros.cst,
     classe: parametros.classe,
     valores: {
       base,
-      ibsUf: centavos((base * parametros.ibsUf) / 100),
-      ibsMunicipio: centavos((base * parametros.ibsMunicipio) / 100),
-      cbs: centavos((base * parametros.cbs) / 100),
+      ibsUf: centavos((base * efetivaDoIbsUf) / 100),
+      ibsMunicipio: centavos((base * efetivaDoIbsMunicipio) / 100),
+      cbs: centavos((base * efetivaDaCbs) / 100),
       aliquotaDoIbsUf: parametros.ibsUf,
       aliquotaDoIbsMunicipio: parametros.ibsMunicipio,
       aliquotaDaCbs: parametros.cbs,
+      reducao,
+      efetivaDoIbsUf,
+      efetivaDoIbsMunicipio,
+      efetivaDaCbs,
     },
   };
 }
@@ -271,14 +411,27 @@ function tomadorDoXml(tomador: TomadorDoCte): string {
   );
 }
 
-function icmsDoXml(emitente: EmitenteDoCte, icms: IcmsDoCte): string {
-  // O grupo do Simples vale pelo regime, não só pela escolha: quem é do Simples não destaca ICMS no CT-e.
-  if (icms.situacao === "SN" || REGIMES_DO_SIMPLES.includes(emitente.regime)) {
-    return grupo("ICMSSN", tag("CST", "90") + tag("indSN", "1"));
+/** O grupo de `imp/ICMS`, na ordem dos campos do esquema (`TImp`). */
+function icmsDoXml(icms: IcmsDoCte): string {
+  const base = decimal(icms.base, 2);
+  const aliquota = decimal(icms.aliquota, 2);
+  const valor = decimal(icms.valor, 2);
+  switch (icms.grupo) {
+    case "ICMSSN":
+      return grupo("ICMSSN", tag("CST", "90") + tag("indSN", "1"));
+    case "ICMS45":
+      return grupo("ICMS45", tag("CST", icms.situacao));
+    case "ICMS20":
+      return grupo("ICMS20", tag("CST", "20") + tag("pRedBC", decimal(icms.reducao ?? 0, 2)) + tag("vBC", base) + tag("pICMS", aliquota) + tag("vICMS", valor));
+    case "ICMS60":
+      return grupo("ICMS60", tag("CST", "60") + tag("vBCSTRet", base) + tag("vICMSSTRet", valor) + tag("pICMSSTRet", aliquota));
+    case "ICMSOutraUF":
+      return grupo("ICMSOutraUF", tag("CST", "90") + tag("vBCOutraUF", base) + tag("pICMSOutraUF", aliquota) + tag("vICMSOutraUF", valor));
+    case "ICMS90":
+      return grupo("ICMS90", tag("CST", "90") + tag("vBC", base) + tag("pICMS", aliquota) + tag("vICMS", valor));
+    default:
+      return grupo("ICMS00", tag("CST", "00") + tag("vBC", base) + tag("pICMS", aliquota) + tag("vICMS", valor));
   }
-  if (icms.situacao === "40" || icms.situacao === "41") return grupo("ICMS45", tag("CST", icms.situacao));
-  const valores = tag("vBC", decimal(icms.base, 2)) + tag("pICMS", decimal(icms.aliquota, 2)) + tag("vICMS", decimal(icms.valor, 2));
-  return icms.situacao === "90" ? grupo("ICMS90", tag("CST", "90") + valores) : grupo("ICMS00", tag("CST", "00") + valores);
 }
 
 /** Alíquota do IBS e da CBS (`TDec_0302_04RTC`): de 2 a 4 casas. */
@@ -286,6 +439,9 @@ const aliquotaDoXml = (aliquota: number) => {
   const comQuatro = aliquota.toFixed(4);
   return comQuatro.endsWith("00") ? comQuatro.slice(0, -2) : comQuatro;
 };
+
+/** O grupo `gRed` (`TRed`): o percentual de redução da classificação e a alíquota efetiva. Nada sem redução. */
+const reducaoDoXml = (reducao: number | null, efetiva: number) => (reducao === null ? "" : grupo("gRed", tag("pRedAliq", aliquotaDoXml(reducao)) + tag("pAliqEfet", aliquotaDoXml(efetiva))));
 
 /**
  * O grupo `IBSCBS` e, depois dele, o total do documento (`vTotDFe`), que a
@@ -301,10 +457,10 @@ function ibsCbsDoXml(ibsCbs: IbsCbsDoCte | null, total: number): string {
         "gIBSCBS",
         [
           tag("vBC", decimal(v.base, 2)),
-          grupo("gIBSUF", tag("pIBSUF", aliquotaDoXml(v.aliquotaDoIbsUf)) + tag("vIBSUF", decimal(v.ibsUf, 2))),
-          grupo("gIBSMun", tag("pIBSMun", aliquotaDoXml(v.aliquotaDoIbsMunicipio)) + tag("vIBSMun", decimal(v.ibsMunicipio, 2))),
+          grupo("gIBSUF", tag("pIBSUF", aliquotaDoXml(v.aliquotaDoIbsUf)) + reducaoDoXml(v.reducao, v.efetivaDoIbsUf) + tag("vIBSUF", decimal(v.ibsUf, 2))),
+          grupo("gIBSMun", tag("pIBSMun", aliquotaDoXml(v.aliquotaDoIbsMunicipio)) + reducaoDoXml(v.reducao, v.efetivaDoIbsMunicipio) + tag("vIBSMun", decimal(v.ibsMunicipio, 2))),
           tag("vIBS", decimal(centavos(v.ibsUf + v.ibsMunicipio), 2)),
-          grupo("gCBS", tag("pCBS", aliquotaDoXml(v.aliquotaDaCbs)) + tag("vCBS", decimal(v.cbs, 2))),
+          grupo("gCBS", tag("pCBS", aliquotaDoXml(v.aliquotaDaCbs)) + reducaoDoXml(v.reducao, v.efetivaDaCbs) + tag("vCBS", decimal(v.cbs, 2))),
         ].join(""),
       )
     : "";
@@ -336,7 +492,7 @@ export function montarCte(dados: DadosDoCte): CteMontado {
 
   const total = centavos(dados.valorDaPrestacao);
   const cfop = cfopDaPrestacao({ ...emitente, uf: emitente.endereco.uf }, dados.inicio.uf, dados.fim.uf);
-  const icms = icmsDaPrestacao(emitente, total);
+  const icms = icmsDaPrestacao({ ...emitente, uf: emitente.endereco.uf }, total, dados.inicio.uf, dados.fim.uf);
   const ibsCbs = ibsCbsDaPrestacao(emitente, total, icms);
 
   const ide = grupo(
@@ -349,7 +505,7 @@ export function montarCte(dados: DadosDoCte): CteMontado {
       tag("mod", MODELO_DO_CTE),
       tag("serie", String(emitente.serie)),
       tag("nCT", String(dados.numero)),
-      tag("dhEmi", dataHoraDoXml(dados.emissao)),
+      tag("dhEmi", dataHoraDoXml(dados.emissao, emitente.endereco.uf)),
       tag("tpImp", "1"),
       tag("tpEmis", TIPO_DE_EMISSAO_NORMAL),
       tag("cDV", chave.slice(43)),
@@ -390,7 +546,7 @@ export function montarCte(dados: DadosDoCte): CteMontado {
   );
 
   const vPrest = grupo("vPrest", tag("vTPrest", decimal(total, 2)) + tag("vRec", decimal(total, 2)) + componentesDoXml(dados, total));
-  const imp = grupo("imp", grupo("ICMS", icmsDoXml(emitente, icms)) + ibsCbsDoXml(ibsCbs, total));
+  const imp = grupo("imp", grupo("ICMS", icmsDoXml(icms)) + ibsCbsDoXml(ibsCbs, total));
 
   const infCarga = grupo(
     "infCarga",
@@ -407,7 +563,7 @@ export function montarCte(dados: DadosDoCte): CteMontado {
 
   const infCte = grupo(
     "infCte",
-    [ide, compl, emit, participanteDoXml("rem", "enderReme", dados.remetente, ambiente), participanteDoXml("dest", "enderDest", dados.destinatario, ambiente), vPrest, imp, infCTeNorm].join(""),
+    [ide, compl, emit, participanteDoXml("rem", "enderReme", dados.remetente, ambiente), participanteDoXml("dest", "enderDest", dados.destinatario, ambiente), vPrest, imp, infCTeNorm, responsavelTecnicoDoXml(dados.responsavelTecnico)].join(""),
     ` versao="${VERSAO_DO_CTE}" Id="${id}"`,
   );
 
@@ -456,7 +612,7 @@ export function montarCancelamento(dados: DadosDoCancelamento): { xml: string; i
       tag("tpAmb", codigoDoAmbiente(dados.ambiente)),
       tag("CNPJ", dados.cnpj),
       tag("chCTe", dados.chave),
-      tag("dhEvento", dataHoraDoXml(dados.quando)),
+      tag("dhEvento", dataHoraDoEvento(dados.quando, dados.chave)),
       tag("tpEvento", TIPO_DO_CANCELAMENTO),
       tag("nSeqEvento", "1"),
       detalhe,

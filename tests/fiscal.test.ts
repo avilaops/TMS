@@ -915,7 +915,7 @@ suite("documentos fiscais: importação, carga, consulta, CT-e e isolamento entr
       const bom = { cteNumber: 501, cteKey: chaveCte };
       expect(await registrarCte({ collectionId: SEM_ID, ...bom })).toMatchObject({ status: 404, corpo: { error: "Carga não encontrada." } });
       expect(await registrarCte({ collectionId: cargas.DA_OUTRA, ...bom })).toMatchObject({ status: 404 });
-      expect(await registrarCte({ collectionId: cargas.SEM_CHAVE, ...bom })).toMatchObject({ status: 409, corpo: { error: "Só carga em rota ou entregue recebe o registro de CT-e." } });
+      expect(await registrarCte({ collectionId: cargas.SEM_CHAVE, ...bom })).toMatchObject({ status: 409, corpo: { error: "Só carga alocada numa viagem, em rota ou entregue recebe o registro de CT-e." } });
       expect(await banco.sistema.collection.count({ where: { cteKey: chaveCte } })).toBe(0);
     });
 

@@ -49,7 +49,7 @@ export const CODIGO_DA_UF: Record<string, string> = {
 
 export type PartesDaChaveDoCte = {
   uf: string;
-  /** Instante da emissão: entram o ano e o mês no relógio de Brasília. */
+  /** Instante da emissão: entram o ano e o mês no relógio da UF do emitente (o mesmo do `dhEmi`). */
   emissao: Date;
   /** CNPJ do emitente, 14 dígitos. */
   cnpj: string;
@@ -61,17 +61,50 @@ export type PartesDaChaveDoCte = {
 
 export class ChaveInvalida extends Error {}
 
-// O Brasil não tem horário de verão desde 2019: o relógio de Brasília é UTC-3 o ano inteiro.
-const DESLOCAMENTO_DE_BRASILIA_MS = -3 * 3_600_000;
+/**
+ * O fuso de cada UF, em horas a partir de UTC. Fonte: Decreto 2.784/1913,
+ * art. 2º, com a redação da Lei 12.876/2013: UTC-3 é a regra (alínea b);
+ * UTC-4 em Mato Grosso, Mato Grosso do Sul, Rondônia, Roraima e no Amazonas a
+ * leste da linha Tabatinga-Porto Acre (alínea c); UTC-5 no Acre e no oeste do
+ * Amazonas (alínea e). O Brasil não tem horário de verão desde 2019: o
+ * deslocamento vale o ano inteiro.
+ *
+ * O MOC do CT-e 4.00 (Visão Geral, item 3.8) e o do MDF-e pedem as datas com
+ * hora "no formato UTC completo com a informação do TimeZone", e dão o exemplo
+ * "-03:00 (Brasília) ou -04:00 (Manaus)".
+ *
+ * O que NÃO está aqui, porque a UF sozinha não diz: o oeste do Amazonas
+ * (UTC-5; a UF inteira vai como UTC-4, o fuso de Manaus) e as ilhas oceânicas
+ * (Fernando de Noronha, UTC-2, vai como Pernambuco). A SEFAZ aceita qualquer
+ * fuso (item 3.8); o que ela confere é o instante.
+ */
+const FUSO_FORA_DE_BRASILIA: Record<string, number> = { AM: -4, MT: -4, MS: -4, RO: -4, RR: -4, AC: -5 };
 
-/** O instante no relógio de Brasília, como o XML escreve: `2026-10-10T08:15:00-03:00`. */
-export function dataHoraDoXml(instante: Date): string {
-  const local = new Date(instante.getTime() + DESLOCAMENTO_DE_BRASILIA_MS);
-  return `${local.toISOString().slice(0, 19)}-03:00`;
+/** O deslocamento da UF em horas: -3, -4 ou -5. UF desconhecida é erro de programação. */
+export function fusoDaUf(uf: string): number {
+  if (!CODIGO_DA_UF[uf]) throw new ChaveInvalida(`UF desconhecida: ${uf}`);
+  return FUSO_FORA_DE_BRASILIA[uf] ?? -3;
 }
 
-/** "AAMM" da emissão, no relógio de Brasília. */
-export const anoEMes = (instante: Date) => dataHoraDoXml(instante).replace(/^\d\d(\d\d)-(\d\d).*$/, "$1$2");
+/** O instante no relógio da UF do emitente, como o XML escreve: `2026-10-10T08:15:00-03:00`. */
+export function dataHoraDoXml(instante: Date, uf: string): string {
+  const fuso = fusoDaUf(uf);
+  const local = new Date(instante.getTime() + fuso * 3_600_000);
+  return `${local.toISOString().slice(0, 19)}-0${-fuso}:00`;
+}
+
+/** "AAMM" da emissão, no relógio da UF do emitente: é o que a chave leva, e tem de bater com o `dhEmi`. */
+export const anoEMes = (instante: Date, uf: string) => dataHoraDoXml(instante, uf).replace(/^\d\d(\d\d)-(\d\d).*$/, "$1$2");
+
+/** A UF de um código IBGE de dois dígitos (os dois primeiros de uma chave), ou `null`. */
+export const ufDoCodigo = (codigo: string): string | null => Object.keys(CODIGO_DA_UF).find((uf) => CODIGO_DA_UF[uf] === codigo) ?? null;
+
+/** O instante de um evento, no relógio da UF que abre a chave do documento (a do emitente). */
+export function dataHoraDoEvento(instante: Date, chave: string): string {
+  const uf = ufDoCodigo(chave.slice(0, 2));
+  if (!uf) throw new ChaveInvalida("A chave não começa com o código de uma UF.");
+  return dataHoraDoXml(instante, uf);
+}
 
 /** A chave de 44 dígitos, com o dígito verificador. Parte fora do formato é erro de programação, não de usuário. */
 export function chaveDoCte(partes: PartesDaChaveDoCte): string {
@@ -85,7 +118,7 @@ export function chaveDoCte(partes: PartesDaChaveDoCte): string {
 
   const corpo = [
     uf,
-    anoEMes(partes.emissao),
+    anoEMes(partes.emissao, partes.uf),
     partes.cnpj,
     MODELO_DO_CTE,
     String(partes.serie).padStart(3, "0"),

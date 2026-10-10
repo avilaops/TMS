@@ -1,8 +1,9 @@
 import type { Ambiente } from "@/lib/cte";
-import { CODIGO_DA_UF, TIPO_DE_EMISSAO_NORMAL, dataHoraDoXml } from "@/lib/cte/chave";
+import { CODIGO_DA_UF, TIPO_DE_EMISSAO_NORMAL, dataHoraDoEvento, dataHoraDoXml } from "@/lib/cte/chave";
 import type { AlvoDaAssinatura } from "@/lib/cte/assinar";
 import { codigoDoAmbiente } from "@/lib/cte/enderecos";
 import type { EnderecoDoCte } from "@/lib/cte/montar";
+import { responsavelTecnicoDoXml, type ResponsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { centavos, decimal, digitos, escapar, grupo, tag, textoDoXml } from "@/lib/cte/texto";
 import { MODELO_DO_MDFE, chaveDoMdfe } from "@/lib/mdfe/chave";
 
@@ -190,6 +191,8 @@ export type DadosDoMdfe = {
   observacao?: string | null;
   /** Endereço da consulta por QR Code (src/lib/mdfe/enderecos.ts). */
   enderecoDoQrCode: string;
+  /** A desenvolvedora do sistema (`infRespTec`, depois de `infAdic` no esquema). Nulo ou ausente: o MDF-e vai sem o grupo. */
+  responsavelTecnico?: ResponsavelTecnico | null;
 };
 
 export type MdfeMontado = { xml: string; chave: string; id: string; tipoDeTransportador: "1" | "2" | null; documentos: number };
@@ -395,7 +398,7 @@ export function montarMdfe(dados: DadosDoMdfe): MdfeMontado {
       tag("cMDF", dados.codigo),
       tag("cDV", chave.slice(43)),
       tag("modal", "1"),
-      tag("dhEmi", dataHoraDoXml(dados.emissao)),
+      tag("dhEmi", dataHoraDoXml(dados.emissao, emitente.endereco.uf)),
       tag("tpEmis", TIPO_DE_EMISSAO_NORMAL),
       tag("procEmi", "0"),
       tag("verProc", VERSAO_DO_EMISSOR),
@@ -403,7 +406,7 @@ export function montarMdfe(dados: DadosDoMdfe): MdfeMontado {
       tag("UFFim", dados.ufDeFim),
       dados.carregamento.map((municipio) => grupo("infMunCarrega", tag("cMunCarrega", municipio.codigo) + tag("xMunCarrega", textoDoXml(municipio.nome, 60)))).join(""),
       dados.percurso.map((uf) => grupo("infPercurso", tag("UFPer", uf))).join(""),
-      dados.inicioDaViagem ? tag("dhIniViagem", dataHoraDoXml(dados.inicioDaViagem)) : "",
+      dados.inicioDaViagem ? tag("dhIniViagem", dataHoraDoXml(dados.inicioDaViagem, emitente.endereco.uf)) : "",
       dados.carregamentoPosterior ? tag("indCarregaPosterior", "1") : "",
     ].join(""),
   );
@@ -459,6 +462,7 @@ export function montarMdfe(dados: DadosDoMdfe): MdfeMontado {
       tot,
       (dados.lacres ?? []).map((lacre) => grupo("lacres", tag("nLacre", textoDoXml(lacre, 60)))).join(""),
       grupo("infAdic", tag("infCpl", textoDoXml(dados.observacao, 5000))),
+      responsavelTecnicoDoXml(dados.responsavelTecnico),
     ].join(""),
     ` versao="${VERSAO_DO_MDFE}" Id="${id}"`,
   );
@@ -508,7 +512,7 @@ function montarEvento(base: BaseDoEvento, tipo: TipoDoEvento, sequencia: number,
       tag("tpAmb", codigoDoAmbiente(base.ambiente)),
       tag("CNPJ", base.cnpj),
       tag("chMDFe", base.chave),
-      tag("dhEvento", dataHoraDoXml(base.quando)),
+      tag("dhEvento", dataHoraDoEvento(base.quando, base.chave)),
       tag("tpEvento", tipo),
       tag("nSeqEvento", String(sequencia)),
       grupo("detEvento", detalhe, ` versaoEvento="${VERSAO_DO_MDFE}"`),

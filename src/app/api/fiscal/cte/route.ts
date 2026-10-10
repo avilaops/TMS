@@ -9,7 +9,8 @@ import {
   CTE_CARGA_NAO_ENCONTRADA,
   CTE_CARGA_NAO_SAIU,
   CTE_CHAVE_REPETIDA,
-  STATUS_COM_CTE,
+  CARGA_QUE_RECEBE_CTE,
+  cargaRecebeCte,
   registrarCteSchema,
 } from '@/lib/nfe';
 import { nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
@@ -30,7 +31,7 @@ const paraALista = ({ ctes, ...carga }: CargaLida) => ({ ...carga, emitido: ctes
 const MAXIMO_NA_LISTA = 200;
 
 /**
- * Cargas em rota ou entregues, com os dados que um CT-e precisa, o registro
+ * Cargas alocadas numa viagem em montagem, em rota ou entregues, com os dados que um CT-e precisa, o registro
  * manual, se houver, e o CT-e mais recente que este sistema montou (`emitido`).
  */
 export async function GET() {
@@ -39,7 +40,7 @@ export async function GET() {
 
   try {
     const cargas = await prisma.collection.findMany({
-      where: { status: { in: [...STATUS_COM_CTE] } },
+      where: CARGA_QUE_RECEBE_CTE,
       select: CARGA_COM_CTE_SELECT,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: MAXIMO_NA_LISTA,
@@ -70,10 +71,10 @@ export async function POST(req: Request) {
     const carga = await prisma.collection.findFirst({
       where: { id: collectionId },
       // O CT-e de antes vai para a auditoria.
-      select: { status: true, trackingCode: true, cteNumber: true, cteKey: true, cteStatus: true },
+      select: { status: true, trackingCode: true, cteNumber: true, cteKey: true, cteStatus: true, manifest: { select: { status: true } } },
     });
     if (!carga) return NextResponse.json({ error: CTE_CARGA_NAO_ENCONTRADA }, { status: 404 });
-    if (!(STATUS_COM_CTE as readonly string[]).includes(carga.status)) {
+    if (!cargaRecebeCte(carga)) {
       return NextResponse.json({ error: CTE_CARGA_NAO_SAIU }, { status: 409 });
     }
     // O CT-e que a SEFAZ autorizou por este sistema não é trocado nem apagado à mão: o caminho é o cancelamento.
@@ -85,7 +86,7 @@ export async function POST(req: Request) {
     let gravadas = 0;
     try {
       const { count } = await prisma.collection.updateMany({
-        where: { id: collectionId, status: { in: [...STATUS_COM_CTE] } },
+        where: { id: collectionId, ...CARGA_QUE_RECEBE_CTE },
         data: { cteNumber, cteKey, cteStatus: cteKey === null ? 'PENDING' : 'ISSUED' },
       });
       gravadas = count;

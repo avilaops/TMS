@@ -3,17 +3,23 @@
 import { useEffect, useState } from "react";
 import {
   ALIQUOTAS_DE_2026,
+  CFOP_DE_TRANSPORTE,
+  CLASSIFICACOES_DO_IBSCBS,
   CST_DO_IBSCBS,
+  EXPLICACAO_DO_ICMS,
   FISCAL_INDISPONIVEL,
+  ICMS_COM_ALIQUOTA,
   LIMITE_DO_CERTIFICADO_BYTES,
   REGIMES,
   REGIMES_DO_SIMPLES,
   ROTULO_DO_AMBIENTE,
   SITUACOES_DO_ICMS,
+  problemaDoIbsCbs,
   type CertificadoDaEmpresa,
   type DadosFiscais,
   type FiscalDaEmpresa,
   type Regime,
+  type SituacaoDoIcms,
 } from "@/lib/cte";
 import { UFS } from "@/lib/roteiro";
 import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL } from "../deposito/comum";
@@ -26,6 +32,12 @@ import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL } from "../deposito/comum";
  * formulário só, salvo de uma vez. O certificado é enviado à parte: o arquivo e
  * a senha saem da tela assim que são guardados, e a tela só mostra o titular, o
  * CNPJ e a validade.
+ *
+ * Tributos: o CFOP e a classificação do IBS/CBS são escolhidos em listas (só o
+ * que vale no CT-e); a alíquota do ICMS é a INTERNA (a interestadual o sistema
+ * calcula); uma linha explica a situação do ICMS escolhida. Uma configuração
+ * antiga com valor que deixou de valer (o CST 400 do IBS/CBS, um CFOP que não é
+ * de transporte) aparece marcada, com o pedido de correção.
  */
 
 const FALHA_AO_SALVAR = "Não foi possível salvar.";
@@ -55,6 +67,7 @@ const EM_BRANCO: Formulario = {
   cfopFora: "6353",
   icms: "00",
   aliquota: "12",
+  reducaoDaBase: "",
   ibsCbsCst: "000",
   ibsCbsClasse: "000001",
   ibsUf: String(ALIQUOTAS_DE_2026.ibsUf).replace(".", ","),
@@ -90,6 +103,7 @@ const doServidor = (dados: DadosFiscais): Formulario => ({
   cfopFora: dados.cfopFora,
   icms: dados.icms,
   aliquota: comVirgula(dados.aliquota),
+  reducaoDaBase: dados.reducaoDaBase === null ? "" : comVirgula(dados.reducaoDaBase),
   ibsCbsCst: dados.ibsCbsCst ?? "",
   ibsCbsClasse: dados.ibsCbsClasse ?? "",
   ibsUf: comVirgula(dados.ibsUf),
@@ -177,10 +191,11 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
       />
     </label>
   );
-  const escolha = (nome: string, rotulo: string, opcoes: readonly (readonly [string, string])[]) => (
+  // `aoMudar`: o que mais muda no formulário quando esta escolha muda (a classificação segue o CST, a redução só existe na situação 20).
+  const escolha = (nome: string, rotulo: string, opcoes: readonly (readonly [string, string])[], aoMudar?: (valor: string) => Formulario) => (
     <label className="block space-y-1 min-w-0">
       <span className={LABEL}>{rotulo}</span>
-      <select data-campo={nome} value={form[nome]} onChange={(e) => setForm((atual) => ({ ...atual, [nome]: e.target.value }))} className={INPUT}>
+      <select data-campo={nome} value={form[nome]} onChange={(e) => setForm((atual) => ({ ...atual, [nome]: e.target.value, ...aoMudar?.(e.target.value) }))} className={INPUT}>
         {opcoes.map(([valor, texto]) => (
           <option key={valor} value={valor}>
             {texto}
@@ -195,6 +210,28 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
   const indoParaProducao = form.ambiente === "PRODUCAO" && fiscal.dados?.ambiente !== "PRODUCAO";
   const visivel = (qual: Parte) => (parte === qual ? "" : "hidden md:block ");
   const GRADE = "grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4";
+
+  // As listas só têm o que vale; o valor guardado que deixou de valer entra marcado, para a pessoa ver e trocar.
+  const comOGuardado = (opcoes: (readonly [string, string])[], guardado: string) =>
+    guardado === "" || opcoes.some(([valor]) => valor === guardado) ? opcoes : [[guardado, `${guardado} - não vale mais: troque`] as const, ...opcoes];
+  const cfops = (inicio: "5" | "6") =>
+    comOGuardado(
+      Object.entries(CFOP_DE_TRANSPORTE).map(([codigo, texto]) => [`${inicio}${codigo}`, `${inicio}${codigo} - ${texto}`] as const),
+      form[inicio === "5" ? "cfopDentro" : "cfopFora"],
+    );
+  const classesDoCst = (cst: string) =>
+    Object.entries(CLASSIFICACOES_DO_IBSCBS)
+      .filter(([, classificacao]) => classificacao.cst === cst)
+      .map(([codigo, classificacao]) => [codigo, `${codigo} - ${classificacao.nome}`] as const);
+  const csts = comOGuardado(
+    Object.entries(CST_DO_IBSCBS)
+      .map(([cst, { rotulo }]) => [cst, rotulo] as const)
+      .sort(([a], [b]) => a.localeCompare(b)),
+    form.ibsCbsCst,
+  );
+  const classes = form.ibsCbsCst === "" ? [["", "Sem o grupo"] as const] : comOGuardado(classesDoCst(form.ibsCbsCst), form.ibsCbsClasse);
+  const problemaDoPar = form.ibsCbsCst !== "" && form.ibsCbsClasse !== "" ? problemaDoIbsCbs(form.ibsCbsCst, form.ibsCbsClasse) : null;
+  const comReducao = form.icms === "20";
 
   return (
     <section aria-label="Fiscal" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
@@ -254,12 +291,34 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
           {escolha("ambiente", "Ambiente", Object.entries(ROTULO_DO_AMBIENTE))}
           {campo("serie", "Série do CT-e", { numerico: true })}
           {campo("proximoNumero", "Próximo número", { numerico: true })}
-          {campo("cfopDentro", "CFOP no estado", { numerico: true, maximo: 4 })}
-          {campo("cfopFora", "CFOP fora do estado", { numerico: true, maximo: 4 })}
-          {escolha("icms", "ICMS", Object.entries(SITUACOES_DO_ICMS))}
-          {campo("aliquota", "Alíquota do ICMS (%)", { numerico: true })}
-          {escolha("ibsCbsCst", "IBS/CBS: CST", [["", simples ? "Sem o grupo" : "Escolha"], ...Object.entries(CST_DO_IBSCBS).map(([cst, { rotulo }]) => [cst, rotulo] as const)])}
-          {campo("ibsCbsClasse", "Classificação (cClassTrib)", { numerico: true, opcional: true, maximo: 6 })}
+          {escolha("cfopDentro", "CFOP no estado", cfops("5"))}
+          {escolha("cfopFora", "CFOP fora do estado", cfops("6"))}
+          {escolha(
+            "icms",
+            "ICMS",
+            // Na ordem do código: 00, 20, 40, 41, 60, 90 e, por último, o Simples.
+            Object.entries(SITUACOES_DO_ICMS).sort(([a], [b]) => a.localeCompare(b)),
+            (situacao): Formulario => (situacao === "20" ? {} : { reducaoDaBase: "" }),
+          )}
+          {comReducao ? (
+            <div className="grid grid-cols-2 gap-x-2 min-w-0">
+              {campo("aliquota", "Alíq. interna (%)", { numerico: true })}
+              {campo("reducaoDaBase", "Redução BC (%)", { numerico: true })}
+            </div>
+          ) : (
+            campo("aliquota", "Alíquota interna (%)", { numerico: true })
+          )}
+          <p data-explicacao-icms className="col-span-2 text-[11px] leading-tight text-gray-500">
+            {EXPLICACAO_DO_ICMS[form.icms as SituacaoDoIcms]}
+            {ICMS_COM_ALIQUOTA.includes(form.icms as SituacaoDoIcms) && " Fora do estado a alíquota é a interestadual (7% ou 12%), calculada pelo sistema."}
+          </p>
+          {escolha("ibsCbsCst", "IBS/CBS: CST", [["", simples ? "Sem o grupo" : "Escolha"], ...csts], (cst) => ({ ibsCbsClasse: classesDoCst(cst)[0]?.[0] ?? "" }))}
+          {escolha("ibsCbsClasse", "Classificação (cClassTrib)", classes)}
+          {problemaDoPar && (
+            <p role="alert" data-ibscbs-invalido className="col-span-2 text-[11px] leading-tight text-red-700">
+              {problemaDoPar}
+            </p>
+          )}
           {campo("ibsUf", "IBS da UF (%)", { numerico: true })}
           {campo("ibsMunicipio", "IBS do município (%)", { numerico: true })}
           {campo("cbs", "CBS (%)", { numerico: true })}

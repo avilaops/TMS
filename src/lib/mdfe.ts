@@ -554,6 +554,54 @@ export const AVISO_DE_VIAGEM_SEM_MDFE: Record<Exclude<ExigenciaDeMdfe, "nenhuma"
   intermunicipal: "Esta viagem sai do município e ainda não há MDF-e autorizado. Na maioria dos estados o MDF-e é obrigatório também dentro do estado: confira e emita na aba MDF-e da viagem.",
 };
 
+/* --------------------------- Documentos antes da saída ------------------------- */
+
+/**
+ * O que falta de documento fiscal para a viagem sair.
+ *
+ * A ordem é obrigação legal: o CT-e tem de estar autorizado antes do início da
+ * prestação (Ajuste SINIEF 09/07) e o MDF-e, antes do início da viagem (Ajuste
+ * SINIEF 21/10, cláusula terceira: emitido ao fim do carregamento e antes do
+ * início do transporte, relacionando os CT-e da carga). No sistema: alocar a carga na
+ * viagem → emitir o CT-e → emitir o MDF-e → liberar a saída.
+ *
+ * - CT-e: da transportadora (tipo de emitente 1), para cada carga que sai do
+ *   município (dentro do mesmo município não há prestação sujeita ao ICMS). A
+ *   empresa de carga própria (tipo 2) não emite CT-e: o MDF-e dela relaciona as
+ *   NF-e.
+ * - MDF-e: a mesma regra do aviso (`exigenciaDeMdfe`).
+ *
+ * Só a empresa que emite pelo TMS em PRODUÇÃO é bloqueada (quem decide é a
+ * rota de liberar a saída); em homologação, ou sem emitente configurado (a
+ * empresa emite em outro sistema), isto vira só aviso.
+ */
+export type FaltasParaSair = {
+  /** As cargas sem CT-e autorizado. */
+  ctes: { id: string; codigo: string }[];
+  /** A viagem exige MDF-e e não tem um autorizado: o porquê da exigência. */
+  mdfe: Exclude<ExigenciaDeMdfe, "nenhuma"> | null;
+};
+
+export type CargaNaSaida = { id: string; codigo: string; ufDeOrigem: string | null; ufDeDestino: string | null; mesmoMunicipio: boolean; cteAutorizado: boolean };
+
+export function faltasParaSair(cargas: readonly CargaNaSaida[], tipoDeEmitente: TipoDeEmitente, mdfeAutorizado: boolean): FaltasParaSair {
+  const exigencia = exigenciaDeMdfe(cargas);
+  return {
+    ctes: tipoDeEmitente === "1" ? cargas.filter((carga) => !carga.mesmoMunicipio && !carga.cteAutorizado).map(({ id, codigo }) => ({ id, codigo })) : [],
+    mdfe: exigencia !== "nenhuma" && !mdfeAutorizado ? exigencia : null,
+  };
+}
+
+export const haFaltasParaSair = (faltas: FaltasParaSair) => faltas.ctes.length > 0 || faltas.mdfe !== null;
+
+/** A frase do bloqueio da saída (resposta 409 de liberar a saída). */
+export function fraseDoBloqueioDaSaida(faltas: FaltasParaSair): string {
+  const partes: string[] = [];
+  if (faltas.ctes.length > 0) partes.push(`CT-e autorizado de ${faltas.ctes.length === 1 ? "1 carga" : `${faltas.ctes.length} cargas`} (${faltas.ctes.map((carga) => carga.codigo).join(", ")})`);
+  if (faltas.mdfe) partes.push("MDF-e autorizado da viagem");
+  return `A saída não foi liberada. Falta: ${partes.join(" e ")}. Os documentos têm de estar autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).`;
+}
+
 /* ---------------------------------- Mensagens --------------------------------- */
 
 export const MDFE_NAO_ENCONTRADO = "MDF-e não encontrado.";

@@ -10,6 +10,7 @@ import { diaNoBrasil } from "@/lib/financeiro";
 import { rotuloDaAusencia } from "@/lib/equipe";
 import { haQuantoTempo } from "@/lib/posicao";
 import { pode } from "@/lib/permissoes";
+import type { FaltasParaSair } from "@/lib/mdfe";
 import { loadManifestos, type Manifesto, type ManifestosState, type Minuta } from "./carregar";
 import { TelaDaViagem } from "./viagem";
 
@@ -39,6 +40,8 @@ export default function ManifestosPage() {
   const emiteFiscal = pode(session?.user?.role, "fiscal");
   // A aba em que a tela da viagem abre: "MDF-e" quando a pessoa aceita encerrar o MDF-e ao finalizar.
   const [abaDaViagem, setAbaDaViagem] = useState<"Dados" | "MDF-e">("Dados");
+  // A saída que o servidor não liberou por falta de CT-e ou de MDF-e (409): o cartão da viagem mostra o que falta.
+  const [bloqueio, setBloqueio] = useState<{ manifestId: string; faltas: FaltasParaSair } | null>(null);
 
   const [formData, setFormData] = useState({
     driverId: "",
@@ -173,15 +176,19 @@ export default function ManifestosPage() {
     if (!confirm(question)) return;
 
     setBusyId(manifesto.id);
+    setBloqueio(null);
     try {
       const res = await fetch(`/api/manifestos/${manifesto.id}/${action}`, { method: "POST" });
+      const corpo = (await res.json().catch(() => null)) as { aviso?: string | null; error?: string; faltas?: FaltasParaSair } | null;
       if (res.ok) {
-        // A saída não é bloqueada pela falta de MDF-e: o servidor só avisa quando a viagem exige o documento.
-        const corpo = (await res.json().catch(() => null)) as { aviso?: string | null } | null;
+        // Em homologação ou sem emitente fiscal a falta de documento não bloqueia: o servidor só avisa.
         await fetchData();
         if (corpo?.aviso) alert(corpo.aviso);
+      } else if (res.status === 409 && corpo?.faltas) {
+        // Empresa que emite pelo TMS em produção: a saída espera o CT-e de cada carga e o MDF-e. O cartão mostra o que falta.
+        setBloqueio({ manifestId: manifesto.id, faltas: corpo.faltas });
       } else {
-        alert(await errorMessage(res, fallback));
+        alert(typeof corpo?.error === "string" ? corpo.error : fallback);
       }
     } catch {
       alert(fallback);
@@ -389,6 +396,42 @@ export default function ManifestosPage() {
                     })}
                   </div>
                 </div>
+
+                {emMontagem && bloqueio?.manifestId === manifesto.id && (
+                  <div role="alert" data-saida-bloqueada={manifesto.id} className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 space-y-1.5">
+                    <p className="font-semibold">Saída não liberada: falta documento fiscal autorizado.</p>
+                    {bloqueio.faltas.ctes.length > 0 && (
+                      <p data-falta="cte" className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="min-w-0">
+                          CT-e de {bloqueio.faltas.ctes.length === 1 ? "1 carga" : `${bloqueio.faltas.ctes.length} cargas`}: {bloqueio.faltas.ctes.map((carga) => carga.codigo).join(", ")}
+                        </span>
+                        {veFiscal && (
+                          <Link href="/dashboard/fiscal/cte" data-atalho="cte" className="font-semibold text-blue-700 underline">
+                            Emitir CT-e
+                          </Link>
+                        )}
+                      </p>
+                    )}
+                    {bloqueio.faltas.mdfe && (
+                      <p data-falta="mdfe" className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>MDF-e da viagem{bloqueio.faltas.ctes.length > 0 ? " (depois dos CT-e)" : ""}</span>
+                        {veFiscal && (
+                          <button
+                            type="button"
+                            data-atalho="mdfe"
+                            onClick={() => {
+                              setAbaDaViagem("MDF-e");
+                              setViagem(manifesto);
+                            }}
+                            className="font-semibold text-blue-700 underline"
+                          >
+                            Emitir MDF-e
+                          </button>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {emMontagem && (
                   <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4 flex flex-wrap items-center gap-2">

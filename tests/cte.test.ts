@@ -2,7 +2,20 @@ import { gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chaveValida } from "../src/lib/nfe";
 import {
+  CFOP_DENTRO_MESSAGE,
+  CFOP_DE_TRANSPORTE,
+  CFOP_FORA_MESSAGE,
+  CLASSIFICACOES_DO_IBSCBS,
+  CST_DO_IBSCBS,
+  EXPLICACAO_DO_ICMS,
+  IBSCBS_COM_ESTORNO,
+  IBSCBS_CST_400,
   NOME_EM_HOMOLOGACAO,
+  REDUCAO_OBRIGATORIA,
+  REDUCAO_SO_NA_20,
+  SITUACOES_DO_ICMS,
+  aliquotaInterestadual,
+  problemaDoIbsCbs,
   SIMPLES_PEDE_SN,
   SN_SO_NO_SIMPLES,
   TRIBUTADO_PEDE_ALIQUOTA,
@@ -29,10 +42,25 @@ import {
   conferirCertificado,
   lerCertificado,
 } from "../src/lib/cte/certificado";
-import { ChaveInvalida, anoEMes, chaveDoCte, dataHoraDoXml, lerChaveDoCte } from "../src/lib/cte/chave";
+import { ChaveInvalida, anoEMes, chaveDoCte, dataHoraDoEvento, dataHoraDoXml, fusoDaUf, lerChaveDoCte } from "../src/lib/cte/chave";
+import { UFS } from "../src/lib/roteiro";
 import { ENDERECOS, autorizadorDaUf, enderecosDaUf, urlDoQrCode } from "../src/lib/cte/enderecos";
-import { cfopDaPrestacao, ibsCbsDaPrestacao, icmsDaPrestacao, montarCancelamento, montarCte, montarModalRodoviario, montarProcCte, observacaoDaViagem } from "../src/lib/cte/montar";
-import { SEM_EMITENTE, prepararCte, type CargaDoCte } from "../src/lib/cte/preparar";
+import {
+  BLOQUEIO_DO_DIFAL,
+  bloqueioDaAliquotaDeOutraUf,
+  bloqueioDaSituacaoEmOutraUf,
+  cfopDaPrestacao,
+  ibsCbsDaPrestacao,
+  icmsDaPrestacao,
+  montarCancelamento,
+  montarCte,
+  montarModalRodoviario,
+  montarProcCte,
+  observacaoDaViagem,
+  resolverIcms,
+} from "../src/lib/cte/montar";
+import { AVISO_DO_ICMS_DE_OUTRA_UF, AVISO_DO_ICMS_RETIDO, SEM_EMITENTE, prepararCte, type CargaDoCte } from "../src/lib/cte/preparar";
+import { VARIAVEIS_DO_RESPONSAVEL_TECNICO, responsavelTecnico, responsavelTecnicoDoXml, semResponsavelTecnico } from "../src/lib/cte/responsavel-tecnico";
 import {
   CSTAT,
   compactar,
@@ -52,9 +80,11 @@ import { SEFAZ_FORA_DO_AR, SEFAZ_TEMPO_ESGOTADO, SefazError, chamarSoap, envelop
 import { textoDoXml } from "../src/lib/cte/texto";
 import { municipioDoTexto } from "../src/lib/municipios";
 import {
+  CENARIOS_DO_CTE,
   DESTINATARIO,
   EMITENTE,
   REMETENTE,
+  RESPONSAVEL_TECNICO,
   certificadoDeTeste,
   dadosDeExemplo,
   errosNoEsquema,
@@ -108,12 +138,35 @@ describe("chave de acesso do CT-e", () => {
     });
   });
 
-  it("o ano e o mês são os do relógio de Brasília, não os de UTC", () => {
+  it("o ano e o mês são os do relógio da UF do emitente, não os de UTC", () => {
     // 01/11 às 01:30 UTC ainda é 31/10 às 22:30 em Brasília.
     const virada = new Date("2026-11-01T01:30:00.000Z");
-    expect(anoEMes(virada)).toBe("2610");
-    expect(dataHoraDoXml(virada)).toBe("2026-10-31T22:30:00-03:00");
+    expect(anoEMes(virada, "SP")).toBe("2610");
+    expect(dataHoraDoXml(virada, "SP")).toBe("2026-10-31T22:30:00-03:00");
     expect(chaveDoCte({ uf: "SP", emissao: virada, cnpj: "11222333000181", serie: 1, numero: 1, codigo: "00000001" }).slice(2, 6)).toBe("2610");
+  });
+
+  it("fuso por UF (Lei 12.876/2013): UTC-4 em AM, MT, MS, RO e RR; UTC-5 no AC; UTC-3 nas demais", () => {
+    const menosQuatro = ["AM", "MT", "MS", "RO", "RR"];
+    for (const uf of UFS) expect(fusoDaUf(uf), uf).toBe(uf === "AC" ? -5 : menosQuatro.includes(uf) ? -4 : -3);
+    expect(() => fusoDaUf("XX")).toThrow(ChaveInvalida);
+
+    const instante = new Date("2026-10-10T14:30:00.000Z");
+    expect(dataHoraDoXml(instante, "SP")).toBe("2026-10-10T11:30:00-03:00");
+    expect(dataHoraDoXml(instante, "MT")).toBe("2026-10-10T10:30:00-04:00");
+    expect(dataHoraDoXml(instante, "AC")).toBe("2026-10-10T09:30:00-05:00");
+    // O instante é o mesmo nos três.
+    for (const uf of ["SP", "MT", "AC"]) expect(new Date(dataHoraDoXml(instante, uf)).getTime()).toBe(instante.getTime());
+
+    // Na virada do mês a chave acompanha o `dhEmi`: 01/11 às 03:30 UTC já é novembro em SP, e ainda é outubro em MT e no AC.
+    const virada = new Date("2026-11-01T03:30:00.000Z");
+    expect(anoEMes(virada, "SP")).toBe("2611");
+    expect(anoEMes(virada, "MT")).toBe("2610");
+    expect(anoEMes(virada, "AC")).toBe("2610");
+    // O evento vai no fuso da UF que abre a chave do documento.
+    expect(dataHoraDoEvento(instante, "51".padEnd(44, "0"))).toBe("2026-10-10T10:30:00-04:00");
+    expect(dataHoraDoEvento(instante, "12".padEnd(44, "0"))).toBe("2026-10-10T09:30:00-05:00");
+    expect(() => dataHoraDoEvento(instante, "99".padEnd(44, "0"))).toThrow(ChaveInvalida);
   });
 
   it("dígito 0 quando o resto é 0 ou 1, e toda chave montada passa na conferência", () => {
@@ -191,7 +244,7 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
     // SP → MG: CFOP de fora do estado, ICMS 12% sobre a prestação.
     expect(cfop).toBe("6353");
     expect(xml).toContain("<CFOP>6353</CFOP>");
-    expect(icms).toEqual({ situacao: "00", base: 850.5, aliquota: 12, valor: 102.06 });
+    expect(icms).toEqual({ situacao: "00", grupo: "ICMS00", base: 850.5, aliquota: 12, valor: 102.06, reducao: null, retido: false });
     expect(xml).toContain("<ICMS00><CST>00</CST><vBC>850.50</vBC><pICMS>12.00</pICMS><vICMS>102.06</vICMS></ICMS00>");
     // IBS e CBS (NT 2025.001): base = prestação - ICMS; alíquotas de 2026; o total do documento repete a prestação.
     expect(xml).toContain(
@@ -262,12 +315,12 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
   it("IBS e CBS: a base tira o ICMS, o PIS e a COFINS; os valores fecham com base x alíquota (regras 014, 022 e 029)", async () => {
     const parametros = { cst: "000", classe: "000001", ibsUf: 0.05, ibsMunicipio: 0.05, cbs: 8.8, pis: 1.65, cofins: 7.6 };
     // 1000 - ICMS 120 - PIS 16,50 - COFINS 76 = 787,50.
-    expect(ibsCbsDaPrestacao({ ibsCbs: parametros }, 1000, { valor: 120 })).toEqual({
+    expect(ibsCbsDaPrestacao({ ibsCbs: parametros }, 1000, { valor: 120, retido: false })).toEqual({
       cst: "000",
       classe: "000001",
-      valores: { base: 787.5, ibsUf: 0.39, ibsMunicipio: 0.39, cbs: 69.3, aliquotaDoIbsUf: 0.05, aliquotaDoIbsMunicipio: 0.05, aliquotaDaCbs: 8.8 },
+      valores: { base: 787.5, ibsUf: 0.39, ibsMunicipio: 0.39, cbs: 69.3, aliquotaDoIbsUf: 0.05, aliquotaDoIbsMunicipio: 0.05, aliquotaDaCbs: 8.8, reducao: null, efetivaDoIbsUf: 0.05, efetivaDoIbsMunicipio: 0.05, efetivaDaCbs: 8.8 },
     });
-    expect(ibsCbsDaPrestacao({ ibsCbs: null }, 1000, { valor: 120 })).toBeNull();
+    expect(ibsCbsDaPrestacao({ ibsCbs: null }, 1000, { valor: 120, retido: false })).toBeNull();
     // Alíquota com 4 casas (0,0125%) cabe no tipo do esquema.
     const { xml } = assinado(dadosDeExemplo({ valorDaPrestacao: 1000, componentes: [], emitente: { ...EMITENTE, ibsCbs: { ...parametros, ibsUf: 0.0125 } } }));
     await valido(xml);
@@ -292,9 +345,10 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
     await valido(naoTributada.xml);
     expect(naoTributada.xml).toContain("<ICMS45><CST>41</CST></ICMS45>");
 
+    // Interestadual (SP para MG): a alíquota é a da Resolução do Senado 22/1989 (12%), não a interna da configuração.
     const outras = assinado(dadosDeExemplo({ emitente: { ...EMITENTE, icms: "90", aliquota: 7 } }));
     await valido(outras.xml);
-    expect(outras.xml).toContain("<ICMS90><CST>90</CST><vBC>850.50</vBC><pICMS>7.00</pICMS><vICMS>59.54</vICMS></ICMS90>");
+    expect(outras.xml).toContain("<ICMS90><CST>90</CST><vBC>850.50</vBC><pICMS>12.00</pICMS><vICMS>102.06</vICMS></ICMS90>");
   });
 
   it("tomador destinatário, e tomador que é um terceiro (toma4, com o endereço dele)", async () => {
@@ -379,11 +433,14 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
     expect(cfopDaPrestacao(emitente, "MG", "RJ")).toBe("6932");
   });
 
-  it("o ICMS sai da configuração da empresa", () => {
-    expect(icmsDaPrestacao({ icms: "00", aliquota: 12 }, 100)).toEqual({ situacao: "00", base: 100, aliquota: 12, valor: 12 });
-    expect(icmsDaPrestacao({ icms: "90", aliquota: 7 }, 33.33)).toEqual({ situacao: "90", base: 33.33, aliquota: 7, valor: 2.33 });
-    expect(icmsDaPrestacao({ icms: "40", aliquota: 12 }, 100)).toEqual({ situacao: "40", base: 0, aliquota: 0, valor: 0 });
-    expect(icmsDaPrestacao({ icms: "SN", aliquota: 0 }, 100)).toEqual({ situacao: "SN", base: 0, aliquota: 0, valor: 0 });
+  it("o ICMS sai da configuração da empresa: dentro do estado vale a alíquota interna", () => {
+    const sp = { regime: "3" as const, uf: "SP" };
+    expect(icmsDaPrestacao({ ...sp, icms: "00", aliquota: 12 }, 100, "SP", "SP")).toEqual({ situacao: "00", grupo: "ICMS00", base: 100, aliquota: 12, valor: 12, reducao: null, retido: false });
+    expect(icmsDaPrestacao({ ...sp, icms: "90", aliquota: 7 }, 33.33, "SP", "SP")).toEqual({ situacao: "90", grupo: "ICMS90", base: 33.33, aliquota: 7, valor: 2.33, reducao: null, retido: false });
+    expect(icmsDaPrestacao({ ...sp, icms: "40", aliquota: 12 }, 100, "SP", "SP")).toEqual({ situacao: "40", grupo: "ICMS45", base: 0, aliquota: 0, valor: 0, reducao: null, retido: false });
+    expect(icmsDaPrestacao({ ...sp, regime: "1", icms: "SN", aliquota: 0 }, 100, "SP", "MG")).toEqual({ situacao: "SN", grupo: "ICMSSN", base: 0, aliquota: 0, valor: 0, reducao: null, retido: false });
+    // O regime do Simples manda, mesmo com outra situação gravada e a prestação começando fora.
+    expect(icmsDaPrestacao({ ...sp, regime: "4", icms: "00", aliquota: 12 }, 100, "MG", "MG").grupo).toBe("ICMSSN");
   });
 
   it("o grupo do modal rodoviário passa no esquema do modal (cteModalRodoviario_v4.00.xsd)", async () => {
@@ -406,6 +463,269 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
     expect(observacaoDaViagem({ placa: null, motorista: null })).toBeNull();
     expect(observacaoDaViagem({ placa: "ABC1D23", motorista: null })).toBe("Veiculo placa ABC1D23.");
     expect(observacaoDaViagem({ placa: "ABC1D23", motorista: "João" })).toBe("Veiculo placa ABC1D23. Motorista João.");
+  });
+});
+
+/* ------------------- Correções da revisão contra o MOC 4.00 ------------------- */
+
+describe("correções da revisão contra o MOC 4.00 e as Notas Técnicas", () => {
+  const valido = async (xml: string) => expect(await errosNoEsquema(xml, "cte_v4.00.xsd")).toEqual([]);
+  const SP = { regime: "3" as const, uf: "SP", icms: "00" as const, aliquota: 18 };
+
+  it.each(Object.keys(CENARIOS_DO_CTE))("o cenário %s passa no esquema oficial, assinado", async (nome) => {
+    const { xml, chave } = assinado(CENARIOS_DO_CTE[nome]());
+    await valido(xml);
+    expect(chaveValida(chave)).toBe(true);
+  });
+
+  it("alíquota interestadual (Resolução do Senado 22/1989): 7% do Sul e Sudeste, sem o ES, para Norte, Nordeste, Centro-Oeste e ES; 12% no resto", () => {
+    // As regiões, escritas aqui de novo e por extenso: a conferência não usa a tabela do código.
+    const regiao: Record<string, "N" | "NE" | "CO" | "SE" | "S"> = {
+      AC: "N", AM: "N", AP: "N", PA: "N", RO: "N", RR: "N", TO: "N",
+      AL: "NE", BA: "NE", CE: "NE", MA: "NE", PB: "NE", PE: "NE", PI: "NE", RN: "NE", SE: "NE",
+      DF: "CO", GO: "CO", MT: "CO", MS: "CO",
+      ES: "SE", MG: "SE", RJ: "SE", SP: "SE",
+      PR: "S", RS: "S", SC: "S",
+    };
+    expect(Object.keys(regiao).sort()).toEqual([...UFS].sort());
+    let deSete = 0;
+    let deDoze = 0;
+    for (const inicio of UFS) {
+      for (const fim of UFS) {
+        const aliquota = aliquotaInterestadual(inicio, fim);
+        if (inicio === fim) {
+          expect(aliquota, `${inicio}-${fim}`).toBeNull();
+          continue;
+        }
+        const saiDoSulOuSudeste = (regiao[inicio] === "S" || regiao[inicio] === "SE") && inicio !== "ES";
+        const vaiParaOsSete = ["N", "NE", "CO"].includes(regiao[fim]) || fim === "ES";
+        expect(aliquota, `${inicio}-${fim}`).toBe(saiDoSulOuSudeste && vaiParaOsSete ? 7 : 12);
+        if (aliquota === 7) deSete += 1;
+        else deDoze += 1;
+      }
+    }
+    // 6 UF de origem x 21 de destino a 7%; os outros 576 pares a 12%.
+    expect([deSete, deDoze]).toEqual([126, 576]);
+    // Pares conferidos à mão contra a ferramenta `consultar_aliquota_icms` do serviço fiscal da casa (10/10/2026).
+    expect(aliquotaInterestadual("SP", "BA")).toBe(7);
+    expect(aliquotaInterestadual("SP", "MG")).toBe(12);
+    expect(aliquotaInterestadual("SP", "ES")).toBe(7);
+    expect(aliquotaInterestadual("ES", "BA")).toBe(12);
+    expect(aliquotaInterestadual("ES", "SP")).toBe(12);
+    expect(aliquotaInterestadual("BA", "SP")).toBe(12);
+    expect(aliquotaInterestadual("RS", "AM")).toBe(7);
+    expect(aliquotaInterestadual("PR", "SC")).toBe(12);
+    expect(aliquotaInterestadual("MG", "GO")).toBe(7);
+    expect(aliquotaInterestadual("GO", "DF")).toBe(12);
+    expect(aliquotaInterestadual("SP", "XX")).toBeNull();
+    expect(aliquotaInterestadual("EX", "SP")).toBeNull();
+  });
+
+  it("a alíquota da configuração é a interna; fora do estado vale a interestadual (7% ou 12%)", async () => {
+    // Dentro de SP: os 18% da configuração.
+    expect(icmsDaPrestacao(SP, 1000, "SP", "SP")).toMatchObject({ grupo: "ICMS00", base: 1000, aliquota: 18, valor: 180 });
+    // SP para MG: 12%; SP para BA: 7%. A configuração (18%) não entra.
+    expect(icmsDaPrestacao(SP, 1000, "SP", "MG")).toMatchObject({ grupo: "ICMS00", aliquota: 12, valor: 120 });
+    expect(icmsDaPrestacao(SP, 1000, "SP", "BA")).toMatchObject({ grupo: "ICMS00", aliquota: 7, valor: 70 });
+
+    const interno = assinado(CENARIOS_DO_CTE["interno-aliquota-interna"]());
+    expect(interno.cfop).toBe("5353");
+    expect(interno.xml).toContain("<ICMS00><CST>00</CST><vBC>850.50</vBC><pICMS>12.00</pICMS><vICMS>102.06</vICMS></ICMS00>");
+    const sete = assinado(CENARIOS_DO_CTE["interestadual-7-sp-ba"]());
+    expect(sete.cfop).toBe("6353");
+    expect(sete.xml).toContain("<UFIni>SP</UFIni>");
+    expect(sete.xml).toContain("<UFFim>BA</UFFim>");
+    expect(sete.xml).toContain("<ICMS00><CST>00</CST><vBC>850.50</vBC><pICMS>7.00</pICMS><vICMS>59.54</vICMS></ICMS00>");
+    const doze = assinado(CENARIOS_DO_CTE["interestadual-12-sp-mg"]());
+    expect(doze.xml).toContain("<pICMS>12.00</pICMS><vICMS>102.06</vICMS>");
+    // A interna diferente da interestadual: 18% dentro de SP, 12% para MG, no mesmo emitente.
+    const dezoito = { ...EMITENTE, aliquota: 18 };
+    expect(assinado(dadosDeExemplo({ emitente: dezoito, fim: { codigoMunicipio: "3530300", municipio: "Mirassol", uf: "SP" } })).xml).toContain("<pICMS>18.00</pICMS><vICMS>153.09</vICMS>");
+    expect(assinado(dadosDeExemplo({ emitente: dezoito })).xml).toContain("<pICMS>12.00</pICMS><vICMS>102.06</vICMS>");
+  });
+
+  it("prestação que começa em outra UF (CFOP 6932): grupo ICMSOutraUF, CST 90, com a alíquota interestadual a partir da UF de início", async () => {
+    const mgRj = assinado(CENARIOS_DO_CTE["outra-uf-6932-mg-rj-12"]());
+    await valido(mgRj.xml);
+    expect(mgRj.cfop).toBe("6932");
+    expect(mgRj.icms).toEqual({ situacao: "00", grupo: "ICMSOutraUF", base: 850.5, aliquota: 12, valor: 102.06, reducao: null, retido: false });
+    expect(mgRj.xml).toContain("<imp><ICMS><ICMSOutraUF><CST>90</CST><vBCOutraUF>850.50</vBCOutraUF><pICMSOutraUF>12.00</pICMSOutraUF><vICMSOutraUF>102.06</vICMSOutraUF></ICMSOutraUF></ICMS>");
+    expect(mgRj.xml).not.toContain("<ICMS00>");
+    // O ICMS devido à outra UF também sai da base do IBS/CBS: 850,50 - 102,06.
+    expect(mgRj.ibsCbs?.valores?.base).toBe(748.44);
+
+    // Do Paraná para a Bahia, emitente de SP: 7%.
+    const prBa = assinado(CENARIOS_DO_CTE["outra-uf-6932-pr-ba-7"]());
+    await valido(prBa.xml);
+    expect(prBa.cfop).toBe("6932");
+    expect(prBa.xml).toContain("<ICMSOutraUF><CST>90</CST><vBCOutraUF>850.50</vBCOutraUF><pICMSOutraUF>7.00</pICMSOutraUF><vICMSOutraUF>59.54</vICMSOutraUF></ICMSOutraUF>");
+
+    // O Simples Nacional continua no ICMSSN, comece onde começar.
+    const simples = assinado(dadosDeExemplo({ ...CENARIOS_DO_CTE["outra-uf-6932-mg-rj-12"](), emitente: { ...EMITENTE, regime: "1", icms: "SN", aliquota: 0, ibsCbs: null } }));
+    await valido(simples.xml);
+    expect(simples.cfop).toBe("6932");
+    expect(simples.xml).toContain("<ICMSSN><CST>90</CST><indSN>1</indSN></ICMSSN>");
+  });
+
+  it("começa em outra UF sem alíquota confiável, ou com situação que é da UF do emitente: bloqueia em vez de adivinhar", () => {
+    // Começa e termina em MG, emitente de SP (CFOP 5932): a alíquota é a interna de MG, que o sistema não tem.
+    expect(resolverIcms(SP, 1000, "MG", "MG")).toEqual({ bloqueio: bloqueioDaAliquotaDeOutraUf("MG") });
+    expect(resolverIcms({ ...SP, icms: "90" }, 1000, "MG", "MG")).toEqual({ bloqueio: bloqueioDaAliquotaDeOutraUf("MG") });
+    for (const situacao of ["20", "40", "41", "60"] as const) {
+      expect(resolverIcms({ ...SP, icms: situacao, reducaoDaBase: 20 }, 1000, "MG", "RJ"), situacao).toEqual({ bloqueio: bloqueioDaSituacaoEmOutraUf("MG", situacao) });
+    }
+    expect(bloqueioDaAliquotaDeOutraUf("MG")).toContain("Consulte o contador");
+    expect(bloqueioDaSituacaoEmOutraUf("MG", "40")).toContain("Consulte o contador");
+    // Quem monta sem conferir antes recebe o erro, e não um imposto inventado.
+    expect(() => icmsDaPrestacao(SP, 1000, "MG", "MG")).toThrow("alíquota interna");
+    expect(() => montarCte(dadosDeExemplo({ inicio: { codigoMunicipio: "3106200", municipio: "Belo Horizonte", uf: "MG" }, fim: { codigoMunicipio: "3170206", municipio: "Uberlândia", uf: "MG" } }))).toThrow("bloqueada");
+  });
+
+  it("ICMS20: base reduzida, com o pRedBC da configuração", async () => {
+    const { xml, icms, ibsCbs } = assinado(CENARIOS_DO_CTE["icms-20-reducao-de-base"]());
+    await valido(xml);
+    // 850,50 com 20% de redução = 680,40; SP para MG, 12% = 81,65.
+    expect(icms).toEqual({ situacao: "20", grupo: "ICMS20", base: 680.4, aliquota: 12, valor: 81.65, reducao: 20, retido: false });
+    expect(xml).toContain("<ICMS20><CST>20</CST><pRedBC>20.00</pRedBC><vBC>680.40</vBC><pICMS>12.00</pICMS><vICMS>81.65</vICMS></ICMS20>");
+    expect(ibsCbs?.valores?.base).toBe(768.85);
+    // Redução com casas decimais, dentro do estado.
+    expect(icmsDaPrestacao({ ...SP, icms: "20", reducaoDaBase: 33.33 }, 1000, "SP", "SP")).toMatchObject({ base: 666.7, aliquota: 18, valor: 120.01, reducao: 33.33 });
+  });
+
+  it("ICMS60: substituição tributária, com a base, o valor retido e a alíquota; o retido não sai da base do IBS/CBS", async () => {
+    const { xml, icms, ibsCbs } = assinado(CENARIOS_DO_CTE["icms-60-substituicao"]());
+    await valido(xml);
+    expect(icms).toEqual({ situacao: "60", grupo: "ICMS60", base: 850.5, aliquota: 12, valor: 102.06, reducao: null, retido: true });
+    expect(xml).toContain("<ICMS60><CST>60</CST><vBCSTRet>850.50</vBCSTRet><vICMSSTRet>102.06</vICMSSTRet><pICMSSTRet>12.00</pICMSSTRet></ICMS60>");
+    expect(ibsCbs?.valores?.base).toBe(850.5);
+  });
+
+  it("IBS/CBS com CST 200: grupo gRed em cada tributo, com o percentual da tabela e a alíquota efetiva (NT 2025.001, regras 009, 009a e 009b)", async () => {
+    // 200001: alíquota zero (redução de 100%).
+    const zero = assinado(CENARIOS_DO_CTE["ibscbs-200-aliquota-zero"]());
+    await valido(zero.xml);
+    expect(zero.xml).toContain(
+      "<IBSCBS><CST>200</CST><cClassTrib>200001</cClassTrib><gIBSCBS><vBC>748.44</vBC>" +
+        "<gIBSUF><pIBSUF>0.10</pIBSUF><gRed><pRedAliq>100.00</pRedAliq><pAliqEfet>0.00</pAliqEfet></gRed><vIBSUF>0.00</vIBSUF></gIBSUF>" +
+        "<gIBSMun><pIBSMun>0.00</pIBSMun><gRed><pRedAliq>100.00</pRedAliq><pAliqEfet>0.00</pAliqEfet></gRed><vIBSMun>0.00</vIBSMun></gIBSMun><vIBS>0.00</vIBS>" +
+        "<gCBS><pCBS>0.90</pCBS><gRed><pRedAliq>100.00</pRedAliq><pAliqEfet>0.00</pAliqEfet></gRed><vCBS>0.00</vCBS></gCBS></gIBSCBS></IBSCBS><vTotDFe>850.50</vTotDFe>",
+    );
+    // 200050: redução de 40%. Efetiva = alíquota x 0,6; valor = base x efetiva.
+    const quarenta = assinado(CENARIOS_DO_CTE["ibscbs-200-reducao-40"]());
+    await valido(quarenta.xml);
+    expect(quarenta.ibsCbs?.valores).toMatchObject({ base: 748.44, reducao: 40, efetivaDoIbsUf: 0.06, efetivaDoIbsMunicipio: 0, efetivaDaCbs: 0.54, ibsUf: 0.45, ibsMunicipio: 0, cbs: 4.04 });
+    expect(quarenta.xml).toContain("<gIBSUF><pIBSUF>0.10</pIBSUF><gRed><pRedAliq>40.00</pRedAliq><pAliqEfet>0.06</pAliqEfet></gRed><vIBSUF>0.45</vIBSUF></gIBSUF>");
+    expect(quarenta.xml).toContain("<gCBS><pCBS>0.90</pCBS><gRed><pRedAliq>40.00</pRedAliq><pAliqEfet>0.54</pAliqEfet></gRed><vCBS>4.04</vCBS></gCBS>");
+    // Alíquotas de 2027 (0,05%): a efetiva tem 4 casas e cabe no tipo do esquema.
+    const de2027 = assinado(dadosDeExemplo({ emitente: { ...EMITENTE, ibsCbs: { cst: "200", classe: "200050", ibsUf: 0.05, ibsMunicipio: 0.05, cbs: 8.8, pis: 0, cofins: 0 } } }));
+    await valido(de2027.xml);
+    expect(de2027.xml).toContain("<pRedAliq>40.00</pRedAliq><pAliqEfet>0.03</pAliqEfet>");
+    expect(de2027.xml).toContain("<pCBS>8.80</pCBS><gRed><pRedAliq>40.00</pRedAliq><pAliqEfet>5.28</pAliqEfet></gRed>");
+    // Sem redução (CST 000) o gRed não vai (regra 010); o 410 não leva valores.
+    expect(assinado().xml).not.toContain("<gRed>");
+    expect(assinado(CENARIOS_DO_CTE["ibscbs-410-imune"]()).xml).toContain("<IBSCBS><CST>410</CST><cClassTrib>410004</cClassTrib></IBSCBS><vTotDFe>850.50</vTotDFe>");
+  });
+
+  it("CST x cClassTrib do IBS/CBS: só os 12 pares da tabela oficial para o CT-e; o CST 400 não vale", () => {
+    expect(Object.keys(CLASSIFICACOES_DO_IBSCBS).sort()).toEqual(["000001", "200001", "200020", "200050", "410001", "410003", "410004", "410015", "410026", "410027", "410035", "410999"]);
+    expect(Object.keys(CST_DO_IBSCBS).sort()).toEqual(["000", "200", "410"]);
+    for (const [classe, { cst, reducao }] of Object.entries(CLASSIFICACOES_DO_IBSCBS)) {
+      expect(classe.startsWith(cst), classe).toBe(true);
+      expect(reducao, classe).toBe(classe === "200050" ? 40 : cst === "200" ? 100 : null);
+      expect(problemaDoIbsCbs(cst, classe), classe).toBe(classe === "410026" ? IBSCBS_COM_ESTORNO : null);
+    }
+    expect(problemaDoIbsCbs("400", "400001")).toBe(IBSCBS_CST_400);
+    expect(problemaDoIbsCbs("000", "200001")).toContain("não vale com o CST 000");
+    expect(problemaDoIbsCbs("410", "410002")).toContain("410001, 410003, 410004, 410015, 410026, 410027, 410035, 410999");
+    expect(problemaDoIbsCbs("200", "000001")).toContain("200001, 200020, 200050");
+    expect(problemaDoIbsCbs("550", "550001")).toBe(IBSCBS_CST_FORA_DA_LISTA);
+  });
+
+  it("a configuração valida o par do IBS/CBS, o CFOP de transporte e a redução da base", () => {
+    const formulario = { cnpj: "11.222.333/0001-81", ie: "123456789012", razaoSocial: "Transportadora de Teste Ltda", logradouro: "Rua das Flores", numero: "120", bairro: "Centro", cidade: "Mirassol", uf: "SP", cep: "15130000", rntrc: "12345678", regime: "3", serie: "1", proximoNumero: "1", ambiente: "HOMOLOGACAO", cfopDentro: "5353", cfopFora: "6353", icms: "00", aliquota: "12", ibsCbsCst: "000", ibsCbsClasse: "000001" };
+    const erro = (trocas: Record<string, string>) => dadosFiscaisSchema.safeParse({ ...formulario, ...trocas }).error?.issues[0]?.message;
+    expect(erro({})).toBeUndefined();
+    expect(erro({ ibsCbsCst: "400", ibsCbsClasse: "400001" })).toBe(IBSCBS_CST_400);
+    expect(erro({ ibsCbsCst: "200", ibsCbsClasse: "000001" })).toContain("não vale com o CST 200");
+    expect(erro({ ibsCbsCst: "410", ibsCbsClasse: "410026" })).toBe(IBSCBS_COM_ESTORNO);
+    for (const [cst, classe] of [["200", "200001"], ["200", "200020"], ["200", "200050"], ["410", "410015"], ["410", "410999"]]) expect(erro({ ibsCbsCst: cst, ibsCbsClasse: classe }), classe).toBeUndefined();
+
+    // CFOP: só os de prestação de serviço de transporte; 5932 e 6932 são do sistema.
+    for (const codigo of Object.keys(CFOP_DE_TRANSPORTE)) {
+      expect(erro({ cfopDentro: `5${codigo}` }), codigo).toBeUndefined();
+      expect(erro({ cfopFora: `6${codigo}` }), codigo).toBeUndefined();
+    }
+    expect(Object.keys(CFOP_DE_TRANSPORTE)).toEqual(["351", "352", "353", "354", "355", "356", "357", "359", "360"]);
+    expect(erro({ cfopDentro: "5932" })).toBe(CFOP_DENTRO_MESSAGE);
+    expect(erro({ cfopDentro: "5358" })).toBe(CFOP_DENTRO_MESSAGE);
+    expect(erro({ cfopDentro: "5102" })).toBe(CFOP_DENTRO_MESSAGE);
+    expect(erro({ cfopFora: "6932" })).toBe(CFOP_FORA_MESSAGE);
+    expect(erro({ cfopFora: "6108" })).toBe(CFOP_FORA_MESSAGE);
+    expect(erro({ cfopFora: "7358" })).toBe(CFOP_FORA_MESSAGE);
+
+    // ICMS 20 pede a redução; as outras situações não a aceitam; 60 pede alíquota.
+    expect(erro({ icms: "20" })).toBe(REDUCAO_OBRIGATORIA);
+    expect(erro({ icms: "20", reducaoDaBase: "0" })).toContain("maior que 0");
+    expect(erro({ icms: "00", reducaoDaBase: "20" })).toBe(REDUCAO_SO_NA_20);
+    expect(dadosFiscaisSchema.parse({ ...formulario, icms: "20", reducaoDaBase: "33,33" })).toMatchObject({ icms: "20", reducaoDaBase: 33.33 });
+    expect(dadosFiscaisSchema.parse(formulario).reducaoDaBase).toBeNull();
+    expect(erro({ icms: "60", aliquota: "0" })).toBe(TRIBUTADO_PEDE_ALIQUOTA);
+    expect(erro({ icms: "60" })).toBeUndefined();
+    // Toda situação tem a explicação que a tela mostra.
+    expect(Object.keys(EXPLICACAO_DO_ICMS).sort()).toEqual(Object.keys(SITUACOES_DO_ICMS).sort());
+  });
+
+  it("responsável técnico: vem das variáveis RESPTEC_*; faltando ou fora do formato, não há grupo", () => {
+    const variaveis = { RESPTEC_CNPJ: "60.701.190/0001-04", RESPTEC_CONTATO: " Suporte de Teste ", RESPTEC_EMAIL: "suporte@desenvolvedora.example", RESPTEC_FONE: "(17) 3000-1000" };
+    expect(responsavelTecnico(variaveis)).toEqual(RESPONSAVEL_TECNICO);
+    expect(responsavelTecnico({})).toBeNull();
+    for (const nome of VARIAVEIS_DO_RESPONSAVEL_TECNICO) expect(responsavelTecnico({ ...variaveis, [nome]: "" }), nome).toBeNull();
+    expect(responsavelTecnico({ ...variaveis, RESPTEC_CNPJ: "60.701.190/0001-05" })).toBeNull();
+    expect(responsavelTecnico({ ...variaveis, RESPTEC_CNPJ: "00000000000000" })).toBeNull();
+    expect(responsavelTecnico({ ...variaveis, RESPTEC_CONTATO: "X" })).toBeNull();
+    expect(responsavelTecnico({ ...variaveis, RESPTEC_EMAIL: "sem-arroba" })).toBeNull();
+    expect(responsavelTecnico({ ...variaveis, RESPTEC_FONE: "12345" })).toBeNull();
+    expect(responsavelTecnico({ ...variaveis, RESPTEC_FONE: "5517300010001" })).toBeNull();
+    expect(responsavelTecnicoDoXml(null)).toBe("");
+  });
+
+  it("infRespTec: com os dados o grupo fecha o infCte e passa no esquema; sem eles o CT-e vai sem o grupo", async () => {
+    const com = assinado(CENARIOS_DO_CTE["com-responsavel-tecnico"]());
+    await valido(com.xml);
+    expect(com.xml).toContain("</infCTeNorm><infRespTec><CNPJ>60701190000104</CNPJ><xContato>Suporte de Teste</xContato><email>suporte@desenvolvedora.example</email><fone>1730001000</fone></infRespTec></infCte>");
+    const sem = assinado();
+    await valido(sem.xml);
+    expect(sem.xml).not.toContain("infRespTec");
+    expect(sem.xml).toContain("</infCTeNorm></infCte>");
+    // O validador recusa o grupo fora do tipo: telefone com letras.
+    const errado = com.xml.replace("<fone>1730001000</fone></infRespTec>", "<fone>17-3000</fone></infRespTec>");
+    expect((await errosNoEsquema(errado, "cte_v4.00.xsd")).join(" ")).toMatch(/fone/);
+  });
+
+  it("emitente em UF de UTC-4 e de UTC-5: dhEmi no fuso da UF, e a chave com o AAMM do dhEmi", async () => {
+    // 01/11/2026 às 03:30 UTC: 00:30 de 01/11 em Brasília, 23:30 de 31/10 em Cuiabá, 22:30 de 31/10 em Rio Branco.
+    const virada = new Date("2026-11-01T03:30:00.000Z");
+    const mt = assinado({ ...CENARIOS_DO_CTE["emitente-utc-4-mt"](), emissao: virada });
+    await valido(mt.xml);
+    expect(mt.xml).toContain("<cUF>51</cUF>");
+    expect(mt.xml).toContain("<dhEmi>2026-10-31T23:30:00-04:00</dhEmi>");
+    expect(mt.chave.slice(0, 6)).toBe("512610");
+    expect(chaveValida(mt.chave)).toBe(true);
+
+    const ac = assinado({ ...CENARIOS_DO_CTE["emitente-utc-5-ac"](), emissao: virada });
+    await valido(ac.xml);
+    expect(ac.xml).toContain("<dhEmi>2026-10-31T22:30:00-05:00</dhEmi>");
+    expect(ac.chave.slice(0, 6)).toBe("122610");
+
+    const sp = assinado(dadosDeExemplo({ emissao: virada }));
+    expect(sp.xml).toContain("<dhEmi>2026-11-01T00:30:00-03:00</dhEmi>");
+    expect(sp.chave.slice(0, 6)).toBe("352611");
+
+    // O evento de cancelamento vai no fuso da UF do emitente (a que abre a chave), e passa no esquema.
+    const evento = montarCancelamento({ chave: mt.chave, cnpj: EMITENTE.cnpj, ambiente: "HOMOLOGACAO", protocolo: "151260000000001", justificativa: "Carga recusada pelo destinatário", quando: new Date("2026-11-02T15:00:00.000Z") });
+    expect(evento.xml).toContain("<dhEvento>2026-11-02T11:00:00-04:00</dhEvento>");
+    const eventoAssinado = assinarXml(evento.xml, ALVO_DO_EVENTO, { chavePem: lido.chavePem, certificadoPem: lido.titularPem });
+    expect(await errosNoEsquema(eventoAssinado, "eventoCTe_v4.00.xsd")).toEqual([]);
   });
 });
 
@@ -567,7 +887,7 @@ describe("dados fiscais do emitente", () => {
     expect(dadosFiscaisSchema.parse({ ...formulario, ibsUf: "0,05", ibsMunicipio: "0.05", cbs: "8,8", pis: "1,65", cofins: "7,6" })).toMatchObject({ ibsUf: 0.05, ibsMunicipio: 0.05, cbs: 8.8, pis: 1.65, cofins: 7.6 });
     expect(dadosFiscaisSchema.safeParse({ ...formulario, ibsCbsCst: "", ibsCbsClasse: "" }).error?.issues[0]?.message).toBe(IBSCBS_OBRIGATORIO);
     expect(dadosFiscaisSchema.safeParse({ ...formulario, ibsCbsClasse: "" }).error?.issues[0]?.message).toBe(IBSCBS_INCOMPLETO);
-    expect(dadosFiscaisSchema.safeParse({ ...formulario, ibsCbsCst: "200" }).error?.issues[0]?.message).toBe(IBSCBS_CST_FORA_DA_LISTA);
+    expect(dadosFiscaisSchema.safeParse({ ...formulario, ibsCbsCst: "550", ibsCbsClasse: "550001" }).error?.issues[0]?.message).toBe(IBSCBS_CST_FORA_DA_LISTA);
     expect(dadosFiscaisSchema.safeParse({ ...formulario, ibsCbsCst: "00" }).success).toBe(false);
     expect(dadosFiscaisSchema.safeParse({ ...formulario, ibsCbsClasse: "1" }).success).toBe(false);
     expect(dadosFiscaisSchema.safeParse({ ...formulario, cbs: "0,90001" }).success).toBe(false);
@@ -605,7 +925,16 @@ describe("dados fiscais do emitente", () => {
     [{ cfopDentro: "6353" }, "dentro do estado"],
     [{ cfopFora: "5353" }, "fora do estado"],
     [{ cfopDentro: "5300" }, "dentro do estado"],
-    [{ icms: "20" }, "situação tributária"],
+    [{ icms: "51" }, "situação tributária"],
+    [{ icms: "20" }, "redução da base"],
+    [{ reducaoDaBase: "10" }, "só vale para a situação 20"],
+    [{ icms: "20", reducaoDaBase: "100" }, "redução da base"],
+    [{ icms: "20", reducaoDaBase: "33,333" }, "redução da base"],
+    [{ cfopDentro: "5932" }, "dentro do estado"],
+    [{ cfopFora: "6932" }, "fora do estado"],
+    [{ cfopDentro: "5358" }, "dentro do estado"],
+    [{ cfopDentro: "5102" }, "dentro do estado"],
+    [{ cfopFora: "6949" }, "fora do estado"],
     [{ aliquota: "101" }, "alíquota"],
     [{ aliquota: "abc" }, "alíquota"],
   ])("recusa %j", (troca, trecho) => {
@@ -956,7 +1285,7 @@ describe("da carga aos dados do CT-e", () => {
     expect(dados.produto).toBe("Rolamento de esferas 6204");
     expect(dados.chavesDeNfe).toEqual(["35261045543915000181550010000012341000012341"]);
     expect(dados.observacao).toBe("Veiculo placa ABC1D23. Motorista João da Silva.");
-    expect(preparo.resumo).toMatchObject({ cfop: "6353", origem: "São José do Rio Preto - SP", destino: "Belo Horizonte - MG", icms: { situacao: "00", aliquota: 12, valor: 102.06 } });
+    expect(preparo.resumo).toMatchObject({ cfop: "6353", origem: "São José do Rio Preto - SP", destino: "Belo Horizonte - MG", icms: { situacao: "00", grupo: "ICMS00", base: 850.5, aliquota: 12, valor: 102.06, retido: false } });
     expect(preparo.resumo?.tomador).toEqual({ papel: "REMETENTE", nome: "Indústria Remetente S/A", documento: "45.543.915/0001-81", contribuinte: "1" });
     expect(preparo.avisos.join(" ")).toContain("Em homologação");
     expect(preparo.resumo?.ibsCbs).toEqual({ cst: "000", classe: "000001", base: 748.44, ibs: 0.75, cbs: 6.74 });
@@ -977,11 +1306,23 @@ describe("da carga aos dados do CT-e", () => {
   });
 
   it("cliente pagador que é o destinatário da nota: tomador destinatário, sem IE vai como não contribuinte", () => {
-    const preparo = preparar(carga({ client: { companyName: "Comércio Destinatário Ltda", tradeName: null, cnpj: "07526557000100", ie: null, email: null, phone: null, address: null }, notas: [{ accessKey: "35261045543915000181550010000012341000012341", xml: nfe({ destIe: "" }) }] }));
+    const semIe = { client: { companyName: "Comércio Destinatário Ltda", tradeName: null, cnpj: "07526557000100", ie: null, email: null, phone: null, address: null }, notas: [{ accessKey: "35261045543915000181550010000012341000012341", xml: nfe({ destIe: "" }) }] };
+    // Dentro do estado (a prestação termina em SP): emite, com o aviso.
+    const preparo = preparar(carga({ ...semIe, destination: "Mirassol - SP" }));
     expect(preparo.pendencias).toEqual([]);
     expect(preparo.dados?.tomador).toEqual({ papel: "DESTINATARIO" });
     expect(preparo.dados?.contribuinte).toBe("9");
     expect(preparo.avisos.join(" ")).toContain("não contribuinte");
+
+    // Interestadual com tomador não contribuinte: pode haver diferencial de alíquota (ICMSUFFim), que o sistema não calcula. Bloqueia.
+    const interestadual = preparar(carga(semIe));
+    expect(interestadual.dados).toBeNull();
+    expect(interestadual.pendencias).toEqual([BLOQUEIO_DO_DIFAL]);
+    expect(BLOQUEIO_DO_DIFAL).toContain("onsulte o contador");
+    // Vale também para o Simples Nacional: a exceção não foi conferida na norma.
+    expect(preparar(carga(semIe), { ...EMITENTE, regime: "1", icms: "SN", aliquota: 0, ibsCbs: null }).pendencias).toEqual([BLOQUEIO_DO_DIFAL]);
+    // Com a inscrição estadual o tomador é contribuinte: não há o que bloquear.
+    expect(preparar(carga({ ...semIe, client: { ...semIe.client, ie: "0623079040081" } })).pendencias).toEqual([]);
   });
 
   it("cliente pagador que não é remetente nem destinatário: tomador outro, com o endereço do cadastro; sem endereço, pendência", async () => {
@@ -1053,6 +1394,48 @@ describe("da carga aos dados do CT-e", () => {
     expect(preparar(carga({ notas: [{ accessKey: "35261045543915000181550010000012341000012341", xml: "<NFe><infNFe/></NFe>" }] })).pendencias).toHaveLength(2);
     const semEmitente = prepararCte(carga(), null, null, municipioDoTexto);
     expect(semEmitente).toEqual({ dados: null, pendencias: [SEM_EMITENTE], avisos: [], resumo: null });
+  });
+
+  it("prestação que começa em outra UF: interestadual emite com ICMSOutraUF e aviso; dentro da outra UF, bloqueia", async () => {
+    // Emitente de SP; a carga sai de Belo Horizonte (o remetente da nota continua em SP: o que conta é a origem da carga).
+    const paraORio = preparar(carga({ origin: "Belo Horizonte - MG", destination: "Rio de Janeiro - RJ" }));
+    expect(paraORio.pendencias).toEqual([]);
+    expect(paraORio.resumo).toMatchObject({ cfop: "6932", icms: { situacao: "00", grupo: "ICMSOutraUF", base: 850.5, aliquota: 12, valor: 102.06 } });
+    expect(paraORio.avisos).toContain(AVISO_DO_ICMS_DE_OUTRA_UF("MG"));
+    const montado = montarCte({ ...paraORio.dados!, numero: 4, codigo: "12345678", emissao: new Date() });
+    expect(montado.xml).toContain("<CFOP>6932</CFOP>");
+    expect(montado.xml).toContain("<ICMSOutraUF><CST>90</CST>");
+    expect(await errosNoEsquema(assinarXml(montado.xml, ALVO_DO_CTE, { chavePem: lido.chavePem, certificadoPem: lido.titularPem }), "cte_v4.00.xsd")).toEqual([]);
+
+    const dentroDeMinas = preparar(carga({ origin: "Belo Horizonte - MG", destination: "Uberlândia - MG" }));
+    expect(dentroDeMinas.dados).toBeNull();
+    expect(dentroDeMinas.pendencias).toEqual([bloqueioDaAliquotaDeOutraUf("MG")]);
+    expect(dentroDeMinas.resumo).toMatchObject({ cfop: "5932", icms: null, ibsCbs: null });
+
+    const isentaEmCasa = preparar(carga({ origin: "Belo Horizonte - MG", destination: "Rio de Janeiro - RJ" }), { ...EMITENTE, icms: "40", aliquota: 0 });
+    expect(isentaEmCasa.pendencias).toEqual([bloqueioDaSituacaoEmOutraUf("MG", "40")]);
+  });
+
+  it("situação 60 avisa do ICMS retido; configuração antiga com CST 400 do IBS/CBS pede a correção e não emite", () => {
+    expect(preparar(carga(), { ...EMITENTE, icms: "60" }).avisos).toContain(AVISO_DO_ICMS_RETIDO);
+    expect(preparar(carga()).avisos).not.toContain(AVISO_DO_ICMS_RETIDO);
+
+    const antiga = preparar(carga(), { ...EMITENTE, ibsCbs: { ...EMITENTE.ibsCbs!, cst: "400", classe: "400001" } });
+    expect(antiga.dados).toBeNull();
+    expect(antiga.pendencias).toEqual([`${IBSCBS_CST_400} Corrija em Empresa → Fiscal.`]);
+    expect(antiga.resumo?.ibsCbs).toBeNull();
+    const parErrado = preparar(carga(), { ...EMITENTE, ibsCbs: { ...EMITENTE.ibsCbs!, cst: "410", classe: "000001" } });
+    expect(parErrado.pendencias[0]).toContain("não vale com o CST 410");
+  });
+
+  it("sem os dados do responsável técnico a conferência avisa; com eles o grupo vai no documento", () => {
+    const sem = preparar(carga());
+    expect(sem.avisos).toContain(semResponsavelTecnico("cte"));
+    expect(sem.dados?.responsavelTecnico).toBeNull();
+    const com = prepararCte(carga(), EMITENTE, QR, municipioDoTexto, new Date(), RESPONSAVEL_TECNICO);
+    expect(com.avisos).not.toContain(semResponsavelTecnico("cte"));
+    expect(com.dados?.responsavelTecnico).toEqual(RESPONSAVEL_TECNICO);
+    expect(montarCte({ ...com.dados!, numero: 5, codigo: "12345678", emissao: new Date() }).xml).toContain("<infRespTec><CNPJ>60701190000104</CNPJ>");
   });
 
   it("o município da nota escrito fora do padrão ainda vale pelo código IBGE que a nota traz", () => {
