@@ -436,6 +436,17 @@ Abrir um chamado e trocar o status avisam os sistemas de fora (`ocorrencia.abert
 
 Ainda não existe: prazo de atendimento (SLA) com relógio, anexo de arquivo ou foto no chamado, e-mail ou mensagem automática ao cliente quando a transportadora responde (ele vê ao entrar no portal; o aviso por WhatsApp pode ser montado no destino dos eventos), aviso de mensagem nova, alteração de tipo, título ou carga depois de aberto, e os chamados na tela da carga. O painel inicial não conta chamados.
 
+## Minuta de despacho (impressão)
+
+A folha que acompanha a carga, para imprimir: `/dashboard/coletas/[id]/minuta`, aberta pelo atalho "Minuta" de cada linha da lista de minutas. **Não é documento fiscal**: o rodapé diz "Documento sem valor fiscal. Não substitui o CT-e.". A montagem fica em [src/lib/minuta.ts](src/lib/minuta.ts) (`montarMinuta`, função pura); a rota é `GET /api/coletas/[id]/minuta`.
+
+- **O que sai na folha**, só com o que a carga já tem: nome e símbolo da empresa, o código de rastreio como número (com o mesmo código de barras Code 128 da etiqueta) e a data de emissão; remetente, destinatário e cliente pagador; origem e destino; volumes, peso, cubagem, valor da mercadoria e as NF-e (número e chave); frete, composição e condição de pagamento; viagem, veículo e motorista quando a carga está em viagem; número e chave do CT-e registrado ou autorizado em produção; observação; e as assinaturas de remetente, motorista e recebedor (com nome, documento, data e hora). Seção sem dado não aparece; campo sem dado fica em branco.
+- **Documento e endereço de remetente e destinatário** só existem quando há NF-e importada ligada à carga, e só entram se o nome na nota for o mesmo da carga. O endereço do destinatário é o da entrega; sem ele, o da nota.
+- **Quem vê:** quem lê cargas (`coletasVer`: toda a equipe interna). O frete segue a lista de minutas, que hoje o mostra a todos esses perfis (`verFreteNaMinuta`; o teste cobra que as duas fiquem iguais). Carga de outra empresa responde como carga que não existe.
+- **Impressão:** pelo navegador, uma A4 em retrato, em preto e branco; só a folha sai no papel.
+
+Ainda não existe: PDF gerado no servidor, envio da minuta por e-mail ou WhatsApp, impressão de várias minutas de uma vez, a minuta no portal do cliente e no app do motorista, numeração própria (o número é o código de rastreio) e CPF do motorista na folha.
+
 ## Recebimento, conferência e depósito
 
 Conferência dos volumes quando a carga chega, etiqueta com código de barras, posição de cada volume e a visão do que está parado no depósito. As regras ficam em [src/lib/deposito.ts](src/lib/deposito.ts); o código de barras em [src/lib/code128.ts](src/lib/code128.ts). No menu em Operação, "Depósito", para `ADMIN` e `OPERATION`. Nenhuma tela ou rota daqui mostra valor de nota ou frete.

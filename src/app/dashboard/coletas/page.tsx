@@ -510,6 +510,14 @@ export default function ColetasPage() {
                             {textoDasTentativas(coleta._count?.deliveryAttempts ?? 0)}
                           </Link>
                         )}
+                        {/* Minuta de despacho para imprimir: toda carga tem. Não é documento fiscal. */}
+                        <Link
+                          href={`/dashboard/coletas/${coleta.id}/minuta`}
+                          data-minuta-de={coleta.id}
+                          className="px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          Minuta
+                        </Link>
                         {/* Etiquetas dos volumes: da coleta confirmada até a carga sair do depósito. */}
                         {(coleta.status === 'CONFIRMED' || coleta.status === 'COLLECTED') && coleta.trackingCode && (
                           <Link
