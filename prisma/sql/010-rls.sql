@@ -92,6 +92,7 @@ DECLARE
     "OccurrenceMessage": ["occurrenceId", "Occurrence", "authorId", "User"],
     "CollectionVolume": ["collectionId", "Collection", "locationId", "WarehouseLocation", "checkedById", "User"],
     "WarehouseReceipt": ["collectionId", "Collection", "userId", "User"],
+    "FiscalDocument": ["collectionId", "Collection", "importedById", "User"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

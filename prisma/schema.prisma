@@ -63,6 +63,7 @@ model Tenant {
   warehouseLocations WarehouseLocation[]
   collectionVolumes  CollectionVolume[]
   warehouseReceipts  WarehouseReceipt[]
+  fiscalDocuments    FiscalDocument[]
 }
 
 model User {
@@ -93,6 +94,7 @@ model User {
   occurrenceMessages  OccurrenceMessage[]
   volumesChecked      CollectionVolume[]
   warehouseReceipts   WarehouseReceipt[]
+  fiscalDocuments     FiscalDocument[]
 
   @@index([clientId])
 
@@ -338,6 +340,7 @@ model Collection {
   occurrences Occurrence[]
   volumeItems CollectionVolume[]
   warehouseReceipt WarehouseReceipt?
+  fiscalDocuments FiscalDocument[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -746,6 +749,55 @@ model WarehouseReceipt {
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
+}
+
+// Nota fiscal eletrônica (NF-e, modelo 55) importada pelo XML. Guarda o que o
+// leitor extraiu (src/lib/nfe.ts) e o XML original, como chegou. A chave de
+// acesso é única por empresa: a mesma nota não entra duas vezes. A carga é
+// opcional: a nota pode ser importada antes de existir carga para ela.
+model FiscalDocument {
+  tenantId        String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id              String   @id @default(uuid())
+  accessKey       String   // 44 dígitos, com o dígito verificador conferido
+  number          Int
+  series          Int
+  issuedAt        DateTime?
+  operationNature String?
+  // 0 = frete por conta do emitente, 1 = do destinatário (campo modFrete da nota).
+  freightMode     Int?
+
+  issuerTaxId     String   // CNPJ ou CPF, só dígitos
+  issuerName      String
+  issuerCity      String?
+  issuerState     String?
+  issuerAddress   String?
+
+  recipientTaxId  String?
+  recipientName   String?
+  recipientCity   String?
+  recipientState  String?
+  recipientAddress String?
+
+  totalValue      Float    // vNF
+  grossWeight     Float?   // soma de transp/vol/pesoB
+  volumes         Int?     // soma de transp/vol/qVol
+
+  xml             String   @db.Text
+
+  collectionId    String?
+  importedById    String?  // quem importou; nulo se o usuário foi apagado
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  importedBy      User?       @relation(fields: [importedById], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, accessKey])
+  @@index([tenantId, createdAt])
+  @@index([collectionId])
 }
 
 // ---------------------------------------------------------------------------

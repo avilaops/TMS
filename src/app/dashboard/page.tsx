@@ -130,7 +130,7 @@ export default function DashboardPage() {
   const acoes = [
     { href: "/dashboard/coletas", rotulo: "Emitir Minuta", icone: Package, cor: "blue" as const },
     { href: "/dashboard/manifestos", rotulo: "Nova Viagem", icone: Truck, cor: "orange" as const },
-    { href: "/dashboard/fiscal/cte", rotulo: "Emitir CT-e", icone: FileText, cor: "purple" as const },
+    { href: "/dashboard/fiscal", rotulo: "Importar NF-e", icone: FileText, cor: "purple" as const },
     ...(finance ? [{ href: "/dashboard/financeiro", rotulo: "Novo Lançamento", icone: DollarSign, cor: "green" as const }] : []),
   ];
 

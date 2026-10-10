@@ -196,12 +196,12 @@ describe("tela inicial do painel", () => {
     expect(aviso.querySelector("a")!.getAttribute("href")).toBe("/dashboard/manifestos");
   });
 
-  it("ações rápidas: minuta, viagem e CT-e para todos; lançamento só para quem vê o financeiro", async () => {
+  it("ações rápidas: minuta, viagem e NF-e para todos; lançamento só para quem vê o financeiro", async () => {
     const acoes = (tela: HTMLElement) => [...tela.querySelectorAll("[data-acao]")].map((acao) => acao.getAttribute("data-acao"));
-    expect(acoes(await abrir())).toEqual(["Emitir Minuta", "Nova Viagem", "Emitir CT-e", "Novo Lançamento"]);
+    expect(acoes(await abrir())).toEqual(["Emitir Minuta", "Nova Viagem", "Importar NF-e", "Novo Lançamento"]);
     await desmontarTudo();
 
     estado.sessao = { data: { user: { role: "OPERATION" } } };
-    expect(acoes(await abrir({ body: { ...STATS, receita: undefined, receitaDoMes: undefined } }))).toEqual(["Emitir Minuta", "Nova Viagem", "Emitir CT-e"]);
+    expect(acoes(await abrir({ body: { ...STATS, receita: undefined, receitaDoMes: undefined } }))).toEqual(["Emitir Minuta", "Nova Viagem", "Importar NF-e"]);
   });
 });

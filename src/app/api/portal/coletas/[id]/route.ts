@@ -46,6 +46,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         },
         manifest: { select: { driver: { select: { user: { select: { name: true } } } } } },
+        // Notas fiscais ligadas à carga: só o que identifica a nota. O XML sai
+        // por /api/portal/coletas/[id]/notas/[notaId].
+        fiscalDocuments: {
+          select: { id: true, number: true, series: true, accessKey: true },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
         proof: {
           select: {
             status: true,

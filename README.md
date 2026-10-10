@@ -1,6 +1,6 @@
 # TMS
 
-Sistema de gestão de transportes para operação terrestre, de carga fracionada e dedicada: coletas, manifestos, motoristas, veículos, financeiro, fiscal/CT-e, app do motorista e portal do cliente.
+Sistema de gestão de transportes para operação terrestre, de carga fracionada e dedicada: coletas, manifestos, motoristas, veículos, financeiro, notas fiscais (leitura de XML de NF-e), app do motorista e portal do cliente.
 
 Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chamava `Mello`) e ainda roda a operação dela. Em 06/10/2026 o site institucional saiu daqui para [avilaops/mellotransportesriopreto.com.br](https://github.com/avilaops/mellotransportesriopreto.com.br); o que ficou é só o sistema.
 
@@ -12,7 +12,7 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 
 | Área | Rota | Quem acessa | O que faz |
 | --- | --- | --- | --- |
-| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), ocorrências (chamados de clientes e da equipe), financeiro, fiscal/CT-e, mensagens, usuários |
+| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e; CT-e só com registro manual, sem emissão), mensagens, usuários |
 | Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline, checklist do veículo da viagem e registro de ocorrência na entrega |
 | Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas, minutas e atendimento (chamados) da própria empresa |
 | API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
@@ -87,7 +87,7 @@ Cada transportadora é uma linha de `Tenant`, e toda tabela de negócio tem `ten
 - **Políticas de segurança por linha** ([prisma/sql/010-rls.sql](prisma/sql/010-rls.sql)). Consulta feita em nome de uma empresa roda numa transação que troca para o papel `tms_app` e grava a empresa em `app.tenant_id`. Para esse papel, só existem as linhas daquela empresa: um `findMany` sem filtro, um `UPDATE` sem `WHERE` ou um id de outra empresa na URL não alcançam dado alheio.
 - **`tenantId` preenchido pelo banco.** O valor padrão da coluna lê `app.tenant_id`. O código não informa a empresa ao gravar, e gravar fora de uma transação de empresa falha em vez de cair na empresa errada.
 - **Referência entre empresas é recusada** por gatilho (`tms_mesmo_tenant`): chave estrangeira não passa por política, e sem isso daria para apontar uma coleta para o cliente de outra empresa sabendo o id.
-- **Unicidade por empresa:** CNPJ do cliente, CPF do motorista, placa e e-mail do usuário são únicos dentro da empresa. Código de rastreio e chave de CT-e continuam únicos no sistema inteiro.
+- **Unicidade por empresa:** CNPJ do cliente, CPF do motorista, placa, e-mail do usuário e chave de NF-e importada são únicos dentro da empresa. Código de rastreio e chave de CT-e continuam únicos no sistema inteiro.
 
 No código ([src/lib/prisma.ts](src/lib/prisma.ts)):
 
@@ -250,6 +250,39 @@ As tabelas são criadas por [prisma/sql/016-deposito.sql](prisma/sql/016-deposit
 
 Ainda não existe: leitura pela câmera do celular (só leitor que digita, ou digitação), impressão direta em impressora térmica (ZPL), inventário cíclico, mais de uma unidade (um depósito por empresa), foto da avaria, vínculo do volume com a NF-e, conferência de embarque no manifesto, e histórico de movimentação entre posições (fica só a posição atual). Carga com mais de 999 volumes não é conferida nem etiquetada volume a volume. O volume continua com a posição gravada depois que a carga sai para entrega; ela só deixa de contar na ocupação da posição.
 
+## Documentos fiscais (NF-e por XML)
+
+Importação do XML da NF-e para guardar a nota e criar a carga com os dados dela. No menu em Operação, "Notas fiscais" (`/dashboard/fiscal`), para `ADMIN` e `OPERATION`. As regras ficam em [src/lib/nfe.ts](src/lib/nfe.ts).
+
+- **Leitor de XML** (`lerNfe`): função pura, sem biblioteca. Aceita a nota com o protocolo (`nfeProc`) ou sozinha (`NFe`), com ou sem prefixo de namespace, e tira a chave de acesso (do `Id` de `infNFe` ou de `protNFe/chNFe`), número e série, emissão, emitente e destinatário (CNPJ/CPF, razão social, município, UF, endereço), valor total (`vNF`), volumes e peso bruto (somando os blocos `transp/vol`), natureza da operação e modalidade do frete. O **dígito verificador** da chave (módulo 11) é conferido, e a chave precisa ser a daquele emitente, série e número.
+- **Recusas**, cada uma com a sua frase: arquivo que não é XML ou está malformado, XML que não é de NF-e (CT-e, NFC-e modelo 65, qualquer outro), chave inválida, nota sem número, emitente ou valor, e arquivo acima de **1 MB** (resposta 413). O XML é tratado só como texto: nada é executado, só as cinco entidades do XML e as referências numéricas são expandidas, e arquivo com `DOCTYPE` é recusado.
+- **Nota guardada** (`FiscalDocument`): os dados lidos, o XML original como chegou, quem importou e a carga (opcional). A chave é **única por empresa**: reimportar responde 409 com a nota que já existe e a carga a que ela está ligada.
+- **Importar** (`/dashboard/fiscal`, "Importar XML", um ou vários arquivos): cada arquivo vira uma linha com o que foi lido ou o motivo da recusa. A nota abre com a **carga sugerida**: cliente pagador = o cadastro ativo cujo CNPJ é o do emitente ou o do destinatário (se os dois são clientes, decide a modalidade do frete da nota: 0 emitente, 1 destinatário; sem cliente ou sem modalidade, o operador escolhe), remetente e destinatário, origem e destino como "Cidade - UF", volumes, peso, valor e chave da NF. O que a nota não traz vem como aviso para o operador preencher.
+- **Criar a carga:** confirmar cria a coleta pelo **mesmo caminho do painel de minutas** (`criarColetaConfirmada`, em [src/lib/coletas-db.ts](src/lib/coletas-db.ts): frete pela tabela do cliente, já confirmada, com código de rastreio e a primeira linha do histórico) e liga a nota a ela na mesma transação. A chave e o valor da NF da carga são os da nota, não os do formulário. Se já existe carga com a chave da nota, não cria outra: manda ligar.
+- **Ligar a uma carga que já existe:** pela tela da nota, com o código de rastreio. Se a carga já tem chave de NF-e, ela precisa ser a da nota. Se não tem e ainda pode ser editada (a regra do painel, `isEditable`), a chave da nota é gravada nela; carga que já embarcou recebe só o anexo.
+- **Consultar:** lista das notas (número, emitente, destinatário, valor, carga ligada, data), busca por chave, número, CNPJ/CPF ou razão social, e download do XML original.
+- **Portal do cliente:** em `/portal/coletas/[id]` o cliente baixa o XML das notas ligadas às cargas dele.
+
+| Rota | Quem | O que faz |
+| --- | --- | --- |
+| `GET /api/fiscal/notas?busca=` | equipe | Notas importadas, sem o XML |
+| `POST /api/fiscal/notas` | equipe | Importa um XML (`{ xml }`); devolve a nota, a carga sugerida e a carga que já tem a chave |
+| `GET /api/fiscal/notas/[id]` | equipe | A nota e, se ainda sem carga, a sugestão |
+| `GET /api/fiscal/notas/[id]/xml` | equipe | O XML original, como anexo |
+| `POST /api/fiscal/notas/[id]/carga` | equipe | Cria a carga sugerida e liga a nota a ela |
+| `POST /api/fiscal/notas/[id]/ligar` | equipe | Liga a nota a uma carga pelo `trackingCode` |
+| `GET /api/fiscal/cte` | equipe | Cargas em rota ou entregues, com os dados que um CT-e precisa |
+| `POST /api/fiscal/cte` | equipe | Registra à mão `cteNumber` e `cteKey` de um CT-e emitido em outro sistema; os dois vazios desfazem |
+| `GET /api/portal/coletas/[id]/notas/[notaId]` | cliente | O XML de uma nota de uma carga dele |
+
+A tabela é criada por [prisma/sql/017-documentos-fiscais.sql](prisma/sql/017-documentos-fiscais.sql).
+
+### CT-e: este sistema não emite
+
+**Não há emissão de CT-e.** Emitir exige o certificado digital A1 da transportadora, credenciamento na SEFAZ e homologação, e nada disso existe aqui. A tela `/dashboard/fiscal/cte` diz isso no topo, lista as cargas em rota ou entregues com os dados que um CT-e precisa (todas como "não emitido", com o que falta: chave da NF-e, valor da mercadoria, frete) e deixa **registrar à mão** o número e a chave de um CT-e emitido em outro sistema, nos campos `cteNumber`, `cteKey` e `cteStatus` da carga. A chave é conferida (44 dígitos, dígito verificador, modelo 57 e o mesmo número informado), mas nada é enviado nem consultado na SEFAZ. As telas e as rotas anteriores, que simulavam a emissão com chave sorteada, foram retiradas.
+
+Ainda não existe: emissão de CT-e e de MDF-e, consulta à SEFAZ (situação da nota, download pela chave), manifestação do destinatário, DANFE em PDF, leitura de XML de CT-e ou de NFC-e, importação por e-mail ou em arquivo compactado, mais de uma NF-e criando uma carga só, desfazer a ligação entre nota e carga e apagar nota importada. Anexar a nota a uma carga não muda o valor da NF nem o frete dela.
+
 ## Empresa
 
 Em `/dashboard/empresa`, só para o administrador: o **nome** e o **símbolo** que aparecem no topo do painel, do portal do cliente e do app do motorista (`GET` e `PATCH /api/empresa`). O símbolo é uma imagem PNG, JPEG ou WebP, reduzida no navegador para 192 pixels antes de enviar e guardada no cadastro da empresa (`Tenant.logo`); sem símbolo, aparece o caminhão. As regras ficam em [src/lib/empresa.ts](src/lib/empresa.ts).
@@ -306,7 +339,7 @@ Ainda não há escolha de quais tipos receber, nem repetição do aviso de títu
 
 ## Portal do cliente
 
-Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu, consulta faturas e abre atendimento (`/portal/atendimento`, na seção Atendimento e ocorrências). Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
+Quem tem perfil `CLIENT` entra em `/portal` e vê só os dados da empresa a que o cadastro dele está vinculado: pede coleta, acompanha as que pediu, consulta faturas e abre atendimento (`/portal/atendimento`, na seção Atendimento e ocorrências). Em `/portal/coletas/[id]` ficam o andamento com a hora de cada etapa, o link público de rastreio pronto para mandar a quem vai receber, o XML das notas fiscais ligadas à carga, para baixar, e o comprovante de entrega (recebedor, foto e assinatura), que dá para imprimir ou salvar em PDF. O comprovante só aparece depois de **aprovado** na conferência da transportadora; em conferência ou recusado, o cliente só vê que ainda não há comprovante liberado.
 
 ## Estrutura
 

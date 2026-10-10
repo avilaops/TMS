@@ -22,6 +22,7 @@ type Detalhe = {
   client: { cnpj: string };
   statusHistory: { toStatus: string; createdAt: string }[];
   manifest: { driver: { user: { name: string } } } | null;
+  fiscalDocuments: { id: string; number: number; series: number; accessKey: string }[];
   proof: {
     receiverName: string;
     receiverDoc: string;
@@ -140,6 +141,24 @@ export default function PortalColetaPage({ params }: { params: Promise<{ id: str
             }
           />
         </dl>
+
+        {coleta.fiscalDocuments.length > 0 && (
+          <div className="mt-4 text-sm print:hidden" data-notas>
+            <p className="text-xs text-gray-500">Notas fiscais desta carga</p>
+            <ul className="mt-1 space-y-1">
+              {coleta.fiscalDocuments.map((nota) => (
+                <li key={nota.id} className="flex flex-wrap items-center gap-x-3">
+                  <span className="font-medium text-gray-900">
+                    NF-e {nota.number} / {nota.series}
+                  </span>
+                  <a href={`/api/portal/coletas/${coleta.id}/notas/${nota.id}`} download className="text-orange-600 hover:underline">
+                    Baixar XML
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {coleta.manifest && !semEntrega && coleta.status !== "DELIVERED" && (
           <p className="mt-4 text-sm text-gray-600 flex items-center gap-2">

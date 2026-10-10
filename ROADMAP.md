@@ -163,7 +163,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Atendimento e ocorrências.
 
 ### Fase 4: Fiscal e Automações
-- [ ] Leitura de XML e documentos fiscais.
-- [ ] Emissão fiscal (CT-e).
+- [x] Leitura de XML e documentos fiscais.
+- [ ] Emissão fiscal (CT-e). Falta: certificado digital A1 da transportadora, credenciamento na SEFAZ e homologação. Hoje só há o registro manual do número e da chave de um CT-e emitido em outro sistema.
 - [ ] Notificações avançadas (Push, WhatsApp).
 - [ ] Integrações bancárias automatizadas e roteirização avançada com geolocalização.

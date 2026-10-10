@@ -50,7 +50,11 @@ suite("permissões das rotas internas", () => {
   let empresa: typeof import("../src/app/api/empresa/route");
   let empresaWebhook: typeof import("../src/app/api/empresa/webhook/route");
   let empresaWebhookTeste: typeof import("../src/app/api/empresa/webhook/teste/route");
-  let fiscal: typeof import("../src/app/api/fiscal/route");
+  let fiscalNotas: typeof import("../src/app/api/fiscal/notas/route");
+  let fiscalNota: typeof import("../src/app/api/fiscal/notas/[id]/route");
+  let fiscalNotaXml: typeof import("../src/app/api/fiscal/notas/[id]/xml/route");
+  let fiscalNotaCarga: typeof import("../src/app/api/fiscal/notas/[id]/carga/route");
+  let fiscalNotaLigar: typeof import("../src/app/api/fiscal/notas/[id]/ligar/route");
   let fiscalCte: typeof import("../src/app/api/fiscal/cte/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
   let manifestoPorId: typeof import("../src/app/api/manifestos/[id]/route");
@@ -146,7 +150,11 @@ suite("permissões das rotas internas", () => {
     empresa = await import("../src/app/api/empresa/route");
     empresaWebhook = await import("../src/app/api/empresa/webhook/route");
     empresaWebhookTeste = await import("../src/app/api/empresa/webhook/teste/route");
-    fiscal = await import("../src/app/api/fiscal/route");
+    fiscalNotas = await import("../src/app/api/fiscal/notas/route");
+    fiscalNota = await import("../src/app/api/fiscal/notas/[id]/route");
+    fiscalNotaXml = await import("../src/app/api/fiscal/notas/[id]/xml/route");
+    fiscalNotaCarga = await import("../src/app/api/fiscal/notas/[id]/carga/route");
+    fiscalNotaLigar = await import("../src/app/api/fiscal/notas/[id]/ligar/route");
     fiscalCte = await import("../src/app/api/fiscal/cte/route");
     manifestos = await import("../src/app/api/manifestos/route");
     manifestoPorId = await import("../src/app/api/manifestos/[id]/route");
@@ -212,7 +220,13 @@ suite("permissões das rotas internas", () => {
       ["PATCH /api/coletas/[id]", () => coletaPorId.PATCH(req("PATCH", { volumes: 1 }), ctx(semId))],
       ["GET /api/coletas/[id]/historico", () => coletaHistorico.GET(req(), ctx(semId))],
       ["GET /api/dashboard", () => dashboard.GET()],
-      ["POST /api/fiscal", () => fiscal.POST(req("POST", {}))],
+      ["GET /api/fiscal/notas", () => fiscalNotas.GET(req())],
+      ["POST /api/fiscal/notas", () => fiscalNotas.POST(req("POST", {}))],
+      ["GET /api/fiscal/notas/[id]", () => fiscalNota.GET(req(), ctx(semId))],
+      ["GET /api/fiscal/notas/[id]/xml", () => fiscalNotaXml.GET(req(), ctx(semId))],
+      ["POST /api/fiscal/notas/[id]/carga", () => fiscalNotaCarga.POST(req("POST", {}), ctx(semId))],
+      ["POST /api/fiscal/notas/[id]/ligar", () => fiscalNotaLigar.POST(req("POST", {}), ctx(semId))],
+      ["GET /api/fiscal/cte", () => fiscalCte.GET()],
       ["POST /api/fiscal/cte", () => fiscalCte.POST(req("POST", {}))],
       ["GET /api/manifestos", () => manifestos.GET()],
       ["POST /api/manifestos", () => manifestos.POST(req("POST", {}))],
@@ -355,7 +369,7 @@ suite("permissões das rotas internas", () => {
     it("passa da permissão nas rotas de escrita (para na validação, 400)", async () => {
       entrarComo("OPERATION");
       expect((await clientes.POST(req("POST", {}))).status).toBe(400);
-      expect((await fiscal.POST(req("POST", {}))).status).toBe(400);
+      expect((await fiscalNotas.POST(req("POST", {}))).status).toBe(400);
       expect((await fiscalCte.POST(req("POST", {}))).status).toBe(400);
     });
 
