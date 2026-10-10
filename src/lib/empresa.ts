@@ -36,5 +36,21 @@ export const identidadeSchema = z
   .partial()
   .refine((dados) => dados.name !== undefined || dados.logo !== undefined, "Nada para alterar.");
 
+const PERCENTUAL_MESSAGE = "O percentual precisa ser um número entre 0 e 100.";
+
+// O formulário manda número como texto ("2", "1,5").
+const percentual = z.preprocess((valor) => {
+  if (typeof valor !== "string") return valor;
+  const texto = valor.trim();
+  return /^(\d+([.,]\d*)?|[.,]\d+)$/.test(texto) ? Number(texto.replace(",", ".")) : NaN;
+}, z.number(PERCENTUAL_MESSAGE).min(0, PERCENTUAL_MESSAGE).max(100, PERCENTUAL_MESSAGE));
+
+/**
+ * Parâmetros de cobrança da empresa: a multa (% do valor) e os juros (% ao
+ * mês) que a baixa de um título vencido sugere. A conta está em
+ * `encargosSugeridos` (src/lib/cobranca.ts).
+ */
+export const parametrosDeCobrancaSchema = z.object({ multaPct: percentual, jurosPct: percentual }, INVALID_BODY);
+
 /** Evento que a tela dispara depois de salvar, para o cabeçalho ler de novo. */
 export const IDENTIDADE_ALTERADA = "tms:identidade-alterada";

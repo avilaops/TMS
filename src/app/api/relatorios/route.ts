@@ -56,7 +56,7 @@ export async function GET(req?: Request) {
     const cotacoes = await prisma.quoteLead.findMany({ where: { createdAt: noPeriodo }, select: { status: true } });
     const pagos = await prisma.financialTransaction.findMany({
       where: { status: 'PAID', paidAt: noPeriodo },
-      select: { type: true, amount: true, category: true },
+      select: { type: true, amount: true, category: true, paidAmount: true, costCenter: true },
     });
     const aReceber = await prisma.financialTransaction.findMany({
       where: { type: 'INCOME', status: 'PENDING' },

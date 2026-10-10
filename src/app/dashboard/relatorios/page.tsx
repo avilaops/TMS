@@ -215,7 +215,7 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
         />
       </Secao>
 
-      <Secao ativa={secao} titulo="Financeiro" descricao="Recebido e pago no período, pela data do pagamento. A inadimplência é a posição de hoje.">
+      <Secao ativa={secao} titulo="Financeiro" descricao="Recebido e pago no período, pela data do pagamento e pelo valor que entrou (com juros, multa e desconto). A inadimplência é a posição de hoje.">
         <Linhas
           itens={[
             ["Recebido", formatCurrency(financeiro.recebido)],
@@ -242,6 +242,14 @@ function Conteudo({ relatorio }: { relatorio: Resposta }) {
           colunas={["Despesa por categoria", "Total"]}
           linhas={financeiro.despesasPorCategoria.map((d) => ({ chave: d.categoria, celulas: [d.categoria, formatCurrency(d.total)] }))}
         />
+        {/* Só as despesas pagas no período; sem nenhuma, a tabela de categorias acima já disse isso. */}
+        {financeiro.despesasPorCentroDeCusto.length > 0 && (
+          <Tabela
+            vazio=""
+            colunas={["Despesa por centro de custo", "Total"]}
+            linhas={financeiro.despesasPorCentroDeCusto.map((d) => ({ chave: `centro:${d.centro}`, celulas: [d.centro, formatCurrency(d.total)] }))}
+          />
+        )}
       </Secao>
     </>
   );

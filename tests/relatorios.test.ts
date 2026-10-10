@@ -108,7 +108,16 @@ describe("contas do relatório", () => {
         motoristas: [],
       },
       comercial: { cotacoes: 0, porStatus: {}, conversao: null, frete: 0, clientes: [] },
-      financeiro: { recebido: 0, pago: 0, resultado: 0, despesasPorCategoria: [], aReceberEmAberto: 0, vencido: 0, inadimplencia: null },
+      financeiro: {
+        recebido: 0,
+        pago: 0,
+        resultado: 0,
+        despesasPorCategoria: [],
+        despesasPorCentroDeCusto: [],
+        aReceberEmAberto: 0,
+        vencido: 0,
+        inadimplencia: null,
+      },
     });
   });
 

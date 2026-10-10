@@ -13,10 +13,14 @@ import {
   type MesDoFluxo,
   type Situacao,
 } from "@/lib/financeiro";
+import { Baixa, useParametrosDeCobranca, type EncargosDigitados } from "@/components/financeiro/Baixa";
 import { deniedReason, loadTransactions, type DeniedReason } from "./carregar";
 
 /**
  * Financeiro: contas a receber, contas a pagar e fluxo de caixa.
+ *
+ * Receber um título abre a baixa (juros, multa e desconto, com a sugestão dos
+ * parâmetros de cobrança quando ele está vencido); pagar uma despesa é direto.
  *
  * Lançamento que veio de fatura aparece aqui, mas quem o paga, reabre ou
  * cancela é a tela de Faturamento: ele mostra o número da fatura e não tem ações.
@@ -32,8 +36,11 @@ type Lancamento = {
   paidAt: string | null;
   paymentMethod: keyof typeof PAYMENT_METHOD_LABEL | null;
   category: string | null;
+  costCenter: string | null;
   counterparty: string | null;
   notes: string | null;
+  /** O que entrou de fato, quando a baixa teve juros, multa ou desconto. */
+  paidAmount: number | null;
   clientId: string | null;
   client: { id: string; companyName: string; tradeName: string | null } | null;
   invoice: { id: string; number: number } | null;
@@ -49,6 +56,7 @@ const FORM_VAZIO = {
   clientId: "",
   counterparty: "",
   category: "",
+  costCenter: "",
   notes: "",
   status: "PENDING",
   paymentMethod: "",
@@ -79,6 +87,10 @@ export default function FinanceiroPage() {
   const [denied, setDenied] = useState<DeniedReason | null>(null);
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
   const [filtro, setFiltro] = useState<"" | Situacao>("");
+  const [centro, setCentro] = useState("");
+  // Título a receber cuja baixa está aberta (juros, multa e desconto).
+  const [baixa, setBaixa] = useState<Lancamento | null>(null);
+  const parametros = useParametrosDeCobranca();
 
   const [formAberto, setFormAberto] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -125,6 +137,7 @@ export default function FinanceiroPage() {
 
   const abrirNovo = () => {
     setEditandoId(null);
+    setBaixa(null);
     setForm({ ...FORM_VAZIO, type: aba === "INCOME" ? "INCOME" : "EXPENSE" });
     setFormAberto(true);
     setMensagem(null);
@@ -132,6 +145,7 @@ export default function FinanceiroPage() {
 
   const abrirEdicao = (l: Lancamento) => {
     setEditandoId(l.id);
+    setBaixa(null);
     setForm({
       type: l.type,
       amount: String(l.amount).replace(".", ","),
@@ -140,6 +154,7 @@ export default function FinanceiroPage() {
       clientId: l.clientId ?? "",
       counterparty: l.counterparty ?? "",
       category: l.category ?? "",
+      costCenter: l.costCenter ?? "",
       notes: l.notes ?? "",
       status: l.status,
       paymentMethod: l.paymentMethod ?? "",
@@ -171,20 +186,31 @@ export default function FinanceiroPage() {
     }
   };
 
-  const agir = async (l: Lancamento, action: "pagar" | "reabrir") => {
+  /** `encargos` só vem da baixa de um título a receber (juros, multa e desconto). */
+  const agir = async (l: Lancamento, action: "pagar" | "reabrir", encargos?: EncargosDigitados) => {
     setOcupado(true);
     setMensagem(null);
     try {
       const res = await fetch(`/api/financeiro/${l.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...encargos }),
       });
       const pago = l.type === "INCOME" ? "Recebimento registrado." : "Pagamento registrado.";
-      await conferir(res, action === "pagar" ? pago : "Lançamento reaberto.", "Erro ao alterar o lançamento.");
+      if (await conferir(res, action === "pagar" ? pago : "Lançamento reaberto.", "Erro ao alterar o lançamento.")) {
+        setBaixa(null);
+      }
     } finally {
       setOcupado(false);
     }
+  };
+
+  // A receber passa pela baixa (juros, multa, desconto); a pagar é baixado direto, pelo valor.
+  const pagar = (l: Lancamento) => {
+    if (l.type !== "INCOME") return void agir(l, "pagar");
+    setFormAberto(false);
+    setMensagem(null);
+    setBaixa(l);
   };
 
   const excluir = async (l: Lancamento) => {
@@ -241,7 +267,12 @@ export default function FinanceiroPage() {
   }
 
   const resumo = resumoFinanceiro(lancamentos);
-  const daAba = lancamentos.filter((l) => l.type === aba && (!filtro || situacaoDoLancamento(l) === filtro));
+  const centros = [...new Set(lancamentos.map((l) => l.costCenter).filter((c): c is string => Boolean(c)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const daAba = lancamentos.filter(
+    (l) => l.type === aba && (!filtro || situacaoDoLancamento(l) === filtro) && (!centro || l.costCenter === centro),
+  );
+  // Com o formulário ou a baixa abertos, o celular fica só com eles: é o que cabe numa tela.
+  const painelAberto = formAberto || baixa !== null;
   const pagoOuRecebido = aba === "INCOME" ? "Marcar recebido" : "Marcar pago";
 
   const campo = (rotulo: string, chave: keyof typeof FORM_VAZIO, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
@@ -253,8 +284,7 @@ export default function FinanceiroPage() {
 
   return (
     <div className="space-y-3 md:space-y-6">
-      {/* Com o formulário aberto, o celular fica só com ele: é o que cabe numa tela. */}
-      <div className={`${formAberto ? "hidden md:flex" : "flex"} flex-wrap justify-between items-center gap-2 md:gap-4`}>
+      <div className={`${painelAberto ? "hidden md:flex" : "flex"} flex-wrap justify-between items-center gap-2 md:gap-4`}>
         <div>
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Financeiro</h1>
           <p className="hidden md:block text-gray-500 text-sm mt-1">Contas a receber, contas a pagar e fluxo de caixa</p>
@@ -274,13 +304,24 @@ export default function FinanceiroPage() {
         </p>
       )}
 
-      <div className={`${formAberto ? "hidden md:grid" : "grid"} grid-cols-2 gap-2 md:gap-4 lg:grid-cols-5`}>
+      <div className={`${painelAberto ? "hidden md:grid" : "grid"} grid-cols-2 gap-2 md:gap-4 lg:grid-cols-5`}>
         <Cartao rotulo="A receber em aberto" valor={resumo.aReceber.aberto} icone={<ArrowUpRight className="w-5 h-5 text-green-600" />} />
         <Cartao rotulo="A receber vencido" valor={resumo.aReceber.vencido} alerta={resumo.aReceber.vencido > 0} icone={<AlertTriangle className="w-5 h-5 text-red-600" />} />
         <Cartao rotulo="A pagar em aberto" valor={resumo.aPagar.aberto} icone={<ArrowDownRight className="w-5 h-5 text-amber-600" />} />
         <Cartao rotulo="A pagar vencido" valor={resumo.aPagar.vencido} alerta={resumo.aPagar.vencido > 0} icone={<AlertTriangle className="w-5 h-5 text-red-600" />} />
         <Cartao rotulo="Saldo previsto" valor={resumo.saldoPrevisto} alerta={resumo.saldoPrevisto < 0} icone={<Wallet className="w-5 h-5 text-blue-600" />} />
       </div>
+
+      {baixa && (
+        <Baixa
+          key={baixa.id}
+          titulo={{ descricao: baixa.description, valor: baixa.amount, vencimento: baixa.dueDate }}
+          parametros={parametros}
+          ocupado={ocupado}
+          onConfirmar={(encargos) => void agir(baixa, "pagar", encargos)}
+          onCancelar={() => setBaixa(null)}
+        />
+      )}
 
       {formAberto && (
         <form onSubmit={salvar} className={`${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
@@ -297,6 +338,7 @@ export default function FinanceiroPage() {
             {campo("Valor (R$)", "amount", { required: true, inputMode: "decimal" })}
             {campo("Vencimento", "dueDate", { type: "date" })}
             {campo("Categoria", "category", { placeholder: "Combustível, manutenção, pedágio…", list: "categorias" })}
+            {campo("Centro de custo", "costCenter", { placeholder: "Filial, rota, veículo…", list: "centros" })}
             <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
               <span className={LABEL}>Cliente</span>
               <select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })} className={INPUT}>
@@ -335,6 +377,12 @@ export default function FinanceiroPage() {
           <datalist id="categorias">
             {[...new Set(lancamentos.map((l) => l.category).filter(Boolean))].map((c) => (
               <option key={c} value={c as string} />
+            ))}
+          </datalist>
+          {/* Sugestões a partir dos centros de custo já usados. */}
+          <datalist id="centros">
+            {centros.map((c) => (
+              <option key={c} value={c} />
             ))}
           </datalist>
           <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
@@ -381,15 +429,31 @@ export default function FinanceiroPage() {
             ))}
           </div>
           {aba !== "FLUXO" && (
-            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 py-2">
-              Situação
-              <select value={filtro} onChange={(e) => setFiltro(e.target.value as "" | Situacao)} className={`${INPUT} w-36 py-2`}>
-                <option value="">Todas</option>
-                <option value="aberto">Em aberto</option>
-                <option value="vencido">Vencido</option>
-                <option value="pago">Pago</option>
-              </select>
-            </label>
+            <div className="flex flex-wrap items-center gap-x-4">
+              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 py-2">
+                Situação
+                <select value={filtro} onChange={(e) => setFiltro(e.target.value as "" | Situacao)} className={`${INPUT} w-36 py-2`}>
+                  <option value="">Todas</option>
+                  <option value="aberto">Em aberto</option>
+                  <option value="vencido">Vencido</option>
+                  <option value="pago">Pago</option>
+                </select>
+              </label>
+              {/* Só aparece quando algum lançamento tem centro de custo. */}
+              {centros.length > 0 && (
+                <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 py-2">
+                  Centro
+                  <select value={centro} onChange={(e) => setCentro(e.target.value)} data-filtro="centro" className={`${INPUT} w-36 py-2`}>
+                    <option value="">Todos</option>
+                    {centros.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
           )}
         </div>
 
@@ -461,9 +525,19 @@ export default function FinanceiroPage() {
                       <td className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300">
                         {l.client ? l.client.tradeName || l.client.companyName : l.counterparty || "-"}
                       </td>
-                      <td data-rotulo="Categoria" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{l.category || "-"}</td>
+                      <td data-rotulo="Categoria" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
+                        {l.category || "-"}
+                        {l.costCenter && <span className="block text-xs text-gray-500">{l.costCenter}</span>}
+                      </td>
                       <td data-rotulo="Vencimento" className="min-w-0 md:table-cell md:px-4 md:py-3 text-gray-600 dark:text-gray-300 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCalendarDate(l.dueDate)}</td>
-                      <td data-rotulo="Valor" className="min-w-0 md:table-cell md:px-4 md:py-3 md:text-right text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">{formatCurrency(l.amount)}</td>
+                      <td data-rotulo="Valor" className="min-w-0 md:table-cell md:px-4 md:py-3 md:text-right text-gray-900 dark:text-white before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
+                        {formatCurrency(l.amount)}
+                        {l.paidAmount !== null && l.paidAmount !== l.amount && (
+                          <span className="block text-xs text-gray-500" data-recebido>
+                            recebido {formatCurrency(l.paidAmount)}
+                          </span>
+                        )}
+                      </td>
                       <td data-rotulo="Situação" className="min-w-0 md:table-cell md:px-4 md:py-3 before:content-[attr(data-rotulo)] before:block before:text-[11px] before:leading-tight before:text-gray-500 md:before:content-none">
                         <span className={`text-xs px-2.5 py-1 rounded-full ${SITUACAO[situacao].classe}`}>{SITUACAO[situacao].rotulo}</span>
                         {l.paidAt && (
@@ -488,7 +562,7 @@ export default function FinanceiroPage() {
                                 Reabrir
                               </button>
                             ) : (
-                              <button disabled={ocupado} onClick={() => void agir(l, "pagar")} className="text-blue-600 hover:underline">
+                              <button disabled={ocupado} onClick={() => pagar(l)} className="text-blue-600 hover:underline">
                                 {pagoOuRecebido}
                               </button>
                             )}

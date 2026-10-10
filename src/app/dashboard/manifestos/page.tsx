@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Plus, Loader2, Route, Truck, Package, MapPin, User, ArrowRight, AlertTriangle, LogIn } from "lucide-react";
 import { COLLECTION_STATUS, MANIFEST_STATUS, statusBadge } from "@/lib/format";
 import { canEmbark, isManifestEditable, manifestLoadsLabel } from "@/lib/manifestos";
+import { diaNoBrasil } from "@/lib/financeiro";
+import { rotuloDaAusencia } from "@/lib/equipe";
 import { loadManifestos, type Manifesto, type ManifestosState, type Minuta } from "./carregar";
 
 // A mensagem que o servidor devolveu; `fallback` quando a resposta não é JSON.
@@ -48,6 +50,27 @@ export default function ManifestosPage() {
       active = false;
     };
   }, [show]);
+
+  // Quem está ausente hoje (férias, folga, atestado...), pelo id do motorista. É só
+  // para avisar na montagem: se a leitura falhar, a viagem é montada sem o aviso.
+  const [ausentesHoje, setAusentesHoje] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/equipe/ausencias?dia=${diaNoBrasil(new Date())}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((ausencias: { driverId: string | null; type: string }[]) => {
+        if (!active) return;
+        const porMotorista: Record<string, string> = {};
+        for (const ausencia of ausencias) if (ausencia.driverId) porMotorista[ausencia.driverId] = rotuloDaAusencia(ausencia.type);
+        setAusentesHoje(porMotorista);
+      })
+      .catch(() => {
+        // Sem a lista de ausências não há aviso.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const isLoading = state.status === "loading";
   const ready = state.status === "ready";
@@ -400,9 +423,16 @@ export default function ManifestosPage() {
                       >
                         <option value="">Selecione um motorista...</option>
                         {motoristas.map(m => (
-                          <option key={m.id} value={m.id}>{m.user?.name} - CPF: {m.cpf}</option>
+                          <option key={m.id} value={m.id}>{m.user?.name} - CPF: {m.cpf}{ausentesHoje[m.id] ? " (ausente hoje)" : ""}</option>
                         ))}
                       </select>
+                      {/* Aviso, não trava: quem monta a viagem sabe se a ausência ainda vale. */}
+                      {ausentesHoje[formData.driverId] && (
+                        <p role="alert" data-aviso="ausencia" className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400">
+                          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                          <span>Este motorista está ausente hoje ({ausentesHoje[formData.driverId].toLowerCase()}). Confira antes de liberar.</span>
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-0.5 md:space-y-1.5 min-w-0">

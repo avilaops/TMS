@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Receipt } from "lucide-react";
 import { formatCalendarDate, formatCurrency, formatDate, formatWeight } from "@/lib/format";
+import { Baixa, useParametrosDeCobranca, type EncargosDigitados } from "@/components/financeiro/Baixa";
 
 /**
  * Faturamento: escolhe um cliente com cargas entregues, marca as que entram e
  * emite a fatura. Abaixo, as faturas emitidas, com pagar, reabrir e cancelar.
+ * Pagar abre a baixa (juros, multa e desconto), a mesma do Financeiro.
  * Só o administrador chega aqui (a API recusa os demais).
  */
 
@@ -64,6 +66,9 @@ export default function Faturamento() {
   const [observacao, setObservacao] = useState("");
   const [fretes, setFretes] = useState<Record<string, string>>({});
   const [ocupado, setOcupado] = useState(false);
+  // Fatura cuja baixa está aberta (juros, multa e desconto).
+  const [baixa, setBaixa] = useState<Fatura | null>(null);
+  const parametros = useParametrosDeCobranca();
 
   const carregar = async () => {
     try {
@@ -155,7 +160,8 @@ export default function Faturamento() {
     }
   };
 
-  const agir = async (fatura: Fatura, action: "pagar" | "reabrir" | "cancelar") => {
+  /** `encargos` só vem da baixa (juros, multa e desconto): vão para o lançamento da fatura. */
+  const agir = async (fatura: Fatura, action: "pagar" | "reabrir" | "cancelar", encargos?: EncargosDigitados) => {
     if (
       action === "cancelar" &&
       !window.confirm(`Cancelar a fatura nº ${fatura.number}? As cargas voltam a ficar disponíveis para faturar e o número não é reaproveitado.`)
@@ -168,9 +174,10 @@ export default function Faturamento() {
       const res = await fetch(`/api/faturas/${fatura.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...encargos }),
       });
       if (!res.ok) setMensagem({ ok: false, texto: await erroDe(res, "Erro ao alterar a fatura.") });
+      else setBaixa(null);
       await carregar();
       if (clienteId) await abrirCliente(clienteId);
     } finally {
@@ -208,7 +215,19 @@ export default function Faturamento() {
         </p>
       )}
 
-      <div className={`${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
+      {baixa && (
+        <Baixa
+          key={baixa.id}
+          titulo={{ descricao: `Fatura nº ${baixa.number}`, valor: baixa.total, vencimento: baixa.dueDate }}
+          parametros={parametros}
+          ocupado={ocupado}
+          onConfirmar={(encargos) => void agir(baixa, "pagar", encargos)}
+          onCancelar={() => setBaixa(null)}
+        />
+      )}
+
+      {/* Com a baixa aberta, o celular fica só com ela: é o que cabe numa tela. */}
+      <div className={`${baixa ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
         <h2 className="font-semibold text-gray-900 dark:text-white">Nova fatura</h2>
 
         {resumo.length === 0 && !clienteId ? (
@@ -372,7 +391,15 @@ export default function Faturamento() {
                     <td className="col-span-2 min-w-0 md:table-cell md:px-6 md:py-4 md:text-right whitespace-nowrap space-x-4">
                       {f.status === "OPEN" && (
                         <>
-                          <button disabled={ocupado} onClick={() => void agir(f, "pagar")} className="text-blue-600 hover:underline">
+                          <button
+                            disabled={ocupado}
+                            onClick={() => {
+                              setMensagem(null);
+                              setBaixa(f);
+                              window.scrollTo({ top: 0 });
+                            }}
+                            className="text-blue-600 hover:underline"
+                          >
                             Marcar paga
                           </button>
                           <button disabled={ocupado} onClick={() => void agir(f, "cancelar")} className="text-red-600 hover:underline">

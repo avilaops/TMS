@@ -22,6 +22,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         type: true,
         status: true,
         amount: true,
+        paidAmount: true,
+        interest: true,
+        fine: true,
+        discount: true,
         description: true,
         paidAt: true,
         paymentMethod: true,
@@ -40,7 +44,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({
       id: lancamento.id,
-      amount: lancamento.amount,
+      // O recibo é do que entrou: com juros, multa e desconto, quando a baixa teve.
+      amount: lancamento.paidAmount ?? lancamento.amount,
+      // Só vem quando o recebido difere do valor do título: é o que a tela detalha.
+      encargos:
+        lancamento.paidAmount === null
+          ? null
+          : { original: lancamento.amount, juros: lancamento.interest ?? 0, multa: lancamento.fine ?? 0, desconto: lancamento.discount ?? 0 },
       description: lancamento.description,
       paidAt: lancamento.paidAt,
       paymentMethod: lancamento.paymentMethod,

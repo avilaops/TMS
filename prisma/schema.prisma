@@ -32,6 +32,10 @@ model Tenant {
   // Símbolo da empresa: data URL de imagem pequena. Nulo = símbolo padrão. Ver src/lib/empresa.ts.
   logo      String?  @db.Text
   active    Boolean  @default(true)
+  // Encargos sugeridos na baixa de um título vencido: multa (% do valor, uma
+  // vez) e juros (% ao mês, proporcional aos dias de atraso). Ver src/lib/cobranca.ts.
+  lateFinePct     Float @default(2)
+  lateInterestPct Float @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -65,6 +69,9 @@ model Tenant {
   warehouseReceipts  WarehouseReceipt[]
   fiscalDocuments    FiscalDocument[]
   auditLogs          AuditLog[]
+  helpers            Helper[]
+  absences           Absence[]
+  crewAdvances       CrewAdvance[]
 }
 
 model User {
@@ -241,6 +248,9 @@ model Driver {
   category  String
   phone     String?
   active    Boolean  @default(true)
+  // Percentual do frete entregue que vira comissão. Nulo = sem comissão. Só o
+  // administrador lê e altera (src/lib/equipe.ts).
+  commissionPct Float?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -250,6 +260,8 @@ model Driver {
   manifests Manifest[]
   collections Collection[]
   fuelings  Fueling[]
+  absences  Absence[]
+  advances  CrewAdvance[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -390,6 +402,7 @@ model Manifest {
   driver      Driver    @relation(fields: [driverId], references: [id])
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
   collections Collection[]
+  advances    CrewAdvance[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -415,6 +428,15 @@ model FinancialTransaction {
   category      String?  // livre: combustível, manutenção, pedágio, folha…
   counterparty  String?  // fornecedor ou pagador que não é cliente cadastrado
   notes         String?
+  costCenter    String?  // livre: filial, rota, veículo… Agrupa as despesas no relatório.
+
+  // Baixa de título a receber com encargos. `amount` continua sendo o valor
+  // original; `paidAmount` é o que entrou de fato (original + juros + multa −
+  // desconto). Os quatro ficam nulos em aberto e na baixa pelo valor cheio.
+  interest      Float?
+  fine          Float?
+  discount      Float?
+  paidAmount    Float?
 
   // Lançamento gerado por uma fatura: nasce, é pago e some junto com ela.
   invoiceId   String?  @unique
@@ -545,6 +567,90 @@ model VehicleChecklist {
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
   @@index([vehicleId, date])
+}
+
+// ---------------------------------------------------------------------------
+// Equipe (recursos humanos operacional)
+//
+// Quem vai para a estrada: o motorista (Driver, que já existia) e o ajudante
+// (Helper, sem login). Ausência e adiantamento são de um ou de outro: uma das
+// duas colunas (`driverId`, `helperId`) vem preenchida, nunca as duas. Quem
+// está ausente num dia, a diferença do acerto e a comissão não são gravados:
+// saem das contas de src/lib/equipe.ts.
+// ---------------------------------------------------------------------------
+model Helper {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  name      String
+  cpf       String   // só dígitos
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  absences  Absence[]
+  advances  CrewAdvance[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, cpf])
+}
+
+model Absence {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  driverId  String?
+  helperId  String?
+  type      String   // VACATION, DAY_OFF, SICK_NOTE, MISSED, OTHER
+  // Primeiro e último dia, os dois inclusive: dias do calendário, gravados à meia-noite UTC.
+  startDate DateTime
+  endDate   DateTime
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  driver    Driver?  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  helper    Helper?  @relation(fields: [helperId], references: [id], onDelete: Cascade)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([tenantId, startDate, endDate])
+  @@index([driverId])
+  @@index([helperId])
+}
+
+// Dinheiro entregue a quem vai viajar, e o acerto na volta. Registrar lança a
+// despesa no Financeiro (categoria "Adiantamento"), como a manutenção faz.
+model CrewAdvance {
+  tenantId    String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String    @id @default(uuid())
+  driverId    String?
+  helperId    String?
+  date        DateTime  // dia do calendário, gravado à meia-noite UTC
+  amount      Float
+  reason      String    // TRIP, VOUCHER, OTHER
+  manifestId  String?   // a viagem do adiantamento, quando é de uma
+  status      String    @default("OPEN") // OPEN, SETTLED
+  // No acerto: quanto do adiantamento foi gasto com comprovante, e quando se acertou.
+  spentAmount Float?
+  settledAt   DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  driver      Driver?   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: Cascade)
+  manifest    Manifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([driverId])
+  @@index([helperId])
+  @@index([manifestId])
 }
 
 // Comprovante da entrega de uma carga, registrado pelo motorista na baixa.

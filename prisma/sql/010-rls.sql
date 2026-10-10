@@ -94,6 +94,8 @@ DECLARE
     "WarehouseReceipt": ["collectionId", "Collection", "userId", "User"],
     "FiscalDocument": ["collectionId", "Collection", "importedById", "User"],
     "AuditLog": ["userId", "User"],
+    "Absence": ["driverId", "Driver", "helperId", "Helper"],
+    "CrewAdvance": ["driverId", "Driver", "helperId", "Helper", "manifestId", "Manifest"],
     "SocialPost": ["articleId", "Article"],
     "ContentMetric": ["articleId", "Article"]
   }';

@@ -3,13 +3,25 @@ import { requireStaff } from '@/lib/staff';
 import prisma, { transacao } from '@/lib/prisma';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
-import { FROM_INVOICE_MESSAGE, TRANSACTION_SELECT, updateTransactionSchema } from '@/lib/financeiro';
+import {
+  DESCONTO_MAIOR_QUE_O_VALOR,
+  ENCARGOS_SO_A_RECEBER,
+  FROM_INVOICE_MESSAGE,
+  TRANSACTION_SELECT,
+  temEncargos,
+  updateTransactionSchema,
+  valorRecebido,
+} from '@/lib/financeiro';
 import { CAMPOS_DO_LANCAMENTO, escolher, nadaMudou, origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 const NOT_FOUND = 'Lançamento não encontrado.';
 
 /**
  * Edita, marca como pago (ou recebido) ou reabre um lançamento manual.
+ *
+ * A baixa de um título a receber aceita `juros`, `multa` e `desconto`: o valor
+ * original (`amount`) não muda, e o que entrou de fato fica em `paidAmount`.
+ * Reabrir apaga os quatro.
  *
  * Lançamento que veio de fatura não passa por aqui: quem o mantém em sincronia
  * com a fatura é o Faturamento, e mexer só nele deixaria a fatura "em aberto"
@@ -25,7 +37,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!parsed.success) {
       return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
-    const { action, paidAt, paymentMethod, ...campos } = parsed.data;
+    const { action, paidAt, paymentMethod, juros, multa, desconto, ...campos } = parsed.data;
+    const encargos = { juros, multa, desconto };
     const origem = origemDaRequisicao(req);
 
     const lancamento = await transacao(async (tx) => {
@@ -40,14 +53,40 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         if (!cliente) throw new Refusal('Cliente não encontrado.', 400);
       }
 
-      let situacao: { status: string; paidAt: Date | null; paymentMethod: string | null } | undefined;
+      let situacao:
+        | { status: string; paidAt: Date | null; paymentMethod: string | null; interest: number | null; fine: number | null; discount: number | null; paidAmount: number | null }
+        | undefined;
+      // O valor e o tipo como vão ficar: a mesma chamada pode corrigir os dois e dar a baixa.
+      const valor = campos.amount ?? atual.amount;
+      const tipo = campos.type ?? atual.type;
 
       if (action === 'pagar') {
         if (atual.status === 'PAID') throw new Refusal('Este lançamento já está pago.', 409);
-        situacao = { status: 'PAID', paidAt: paidAt ?? new Date(), paymentMethod: paymentMethod ?? null };
+        const comEncargos = temEncargos(encargos);
+        if (comEncargos && tipo !== 'INCOME') throw new Refusal(ENCARGOS_SO_A_RECEBER, 400);
+        const recebido = valorRecebido(valor, encargos);
+        if (recebido < 0) throw new Refusal(DESCONTO_MAIOR_QUE_O_VALOR, 400);
+        situacao = {
+          status: 'PAID',
+          paidAt: paidAt ?? new Date(),
+          paymentMethod: paymentMethod ?? null,
+          // Baixa pelo valor cheio não guarda encargo: `paidAmount` nulo é "recebeu o original".
+          interest: comEncargos ? (juros ?? 0) : null,
+          fine: comEncargos ? (multa ?? 0) : null,
+          discount: comEncargos ? (desconto ?? 0) : null,
+          paidAmount: comEncargos ? recebido : null,
+        };
       } else if (action === 'reabrir') {
         if (atual.status !== 'PAID') throw new Refusal('Só lançamento pago pode ser reaberto.', 409);
-        situacao = { status: 'PENDING', paidAt: null, paymentMethod: null };
+        situacao = { status: 'PENDING', paidAt: null, paymentMethod: null, interest: null, fine: null, discount: null, paidAmount: null };
+      }
+
+      // Corrigir o valor de um título já baixado com encargos refaz o valor recebido.
+      let recebidoRefeito: { paidAmount: number } | undefined;
+      if (!action && atual.paidAmount !== null && campos.amount !== undefined) {
+        const recebido = valorRecebido(valor, { juros: atual.interest, multa: atual.fine, desconto: atual.discount });
+        if (recebido < 0) throw new Refusal(DESCONTO_MAIOR_QUE_O_VALOR, 400);
+        recebidoRefeito = { paidAmount: recebido };
       }
 
       const atualizado = await tx.financialTransaction.update({
@@ -55,6 +94,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         data: {
           ...campos,
           ...situacao,
+          ...recebidoRefeito,
           // Sem `action`, data e forma de pagamento só se corrigem em lançamento já pago.
           ...(!action && atual.status === 'PAID' && paidAt !== undefined && paidAt !== null && { paidAt }),
           ...(!action && atual.status === 'PAID' && paymentMethod !== undefined && { paymentMethod }),

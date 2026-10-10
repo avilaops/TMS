@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma, { transacao } from '@/lib/prisma';
 import { DRIVER_PUBLIC_INCLUDE, createDriverSchema, isUniqueViolation } from '@/lib/cadastros';
-import { firstIssue } from '@/lib/usuarios';
+import { DRIVER_OMIT, firstIssue } from '@/lib/usuarios';
 import { dadosDoConvite, liberarAcesso, senhaSemUso } from '@/lib/acessos';
 import { origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
 
@@ -10,12 +10,14 @@ const DUPLICATE_CPF = 'Já existe um motorista com este CPF.';
 const DUPLICATE_EMAIL = 'Já existe um usuário com este e-mail.';
 
 export async function GET() {
-  const { error } = await requireStaff();
+  const { user, error } = await requireStaff();
   if (error) return error;
 
   try {
     const motoristas = await prisma.driver.findMany({
       include: DRIVER_PUBLIC_INCLUDE,
+      // O percentual de comissão só vai para o administrador.
+      omit: user.role === 'ADMIN' ? undefined : DRIVER_OMIT,
       orderBy: { createdAt: 'desc' }
     });
     return NextResponse.json(motoristas);

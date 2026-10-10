@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Plus, Loader2, CarFront, User } from "lucide-react";
 import { AvisoDeAcesso, type Acesso } from "@/components/AvisoDeAcesso";
 
@@ -13,6 +14,8 @@ interface Motorista {
   cnh: string;
   cnhExpiry: string;
   active: boolean;
+  /** Percentual do frete entregue que vira comissão. Só vem para o administrador. */
+  commissionPct?: number | null;
 }
 
 const CATEGORIAS = ["A", "B", "C", "D", "E", "AB", "AC", "AD", "AE"];
@@ -25,6 +28,7 @@ const FORM_VAZIO = {
   cnh: "",
   category: "B",
   cnhExpiry: "",
+  commissionPct: "",
 };
 
 const INPUT =
@@ -57,6 +61,9 @@ export default function MotoristasPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [formData, setFormData] = useState(FORM_VAZIO);
+  // Só para mostrar o campo: quem decide é a API, que recusa o percentual dos demais perfis.
+  const { data: session } = useSession();
+  const admin = session?.user?.role === "ADMIN";
 
   useEffect(() => {
     fetchMotoristas();
@@ -93,6 +100,7 @@ export default function MotoristasPage() {
       cnh: motorista.cnh,
       category: motorista.category,
       cnhExpiry: diaDaValidade(motorista.cnhExpiry),
+      commissionPct: motorista.commissionPct == null ? "" : String(motorista.commissionPct).replace(".", ","),
     });
     setIsModalOpen(true);
   };
@@ -105,9 +113,9 @@ export default function MotoristasPage() {
 
     setIsSaving(true);
     try {
-      // Na edição o CPF não muda.
-      const { cpf, ...resto } = formData;
-      const body = editingId ? resto : { ...resto, cpf };
+      // Na edição o CPF não muda. A comissão só vai na edição feita pelo administrador.
+      const { cpf, commissionPct, ...resto } = formData;
+      const body = editingId ? { ...resto, ...(admin && { commissionPct }) } : { ...resto, cpf };
 
       const res = await fetch(editingId ? `/api/motoristas/${editingId}` : '/api/motoristas', {
         method: editingId ? 'PATCH' : 'POST',
@@ -364,6 +372,20 @@ export default function MotoristasPage() {
                     className={INPUT}
                   />
                 </div>
+                {/* Comissão é dinheiro: só o administrador vê e altera, e só no cadastro já criado. */}
+                {admin && editingId && (
+                  <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                    <label className={LABEL} htmlFor="comissao">Comissão (% do frete)</label>
+                    <input
+                      id="comissao"
+                      inputMode="decimal"
+                      value={formData.commissionPct}
+                      onChange={(e) => setFormData({...formData, commissionPct: e.target.value})}
+                      placeholder="Sem comissão"
+                      className={INPUT}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 

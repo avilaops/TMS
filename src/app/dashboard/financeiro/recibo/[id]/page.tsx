@@ -13,7 +13,10 @@ import { deniedReason, type DeniedReason } from "../../carregar";
 
 type Recibo = {
   id: string;
+  /** O que entrou: com juros, multa e desconto, quando a baixa teve. */
   amount: number;
+  /** Só vem quando o recebido difere do valor do título. */
+  encargos?: { original: number; juros: number; multa: number; desconto: number } | null;
   description: string;
   paidAt: string;
   paymentMethod: keyof typeof PAYMENT_METHOD_LABEL | null;
@@ -152,6 +155,21 @@ export default function ReciboPage({ params }: { params: Promise<{ id: string }>
             <div data-campo="forma">
               <dt className="text-xs text-gray-500">Forma de pagamento</dt>
               <dd>{PAYMENT_METHOD_LABEL[recibo.paymentMethod] ?? recibo.paymentMethod}</dd>
+            </div>
+          )}
+          {recibo.encargos && (
+            <div data-campo="composicao" className="sm:col-span-2">
+              <dt className="text-xs text-gray-500">Composição do valor</dt>
+              <dd>
+                {[
+                  `Valor do título ${formatCurrency(recibo.encargos.original)}`,
+                  recibo.encargos.multa > 0 && `multa ${formatCurrency(recibo.encargos.multa)}`,
+                  recibo.encargos.juros > 0 && `juros ${formatCurrency(recibo.encargos.juros)}`,
+                  recibo.encargos.desconto > 0 && `desconto ${formatCurrency(recibo.encargos.desconto)}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </dd>
             </div>
           )}
         </dl>

@@ -30,7 +30,8 @@ import {
   Wrench,
   Headset,
   Warehouse,
-  History
+  History,
+  HardHat
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -72,6 +73,7 @@ const SECOES: { titulo: string | null; links: LinkDoMenu[] }[] = [
     links: [
       { href: "/dashboard/motoristas", icon: CarFront, label: "Motoristas" },
       { href: "/dashboard/veiculos", icon: Truck, label: "Veículos" },
+      { href: "/dashboard/equipe", icon: HardHat, label: "Equipe" },
       { href: "/dashboard/frota", icon: Wrench, label: "Alertas" },
     ],
   },

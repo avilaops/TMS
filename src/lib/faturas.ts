@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ENCARGOS_SO_NA_BAIXA, encargosDaBaixa, semEncargoForaDaBaixa } from "@/lib/financeiro";
 
 /**
  * Faturamento: regras e formatos comuns às rotas de fatura.
@@ -34,10 +35,10 @@ export const createInvoiceSchema = z.object(
   INVALID_BODY,
 );
 
-export const invoiceActionSchema = z.object(
-  { action: z.enum(["pagar", "reabrir", "cancelar"], "Ação inválida.") },
-  INVALID_BODY,
-);
+/** Pagar aceita os mesmos `juros`, `multa` e `desconto` da baixa de um lançamento: vão para o lançamento da fatura. */
+export const invoiceActionSchema = z
+  .object({ action: z.enum(["pagar", "reabrir", "cancelar"], "Ação inválida."), ...encargosDaBaixa }, INVALID_BODY)
+  .refine(semEncargoForaDaBaixa, { message: ENCARGOS_SO_NA_BAIXA });
 
 export const INVOICE_SELECT = {
   id: true,

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
 import { entregasPorDia, semanaCorrente } from '@/lib/relatorios';
-import { diaNoBrasil } from '@/lib/financeiro';
+import { diaNoBrasil, valorRealizado } from '@/lib/financeiro';
 
 export async function GET() {
   const { user, error } = await requireStaff();
@@ -56,13 +56,14 @@ export async function GET() {
     if (user.role === 'ADMIN') {
       const transacoes = await prisma.financialTransaction.findMany({
         where: { type: 'INCOME', status: 'PAID' },
-        select: { amount: true, paidAt: true },
+        select: { amount: true, paidAt: true, paidAmount: true },
       });
       const mes = diaNoBrasil(hoje).slice(0, 7);
-      stats.receita = transacoes.reduce((acc, t) => acc + t.amount, 0);
+      // Receita é o que entrou de fato: com juros, multa e desconto da baixa, quando houve.
+      stats.receita = transacoes.reduce((acc, t) => acc + valorRealizado(t), 0);
       stats.receitaDoMes = transacoes
         .filter((t) => t.paidAt && diaNoBrasil(t.paidAt).slice(0, 7) === mes)
-        .reduce((acc, t) => acc + t.amount, 0);
+        .reduce((acc, t) => acc + valorRealizado(t), 0);
     }
 
     return NextResponse.json(stats);

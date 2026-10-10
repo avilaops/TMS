@@ -24,7 +24,7 @@ export async function GET(req?: Request) {
     }
 
     const lancamentos = await prisma.financialTransaction.findMany({
-      select: { type: true, amount: true, status: true, dueDate: true, paidAt: true },
+      select: { type: true, amount: true, status: true, dueDate: true, paidAt: true, paidAmount: true },
     });
 
     return NextResponse.json({

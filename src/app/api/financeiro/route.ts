@@ -9,8 +9,9 @@ const SITUACOES: readonly Situacao[] = ['pago', 'vencido', 'aberto'];
 
 /**
  * Lançamentos do financeiro. Filtros opcionais na query: `tipo` (INCOME ou
- * EXPENSE), `situacao` (aberto, vencido ou pago) e `de`/`ate` (AAAA-MM-DD, pelo
- * vencimento). Sem filtro devolve tudo, do mais novo para o mais antigo.
+ * EXPENSE), `situacao` (aberto, vencido ou pago), `de`/`ate` (AAAA-MM-DD, pelo
+ * vencimento) e `centro` (o centro de custo, sem diferenciar maiúsculas). Sem
+ * filtro devolve tudo, do mais novo para o mais antigo.
  */
 export async function GET(req?: Request) {
   const { error } = await requireStaff(["ADMIN"]);
@@ -22,6 +23,7 @@ export async function GET(req?: Request) {
     const situacao = query.get('situacao');
     const de = query.get('de');
     const ate = query.get('ate');
+    const centro = query.get('centro')?.trim();
 
     const dia = (valor: string | null) => (valor && /^\d{4}-\d{2}-\d{2}$/.test(valor) ? new Date(`${valor}T00:00:00.000Z`) : null);
     const inicio = dia(de);
@@ -30,6 +32,7 @@ export async function GET(req?: Request) {
     const transactions = await prisma.financialTransaction.findMany({
       where: {
         ...(tipo === 'INCOME' || tipo === 'EXPENSE' ? { type: tipo } : {}),
+        ...(centro ? { costCenter: { equals: centro, mode: 'insensitive' as const } } : {}),
         ...(inicio || fim
           ? { dueDate: { ...(inicio && { gte: inicio }), ...(fim && { lte: fim }) } }
           : {}),

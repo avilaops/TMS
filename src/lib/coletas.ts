@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DRIVER_USER_SELECT } from "@/lib/usuarios";
+import { DRIVER_OMIT, DRIVER_USER_SELECT } from "@/lib/usuarios";
 
 // Regras da coleta no painel: quais status existem, quais trocas o operador
 // pode fazer e o que as rotas aceitam gravar. Este arquivo também é importado
@@ -52,7 +52,7 @@ export function isEditable(collection: { status: string; manifestId: string | nu
 // id, nome e e-mail: `user: true` mandaria o hash da senha junto.
 export const COLLECTION_INCLUDE = {
   client: true,
-  driver: { include: { user: { select: DRIVER_USER_SELECT } } },
+  driver: { include: { user: { select: DRIVER_USER_SELECT } }, omit: DRIVER_OMIT },
   // Só o que a lista precisa para saber se há comprovante: foto e assinatura
   // pesam megabytes e ficam para a tela do comprovante.
   proof: { select: { id: true, status: true } },

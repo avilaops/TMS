@@ -1,4 +1,4 @@
-import { diaDoVencimento, diaNoBrasil, mesesDoPeriodo } from "@/lib/financeiro";
+import { diaDoVencimento, diaNoBrasil, mesesDoPeriodo, valorRealizado } from "@/lib/financeiro";
 
 /**
  * Relatórios básicos: operação, comercial e financeiro de um período em meses.
@@ -14,7 +14,9 @@ import { diaDoVencimento, diaNoBrasil, mesesDoPeriodo } from "@/lib/financeiro";
  *   da coleta ("Coletado") até a entrega; sem as duas datas ou sem prazo, a
  *   entrega fica como "sem medição" em vez de entrar na conta como no prazo.
  * - **Cotações**: os pedidos recebidos no período.
- * - **Realizado**: o que foi recebido e pago no período, pela data do pagamento.
+ * - **Realizado**: o que foi recebido e pago no período, pela data do pagamento
+ *   e pelo valor que entrou de fato (com juros, multa e desconto da baixa).
+ * - **Centro de custo**: as despesas pagas no período, pelo centro do lançamento.
  * - **Inadimplência**: a posição de hoje, não a do período — conta vencida há
  *   um ano continua vencida.
  */
@@ -32,6 +34,7 @@ const SEM_TRANSPORTE = ["CANCELLED", "REJECTED"];
 
 export const SEM_CATEGORIA = "Sem categoria";
 export const SEM_MOTORISTA = "Sem motorista";
+export const SEM_CENTRO_DE_CUSTO = "Sem centro de custo";
 
 /* ---------------------------------- Período ---------------------------------- */
 
@@ -108,7 +111,14 @@ export type EntregaDoPeriodo = {
 export type CotacaoDoPeriodo = { status: string };
 
 /** Lançamento pago ou recebido no período. */
-export type LancamentoPago = { type: string; amount: number; category: string | null };
+export type LancamentoPago = {
+  type: string;
+  amount: number;
+  category: string | null;
+  /** O que entrou de fato, quando a baixa teve juros, multa ou desconto. */
+  paidAmount?: number | null;
+  costCenter?: string | null;
+};
 
 /** Título a receber ainda em aberto, de qualquer data. */
 export type TituloAReceber = { amount: number; dueDate: Date | string | null };
@@ -167,6 +177,8 @@ export type Relatorio = {
     pago: number;
     resultado: number;
     despesasPorCategoria: { categoria: string; total: number }[];
+    /** Despesas pagas no período, pelo centro de custo do lançamento. */
+    despesasPorCentroDeCusto: { centro: string; total: number }[];
     aReceberEmAberto: number;
     vencido: number;
     /** % do que há a receber em aberto que já venceu. */
@@ -211,7 +223,8 @@ function medirPrazo(entregas: readonly EntregaDoPeriodo[]): MedicaoDePrazo {
   };
 }
 
-function desempenhoPorMotorista(entregas: readonly EntregaDoPeriodo[]): DesempenhoDoMotorista[] {
+/** A medição de prazo por motorista. Entrega sem motorista na carga fica na linha de chave vazia. */
+export function desempenhoPorMotorista(entregas: readonly EntregaDoPeriodo[]): DesempenhoDoMotorista[] {
   const grupos = new Map<string, { nome: string; entregas: EntregaDoPeriodo[] }>();
   for (const entrega of entregas) {
     const chave = entrega.motorista?.id ?? "";
@@ -256,14 +269,18 @@ export function montarRelatorio(dados: DadosDoRelatorio, hoje: Date = new Date()
   let recebido = 0;
   let pago = 0;
   const categorias = new Map<string, number>();
+  const centros = new Map<string, number>();
   for (const lancamento of pagos) {
+    const valor = valorRealizado(lancamento);
     if (lancamento.type === "INCOME") {
-      recebido += lancamento.amount;
+      recebido += valor;
       continue;
     }
-    pago += lancamento.amount;
+    pago += valor;
     const categoria = lancamento.category?.trim() || SEM_CATEGORIA;
-    categorias.set(categoria, (categorias.get(categoria) ?? 0) + lancamento.amount);
+    categorias.set(categoria, (categorias.get(categoria) ?? 0) + valor);
+    const centro = lancamento.costCenter?.trim() || SEM_CENTRO_DE_CUSTO;
+    centros.set(centro, (centros.get(centro) ?? 0) + valor);
   }
 
   const diaDeHoje = diaNoBrasil(hoje);
@@ -295,6 +312,9 @@ export function montarRelatorio(dados: DadosDoRelatorio, hoje: Date = new Date()
       despesasPorCategoria: [...categorias.entries()]
         .map(([categoria, total]) => ({ categoria, total: centavos(total) }))
         .sort((a, b) => b.total - a.total || a.categoria.localeCompare(b.categoria, "pt-BR")),
+      despesasPorCentroDeCusto: [...centros.entries()]
+        .map(([centro, total]) => ({ centro, total: centavos(total) }))
+        .sort((a, b) => b.total - a.total || a.centro.localeCompare(b.centro, "pt-BR")),
       aReceberEmAberto: centavos(aReceberEmAberto),
       vencido: centavos(vencido),
       inadimplencia: taxa(vencido, aReceberEmAberto),

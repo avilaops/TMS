@@ -48,7 +48,16 @@ const VAZIO: Relatorio = {
     motoristas: [],
   },
   comercial: { cotacoes: 0, porStatus: {}, conversao: null, frete: 0, clientes: [] },
-  financeiro: { recebido: 0, pago: 0, resultado: 0, despesasPorCategoria: [], aReceberEmAberto: 0, vencido: 0, inadimplencia: null },
+  financeiro: {
+    recebido: 0,
+    pago: 0,
+    resultado: 0,
+    despesasPorCategoria: [],
+    despesasPorCentroDeCusto: [],
+    aReceberEmAberto: 0,
+    vencido: 0,
+    inadimplencia: null,
+  },
 };
 
 const CHEIO: Relatorio = {
@@ -73,6 +82,7 @@ const CHEIO: Relatorio = {
     pago: 6200.4,
     resultado: -1200.4,
     despesasPorCategoria: [{ categoria: "Combustível", total: 3100.2 }],
+    despesasPorCentroDeCusto: [{ centro: "Filial Rio Preto", total: 2100.2 }],
     aReceberEmAberto: 2000,
     vencido: 500,
     inadimplencia: 25,
@@ -174,6 +184,7 @@ describe("tela dos relatórios", () => {
     expect(linha(tela, "Pago")).toBe(formatCurrency(6200.4));
     expect(linha(tela, "Inadimplência")).toBe("25%");
     expect(tela.querySelector('[data-linha-da-tabela="Combustível"]')?.textContent).toContain(formatCurrency(3100.2));
+    expect(tela.querySelector('[data-linha-da-tabela="centro:Filial Rio Preto"]')?.textContent).toContain(formatCurrency(2100.2));
     expect(tela.querySelector('a[href="/dashboard/cobranca"]')).not.toBeNull();
   });
 

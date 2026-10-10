@@ -595,6 +595,8 @@ suite("rotas da cobrança", () => {
         expect(corpo).toEqual({
           id: titulo.id,
           amount: 1234.56,
+          // Baixa pelo valor cheio: o recibo não tem composição a detalhar.
+          encargos: null,
           description: descricao("frete"),
           paidAt: "2026-10-12T15:00:00.000Z",
           paymentMethod: "PIX",

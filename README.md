@@ -12,7 +12,7 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 
 | Área | Rota | Quem acessa | O que faz |
 | --- | --- | --- | --- |
-| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e; CT-e só com registro manual, sem emissão), mensageria (histórico dos avisos para sistemas de fora), auditoria, usuários |
+| Gestão | `/dashboard` | `ADMIN`, `OPERATION` | Clientes, CRM, coletas, manifestos, motoristas, veículos e frota (manutenção, abastecimento, documentos, pneus, checklist, custos), equipe (ajudantes, ausências, adiantamentos e produtividade), ocorrências (chamados de clientes e da equipe), financeiro, notas fiscais (importação de XML de NF-e; CT-e só com registro manual, sem emissão), mensageria (histórico dos avisos para sistemas de fora), auditoria, usuários |
 | Motorista | `/driver` | `DRIVER` | PWA com viagens, mapa, baixa de entrega com comprovante e fila offline, checklist do veículo da viagem e registro de ocorrência na entrega |
 | Cliente | `/portal` | `CLIENT` | Coletas (pedido, acompanhamento com rastreio e comprovante de entrega), faturas, minutas e atendimento (chamados) da própria empresa |
 | API pública | `/api/cotacoes`, `/api/leads`, `/api/rastreio` | Site do transportador | Recebe cotação e lead, responde o rastreio por CNPJ/CPF + código |
@@ -135,7 +135,7 @@ Em `/dashboard/faturamento` o administrador cobra de um cliente o frete das carg
 
 - **Faturável** é a carga entregue, com frete definido e fora de fatura. Carga entregue "a cotar" aparece à parte, com o campo para informar o frete (`PATCH /api/coletas/[id]/frete`, que vale em qualquer status enquanto a carga não foi faturada).
 - **Emitir** (`POST /api/faturas`) soma os fretes, dá o próximo número da empresa, prende as cargas na fatura e cria o lançamento a receber no financeiro. É esse lançamento que o cliente vê em "Faturas" no portal. A numeração é por empresa e uma emissão por vez (trava do Postgres), então não repete nem pula.
-- **Pagar, reabrir, cancelar** (`PATCH /api/faturas/[id]`): o lançamento acompanha a fatura na mesma transação. Cancelar solta as cargas, que voltam a ser faturáveis; o número cancelado não é reaproveitado, e fatura paga precisa ser reaberta antes de cancelar.
+- **Pagar, reabrir, cancelar** (`PATCH /api/faturas/[id]`): o lançamento acompanha a fatura na mesma transação. Pagar abre a baixa e aceita `juros`, `multa` e `desconto`, que vão para o lançamento da fatura (o total da fatura é o emitido e não muda); ver [Financeiro](#financeiro-contas-a-pagar-a-receber-e-fluxo-de-caixa). Cancelar solta as cargas, que voltam a ser faturáveis; o número cancelado não é reaproveitado, e fatura paga precisa ser reaberta antes de cancelar.
 - **Depois de faturada**, a carga não muda mais de frete: a fatura já saiu com ele.
 - `/dashboard/faturamento/[id]` é a fatura pronta para imprimir ou salvar em PDF.
 
@@ -145,13 +145,16 @@ Ainda não há boleto, Pix nem envio automático do aviso de cobrança: a baixa 
 
 Em `/dashboard/financeiro`, só para o administrador. As regras e as contas ficam em [src/lib/financeiro.ts](src/lib/financeiro.ts).
 
-- **Lançamento** (`FinancialTransaction`): receita ou despesa, valor, vencimento, cliente ou fornecedor, categoria e observação. Quando é pago guarda a data (`paidAt`) e a forma de pagamento.
+- **Lançamento** (`FinancialTransaction`): receita ou despesa, valor, vencimento, cliente ou fornecedor, categoria, **centro de custo** e observação. Quando é pago guarda a data (`paidAt`) e a forma de pagamento.
+- **Baixa com juros, multa e desconto:** receber um título abre a baixa, com os três campos (valores em reais, maiores ou iguais a zero). O valor original (`amount`) não muda; o que entrou de fato fica em `paidAmount` (original + juros + multa − desconto, nunca negativo), junto de `interest`, `fine` e `discount`. Baixa sem encargo, ou com os três zerados, é a de sempre e não guarda nada; reabrir apaga os quatro. Vale só para título **a receber**: despesa é paga pelo valor. O fluxo de caixa **realizado**, o "recebido no mês", os relatórios, a receita do painel e o recibo usam o valor recebido quando ele existe; o **previsto** e o que está em aberto continuam no valor original.
+- **Sugestão de encargos:** título vencido abre a baixa com a multa e os juros já calculados (`encargosSugeridos` em [src/lib/cobranca.ts](src/lib/cobranca.ts)): multa é o percentual sobre o valor, uma vez; juros são simples e proporcionais aos dias de atraso (o percentual do mês dividido por 30). É só sugestão: o operador altera ou apaga. Os percentuais são da empresa (padrão de 2% e 1% ao mês) e ficam em [Empresa](#empresa), seção Cobrança.
+- **Centro de custo:** texto livre e opcional (filial, rota, veículo…), com sugestão dos já usados; a lista filtra por ele (`?centro=`, sem diferenciar maiúsculas) e o relatório financeiro soma as despesas pagas no período por centro.
 - **Situação** é calculada: pago, em aberto ou vencido. Vence no fim do dia do vencimento, no relógio do Brasil; o vencimento em si é um dia do calendário e é lido em UTC, para não aparecer um dia antes.
-- **Rotas:** `GET /api/financeiro` (filtros `tipo`, `situacao`, `de`, `ate`), `POST` com validação, `PATCH /api/financeiro/[id]` (editar, `action: "pagar"` ou `"reabrir"`) e `DELETE`.
+- **Rotas:** `GET /api/financeiro` (filtros `tipo`, `situacao`, `de`, `ate`, `centro`), `POST` com validação, `PATCH /api/financeiro/[id]` (editar, `action: "pagar"` — com `juros`, `multa` e `desconto` opcionais — ou `"reabrir"`) e `DELETE`.
 - **Lançamento que veio de fatura** não é pago, editado nem excluído por aqui: responde 409 e manda para o Faturamento, que mantém fatura e lançamento em sincronia. Pagar a fatura grava o `paidAt` do lançamento.
 - **Fluxo de caixa** (`GET /api/financeiro/fluxo?de=AAAA-MM&ate=AAAA-MM`, padrão de três meses para trás e três para a frente, no máximo 36): por mês, o **previsto** (o que vence no mês) e o **realizado** (o que foi pago ou recebido no mês), com saldo e acumulado. O resumo dos cartões é sempre de todos os lançamentos: conta vencida há um ano continua vencida.
 
-Ainda não há conciliação bancária, centro de custo nem lançamento recorrente.
+Ainda não existe: boleto, Pix, conciliação bancária, parcelamento, lançamento recorrente e acordo de dívida. A baixa é sempre do título inteiro (não há recebimento parcial), os encargos não entram no lançamento já criado como pago (só na baixa), e o centro de custo é um texto no lançamento, sem cadastro nem rateio.
 
 ## Cobrança
 
@@ -162,7 +165,7 @@ Em `/dashboard/cobranca`, só para o administrador. As contas ficam em [src/lib/
 - **Aviso de cobrança:** o texto já redigido com os títulos do cliente (lembrete quando nada venceu, atraso quando algo venceu), para copiar e mandar pelo canal de costume. O sistema não envia nada e o texto não traz dado de pagamento.
 - **Recibo** (`GET /api/financeiro/[id]/recibo`, tela `/dashboard/financeiro/recibo/[id]`): só de receita já recebida, para imprimir ou salvar em PDF. Chega-se a ele pelo link "Recibo" no Financeiro e na fatura paga.
 
-A baixa continua no Faturamento e no Financeiro; título pago sai da posição. Juros, multa, parcelas e o registro de que o aviso foi mandado não existem.
+A baixa continua no Faturamento e no Financeiro (com juros, multa e desconto); título pago sai da posição, e o recibo sai pelo valor recebido, com a composição quando houve encargo. A posição e o aviso mostram o valor original do título, sem juros nem multa. Parcelas e o registro de que o aviso foi mandado não existem.
 
 ## Relatórios
 
@@ -170,7 +173,7 @@ Em `/dashboard/relatorios`, só para o administrador. Um período em meses (`GET
 
 - **Operação:** cargas criadas no período, por status; e as entregas feitas no período, com quantas chegaram no prazo, o tempo médio e a conta por motorista. O prazo é o da tabela de frete e corre de "Coletado" a "Entregue" no histórico da carga. Entrega sem prazo ou sem as duas datas fica como "sem medição", fora da taxa.
 - **Comercial:** cotações recebidas no período por status, a conversão (as que viraram coleta sobre todas) e o frete das cargas criadas no período, por cliente. Carga cancelada ou recusada não entra no frete; carga a cotar conta à parte.
-- **Financeiro:** recebido, pago e resultado pela data do pagamento, despesas pagas por categoria, e a inadimplência (quanto do que há a receber em aberto já venceu), que é a posição de hoje e não a do período.
+- **Financeiro:** recebido, pago e resultado pela data do pagamento (o recebido é o que entrou de fato, com juros, multa e desconto da baixa), despesas pagas por categoria e por **centro de custo**, e a inadimplência (quanto do que há a receber em aberto já venceu), que é a posição de hoje e não a do período.
 
 Ainda não há exportação para planilha ou PDF, DRE, nem margem por rota ou por veículo.
 
@@ -192,6 +195,22 @@ O que se controla de cada veículo, além do cadastro. As regras e as contas fic
 Permissão: tudo é da equipe interna (`ADMIN` e `OPERATION`), menos os custos, que são do administrador. Veículo de outra empresa responde 404, como um id inventado.
 
 Ainda não existe: integração com bomba ou cartão de combustível, multas, estoque de pneus, telemetria, aviso de vencimento por mensagem (o alerta é só na tela), manutenção preventiva programada por km, e anexo do documento (PDF ou foto). O abastecimento não lança despesa no Financeiro (só a manutenção lança), e a situação de uma manutenção já registrada não é alterada pela tela.
+
+## Equipe (recursos humanos operacional)
+
+Em `/dashboard/equipe` (menu Frota), o controle simples de quem vai para a estrada: motoristas (os do cadastro de Motoristas) e ajudantes. Uma aba por assunto. As regras e as contas ficam em [src/lib/equipe.ts](src/lib/equipe.ts); as contas são funções puras e não gravam nada (quem está ausente num dia, a diferença do acerto e a comissão são calculados na leitura).
+
+- **Pessoas** (`GET /api/equipe`): motoristas e ajudantes numa lista só, com quem está **ausente hoje** (o dia é o do relógio do Brasil). O **ajudante** (`Helper`: nome, CPF único por empresa, telefone, ativo) é cadastrado aqui (`GET` e `POST /api/equipe/ajudantes`, `PATCH .../[id]`); ele não tem login. O CPF é a chave do cadastro e não se altera, como no motorista.
+- **Ausências** (`Absence`; `GET` e `POST /api/equipe/ausencias`, `PATCH` e `DELETE .../[id]`): de um motorista **ou** de um ajudante, com tipo (férias, folga, atestado, falta, outro), primeiro e último dia (os dois contam; são dias do calendário, gravados à meia-noite UTC) e observação. `GET ?dia=AAAA-MM-DD` devolve só as que cobrem aquele dia. Na montagem de viagem (`/dashboard/manifestos`), escolher um motorista ausente hoje mostra um **aviso**; não bloqueia.
+- **Adiantamentos e acertos** (`CrewAdvance`; `GET` e `POST /api/equipe/adiantamentos`, `PATCH .../[id]`, **só administrador**): data, valor, motivo (adiantamento de viagem, vale, outro), viagem opcional e observação. Registrar lança a **despesa no Financeiro** na mesma transação (categoria "Adiantamento", em aberto, vencendo no dia), como a manutenção faz. O **acerto** (`action: "acertar"`) guarda o valor gasto comprovado e a tela mostra a diferença: a devolver (gastou menos) ou a receber (gastou mais). `action: "reabrir"` desfaz um acerto digitado errado.
+- **Produtividade** (`GET /api/equipe/produtividade?de=AAAA-MM&ate=AAAA-MM`, mesmo período dos relatórios): por motorista, viagens finalizadas, entregas, entregas no prazo, peso transportado e, **só para o administrador**, o frete das cargas entregues e a **comissão** (percentual do frete entregue). O prazo é a mesma conta dos Relatórios (`desempenhoPorMotorista`). Para a operação os campos de frete e comissão nem vão na resposta.
+- **Percentual de comissão** (`Driver.commissionPct`, opcional): editado no cadastro do motorista, só pelo administrador (`PATCH /api/motoristas/[id]` responde 403 se outro perfil mandar o campo). O percentual só sai em `GET /api/motoristas`, e só para o administrador; viagens, veículos e cargas devolvem o motorista sem ele.
+
+Permissão: pessoas, ajudantes, ausências e as contagens da produtividade são da equipe interna (`ADMIN` e `OPERATION`); adiantamentos, frete e comissão são do administrador. Registro de outra empresa responde 404, como um id inventado, e o banco recusa ausência ou adiantamento apontando para motorista, ajudante ou viagem de outra empresa.
+
+As tabelas são criadas por [prisma/sql/019-equipe-e-baixa.sql](prisma/sql/019-equipe-e-baixa.sql) (que também traz as colunas da baixa com encargos e do centro de custo); rode `npm run db:rls` depois dela.
+
+Ainda não existe: folha de pagamento, ponto e jornada, banco de horas, saldo e período aquisitivo de férias, anexo do atestado, ajudante ligado à viagem (o manifesto continua só com motorista e veículo) e comissão de ajudante. O acerto não mexe na despesa lançada no Financeiro: a sobra devolvida ou o complemento pago são lançados lá, à mão, e o adiantamento não é apagado pela tela. A viagem conta como finalizada pela data da última alteração do manifesto (não há data própria de finalização), e a comissão é só uma conta: não vira lançamento a pagar nem tem fechamento por período.
 
 ## Atendimento e ocorrências
 
@@ -287,6 +306,8 @@ Ainda não existe: emissão de CT-e e de MDF-e, consulta à SEFAZ (situação da
 
 Em `/dashboard/empresa`, só para o administrador: o **nome** e o **símbolo** que aparecem no topo do painel, do portal do cliente e do app do motorista (`GET` e `PATCH /api/empresa`). O símbolo é uma imagem PNG, JPEG ou WebP, reduzida no navegador para 192 pixels antes de enviar e guardada no cadastro da empresa (`Tenant.logo`); sem símbolo, aparece o caminhão. As regras ficam em [src/lib/empresa.ts](src/lib/empresa.ts).
 
+Na mesma tela, a seção **Cobrança** guarda a multa (% do valor) e os juros (% ao mês) que a baixa de um título vencido sugere (`GET` e `PATCH /api/empresa/cobranca`, só administrador; padrão de 2% e 1%, colunas `Tenant.lateFinePct` e `Tenant.lateInterestPct`).
+
 A aplicação só lê a tabela de empresas; a gravação vai pelo dono do banco, presa ao id da empresa da sessão. O portal do cliente e o app do motorista mostram o mesmo nome e símbolo (a leitura é liberada a todo perfil da empresa).
 
 ## Integração (eventos para n8n e outros sistemas)
@@ -362,7 +383,7 @@ Toda ação importante grava uma linha em `AuditLog`: quem fez (o id e, guardado
 - **IP:** o primeiro valor de `x-forwarded-for` (o proxy na frente do sistema precisa preenchê-lo); sem cabeçalho, fica vazio.
 - **Tela** `/dashboard/auditoria` (menu Sistema, só `ADMIN`): da mais recente para a mais antiga, 30 por vez ("Carregar mais"), com filtro por período, usuário, tipo de registro, ação e id do registro. Abrir uma linha mostra antes e depois lado a lado.
 
-O que é registrado: criar, alterar, desativar e reativar **cliente** e **motorista**; criar e alterar **veículo**, e registrar abastecimento e documento dele; criar e alterar **usuário**, trocar perfil, pedir a liberação de acesso e revogar o do e-mail antigo de um motorista; criar, alterar e mudar status de **carga**, e informar frete à mão; criar, alterar, liberar, cancelar e finalizar **manifesto**, e retirar carga dele; emitir, pagar, reabrir e cancelar **fatura**; criar, alterar, pagar, reabrir e excluir **lançamento**; aprovar e recusar **comprovante**; nome e símbolo da **empresa** e o endereço da **integração**; criar e alterar **tabela de frete** e trocar as cidades dela (quantas havia e quantas ficaram, não cada preço); abrir **chamado** e mudar status, prioridade ou responsável; concluir **conferência** no depósito; importar **nota fiscal** e criar carga a partir dela; e reenviar aviso.
+O que é registrado: criar, alterar, desativar e reativar **cliente**, **motorista** e **ajudante**, e trocar o percentual de comissão do motorista; registrar, alterar e excluir **ausência**; registrar, acertar e reabrir **adiantamento**; os parâmetros de cobrança da empresa; criar e alterar **veículo**, e registrar abastecimento e documento dele; criar e alterar **usuário**, trocar perfil, pedir a liberação de acesso e revogar o do e-mail antigo de um motorista; criar, alterar e mudar status de **carga**, e informar frete à mão; criar, alterar, liberar, cancelar e finalizar **manifesto**, e retirar carga dele; emitir, pagar, reabrir e cancelar **fatura**; criar, alterar, pagar, reabrir e excluir **lançamento**; aprovar e recusar **comprovante**; nome e símbolo da **empresa** e o endereço da **integração**; criar e alterar **tabela de frete** e trocar as cidades dela (quantas havia e quantas ficaram, não cada preço); abrir **chamado** e mudar status, prioridade ou responsável; concluir **conferência** no depósito; importar **nota fiscal** e criar carga a partir dela; e reenviar aviso.
 
 | Rota | Quem | O que faz |
 | --- | --- | --- |

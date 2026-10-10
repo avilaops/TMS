@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { normalizeTaxId } from "@/lib/tracking";
-import { DRIVER_USER_SELECT } from "@/lib/usuarios";
+import { DRIVER_OMIT, DRIVER_USER_SELECT } from "@/lib/usuarios";
 
 // Validação dos cadastros de clientes, motoristas e veículos. As rotas gravam
 // só o que sai destes schemas: documento e placa já normalizados, texto vazio
@@ -13,7 +13,7 @@ export const DRIVER_PUBLIC_INCLUDE = {
 } as const;
 
 export const VEHICLE_PUBLIC_INCLUDE = {
-  driver: { include: DRIVER_PUBLIC_INCLUDE },
+  driver: { include: DRIVER_PUBLIC_INCLUDE, omit: DRIVER_OMIT },
 } as const;
 
 export const CLIENT_PUBLIC_SELECT = {
@@ -286,6 +286,11 @@ const cnhExpiry = z
 
 const driverPhone = optionalText(30, "Telefone muito longo.", "O telefone precisa ser um texto.");
 
+// Percentual do frete entregue que vira comissão. Vazio ou `null` tira a comissão.
+const commissionPct = percentual("A comissão precisa ser um percentual entre 0 e 100.");
+
+export const COMMISSION_ADMIN_ONLY = "Só o administrador altera o percentual de comissão.";
+
 export const createDriverSchema = z.object(
   {
     name: driverName,
@@ -311,6 +316,8 @@ export const updateDriverSchema = z
       cnhExpiry: cnhExpiry.optional(),
       phone: driverPhone,
       active: activeFlag.optional(),
+      // Só o administrador manda este campo: a rota recusa dos demais perfis.
+      commissionPct,
     },
     INVALID_BODY,
   )

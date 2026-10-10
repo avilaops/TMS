@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { requireStaff } from '@/lib/staff';
 import prisma, { transacao } from '@/lib/prisma';
-import { DRIVER_USER_SELECT, firstIssue } from '@/lib/usuarios';
+import { DRIVER_OMIT, DRIVER_USER_SELECT, firstIssue } from '@/lib/usuarios';
 import { INACTIVE_DRIVER_MESSAGE } from '@/lib/coletas';
 import {
   EMBARKABLE_STATUSES,
@@ -62,7 +62,7 @@ export async function GET() {
   try {
     const manifestos = await prisma.manifest.findMany({
       include: {
-        driver: { include: { user: { select: DRIVER_USER_SELECT } } },
+        driver: { include: { user: { select: DRIVER_USER_SELECT } }, omit: DRIVER_OMIT },
         vehicle: true,
         collections: {
           include: { client: { select: { tradeName: true, companyName: true } } },

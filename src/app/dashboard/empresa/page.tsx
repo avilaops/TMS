@@ -6,11 +6,12 @@ import Link from "next/link";
 import { ImagePlus, Loader2, LogIn, ShieldAlert, Trash2, Truck } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { IDENTIDADE_ALTERADA, LADO_DO_SIMBOLO, TAMANHO_MAXIMO_DO_SIMBOLO, type Identidade } from "@/lib/empresa";
+import type { ParametrosDeCobranca } from "@/lib/cobranca";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
 
 /**
- * Identidade da empresa: o nome e o símbolo que aparecem no cabeçalho do
- * painel. Só o administrador altera.
+ * Identidade da empresa (o nome e o símbolo que aparecem no cabeçalho do
+ * painel), os parâmetros de cobrança e a integração. Só o administrador altera.
  */
 
 type Carga = { denied: DeniedReason } | { denied: null; erro: string } | { denied: null; erro: null };
@@ -48,8 +49,8 @@ export default function EmpresaPage() {
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
   const arquivo = useRef<HTMLInputElement>(null);
-  // No celular aparece uma parte por vez; no computador, as duas.
-  const [aba, setAba] = useState<"identidade" | "integracao">("identidade");
+  // No celular aparece uma parte por vez; no computador, as três.
+  const [aba, setAba] = useState<"identidade" | "cobranca" | "integracao">("identidade");
 
   useEffect(() => {
     let ativo = true;
@@ -171,10 +172,11 @@ export default function EmpresaPage() {
         <p className="hidden md:block text-gray-500 text-sm mt-1">Nome e símbolo que aparecem no topo do painel</p>
       </div>
 
-      <div role="tablist" aria-label="Parte" className="md:hidden grid grid-cols-2 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+      <div role="tablist" aria-label="Parte" className="md:hidden grid grid-cols-3 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
         {(
           [
-            ["identidade", "Nome e símbolo"],
+            ["identidade", "Identidade"],
+            ["cobranca", "Cobrança"],
             ["integracao", "Integração"],
           ] as const
         ).map(([chave, rotulo]) => (
@@ -245,8 +247,96 @@ export default function EmpresaPage() {
         </button>
       </form>
 
+      <Cobranca escondida={aba !== "cobranca"} />
+
       <Integracao escondida={aba !== "integracao"} />
     </div>
+  );
+}
+
+/**
+ * Parâmetros de cobrança: a multa e os juros que a baixa de um título vencido
+ * sugere (Financeiro e Faturamento). É só a sugestão: na baixa o operador
+ * altera ou apaga os valores.
+ */
+function Cobranca({ escondida }: { escondida: boolean }) {
+  const [multaPct, setMultaPct] = useState("");
+  const [jurosPct, setJurosPct] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
+
+  const mostrar = (corpo: ParametrosDeCobranca) => {
+    setMultaPct(String(corpo.multaPct).replace(".", ","));
+    setJurosPct(String(corpo.jurosPct).replace(".", ","));
+  };
+
+  useEffect(() => {
+    let ativo = true;
+    fetch("/api/empresa/cobranca")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((corpo: ParametrosDeCobranca | null) => {
+        if (ativo && corpo) mostrar(corpo);
+      })
+      .catch(() => {
+        // Sem a leitura os campos ficam em branco e salvar pede os dois.
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  const salvar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOcupado(true);
+    setMensagem(null);
+    try {
+      const res = await fetch("/api/empresa/cobranca", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ multaPct, jurosPct }),
+      });
+      const corpo = (await res.json().catch(() => null)) as (ParametrosDeCobranca & { error?: string }) | null;
+      if (!res.ok || !corpo) return setMensagem({ ok: false, texto: corpo?.error ?? FALHA_AO_SALVAR });
+      mostrar(corpo);
+      setMensagem({ ok: true, texto: "Cobrança atualizada." });
+    } catch {
+      setMensagem({ ok: false, texto: FALHA_AO_SALVAR });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  return (
+    <form onSubmit={salvar} aria-label="Cobrança" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
+      <div>
+        <h2 className="font-semibold text-gray-900 dark:text-white">Cobrança</h2>
+        <p className="text-xs md:text-sm text-gray-500 mt-0.5">
+          Multa e juros sugeridos na baixa de um título vencido. Os juros são proporcionais aos dias de atraso.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+        <label className="block space-y-1 min-w-0">
+          <span className={LABEL}>Multa (%)</span>
+          <input required inputMode="decimal" data-campo="multaPct" value={multaPct} onChange={(e) => setMultaPct(e.target.value)} className={INPUT} />
+        </label>
+        <label className="block space-y-1 min-w-0">
+          <span className={LABEL}>Juros ao mês (%)</span>
+          <input required inputMode="decimal" data-campo="jurosPct" value={jurosPct} onChange={(e) => setJurosPct(e.target.value)} className={INPUT} />
+        </label>
+      </div>
+
+      {mensagem && (
+        <p role={mensagem.ok ? "status" : "alert"} className={`text-sm ${mensagem.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+          {mensagem.texto}
+        </p>
+      )}
+
+      <button type="submit" disabled={ocupado} className="px-4 py-2 md:py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium disabled:opacity-60 flex items-center gap-2">
+        {ocupado && <Loader2 className="w-4 h-4 animate-spin" />}
+        Salvar
+      </button>
+    </form>
   );
 }
 

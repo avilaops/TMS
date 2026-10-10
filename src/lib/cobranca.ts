@@ -107,6 +107,31 @@ export function diasDeAtraso(dueDate: Date | string | null | undefined, hoje: Da
   return Math.round((Date.parse(dia) - Date.parse(vencimento)) / DIA_EM_MS);
 }
 
+/** Multa e juros sugeridos enquanto a empresa não informa os seus: 2% e 1% ao mês. */
+export const MULTA_PADRAO_PCT = 2;
+export const JUROS_PADRAO_PCT = 1;
+
+export type ParametrosDeCobranca = {
+  /** Multa por atraso, em % do valor, cobrada uma vez. */
+  multaPct: number;
+  /** Juros de mora, em % ao mês, proporcionais aos dias de atraso. */
+  jurosPct: number;
+};
+
+/**
+ * Multa e juros sugeridos na baixa de um título vencido. A multa é o
+ * percentual sobre o valor, uma vez; os juros são simples e pro rata: o
+ * percentual do mês dividido por 30, vezes os dias de atraso. Título em dia
+ * (zero dias) não tem encargo. É só sugestão: o operador altera ou zera.
+ */
+export function encargosSugeridos(valor: number, dias: number, parametros: ParametrosDeCobranca): { multa: number; juros: number } {
+  if (!(dias > 0) || !(valor > 0)) return { multa: 0, juros: 0 };
+  return {
+    multa: centavos((valor * parametros.multaPct) / 100),
+    juros: centavos((valor * parametros.jurosPct * dias) / (100 * 30)),
+  };
+}
+
 export function faixaDoAtraso(dias: number): Faixa {
   if (dias <= 0) return "a_vencer";
   if (dias <= 30) return "ate_30";

@@ -21,6 +21,11 @@ export const DRIVER_USER_SELECT = {
   email: true,
 } as const;
 
+// O percentual de comissão é dado financeiro: só o administrador o lê. Onde o
+// motorista sai inteiro dentro de outro registro (veículo, viagem, carga), ele
+// fica de fora (`omit: DRIVER_OMIT`); em /api/motoristas a rota decide pelo perfil.
+export const DRIVER_OMIT = { commissionPct: true } as const;
+
 export const DRIVER_ROLE_MESSAGE =
   "Motorista é criado pelo cadastro de motoristas (Motoristas → Novo), que gera o usuário junto do registro de motorista.";
 

@@ -97,6 +97,15 @@ suite("permissões das rotas internas", () => {
   let auditoria: typeof import("../src/app/api/auditoria/route");
   let eventos: typeof import("../src/app/api/eventos/route");
   let eventoReenviar: typeof import("../src/app/api/eventos/[id]/reenviar/route");
+  let empresaCobranca: typeof import("../src/app/api/empresa/cobranca/route");
+  let equipe: typeof import("../src/app/api/equipe/route");
+  let equipeAjudantes: typeof import("../src/app/api/equipe/ajudantes/route");
+  let equipeAjudante: typeof import("../src/app/api/equipe/ajudantes/[id]/route");
+  let equipeAusencias: typeof import("../src/app/api/equipe/ausencias/route");
+  let equipeAusencia: typeof import("../src/app/api/equipe/ausencias/[id]/route");
+  let equipeAdiantamentos: typeof import("../src/app/api/equipe/adiantamentos/route");
+  let equipeAdiantamento: typeof import("../src/app/api/equipe/adiantamentos/[id]/route");
+  let equipeProdutividade: typeof import("../src/app/api/equipe/produtividade/route");
 
   const ids = {} as Record<Perfil, string>;
   let clienteId: string;
@@ -200,6 +209,15 @@ suite("permissões das rotas internas", () => {
     auditoria = await import("../src/app/api/auditoria/route");
     eventos = await import("../src/app/api/eventos/route");
     eventoReenviar = await import("../src/app/api/eventos/[id]/reenviar/route");
+    empresaCobranca = await import("../src/app/api/empresa/cobranca/route");
+    equipe = await import("../src/app/api/equipe/route");
+    equipeAjudantes = await import("../src/app/api/equipe/ajudantes/route");
+    equipeAjudante = await import("../src/app/api/equipe/ajudantes/[id]/route");
+    equipeAusencias = await import("../src/app/api/equipe/ausencias/route");
+    equipeAusencia = await import("../src/app/api/equipe/ausencias/[id]/route");
+    equipeAdiantamentos = await import("../src/app/api/equipe/adiantamentos/route");
+    equipeAdiantamento = await import("../src/app/api/equipe/adiantamentos/[id]/route");
+    equipeProdutividade = await import("../src/app/api/equipe/produtividade/route");
 
     await limpar();
 
@@ -286,6 +304,21 @@ suite("permissões das rotas internas", () => {
       ["GET /api/deposito/posicoes", () => depositoPosicoes.GET()],
       ["POST /api/deposito/posicoes", () => depositoPosicoes.POST(req("POST", { code: "INVASOR-01" }))],
       ["PATCH /api/deposito/posicoes/[id]", () => depositoPosicaoPorId.PATCH(req("PATCH", { active: false }), ctx(semId))],
+      ["GET /api/equipe", () => equipe.GET()],
+      ["GET /api/equipe/ajudantes", () => equipeAjudantes.GET()],
+      ["POST /api/equipe/ajudantes", () => equipeAjudantes.POST(req("POST", { name: "Invasor", cpf: "99988877766" }))],
+      ["PATCH /api/equipe/ajudantes/[id]", () => equipeAjudante.PATCH(req("PATCH", { active: false }), ctx(semId))],
+      ["GET /api/equipe/ausencias", () => equipeAusencias.GET()],
+      [
+        "POST /api/equipe/ausencias",
+        () => equipeAusencias.POST(req("POST", { driverId: semId, type: "VACATION", startDate: "2026-01-10", endDate: "2026-01-20" })),
+      ],
+      [
+        "PATCH /api/equipe/ausencias/[id]",
+        () => equipeAusencia.PATCH(req("PATCH", { type: "DAY_OFF", startDate: "2026-01-10", endDate: "2026-01-10" }), ctx(semId)),
+      ],
+      ["DELETE /api/equipe/ausencias/[id]", () => equipeAusencia.DELETE(req("DELETE"), ctx(semId))],
+      ["GET /api/equipe/produtividade", () => equipeProdutividade.GET()],
     ];
 
     rotasAdmin = [
@@ -308,6 +341,14 @@ suite("permissões das rotas internas", () => {
       ["GET /api/auditoria", () => auditoria.GET(req())],
       ["GET /api/eventos", () => eventos.GET(req())],
       ["POST /api/eventos/[id]/reenviar", () => eventoReenviar.POST(req("POST"), ctx(semId))],
+      ["GET /api/empresa/cobranca", () => empresaCobranca.GET()],
+      ["PATCH /api/empresa/cobranca", () => empresaCobranca.PATCH(req("PATCH", { multaPct: 50, jurosPct: 50 }))],
+      ["GET /api/equipe/adiantamentos", () => equipeAdiantamentos.GET()],
+      [
+        "POST /api/equipe/adiantamentos",
+        () => equipeAdiantamentos.POST(req("POST", { driverId: semId, date: "2026-01-10", amount: "100", reason: "TRIP" })),
+      ],
+      ["PATCH /api/equipe/adiantamentos/[id]", () => equipeAdiantamento.PATCH(req("PATCH", { action: "acertar", spentAmount: "1" }), ctx(semId))],
     ];
   });
 

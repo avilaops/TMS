@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma, { sistema, transacao } from '@/lib/prisma';
-import { DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
+import { COMMISSION_ADMIN_ONLY, DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { dadosDoConvite, liberarAcesso, revogarAcesso } from '@/lib/acessos';
 import { nadaMudou, origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
@@ -21,6 +21,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     const data = parsed.data;
 
+    // Comissão é dinheiro: a operação cuida do cadastro, mas não deste campo.
+    const admin = user.role === 'ADMIN';
+    if (data.commissionPct !== undefined && !admin) {
+      return NextResponse.json({ error: COMMISSION_ADMIN_ONLY }, { status: 403 });
+    }
+
     // Nome e e-mail ficam no User; o resto, no Driver. Uma transação só:
     // ou muda tudo, ou não muda nada.
     let emailAnterior: string | null = null;
@@ -38,6 +44,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           cnhExpiry: true,
           phone: true,
           active: true,
+          commissionPct: true,
           user: { select: { role: true, email: true, name: true } },
         }
       });
@@ -84,11 +91,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           cnhExpiry: data.cnhExpiry,
           phone: data.phone,
           active: data.active,
+          commissionPct: data.commissionPct,
         },
         include: DRIVER_PUBLIC_INCLUDE,
       });
 
-      const campos = (m: { cnh: string | null; category: string | null; cnhExpiry: Date | null; phone: string | null; active: boolean }, u: { name: string; email: string }) => ({
+      const campos = (m: { cnh: string | null; category: string | null; cnhExpiry: Date | null; phone: string | null; active: boolean; commissionPct: number | null }, u: { name: string; email: string }) => ({
         name: u.name,
         email: u.email,
         cnh: m.cnh,
@@ -96,25 +104,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         cnhExpiry: m.cnhExpiry,
         phone: m.phone,
         active: m.active,
+        commissionPct: m.commissionPct,
       });
       const antes = campos(target, target.user);
       const depois = campos(atualizado, atualizado.user);
       if (!nadaMudou(antes, depois)) {
         const desativou = antes.active && !depois.active;
         const reativou = !antes.active && depois.active;
+        // Só o percentual mudou: a linha diz isso, em vez de um "alterado" genérico.
+        const soComissao = !nadaMudou({ commissionPct: antes.commissionPct }, { commissionPct: depois.commissionPct })
+          && nadaMudou({ ...antes, commissionPct: null }, { ...depois, commissionPct: null });
         await registrarAuditoria(tx, {
           ator: user,
           origem,
-          acao: desativou ? 'motorista.desativar' : reativou ? 'motorista.reativar' : 'motorista.alterar',
+          acao: desativou ? 'motorista.desativar' : reativou ? 'motorista.reativar' : soComissao ? 'motorista.comissao' : 'motorista.alterar',
           entidade: 'motorista',
           entidadeId: id,
-          resumo: `Motorista ${depois.name} ${desativou ? 'desativado' : reativou ? 'reativado' : 'alterado'}`,
+          resumo: soComissao
+            ? `Comissão de ${depois.name} ${depois.commissionPct === null ? 'retirada' : `passou para ${depois.commissionPct}%`}`
+            : `Motorista ${depois.name} ${desativou ? 'desativado' : reativou ? 'reativado' : 'alterado'}`,
           antes,
           depois,
         });
       }
 
-      return atualizado;
+      // O percentual só volta para quem pode vê-lo.
+      return admin ? atualizado : { ...atualizado, commissionPct: undefined };
     });
 
     // E-mail novo é outra conta no login único: libera a nova e revoga a

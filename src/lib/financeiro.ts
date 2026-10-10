@@ -13,6 +13,13 @@ import { z } from "zod";
  *   é sempre lido em UTC.
  * - pagamento (`paidAt`) é um instante. O mês em que ele cai é o do relógio do
  *   Brasil, que é onde a transportadora fecha o caixa.
+ *
+ * Dois valores, dois sentidos:
+ * - `amount` é o valor original do lançamento: é o que está em aberto, o que
+ *   vence e o que entra no previsto.
+ * - `paidAmount` é o que entrou de fato na baixa de um título a receber com
+ *   juros, multa ou desconto. Só existe nesse caso; no realizado vale ele
+ *   quando existe, e o valor original quando não (`valorRealizado`).
  */
 
 export const TRANSACTION_TYPES = ["INCOME", "EXPENSE"] as const;
@@ -35,11 +42,33 @@ export type Lancamento = {
   status: string;
   dueDate: Date | string | null;
   paidAt: Date | string | null;
+  /** O que entrou de fato, quando a baixa teve juros, multa ou desconto. */
+  paidAmount?: number | null;
 };
 
 const FUSO = "America/Sao_Paulo";
 
 const centavos = (valor: number) => Math.round((valor + Number.EPSILON) * 100) / 100;
+
+/** O que o lançamento pago movimentou de verdade: o valor recebido na baixa, ou o original quando não houve encargo. */
+export function valorRealizado(lancamento: Pick<Lancamento, "amount" | "paidAmount">): number {
+  return lancamento.paidAmount ?? lancamento.amount;
+}
+
+export type Encargos = { juros?: number | null; multa?: number | null; desconto?: number | null };
+
+/** `true` quando a baixa tem algum encargo de fato: tudo zerado é baixa pelo valor cheio. */
+export function temEncargos({ juros, multa, desconto }: Encargos): boolean {
+  return (juros ?? 0) > 0 || (multa ?? 0) > 0 || (desconto ?? 0) > 0;
+}
+
+/**
+ * O valor efetivamente recebido na baixa: original + juros + multa − desconto.
+ * Pode sair negativo (desconto maior que tudo): quem chama recusa.
+ */
+export function valorRecebido(original: number, { juros, multa, desconto }: Encargos): number {
+  return centavos(original + (juros ?? 0) + (multa ?? 0) - (desconto ?? 0));
+}
 
 /** Dia do calendário do vencimento, como `AAAA-MM-DD` (lido em UTC). */
 export function diaDoVencimento(valor: Date | string): string {
@@ -84,8 +113,8 @@ export function resumoFinanceiro(lancamentos: readonly Lancamento[], hoje: Date 
 
     if (situacao === "pago") {
       if (l.paidAt && diaNoBrasil(l.paidAt).slice(0, 7) === mesAtual) {
-        if (entrada) resumo.noMes.recebido += l.amount;
-        else resumo.noMes.pago += l.amount;
+        if (entrada) resumo.noMes.recebido += valorRealizado(l);
+        else resumo.noMes.pago += valorRealizado(l);
       }
       continue;
     }
@@ -137,9 +166,10 @@ export function mesesDoPeriodo(de: string, ate: string): string[] {
 
 /**
  * Fluxo de caixa por mês. **Previsto** é tudo o que vence no mês (pago ou não):
- * o que a transportadora esperava movimentar. **Realizado** é o que foi pago ou
- * recebido no mês, pela data do pagamento. Lançamento sem vencimento só aparece
- * no realizado, quando é pago.
+ * o que a transportadora esperava movimentar, pelo valor original. **Realizado**
+ * é o que foi pago ou recebido no mês, pela data do pagamento e pelo valor que
+ * entrou de fato (com juros, multa e desconto da baixa). Lançamento sem
+ * vencimento só aparece no realizado, quando é pago.
  */
 export function fluxoDeCaixa(lancamentos: readonly Lancamento[], de: string, ate: string): MesDoFluxo[] {
   const meses = mesesDoPeriodo(de, ate);
@@ -159,7 +189,7 @@ export function fluxoDeCaixa(lancamentos: readonly Lancamento[], de: string, ate
     }
     if (l.status === "PAID" && l.paidAt) {
       const linha = linhas.get(diaNoBrasil(l.paidAt).slice(0, 7));
-      if (linha) linha.realizado[campo] += l.amount;
+      if (linha) linha.realizado[campo] += valorRealizado(l);
     }
   }
 
@@ -219,6 +249,7 @@ const fields = {
   dueDate: optionalDate("Vencimento inválido."),
   clientId: optionalText(64, INVALID_BODY),
   category: optionalText(80, "Categoria muito longa."),
+  costCenter: optionalText(80, "Centro de custo muito longo."),
   counterparty: optionalText(160, "Nome do fornecedor ou pagador muito longo."),
   notes: optionalText(1000, "Observação muito longa."),
   paymentMethod: z
@@ -235,9 +266,26 @@ export const createTransactionSchema = z.object(
   INVALID_BODY,
 );
 
+const ENCARGO_MESSAGE = "Juros, multa e desconto precisam ser números maiores ou iguais a zero.";
+
+/** Juros, multa ou desconto da baixa, em reais. Vazio é o mesmo que ausente. */
+const encargo = z.preprocess(fromFormNumber, z.number(ENCARGO_MESSAGE).min(0, ENCARGO_MESSAGE).max(1_000_000_000, ENCARGO_MESSAGE).optional());
+
+/** Os três encargos que a baixa de um título a receber aceita (também na baixa da fatura). */
+export const encargosDaBaixa = { juros: encargo, multa: encargo, desconto: encargo };
+
+export const ENCARGOS_SO_NA_BAIXA = "Juros, multa e desconto só valem na baixa (ação pagar).";
+export const ENCARGOS_SO_A_RECEBER = "Juros, multa e desconto valem só para lançamento a receber.";
+export const DESCONTO_MAIOR_QUE_O_VALOR = "O desconto não pode passar do valor com juros e multa.";
+
+/** `true` quando o corpo não traz encargo fora da ação `pagar`. */
+export const semEncargoForaDaBaixa = (data: { action?: string } & Encargos) =>
+  data.action === "pagar" || (data.juros === undefined && data.multa === undefined && data.desconto === undefined);
+
 /**
  * Alteração. `action` muda a situação: `pagar` (com `paidAt` e `paymentMethod`
- * opcionais; sem data vale agora) e `reabrir`. Sem `action`, edita os campos.
+ * opcionais; sem data vale agora; e, em título a receber, `juros`, `multa` e
+ * `desconto`) e `reabrir`. Sem `action`, edita os campos.
  */
 export const updateTransactionSchema = z
   .object(
@@ -249,16 +297,19 @@ export const updateTransactionSchema = z
       dueDate: fields.dueDate,
       clientId: fields.clientId,
       category: fields.category,
+      costCenter: fields.costCenter,
       counterparty: fields.counterparty,
       notes: fields.notes,
       paymentMethod: fields.paymentMethod,
       paidAt: fields.paidAt,
+      ...encargosDaBaixa,
     },
     INVALID_BODY,
   )
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
     message: "Informe ao menos um campo para alterar.",
-  });
+  })
+  .refine(semEncargoForaDaBaixa, { message: ENCARGOS_SO_NA_BAIXA });
 
 /** O que as rotas devolvem de cada lançamento. */
 export const TRANSACTION_SELECT = {
@@ -271,8 +322,13 @@ export const TRANSACTION_SELECT = {
   paidAt: true,
   paymentMethod: true,
   category: true,
+  costCenter: true,
   counterparty: true,
   notes: true,
+  interest: true,
+  fine: true,
+  discount: true,
+  paidAmount: true,
   createdAt: true,
   clientId: true,
   client: { select: { id: true, companyName: true, tradeName: true } },
