@@ -156,6 +156,9 @@ export default function NotasFiscaisPage() {
           <Link href="/dashboard/fiscal/cte" className={BOTAO_CLARO}>
             CT-e
           </Link>
+          <Link href="/dashboard/fiscal/mdfe" className={BOTAO_CLARO}>
+            MDF-e
+          </Link>
           <button type="button" disabled={importando} onClick={() => arquivos.current?.click()} className={BOTAO_AZUL}>
             {importando ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
             Importar XML

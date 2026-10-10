@@ -351,12 +351,49 @@ const vehicleYear = z.preprocess(
     .nullish(),
 );
 
+// O que o MDF-e pede do veículo (grupos veicTracao, veicReboque e prop do modal
+// rodoviário, leiaute 3.00). Tudo opcional: vazio vira `null`, e a emissão do
+// MDF-e lista o que falta (src/lib/mdfe/preparar.ts).
+const soDigitosOuVazio = (value: unknown) => (typeof value === "string" ? value.replace(/\D/g, "") : value);
+const codigoOpcional = (valores: readonly string[], message: string) =>
+  z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? null : value), z.enum(valores as [string, ...string[]], message).nullish());
+const UFS_DO_VEICULO = ["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"] as const;
+const RENAVAM_MESSAGE = "O RENAVAM tem de 9 a 11 dígitos.";
+const TARA_MESSAGE = "A tara precisa ser um número inteiro de 0 a 999999 kg.";
+const OWNER_TAX_ID_MESSAGE = "Informe um CPF (11 dígitos) ou CNPJ (14 posições) para o proprietário.";
+const OWNER_RNTRC_MESSAGE = "O RNTRC do proprietário tem 8 dígitos.";
+
+const vehicleFiscalFields = {
+  renavam: z.preprocess(soDigitosOuVazio, z.string(RENAVAM_MESSAGE).regex(/^(\d{9,11})?$/, RENAVAM_MESSAGE).transform((value) => (value === "" ? null : value)).nullish()),
+  tareKg: z.preprocess(fromFormNumber, z.number(TARA_MESSAGE).int(TARA_MESSAGE).min(0, TARA_MESSAGE).max(999_999, TARA_MESSAGE).nullish()),
+  // tpRod: 01 truck, 02 toco, 03 cavalo mecânico, 04 van, 05 utilitário, 06 outros.
+  wheelType: codigoOpcional(["01", "02", "03", "04", "05", "06"], "Tipo de rodado inválido."),
+  // tpCar: 00 não aplicável, 01 aberta, 02 fechada/baú, 03 graneleira, 04 porta-contêiner, 05 sider.
+  bodyType: codigoOpcional(["00", "01", "02", "03", "04", "05"], "Tipo de carroceria inválido."),
+  licenseState: codigoOpcional(UFS_DO_VEICULO, "UF de licenciamento inválida."),
+  // Proprietário: só quando o veículo não é da empresa. CNPJ pode ter letras (alfanumérico, desde 2026).
+  ownerTaxId: z.preprocess(
+    (value) => (typeof value === "string" ? value.toUpperCase().replace(/[^0-9A-Z]/g, "") : value),
+    z.string(OWNER_TAX_ID_MESSAGE).regex(/^(\d{11}|[A-Z0-9]{12}\d{2})?$/, OWNER_TAX_ID_MESSAGE).transform((value) => (value === "" ? null : value)).nullish(),
+  ),
+  ownerName: optionalText(60, "Nome do proprietário muito longo (máximo de 60 letras)."),
+  ownerRntrc: z.preprocess(soDigitosOuVazio, z.string(OWNER_RNTRC_MESSAGE).regex(/^(\d{8})?$/, OWNER_RNTRC_MESSAGE).transform((value) => (value === "" ? null : value)).nullish()),
+  ownerIe: optionalText(14, "Inscrição estadual do proprietário muito longa."),
+  ownerState: codigoOpcional(UFS_DO_VEICULO, "UF do proprietário inválida."),
+  // tpProp: 0 TAC agregado, 1 TAC independente, 2 outros.
+  ownerType: codigoOpcional(["0", "1", "2"], "Tipo de proprietário inválido."),
+};
+
+/** Os campos do veículo que só o MDF-e usa, na ordem do formulário. */
+export const VEHICLE_FISCAL_FIELDS = ["renavam", "tareKg", "wheelType", "bodyType", "licenseState", "ownerTaxId", "ownerName", "ownerRntrc", "ownerIe", "ownerState", "ownerType"] as const;
+
 const vehicleOptionalFields = {
   capacityKg: optionalAmount("A capacidade precisa ser um número maior ou igual a zero."),
   maxWeight: optionalAmount("O peso máximo precisa ser um número maior ou igual a zero."),
   year: vehicleYear,
   // Vazio ou `null` desvincula o motorista.
   defaultDriverId: optionalText(64, "Motorista inválido."),
+  ...vehicleFiscalFields,
 };
 
 export const createVehicleSchema = z.object(

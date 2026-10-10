@@ -24,7 +24,12 @@ const SHA1 = "http://www.w3.org/2000/09/xmldsig#sha1";
 export class AssinaturaError extends Error {}
 
 /** O elemento assinado e o elemento pai, onde a assinatura entra como último filho. */
-export type AlvoDaAssinatura = { assinado: "infCte"; pai: "CTe" } | { assinado: "infEvento"; pai: "eventoCTe" };
+export type AlvoDaAssinatura =
+  | { assinado: "infCte"; pai: "CTe" }
+  | { assinado: "infEvento"; pai: "eventoCTe" }
+  // O MDF-e usa a mesma assinatura (MOC do MDF-e 3.00b, Visão Geral, item 3.2.4): os alvos dele estão em src/lib/mdfe/montar.ts.
+  | { assinado: "infMDFe"; pai: "MDFe" }
+  | { assinado: "infEvento"; pai: "eventoMDFe" };
 
 export const ALVO_DO_CTE: AlvoDaAssinatura = { assinado: "infCte", pai: "CTe" };
 export const ALVO_DO_EVENTO: AlvoDaAssinatura = { assinado: "infEvento", pai: "eventoCTe" };

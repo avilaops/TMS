@@ -1054,7 +1054,8 @@ suite("aplicativo do motorista", () => {
 
       expect(lista.map((m) => m.id)).toEqual([id]);
       const [daViagem] = lista;
-      expect(Object.keys(daViagem).sort()).toEqual(["collections", "createdAt", "id", "status", "vehicle"]);
+      // `mdfes`: a chave e a situação do MDF-e da viagem, só para leitura (tests/mdfe-rotas.test.ts confere o conteúdo).
+      expect(Object.keys(daViagem).sort()).toEqual(["collections", "createdAt", "id", "mdfes", "status", "vehicle"]);
       expect("deliveries" in daViagem).toBe(false);
 
       expect(daViagem.collections.map((c) => c.id)).toEqual([primeira.id, segunda.id]);

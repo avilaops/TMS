@@ -38,7 +38,7 @@ São nove perfis (enum `Role`): os sete da equipe interna, que entram em `/dashb
 | Acerto e resultado da viagem | lê | lê | não | lê | não | não | não |
 | Comprovantes de entrega | tudo | tudo | tudo | não | não | tudo | não |
 | Ocorrências (chamados) | tudo | tudo | tudo | não | tudo | tudo | tudo |
-| Notas fiscais e CT-e | tudo | tudo | tudo | lê | não | lê | não |
+| Notas fiscais, CT-e e MDF-e | tudo | tudo | tudo | lê | não | lê | não |
 | Faturamento | tudo | lê | não | tudo | não | não | não |
 | Cobrança (painel) | lê | lê | não | lê | não | não | não |
 | Financeiro (lançamentos, fluxo, recibo) | tudo | lê | não | tudo | não | não | não |
@@ -295,6 +295,8 @@ Ainda não há exportação para planilha ou PDF, DRE por competência (o que h�
 ## Frota
 
 O que se controla de cada veículo, além do cadastro. As regras e as contas ficam em [src/lib/frota.ts](src/lib/frota.ts); as contas são funções puras e não gravam nada (consumo, custo por km e situação de documento são calculados na leitura).
+
+**Dados para o MDF-e** (no cadastro do veículo, bloco fechado por padrão, todos opcionais): RENAVAM, tara, tipo de rodado, tipo de carroceria, UF de licenciamento e, para veículo de terceiro, o proprietário (CPF ou CNPJ, nome, RNTRC, IE, UF e tipo). A emissão do [MDF-e](#mdf-e) lista o que falta em vez de emitir incompleto.
 
 **Tela do veículo** (`/dashboard/veiculos/[id]`, pelo link "Manutenção e frota" da lista de veículos), com uma aba por assunto. O endereço antigo da manutenção (`/dashboard/veiculos/[id]/manutencao`) leva para lá.
 
@@ -571,7 +573,78 @@ A tela `/dashboard/fiscal/cte` lista as cargas em rota ou entregues com a situa�
 
 Eventos para o n8n: `cte.autorizado` e `cte.cancelado` (com número, chave, ambiente, protocolo e a carga; sem o XML). Aviso no sininho para quem lê o fiscal. Auditoria: dados fiscais, certificado (sem o conteúdo), autorização, rejeição e cancelamento. As tabelas são criadas por [prisma/sql/027-cte.sql](prisma/sql/027-cte.sql); os esquemas oficiais usados nos testes estão em [fiscal/esquemas/cte-4.00](fiscal/esquemas/cte-4.00/README.md).
 
-**Ainda não existe no CT-e:** a primeira autorização real; MDF-e; carta de correção, CT-e complementar, de substituição e simplificado; contingência; expedidor e recebedor; redução de alíquota, diferimento e demais grupos do IBS/CBS além dos CST 000, 400 e 410; a conferência do CST e do `cClassTrib` contra a tabela oficial; cliente e destinatário frequente com CNPJ alfanumérico no cadastro (o cadastro de clientes ainda só aceita dígitos).
+**Ainda não existe no CT-e:** a primeira autorização real; carta de correção, CT-e complementar, de substituição e simplificado; contingência; expedidor e recebedor; redução de alíquota, diferimento e demais grupos do IBS/CBS além dos CST 000, 400 e 410; a conferência do CST e do `cClassTrib` contra a tabela oficial; cliente e destinatário frequente com CNPJ alfanumérico no cadastro (o cadastro de clientes ainda só aceita dígitos).
+
+### MDF-e
+
+O MDF-e (modelo 58, modal rodoviário, leiaute 3.00) é emitido **a partir da viagem**: em Manifestos, a tela da viagem tem a aba **MDF-e**, com um documento para cada UF de descarregamento. Ali se confere o que vai no documento, se informa o que o cadastro não sabe (percurso, CIOT, averbação do seguro, produto predominante, pagamento do frete, vale-pedágio, reboques, lacres) e se emite. A tela `/dashboard/fiscal/mdfe` (botão "MDF-e" em Notas fiscais) lista os MDF-e emitidos e é de onde se baixa o XML e o **DAMDFE**, se **encerra**, se **cancela** e se **inclui condutor**; nela ficam também a consulta ao status da SEFAZ, a consulta dos **MDF-e não encerrados** e, para o administrador, a configuração (série, próximo número, tipo de emitente e seguro padrão). O motorista vê, no app, a chave e a situação do MDF-e da viagem dele.
+
+**Regra da casa: nada é "autorizado", "encerrado" ou "cancelado" sem o protocolo da SEFAZ.** Um MDF-e só fica autorizado com `cStat` 100 e número de protocolo, para a chave, o ambiente e o resumo (`digVal`) do XML que foi enviado; um evento só vale com `cStat` 135 e protocolo, para a chave e o tipo enviados.
+
+**O que NÃO foi provado.** Não havia certificado A1 nem acesso à SEFAZ: **nenhum MDF-e foi autorizado, encerrado ou cancelado de verdade, nem em homologação.** O que existe está provado até onde dá sem a SEFAZ: o XML de cada cenário é validado contra o pacote oficial de esquemas (o MDF-e, o grupo `rodo`, o `mdfeProc`, cada evento com o seu `detEvento`, o `procEventoMDFe` e as três consultas), a assinatura é conferida de volta, e a conversa SOAP (autenticação mútua em TLS 1.2, GZip + Base64 na recepção) roda contra um servidor HTTPS local que imita a SVRS (`tests/mdfe-apoio.ts`). Os mesmos XML foram passados, à mão, pela ferramenta `validar_xml_fiscal` do serviço fiscal da casa (15 de 15 válidos; o `detEvento` da inclusão de DF-e ela não confere) e o `mdfeProc` de exemplo gerou DAMDFE em `gerar_damdfe`. Só com certificado e SEFAZ de verdade se prova: o aperto de mão TLS e o endereço de cada serviço, o nome do campo e a ação SOAP aceitos pelo servidor real, as regras de negócio que só a SEFAZ tem (cadastro do emitente, RNTRC e CIOT na ANTT, existência dos CT-e e das NF-e relacionados, placa no SENATRAN, seguro, MDF-e em aberto), a assinatura aceita com a cadeia da ICP-Brasil e o DAMDFE de um documento real.
+
+**Normas conferidas** (em 10/10/2026; as do Portal do MDF-e foram lidas no próprio portal, `https://dfe-portal.svrs.rs.gov.br/Mdfe`):
+
+| Norma | Versão e data | O que saiu dela |
+| --- | --- | --- |
+| MOC do MDF-e, Visão Geral | 3.00b, 07/12/2022 | Serviços e métodos (`MDFeRecepcaoSinc`, `MDFeConsulta`, `MDFeConsNaoEnc`, `MDFeStatusServico`, `MDFeRecepcaoEvento`), SOAP 1.2 sem cabeçalho, campo `mdfeDadosMsg`, GZip + Base64 só na recepção, assinatura RSA-SHA1 com C14N e Enveloped, eventos (itens 5 e 6), QR Code (item 9.2.1) |
+| MOC do MDF-e, Anexo I (leiaute e regras de validação) | 3.00b, 07/12/2022 | Ordem dos campos e as regras F (documentos por tipo de emitente, proprietário e `tpTransp`, seguro, contratante, percurso, duplicidade, MDF-e não encerrado) |
+| Pacote de esquemas `PL_MDFe_300b_NT012025_1.05` | 25/04/2026 (item "Schemas NT 2025.001 v 1.04" do portal) | Os XSD de `fiscal/esquemas/mdfe-3.00/` |
+| NT 2026.001 do MDF-e | v1.00, maio de 2026 (homologação 21/09/2026, produção 23/11/2026) | Grupo do CIOT exigido da transportadora (rejeição 684) |
+| NT 2025.001 do MDF-e | v1.03, agosto de 2025 (produção 06/10/2025) | NCM e pagamento na carga lotação (301 e 302), `tpCarga` 12, `tpComp` 04, vale-pedágio 01 e 04, CIOT sem o código, `cStat` de 4 dígitos, CNPJ alfanumérico nos tipos |
+| NT Conjunta 2025.001 (CNPJ alfanumérico) | v1.00, 07/05/2025 | CNPJ e chave com letras |
+| NT 2024.001 do MDF-e | v1.02, 12/03/2024 | Cavalo mecânico com reboque (523), fim do serviço assíncrono (30/06/2024), até 20.000 documentos por município |
+| NT 2023.001 do MDF-e | v1.00, março de 2023 | Placa com 7 posições; encerramento e consulta de não encerrados sem a rejeição 203 |
+| NT 2020.001 (MDF-e Integrado), 2021.001, 2021.002 e 2022.001 | v1.04 (03/2020), v1.02 e v1.03 (05/2021) e v1.00 (02/2022) | Grupos `infPag`, `prodPred` e `infLotacao` (2020.001); Pix e categoria de combinação veicular (2021); contrato e antecipação (2022.001) |
+| Ajuste SINIEF 21/10 e alterações (45/23, 03/26 e 05/26) | texto lido em republicações (o site do CONFAZ recusou a conexão em 10/10/2026): cláusula terceira, caput e § 2º; cláusula décima quarta, I | MDF-e emitido ao fim do carregamento e antes do início do transporte; um MDF-e por UF de descarregamento; encerramento ao término do último descarregamento; CIOT no MDF-e com efeitos a partir de 01/06/2026 |
+| Resolução ANTT 5.862/2019 (CIOT), alterada em 2026 (6.078 e 6.090, segundo notícias) | **não lida no texto oficial** | Nenhuma regra de código saiu dela diretamente: o sistema aplica a regra de validação que a SEFAZ publicou (NT 2026.001) |
+
+O MDF-e 3.00 **não tem grupo de IBS/CBS**: o pacote de 25/04/2026 e as NTs do portal não trazem nada da Reforma Tributária para este documento (as tabelas de classificação tributária publicadas no portal são do CT-e e dos outros DF-e). Não há o que conferir em `consultar_classificacao_tributaria`.
+
+**O que o sistema decide, e por quê**
+
+- **Tipo de emitente** (`tpEmit`): é da configuração da empresa. `1` (transportadora) relaciona os **CT-e** das cargas; `2` (carga própria) relaciona as **NF-e**. O tipo 3 (CT-e globalizado) não é emitido.
+- **Um MDF-e por UF de descarregamento**, com os documentos agrupados por município de descarga. Na transportadora, município de início e de fim, valor, peso e produto saem do XML do próprio CT-e autorizado (o MDF-e precisa fechar com ele); CT-e registrado à mão, sem XML, só vale em produção e usa origem e destino da carga.
+- **Percurso**: mesma UF ou UFs vizinhas não levam percurso; com um único caminho mais curto pelas divisas (SP → SC passa pelo PR), o sistema o sugere; com mais de um (SP → GO, por MG ou por MS), **a pessoa informa** e a emissão fica pendente até lá. O percurso informado é conferido pelas divisas.
+- **Seguro**: obrigatório para a transportadora (seguradora, CNPJ, apólice e averbação: rejeições 698 e 699). Seguradora e apólice vêm da configuração; a averbação é de cada viagem.
+- **CIOT**: pendência em homologação desde 21/09/2026 e, em produção, a partir de 23/11/2026 (antes disso, aviso).
+- **Carga lotação** (um documento só): pede NCM, CEP de carregamento e de descarga e o pagamento do frete.
+- **Veículo de terceiro**: o proprietário cadastrado no veículo vira o grupo `prop`, o `tpTransp` (CPF = TAC, CNPJ = ETC) e o contratante passa a ser o próprio emitente (regra F65). Cooperativa (CTC) não é montada.
+- **Antes de enviar**, a emissão consulta os **MDF-e não encerrados** do emitente. Se um deles é desta empresa, da mesma placa, tipo de emitente e UF de descarregamento, a emissão para ali e diz qual encerrar (a SEFAZ rejeitaria com 611). Os emitidos fora do sistema aparecem na consulta da tela, e quem decide é a SEFAZ.
+- **Numeração**: própria do MDF-e (`MdfeNumbering`, por empresa, série e ambiente), com a mesma disciplina do CT-e: rejeição não consome o número; envio sem resposta guarda o XML e consulta pela chave antes de reenviar.
+- **Encerramento**: a norma manda encerrar ao término do último descarregamento, sem prazo em dias. Os prazos que existem são os bloqueios da SEFAZ: MDF-e em aberto há mais de **5 dias** bloqueia novo MDF-e da placa (rejeição 462) e há mais de **30 dias** bloqueia o emitente (686). O sininho avisa quem lê o fiscal quando um MDF-e passa de `DIAS_PARA_AVISAR_ENCERRAMENTO` (3) dias autorizado sem encerrar, e a tela de Manifestos oferece o encerramento ao finalizar a viagem.
+- **Cancelamento**: até **24 horas** da autorização e sem o transporte ter começado. O sistema recusa quando a viagem foi finalizada ou já tem entrega feita, pede a confirmação de que o veículo não saiu, e a SEFAZ confere a circulação.
+- **Liberar a saída não é bloqueado** pela falta de MDF-e: a resposta só leva um aviso quando a viagem sai do município ou do estado e não há MDF-e autorizado em produção.
+- **Homologação e produção**: o ambiente é o mesmo do CT-e (Empresa → Fiscal). MDF-e de homologação fica só na tabela do documento: não conta como MDF-e da viagem.
+
+**Passo a passo para a transportadora**
+
+1. Fazer o passo a passo do CT-e (credenciamento, Empresa → Fiscal, certificado A1). O MDF-e usa o mesmo emitente e o mesmo certificado, e é autorizado pelo ambiente nacional (SVRS) para qualquer UF.
+2. Em Notas fiscais → MDF-e → **Configuração**: série, próximo número, tipo de emitente e o seguro padrão (seguradora, CNPJ e apólice).
+3. Em Frota, completar o veículo em "Dados para o MDF-e": RENAVAM, tara, tipo de rodado, carroceria, UF e, se for de terceiro, o proprietário (com o RNTRC dele).
+4. Emitir o CT-e das cargas da viagem (o CT-e só existe para carga em rota ou entregue: hoje a ordem é liberar a saída, emitir os CT-e e então o MDF-e, antes de o veículo sair).
+5. Em Manifestos → viagem → **MDF-e**: informar CIOT e averbação, conferir e "Emitir em homologação". Corrigir o que a SEFAZ rejeitar.
+6. Ao fim da viagem, **encerrar** o MDF-e (data e município em que terminou).
+
+| Rota | Quem | O que faz |
+| --- | --- | --- |
+| `GET /api/fiscal/mdfe` | quem lê o fiscal | Os MDF-e emitidos (`?manifestId=` para os de uma viagem) |
+| `GET /api/fiscal/mdfe/situacao` | quem lê o fiscal | A empresa está pronta para emitir? Ambiente, tipo de emitente e o que falta |
+| `GET`/`PUT /api/fiscal/mdfe/configuracao` | administrador | Série, próximo número, tipo de emitente e seguro padrão |
+| `GET /api/fiscal/mdfe/emissao?manifestId=` | quem lê o fiscal | A aba da viagem: uma conferência por UF de descarregamento |
+| `POST /api/fiscal/mdfe/conferencia` | quem lê o fiscal | Confere o documento com o que a pessoa informou; nada é enviado nem gravado |
+| `POST /api/fiscal/mdfe/emissao` | quem escreve no fiscal | Consulta os não encerrados, monta, assina e transmite |
+| `GET /api/fiscal/mdfe/emissao/[id]/xml` | quem lê o fiscal | O `mdfeProc` autorizado, como anexo |
+| `GET /api/fiscal/mdfe/emissao/[id]/damdfe` | quem lê o fiscal | O DAMDFE em PDF (serviço fiscal, `gerar_damdfe`; só com o protocolo reconhecido) |
+| `POST /api/fiscal/mdfe/emissao/[id]/encerrar` | quem escreve no fiscal | Encerra (`{ dia, cidade, uf }`) |
+| `POST /api/fiscal/mdfe/emissao/[id]/cancelar` | quem escreve no fiscal | Cancela (`{ justificativa, transporteNaoIniciado: true }`) |
+| `POST /api/fiscal/mdfe/emissao/[id]/condutor` | quem escreve no fiscal | Inclui condutor (`{ nome, cpf }`) |
+| `GET /api/fiscal/mdfe/status-servico` | quem lê o fiscal | Pergunta à SVRS se o serviço está em operação |
+| `GET /api/fiscal/mdfe/nao-encerrados` | quem lê o fiscal | Os MDF-e do emitente que a SEFAZ tem em aberto |
+
+Eventos para o n8n: `mdfe.autorizado`, `mdfe.encerrado` e `mdfe.cancelado` (número, chave, ambiente, protocolos, placa, UFs e a viagem; sem o XML). Avisos no sininho para quem lê o fiscal: os três e `mdfe.encerrar` (em aberto há dias). Auditoria: configuração, emissão, rejeição, encerramento, cancelamento e inclusão de condutor. Tabelas: `Mdfe`, `MdfeEvent` (o XML assinado e o retorno de cada evento registrado) e `MdfeNumbering` (`prisma/sql/029-mdfe.sql`).
+
+**Ainda não existe no MDF-e:** a primeira autorização real; a **inclusão de DF-e** pela tela (o evento 110115 é montado e validado no esquema, mas a norma só o aceita em MDF-e de carga própria emitido com "carregamento posterior", que o sistema não emite); o evento de **pagamento da operação de transporte** (110116: é para o pagamento posterior de TAC agregado, não é exigido de quem informa o pagamento no próprio MDF-e); encerrar pela tela um MDF-e emitido em outro sistema; contingência; emitente pessoa física; emitente com CNPJ alfanumérico (a chave e os campos já aceitam, mas o atributo `Id` do pacote de esquemas vigente ainda é só de dígitos: ver `fiscal/esquemas/mdfe-3.00/README.md`); CT-e globalizado; produtos perigosos; mais de um CIOT, de um dispositivo de vale-pedágio ou de uma parcela pela tela (a rota aceita); cooperativa (CTC) como proprietária; responsável técnico (`infRespTec`); os outros modais. E um desencontro de fluxo a resolver com o dono do produto: a norma manda emitir o MDF-e antes de o veículo sair, e o CT-e daqui só é emitido com a carga já "em rota".
 
 Ainda não existe nas notas: consulta à SEFAZ (situação da nota, download pela chave), manifestação do destinatário, leitura de XML de CT-e ou de NFC-e, importação por e-mail ou em arquivo compactado, mais de uma NF-e criando uma carga só, desfazer a ligação entre nota e carga e apagar nota importada. Anexar a nota a uma carga não muda o valor da NF nem o frete dela.
 

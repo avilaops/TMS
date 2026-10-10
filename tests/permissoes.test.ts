@@ -63,6 +63,18 @@ suite("permissões das rotas internas", () => {
   let cteCancelar: typeof import("../src/app/api/fiscal/cte/emissao/[id]/cancelar/route");
   let cteStatus: typeof import("../src/app/api/fiscal/cte/status-servico/route");
   let cteSituacao: typeof import("../src/app/api/fiscal/cte/situacao/route");
+  let mdfeLista: typeof import("../src/app/api/fiscal/mdfe/route");
+  let mdfeSituacao: typeof import("../src/app/api/fiscal/mdfe/situacao/route");
+  let mdfeStatus: typeof import("../src/app/api/fiscal/mdfe/status-servico/route");
+  let mdfeAbertos: typeof import("../src/app/api/fiscal/mdfe/nao-encerrados/route");
+  let mdfeConfiguracao: typeof import("../src/app/api/fiscal/mdfe/configuracao/route");
+  let mdfeConferencia: typeof import("../src/app/api/fiscal/mdfe/conferencia/route");
+  let mdfeEmissao: typeof import("../src/app/api/fiscal/mdfe/emissao/route");
+  let mdfeXml: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/xml/route");
+  let mdfeDamdfe: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/damdfe/route");
+  let mdfeEncerrar: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/encerrar/route");
+  let mdfeCancelar: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/cancelar/route");
+  let mdfeCondutor: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/condutor/route");
   let empresaFiscal: typeof import("../src/app/api/empresa/fiscal/route");
   let empresaCertificado: typeof import("../src/app/api/empresa/fiscal/certificado/route");
   let manifestos: typeof import("../src/app/api/manifestos/route");
@@ -199,6 +211,18 @@ suite("permissões das rotas internas", () => {
     cteCancelar = await import("../src/app/api/fiscal/cte/emissao/[id]/cancelar/route");
     cteStatus = await import("../src/app/api/fiscal/cte/status-servico/route");
     cteSituacao = await import("../src/app/api/fiscal/cte/situacao/route");
+    mdfeLista = await import("../src/app/api/fiscal/mdfe/route");
+    mdfeSituacao = await import("../src/app/api/fiscal/mdfe/situacao/route");
+    mdfeStatus = await import("../src/app/api/fiscal/mdfe/status-servico/route");
+    mdfeAbertos = await import("../src/app/api/fiscal/mdfe/nao-encerrados/route");
+    mdfeConfiguracao = await import("../src/app/api/fiscal/mdfe/configuracao/route");
+    mdfeConferencia = await import("../src/app/api/fiscal/mdfe/conferencia/route");
+    mdfeEmissao = await import("../src/app/api/fiscal/mdfe/emissao/route");
+    mdfeXml = await import("../src/app/api/fiscal/mdfe/emissao/[id]/xml/route");
+    mdfeDamdfe = await import("../src/app/api/fiscal/mdfe/emissao/[id]/damdfe/route");
+    mdfeEncerrar = await import("../src/app/api/fiscal/mdfe/emissao/[id]/encerrar/route");
+    mdfeCancelar = await import("../src/app/api/fiscal/mdfe/emissao/[id]/cancelar/route");
+    mdfeCondutor = await import("../src/app/api/fiscal/mdfe/emissao/[id]/condutor/route");
     empresaFiscal = await import("../src/app/api/empresa/fiscal/route");
     empresaCertificado = await import("../src/app/api/empresa/fiscal/certificado/route");
     manifestos = await import("../src/app/api/manifestos/route");
@@ -309,6 +333,18 @@ suite("permissões das rotas internas", () => {
       ["POST /api/fiscal/cte/emissao/[id]/cancelar", () => cteCancelar.POST(req("POST", { justificativa: "Tentativa de quem não pode" }), ctx(semId))],
       ["GET /api/fiscal/cte/status-servico", () => cteStatus.GET()],
       ["GET /api/fiscal/cte/situacao", () => cteSituacao.GET()],
+      ["GET /api/fiscal/mdfe", () => mdfeLista.GET(req())],
+      ["GET /api/fiscal/mdfe/situacao", () => mdfeSituacao.GET()],
+      ["GET /api/fiscal/mdfe/status-servico", () => mdfeStatus.GET()],
+      ["GET /api/fiscal/mdfe/nao-encerrados", () => mdfeAbertos.GET()],
+      ["POST /api/fiscal/mdfe/conferencia", () => mdfeConferencia.POST(req("POST", { manifestId: semId, ufDeDescarga: "MG" }))],
+      ["GET /api/fiscal/mdfe/emissao", () => mdfeEmissao.GET(req())],
+      ["POST /api/fiscal/mdfe/emissao", () => mdfeEmissao.POST(req("POST", { manifestId: semId, ufDeDescarga: "MG" }))],
+      ["GET /api/fiscal/mdfe/emissao/[id]/xml", () => mdfeXml.GET(req(), ctx(semId))],
+      ["GET /api/fiscal/mdfe/emissao/[id]/damdfe", () => mdfeDamdfe.GET(req(), ctx(semId))],
+      ["POST /api/fiscal/mdfe/emissao/[id]/encerrar", () => mdfeEncerrar.POST(req("POST", { dia: "2026-10-10", cidade: "Belo Horizonte", uf: "MG" }), ctx(semId))],
+      ["POST /api/fiscal/mdfe/emissao/[id]/cancelar", () => mdfeCancelar.POST(req("POST", { justificativa: "Tentativa de quem não pode", transporteNaoIniciado: true }), ctx(semId))],
+      ["POST /api/fiscal/mdfe/emissao/[id]/condutor", () => mdfeCondutor.POST(req("POST", { nome: "Maria de Souza", cpf: "11144477735" }), ctx(semId))],
       ["GET /api/manifestos", () => manifestos.GET()],
       ["POST /api/manifestos", () => manifestos.POST(req("POST", {}))],
       ["PATCH /api/manifestos/[id]", () => manifestoPorId.PATCH(req("PATCH", { driverId: semId }), ctx(semId))],
@@ -419,6 +455,8 @@ suite("permissões das rotas internas", () => {
       ["POST /api/empresa/gateway/teste", () => empresaGatewayTeste.POST()],
       ["GET /api/empresa/fiscal", () => empresaFiscal.GET()],
       ["PUT /api/empresa/fiscal", () => empresaFiscal.PUT(req("PUT", { cnpj: "11222333000181" }))],
+      ["GET /api/fiscal/mdfe/configuracao", () => mdfeConfiguracao.GET()],
+      ["PUT /api/fiscal/mdfe/configuracao", () => mdfeConfiguracao.PUT(req("PUT", { serie: "1", proximoNumero: "1", tipoDeEmitente: "1" }))],
       ["PUT /api/empresa/fiscal/certificado", () => empresaCertificado.PUT(req("PUT", { arquivo: "QUJD", senha: "x" }))],
       ["DELETE /api/empresa/fiscal/certificado", () => empresaCertificado.DELETE(req("DELETE"))],
       ["POST /api/faturas/[id]/cobrancas", () => faturaCobrancas.POST(req("POST", { tipo: "PIX" }), ctx(semId))],

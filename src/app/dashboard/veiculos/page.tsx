@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Plus, Loader2, Truck } from "lucide-react";
+import { TIPOS_DE_CARROCERIA, TIPOS_DE_PROPRIETARIO, TIPOS_DE_RODADO } from "@/lib/mdfe";
+import { UFS } from "@/lib/roteiro";
 
 interface Motorista {
   id: string;
@@ -22,6 +24,18 @@ interface Veiculo {
   driverId: string | null;
   status: string;
   driver?: { user: { name: string } } | null;
+  // O que o MDF-e pede do veículo (todos opcionais).
+  renavam?: string | null;
+  tareKg?: number | null;
+  wheelType?: string | null;
+  bodyType?: string | null;
+  licenseState?: string | null;
+  ownerTaxId?: string | null;
+  ownerName?: string | null;
+  ownerRntrc?: string | null;
+  ownerIe?: string | null;
+  ownerState?: string | null;
+  ownerType?: string | null;
 }
 
 const STATUS = [
@@ -46,7 +60,22 @@ const FORM_VAZIO = {
   maxWeight: "",
   year: "",
   defaultDriverId: "",
+  // Dados para o MDF-e.
+  renavam: "",
+  tareKg: "",
+  wheelType: "",
+  bodyType: "",
+  licenseState: "",
+  ownerTaxId: "",
+  ownerName: "",
+  ownerRntrc: "",
+  ownerIe: "",
+  ownerState: "",
+  ownerType: "",
 };
+
+const CAMPO_DO_MDFE = "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white text-sm";
+const ROTULO_DO_MDFE = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
 
 export default function VeiculosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -109,6 +138,17 @@ export default function VeiculosPage() {
       maxWeight: veiculo.maxWeight == null ? "" : String(veiculo.maxWeight),
       year: veiculo.year == null ? "" : String(veiculo.year),
       defaultDriverId: veiculo.driverId ?? "",
+      renavam: veiculo.renavam ?? "",
+      tareKg: veiculo.tareKg == null ? "" : String(veiculo.tareKg),
+      wheelType: veiculo.wheelType ?? "",
+      bodyType: veiculo.bodyType ?? "",
+      licenseState: veiculo.licenseState ?? "",
+      ownerTaxId: veiculo.ownerTaxId ?? "",
+      ownerName: veiculo.ownerName ?? "",
+      ownerRntrc: veiculo.ownerRntrc ?? "",
+      ownerIe: veiculo.ownerIe ?? "",
+      ownerState: veiculo.ownerState ?? "",
+      ownerType: veiculo.ownerType ?? "",
     });
     setIsModalOpen(true);
   };
@@ -357,6 +397,86 @@ export default function VeiculosPage() {
                 </select>
                 <p className="text-xs text-gray-500">Isso vinculará este veículo automaticamente a este motorista.</p>
               </div>
+
+              {/* O que o MDF-e pede do veículo. Fechado por padrão, para o cadastro caber na tela do celular. */}
+              <details data-dados-do-mdfe className="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2" open={Boolean(formData.renavam || formData.tareKg || formData.wheelType || formData.ownerTaxId)}>
+                <summary className="text-sm font-semibold text-gray-800 dark:text-gray-200 cursor-pointer">Dados para o MDF-e</summary>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4 mt-2">
+                  <label className="space-y-0.5 min-w-0">
+                    <span className={ROTULO_DO_MDFE}>RENAVAM</span>
+                    <input inputMode="numeric" value={formData.renavam} onChange={(e) => setFormData({ ...formData, renavam: e.target.value })} className={CAMPO_DO_MDFE} />
+                  </label>
+                  <label className="space-y-0.5 min-w-0">
+                    <span className={ROTULO_DO_MDFE}>Tara (kg)</span>
+                    <input type="number" value={formData.tareKg} onChange={(e) => setFormData({ ...formData, tareKg: e.target.value })} className={CAMPO_DO_MDFE} />
+                  </label>
+                  <label className="space-y-0.5 min-w-0">
+                    <span className={ROTULO_DO_MDFE}>Rodado</span>
+                    <select value={formData.wheelType} onChange={(e) => setFormData({ ...formData, wheelType: e.target.value })} className={CAMPO_DO_MDFE}>
+                      <option value="">Não informado</option>
+                      {Object.entries(TIPOS_DE_RODADO).map(([codigo, rotulo]) => (
+                        <option key={codigo} value={codigo}>{rotulo}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-0.5 min-w-0">
+                    <span className={ROTULO_DO_MDFE}>Carroceria</span>
+                    <select value={formData.bodyType} onChange={(e) => setFormData({ ...formData, bodyType: e.target.value })} className={CAMPO_DO_MDFE}>
+                      <option value="">Não informado</option>
+                      {Object.entries(TIPOS_DE_CARROCERIA).map(([codigo, rotulo]) => (
+                        <option key={codigo} value={codigo}>{rotulo}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-0.5 min-w-0">
+                    <span className={ROTULO_DO_MDFE}>UF do licenciamento</span>
+                    <select value={formData.licenseState} onChange={(e) => setFormData({ ...formData, licenseState: e.target.value })} className={CAMPO_DO_MDFE}>
+                      <option value="">Não informado</option>
+                      {UFS.map((uf) => (
+                        <option key={uf} value={uf}>{uf}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-0.5 min-w-0">
+                    <span className={ROTULO_DO_MDFE}>Dono (CPF/CNPJ), se de terceiro</span>
+                    <input value={formData.ownerTaxId} onChange={(e) => setFormData({ ...formData, ownerTaxId: e.target.value })} className={CAMPO_DO_MDFE} />
+                  </label>
+                  {formData.ownerTaxId.trim() !== "" && (
+                    <>
+                      <label className="space-y-0.5 min-w-0">
+                        <span className={ROTULO_DO_MDFE}>Nome do dono</span>
+                        <input value={formData.ownerName} onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })} className={CAMPO_DO_MDFE} />
+                      </label>
+                      <label className="space-y-0.5 min-w-0">
+                        <span className={ROTULO_DO_MDFE}>RNTRC do dono</span>
+                        <input inputMode="numeric" value={formData.ownerRntrc} onChange={(e) => setFormData({ ...formData, ownerRntrc: e.target.value })} className={CAMPO_DO_MDFE} />
+                      </label>
+                      <label className="space-y-0.5 min-w-0">
+                        <span className={ROTULO_DO_MDFE}>IE do dono</span>
+                        <input value={formData.ownerIe} onChange={(e) => setFormData({ ...formData, ownerIe: e.target.value })} className={CAMPO_DO_MDFE} />
+                      </label>
+                      <label className="space-y-0.5 min-w-0">
+                        <span className={ROTULO_DO_MDFE}>UF do dono</span>
+                        <select value={formData.ownerState} onChange={(e) => setFormData({ ...formData, ownerState: e.target.value })} className={CAMPO_DO_MDFE}>
+                          <option value="">Não informado</option>
+                          {UFS.map((uf) => (
+                            <option key={uf} value={uf}>{uf}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="col-span-2 space-y-0.5 min-w-0">
+                        <span className={ROTULO_DO_MDFE}>Tipo de proprietário</span>
+                        <select value={formData.ownerType} onChange={(e) => setFormData({ ...formData, ownerType: e.target.value })} className={CAMPO_DO_MDFE}>
+                          <option value="">Não informado</option>
+                          {Object.entries(TIPOS_DE_PROPRIETARIO).map(([codigo, rotulo]) => (
+                            <option key={codigo} value={codigo}>{rotulo}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  )}
+                </div>
+              </details>
             </div>
             
             <div className="p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">

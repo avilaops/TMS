@@ -5,10 +5,17 @@ import { pendingDeliveriesMessage } from '@/lib/manifestos';
 import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
+import { mdfesAbertosDaViagem } from '@/lib/mdfe-db';
 
 const CHANGED_MEANWHILE = 'A viagem mudou enquanto você decidia. Atualize a página e tente de novo.';
 
-/** Encerra a viagem. Só com todas as cargas entregues ou retiradas. */
+/**
+ * Encerra a viagem. Só com todas as cargas entregues ou retiradas.
+ *
+ * `mdfesAbertos`: os MDF-e autorizados da viagem que ainda não foram
+ * encerrados na SEFAZ. A tela oferece encerrá-los (o encerramento é um evento
+ * fiscal, com data e município: não é automático).
+ */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -66,7 +73,9 @@ export async function POST(
     });
 
     const manifest = await prisma.manifest.findUnique({ where: { id: manifestId } });
-    return NextResponse.json({ success: true, manifest });
+    // A finalização já valeu: se esta leitura falhar, a resposta segue sem a oferta.
+    const mdfesAbertos = await mdfesAbertosDaViagem(prisma, manifestId).catch(() => []);
+    return NextResponse.json({ success: true, manifest, mdfesAbertos });
   } catch (error) {
     if (error instanceof ManifestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

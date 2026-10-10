@@ -50,9 +50,22 @@ const APARENCIA: Record<SituacaoDaParada, { cartao: string; selo: string }> = {
   REFAZER: { cartao: "border-red-300 bg-red-50/40", selo: "bg-red-100 text-red-700" },
 };
 
+/** O MDF-e da viagem, só para leitura: é o que o motorista mostra na fiscalização. */
+interface MdfeDaViagem {
+  id: string;
+  number: number;
+  accessKey: string;
+  status: string;
+  environment: string;
+  unloadState: string;
+}
+
+const SITUACAO_DO_MDFE: Record<string, string> = { AUTHORIZED: "Autorizado", CLOSED: "Encerrado", CANCELLED: "Cancelado" };
+
 interface Viagem {
   id: string;
   collections: Parada[];
+  mdfes?: MdfeDaViagem[];
 }
 
 export default function ViagemDetalhes() {
@@ -169,6 +182,21 @@ export default function ViagemDetalhes() {
           <span>{Math.round(progress)}% Concluído</span>
         </div>
       </div>
+
+      {(manifesto.mdfes ?? []).map((mdfe) => (
+        <div key={mdfe.id} data-mdfe={mdfe.status} className="bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-100 relative z-10">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-gray-900">
+              MDF-e nº {mdfe.number} · descarga em {mdfe.unloadState}
+            </span>
+            <span className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full ${mdfe.status === "AUTHORIZED" ? "bg-emerald-100 text-emerald-800" : "bg-gray-200 text-gray-700"}`}>
+              {SITUACAO_DO_MDFE[mdfe.status] ?? mdfe.status}
+              {mdfe.environment === "PRODUCAO" ? "" : " (homologação)"}
+            </span>
+          </div>
+          <p className="mt-1 font-mono text-[11px] text-gray-600 break-all">{mdfe.accessKey.replace(/(.{4})(?=.)/g, "$1 ")}</p>
+        </div>
+      ))}
 
       {/* O checklist é do veículo desta viagem; a rota confere que ela é deste motorista. */}
       <Link

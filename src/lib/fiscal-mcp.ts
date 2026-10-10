@@ -1,7 +1,7 @@
 /**
  * Cliente do servidor fiscal da casa ("MCP Fiscal Brasil"), só para o que o TMS
- * usa dele: gerar o DANFE em PDF a partir do XML de uma NF-e e o DACTE a partir
- * do XML de um CT-e autorizado.
+ * usa dele: gerar o DANFE em PDF a partir do XML de uma NF-e, o DACTE a partir
+ * do XML de um CT-e autorizado e o DAMDFE a partir do XML de um MDF-e autorizado.
  *
  * O servidor fala MCP por HTTP (JSON-RPC em `POST`, resposta em JSON ou em
  * `text/event-stream` com uma linha `data: {json}`). A conversa tem três
@@ -174,7 +174,7 @@ export const DACTE_SEM_PROTOCOLO = "O serviço fiscal não reconheceu o protocol
 export const nomeDoArquivoDacte = (chave: string, homologacao: boolean) =>
   `${chave.replace(/[^0-9A-Za-z]/g, "")}-dacte${homologacao ? "-HOMOLOGACAO-SEM-VALOR-FISCAL" : ""}.pdf`;
 
-/** O resultado da ferramenta diz que o CT-e tem protocolo de autorização (cStat 100)? */
+/** O resultado da ferramenta diz que o documento (CT-e ou MDF-e) tem protocolo de autorização (cStat 100)? */
 function autorizadoNoResultado(resultado: unknown): boolean {
   if (!ehObjeto(resultado)) return false;
   const estruturado = ehObjeto(resultado.structuredContent) ? resultado.structuredContent : null;
@@ -204,14 +204,14 @@ export async function gerarDacte(xml: string, opcoes: { tempoLimiteMs?: number }
   }
 }
 
-/** A resposta da rota de DACTE: o PDF como anexo, ou o erro em JSON com o status do motivo. */
-export async function respostaDoDacte(chave: string, xml: string, homologacao: boolean): Promise<Response> {
+/** A resposta de uma rota de documento auxiliar (DACTE ou DAMDFE): o PDF como anexo, ou o erro em JSON com o status do motivo. */
+async function respostaDoDocumento(oQue: "DACTE" | "DAMDFE", gerar: () => Promise<Buffer>, nomeDoArquivo: string): Promise<Response> {
   try {
-    const pdf = await gerarDacte(xml);
+    const pdf = await gerar();
     return new Response(new Uint8Array(pdf), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${nomeDoArquivoDacte(chave, homologacao)}"`,
+        "Content-Disposition": `attachment; filename="${nomeDoArquivo}"`,
         "Content-Length": String(pdf.byteLength),
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
@@ -219,16 +219,53 @@ export async function respostaDoDacte(chave: string, xml: string, homologacao: b
     });
   } catch (erro) {
     if (!(erro instanceof FiscalMcpError)) throw erro;
-    if (erro.motivo !== "desligado") console.error(`DACTE não gerado (${erro.motivo}):`, erro.detalhe ?? erro.message);
+    if (erro.motivo !== "desligado") console.error(`${oQue} não gerado (${erro.motivo}):`, erro.detalhe ?? erro.message);
     return Response.json({ error: erro.message }, { status: STATUS_DA_FALHA[erro.motivo] });
   }
 }
+
+/** A resposta da rota de DACTE: o PDF como anexo, ou o erro em JSON com o status do motivo. */
+export const respostaDoDacte = (chave: string, xml: string, homologacao: boolean): Promise<Response> =>
+  respostaDoDocumento("DACTE", () => gerarDacte(xml), nomeDoArquivoDacte(chave, homologacao));
+
+/* ----------------------------------- DAMDFE ---------------------------------- */
+
+export const DAMDFE_DESLIGADO = "A geração de DAMDFE não está ligada neste sistema.";
+export const DAMDFE_RECUSADO = "O serviço fiscal não conseguiu gerar o DAMDFE deste MDF-e.";
+export const DAMDFE_SEM_PROTOCOLO = "O serviço fiscal não reconheceu o protocolo de autorização deste MDF-e: o DAMDFE não foi gerado.";
+
+/** Nome do arquivo no download. O de homologação diz no nome que não tem valor fiscal. */
+export const nomeDoArquivoDamdfe = (chave: string, homologacao: boolean) =>
+  `${chave.replace(/[^0-9A-Za-z]/g, "")}-damdfe${homologacao ? "-HOMOLOGACAO-SEM-VALOR-FISCAL" : ""}.pdf`;
+
+/**
+ * Gera o DAMDFE (PDF) do arquivo de um MDF-e autorizado (`mdfeProc`) no serviço
+ * fiscal (ferramenta `gerar_damdfe`, mesma forma do `gerar_dacte`). O PDF só é
+ * devolvido quando o serviço confirma que o XML traz o protocolo de
+ * autorização: este sistema não entrega DAMDFE de MDF-e sem protocolo.
+ */
+export async function gerarDamdfe(xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<Buffer> {
+  try {
+    const resultado = await chamarFerramenta("gerar_damdfe", xml, opcoes);
+    const pdf = pdfDoResultado(resultado);
+    if (!autorizadoNoResultado(resultado)) throw new FiscalMcpError("ferramenta", DAMDFE_SEM_PROTOCOLO, "autorizado diferente de true");
+    return pdf;
+  } catch (erro) {
+    if (!(erro instanceof FiscalMcpError)) throw erro;
+    const frase = erro.motivo === "desligado" ? DAMDFE_DESLIGADO : erro.message === DANFE_RECUSADO ? DAMDFE_RECUSADO : erro.message;
+    throw new FiscalMcpError(erro.motivo, frase, erro.detalhe);
+  }
+}
+
+/** A resposta da rota de DAMDFE: o PDF como anexo, ou o erro em JSON com o status do motivo. */
+export const respostaDoDamdfe = (chave: string, xml: string, homologacao: boolean): Promise<Response> =>
+  respostaDoDocumento("DAMDFE", () => gerarDamdfe(xml), nomeDoArquivoDamdfe(chave, homologacao));
 
 /**
  * A conversa com o serviço: abre a sessão, chama a ferramenta com o XML e
  * devolve o resultado dela, cru. Quem chama tira dele o que precisa.
  */
-async function chamarFerramenta(ferramenta: "gerar_danfe" | "gerar_dacte", xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<unknown> {
+async function chamarFerramenta(ferramenta: "gerar_danfe" | "gerar_dacte" | "gerar_damdfe", xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<unknown> {
   const endereco = enderecoDoFiscal();
   if (!endereco) throw new FiscalMcpError("desligado", DANFE_DESLIGADO);
 

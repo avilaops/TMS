@@ -14,8 +14,16 @@ import { ManifestError, lockManifest } from '@/lib/manifestos-db';
 import { recordStatusChanges } from '@/lib/historico';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 import { avisar, avisarStatusAoCliente, avisoDeViagemLiberada, usuarioDoMotorista } from '@/lib/notificacoes';
+import { AVISO_DE_VIAGEM_SEM_MDFE } from '@/lib/mdfe';
+import { exigenciaSemMdfe } from '@/lib/mdfe-db';
 
-/** Libera a saída: as cargas passam para "em rota" e o veículo fica ocupado. */
+/**
+ * Libera a saída: as cargas passam para "em rota" e o veículo fica ocupado.
+ *
+ * A falta de MDF-e NÃO bloqueia a saída: quando a viagem exige o documento
+ * (sai do município ou do estado) e não há um autorizado em produção, a
+ * resposta leva `aviso`, que a tela mostra.
+ */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -97,7 +105,9 @@ export async function POST(
     });
 
     const manifest = await prisma.manifest.findUnique({ where: { id: manifestId } });
-    return NextResponse.json({ success: true, manifest });
+    // A saída já valeu: se a leitura do aviso falhar, a resposta segue sem ele.
+    const exigencia = await exigenciaSemMdfe(prisma, manifestId).catch(() => null);
+    return NextResponse.json({ success: true, manifest, aviso: exigencia ? AVISO_DE_VIAGEM_SEM_MDFE[exigencia] : null });
   } catch (error) {
     if (error instanceof ManifestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

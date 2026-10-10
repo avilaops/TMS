@@ -3,17 +3,19 @@
 import { useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
 
-/** O documento auxiliar que o botão baixa: o DANFE de uma NF-e ou o DACTE de um CT-e autorizado. */
+/** O documento auxiliar que o botão baixa: o DANFE de uma NF-e, o DACTE de um CT-e autorizado ou o DAMDFE de um MDF-e autorizado. */
 const DOCUMENTOS = {
   danfe: { rotulo: "DANFE (PDF)", falha: "Não foi possível gerar o DANFE.", arquivo: "danfe.pdf" },
   dacte: { rotulo: "DACTE (PDF)", falha: "Não foi possível gerar o DACTE.", arquivo: "dacte.pdf" },
+  damdfe: { rotulo: "DAMDFE (PDF)", falha: "Não foi possível gerar o DAMDFE.", arquivo: "damdfe.pdf" },
 } as const;
 
 /**
  * Botão "DANFE (PDF)" de uma nota fiscal, ao lado de "Baixar XML". Usado no
  * painel (documentos fiscais) e no portal do cliente; `endereco` é a rota que
  * devolve o PDF. Com `documento="dacte"` é o botão "DACTE (PDF)" de um CT-e
- * autorizado, na tela de CT-e.
+ * autorizado, na tela de CT-e; com `documento="damdfe"`, o "DAMDFE (PDF)" de um
+ * MDF-e autorizado.
  *
  * O arquivo vem pelo `fetch`, e não por um link direto, porque o PDF é gerado
  * na hora por um serviço de fora: se ele demorar ou recusar a nota, o motivo
@@ -54,7 +56,7 @@ export function BotaoDanfe({ endereco, className = "", documento = "danfe" }: { 
     <>
       <button
         type="button"
-        {...(documento === "danfe" ? { "data-danfe": true } : { "data-dacte": true })}
+        {...{ [`data-${documento}`]: true }}
         onClick={() => void baixar()}
         disabled={gerando}
         className={`inline-flex items-center gap-1 hover:underline disabled:opacity-60 ${className}`}

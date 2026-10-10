@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
-import { INACTIVE_DRIVER_MESSAGE, VEHICLE_PUBLIC_INCLUDE, updateVehicleSchema } from '@/lib/cadastros';
+import { INACTIVE_DRIVER_MESSAGE, VEHICLE_FISCAL_FIELDS, VEHICLE_PUBLIC_INCLUDE, updateVehicleSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { escolher, nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 // O que entra no "antes" e no "depois" da auditoria.
-const CAMPOS_AUDITADOS = ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'status'] as const;
+const CAMPOS_AUDITADOS = ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'status', ...VEHICLE_FISCAL_FIELDS] as const;
 
 /** O veículo, para o cabeçalho da tela de frota (`/dashboard/veiculos/[id]`). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -72,6 +72,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         year: data.year,
         driverId: data.defaultDriverId,
         status: data.status,
+        // O que o MDF-e pede do veículo: ausente fica como está, `null` apaga.
+        ...Object.fromEntries(VEHICLE_FISCAL_FIELDS.map((campo) => [campo, data[campo]])),
       },
       include: VEHICLE_PUBLIC_INCLUDE,
     });

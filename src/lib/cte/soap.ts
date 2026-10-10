@@ -68,18 +68,27 @@ export type ChamadaSoap = {
   dados: string;
   credencial: Credencial | null;
   tempoLimiteMs?: number;
+  /** O projeto dono do serviço: muda o campo da mensagem (`cteDadosMsg` ou `mdfeDadosMsg`) e o espaço de nomes. Padrão: CT-e. */
+  projeto?: Projeto;
   /** Autoridades aceitas para o servidor. Padrão: as do Node mais as raízes da ICP-Brasil. Os testes passam a do servidor local. */
   autoridades?: readonly string[];
 };
 
-const ESPACO_DE_NOMES = "http://www.portalfiscal.inf.br/cte/wsdl";
+/**
+ * O MDF-e fala o mesmo protocolo (MOC do MDF-e 3.00b, Visão Geral, itens 3.2.2
+ * e 3.4.1): só mudam o nome do campo e o espaço de nomes.
+ */
+export type Projeto = "cte" | "mdfe";
+
+const espacoDeNomes = (projeto: Projeto) => `http://www.portalfiscal.inf.br/${projeto}/wsdl`;
 
 /** O envelope SOAP 1.2 com a mensagem. */
-export function envelope(servico: string, dados: string): string {
+export function envelope(servico: string, dados: string, projeto: Projeto = "cte"): string {
+  const campo = `${projeto}DadosMsg`;
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +
     '<soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">' +
-    `<soap12:Body><cteDadosMsg xmlns="${ESPACO_DE_NOMES}/${servico}">${dados}</cteDadosMsg></soap12:Body>` +
+    `<soap12:Body><${campo} xmlns="${espacoDeNomes(projeto)}/${servico}">${dados}</${campo}></soap12:Body>` +
     "</soap12:Envelope>"
   );
 }
@@ -91,7 +100,8 @@ const AUTORIDADES_PADRAO = () => [...rootCertificates, ...RAIZES_DA_ICP_BRASIL];
  * como texto). Status diferente de 200 e falha de rede viram `SefazError`.
  */
 export function chamarSoap(chamada: ChamadaSoap): Promise<string> {
-  const corpo = Buffer.from(envelope(chamada.servico, chamada.dados), "utf8");
+  const projeto = chamada.projeto ?? "cte";
+  const corpo = Buffer.from(envelope(chamada.servico, chamada.dados, projeto), "utf8");
   const limite = chamada.tempoLimiteMs ?? TEMPO_LIMITE_MS;
   const endereco = new URL(chamada.url);
   if (endereco.protocol !== "https:") return Promise.reject(new SefazError("conexao", SEFAZ_FORA_DO_AR, false));
@@ -115,7 +125,7 @@ export function chamarSoap(chamada: ChamadaSoap): Promise<string> {
         path: `${endereco.pathname}${endereco.search}`,
         method: "POST",
         headers: {
-          "Content-Type": `application/soap+xml; charset=utf-8; action="${ESPACO_DE_NOMES}/${chamada.servico}/${chamada.metodo}"`,
+          "Content-Type": `application/soap+xml; charset=utf-8; action="${espacoDeNomes(projeto)}/${chamada.servico}/${chamada.metodo}"`,
           "Content-Length": corpo.byteLength,
         },
         ...(chamada.credencial && { key: chamada.credencial.chavePem, cert: chamada.credencial.certificadoPem }),

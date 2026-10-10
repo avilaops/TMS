@@ -13,11 +13,14 @@ const chamadas = vi.hoisted(() => ({
   conferir: vi.fn(async () => 0),
   lote: vi.fn(async () => [] as unknown[]),
   vencidos: vi.fn(async () => 0),
+  mdfesEmAberto: vi.fn(async () => 0),
 }));
 
 vi.mock("../src/lib/geo-db", () => ({ localizarEnderecosPendentes: chamadas.localizar }));
 vi.mock("../src/lib/notificacoes-push", () => ({ enviarPushPendentes: chamadas.push }));
 vi.mock("../src/lib/cobranca-gateway-db", () => ({ conferirCobrancasEmAberto: chamadas.conferir }));
+// O aviso de MDF-e autorizado e não encerrado roda na mesma cadência da varredura (src/lib/mdfe-db.ts).
+vi.mock("../src/lib/mdfe-db", () => ({ avisarMdfesEmAberto: chamadas.mdfesEmAberto }));
 vi.mock("../src/lib/prisma", () => ({ sistema: { $queryRaw: chamadas.lote, $executeRaw: chamadas.vencidos } }));
 
 const VOLTA_MS = 15_000;
@@ -53,6 +56,7 @@ describe("despachante: a localização de endereços não derruba o resto", () =
     expect(chamadas.vencidos).toHaveBeenCalledTimes(1);
     expect(chamadas.lote).toHaveBeenCalledTimes(1);
     expect(chamadas.conferir).toHaveBeenCalledTimes(1);
+    expect(chamadas.mdfesEmAberto).toHaveBeenCalledTimes(1);
     expect(chamadas.push).toHaveBeenCalledTimes(1);
     expect(erros).not.toHaveBeenCalled();
 

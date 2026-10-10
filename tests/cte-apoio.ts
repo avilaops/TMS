@@ -99,7 +99,7 @@ export function certificadoDeTeste(opcoes: OpcoesDoCertificado = {}): Certificad
 }
 
 /** O certificado do servidor local: autoassinado, para `127.0.0.1` e `localhost`. */
-function certificadoDoServidor(): { chavePem: string; certificadoPem: string } {
+export function certificadoDoServidor(): { chavePem: string; certificadoPem: string } {
   const { chavePem, chave, publica } = parDeChaves();
   const certificado = forge.pki.createCertificate();
   certificado.publicKey = publica;
@@ -120,23 +120,28 @@ function certificadoDoServidor(): { chavePem: string; certificadoPem: string } {
 
 const PASTA_DOS_ESQUEMAS = "fiscal/esquemas/cte-4.00";
 
-let esquemas: { fileName: string; contents: string }[] | null = null;
+const esquemas = new Map<string, { fileName: string; contents: string }[]>();
 
-function arquivosDosEsquemas() {
-  esquemas ??= readdirSync(PASTA_DOS_ESQUEMAS)
-    .filter((nome) => nome.endsWith(".xsd"))
-    .map((nome) => ({ fileName: nome, contents: readFileSync(`${PASTA_DOS_ESQUEMAS}/${nome}`, "utf8") }));
-  return esquemas;
+function arquivosDosEsquemas(pasta: string) {
+  let lidos = esquemas.get(pasta);
+  if (!lidos) {
+    lidos = readdirSync(pasta)
+      .filter((nome) => nome.endsWith(".xsd"))
+      .map((nome) => ({ fileName: nome, contents: readFileSync(`${pasta}/${nome}`, "utf8") }));
+    esquemas.set(pasta, lidos);
+  }
+  return lidos;
 }
 
 /**
  * Valida o XML contra um esquema oficial do pacote (ex.: `cte_v4.00.xsd`). Devolve
  * os erros que o validador (libxml2, o mesmo `xmllint`) apontou; vazio = válido.
+ * `pasta` troca o pacote: o MDF-e usa o dele (tests/mdfe-apoio.ts).
  */
-export async function errosNoEsquema(xml: string, esquema: string): Promise<string[]> {
-  const todos = arquivosDosEsquemas();
+export async function errosNoEsquema(xml: string, esquema: string, pasta: string = PASTA_DOS_ESQUEMAS): Promise<string[]> {
+  const todos = arquivosDosEsquemas(pasta);
   const principal = todos.find((arquivo) => arquivo.fileName === esquema);
-  if (!principal) throw new Error(`Esquema ${esquema} não está em ${PASTA_DOS_ESQUEMAS}.`);
+  if (!principal) throw new Error(`Esquema ${esquema} não está em ${pasta}.`);
   const resultado = await validateXML({
     xml: [{ fileName: "documento.xml", contents: xml }],
     schema: [principal],

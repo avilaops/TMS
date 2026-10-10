@@ -19,6 +19,12 @@ export async function GET() {
         status: true,
         createdAt: true,
         vehicle: { select: { plate: true, model: true } },
+        // O MDF-e da viagem, só para o motorista ler na fiscalização: chave e situação. Sem XML.
+        mdfes: {
+          where: { status: { in: ['AUTHORIZED', 'CLOSED', 'CANCELLED'] } },
+          orderBy: { number: 'asc' },
+          select: { id: true, number: true, accessKey: true, status: true, environment: true, unloadState: true },
+        },
         collections: {
           select: {
             id: true,

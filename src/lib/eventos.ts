@@ -8,6 +8,7 @@ import { enviarPushPendentes } from "@/lib/notificacoes-push";
 import { cobrancasEmAberto } from "@/lib/cobranca-gateway";
 import { conferirCobrancasEmAberto } from "@/lib/cobranca-gateway-db";
 import { localizarEnderecosPendentes } from "@/lib/geo-db";
+import { avisarMdfesEmAberto } from "@/lib/mdfe-db";
 
 /**
  * Entrega dos eventos (OutboxEvent) no endereço que cada empresa cadastrou.
@@ -239,10 +240,65 @@ async function dadosDoCte(evento: Pendente, payload: Record<string, unknown>) {
   };
 }
 
+/** `mdfe.autorizado`, `mdfe.encerrado` e `mdfe.cancelado`: o MDF-e como está na hora da entrega, com a viagem dele. Sem o XML. */
+async function dadosDoMdfe(evento: Pendente, payload: Record<string, unknown>) {
+  const mdfeId = texto(payload.mdfeId);
+  const mdfe = mdfeId
+    ? await sistema.mdfe.findFirst({
+        where: { id: mdfeId, tenantId: evento.tenantId },
+        select: {
+          id: true,
+          manifestId: true,
+          environment: true,
+          series: true,
+          number: true,
+          accessKey: true,
+          status: true,
+          protocol: true,
+          loadState: true,
+          unloadState: true,
+          plate: true,
+          authorizedAt: true,
+          closedAt: true,
+          closeProtocol: true,
+          cancelledAt: true,
+          cancelProtocol: true,
+        },
+      })
+    : null;
+  if (!mdfe) return { mdfe: null };
+
+  return {
+    mdfe: {
+      id: mdfe.id,
+      // PRODUCAO tem valor fiscal; HOMOLOGACAO é teste.
+      ambiente: mdfe.environment,
+      serie: mdfe.series,
+      numero: mdfe.number,
+      chave: mdfe.accessKey,
+      // AUTHORIZED, CLOSED ou CANCELLED: o estado de agora, que pode ter mudado desde que o aviso nasceu.
+      situacao: mdfe.status,
+      protocolo: mdfe.protocol,
+      ufDeCarregamento: mdfe.loadState,
+      ufDeDescarregamento: mdfe.unloadState,
+      placa: mdfe.plate,
+      autorizadoEm: mdfe.authorizedAt?.toISOString() ?? null,
+      encerradoEm: mdfe.closedAt?.toISOString() ?? null,
+      protocoloDoEncerramento: mdfe.closeProtocol,
+      canceladoEm: mdfe.cancelledAt?.toISOString() ?? null,
+      protocoloDoCancelamento: mdfe.cancelProtocol,
+      viagem: { id: mdfe.manifestId, codigo: mdfe.manifestId.substring(0, 6).toUpperCase() },
+      // Onde a equipe baixa o XML, depois de entrar.
+      painel: `${enderecoPublico()}/dashboard/fiscal/mdfe`,
+    },
+  };
+}
+
 async function dadosDoEvento(evento: Pendente): Promise<Record<string, unknown>> {
   const payload = (evento.payload ?? {}) as Record<string, unknown>;
   if (evento.type.startsWith("fatura.")) return dadosDaFatura(evento, payload);
   if (evento.type === "cte.autorizado" || evento.type === "cte.cancelado") return dadosDoCte(evento, payload);
+  if (evento.type === "mdfe.autorizado" || evento.type === "mdfe.encerrado" || evento.type === "mdfe.cancelado") return dadosDoMdfe(evento, payload);
   if (evento.type.startsWith("ocorrencia.")) return dadosDaOcorrencia(evento, payload);
   if (evento.type === "cobranca.vencida") return dadosDoTituloVencido(evento, payload);
   if (evento.type !== "coleta.status") return payload;
@@ -431,6 +487,9 @@ export function iniciarDespacho(): void {
       // no Mercado Pago são conferidas, para o caso de um aviso de pagamento não ter chegado.
       .then(() => (varrer ? conferirCobrancasEmAberto() : 0))
       .catch((erro) => console.error("Erro ao conferir cobranças no Mercado Pago:", erro instanceof Error ? erro.message : "erro desconhecido"))
+      // Na mesma cadência: o aviso (um por MDF-e) dos autorizados há dias e ainda não encerrados.
+      .then(() => (varrer ? avisarMdfesEmAberto() : 0))
+      .catch((erro) => console.error("Erro ao avisar MDF-e em aberto:", erro instanceof Error ? erro.message : "erro desconhecido"))
       // Os avisos das pessoas (sininho) saem por push na mesma volta; um erro
       // nos eventos de fora não segura o push, nem o contrário.
       .then(() => enviarPushPendentes())

@@ -88,7 +88,7 @@ const SEM_CERTIFICADO = `A empresa não tem certificado digital A1. Envie em ${O
 // O contexto entra na cifra: o certificado cifrado de uma empresa não abre em outra.
 const contexto = (tenantId: string, campo: "certPfx" | "certPassword") => `FiscalIssuer:${tenantId}:${campo}`;
 
-const EMITENTE_SELECT = {
+export const EMITENTE_SELECT = {
   cnpj: true,
   ie: true,
   legalName: true,
@@ -124,12 +124,12 @@ const EMITENTE_SELECT = {
   certUploadedAt: true,
 } as const;
 
-type LinhaDoEmitente = Prisma.FiscalIssuerGetPayload<{ select: typeof EMITENTE_SELECT }>;
+export type LinhaDoEmitente = Prisma.FiscalIssuerGetPayload<{ select: typeof EMITENTE_SELECT }>;
 
-const ambienteDaLinha = (texto: string): Ambiente => (texto === PRODUCAO ? PRODUCAO : "HOMOLOGACAO");
+export const ambienteDaLinha = (texto: string): Ambiente => (texto === PRODUCAO ? PRODUCAO : "HOMOLOGACAO");
 
 /** A linha do banco no formato da montagem. */
-function emitenteDaLinha(linha: LinhaDoEmitente): EmitenteDoCte {
+export function emitenteDaLinha(linha: LinhaDoEmitente): EmitenteDoCte {
   return {
     cnpj: linha.cnpj,
     ie: linha.ie,
@@ -152,7 +152,11 @@ function emitenteDaLinha(linha: LinhaDoEmitente): EmitenteDoCte {
   };
 }
 
-function certificadoDaLinha(linha: LinhaDoEmitente, agora: Date = new Date()): CertificadoDaEmpresa | null {
+export function certificadoDaLinha(
+  // Só o que é do certificado e o CNPJ do emitente: o MDF-e (src/lib/mdfe-db.ts) lê a mesma linha com outros campos.
+  linha: Pick<LinhaDoEmitente, "cnpj" | "certSubject" | "certTaxId" | "certNotBefore" | "certNotAfter" | "certUploadedAt">,
+  agora: Date = new Date(),
+): CertificadoDaEmpresa | null {
   if (!linha.certSubject || !linha.certTaxId || !linha.certNotBefore || !linha.certNotAfter || !linha.certUploadedAt) return null;
   return {
     titular: linha.certSubject,
@@ -216,7 +220,7 @@ export async function fiscalDaEmpresa(empresa: Empresa): Promise<FiscalDaEmpresa
  * ao mesmo tempo fazem fila, e a última da fila precisa de mais que os 5
  * segundos padrão do Prisma para chegar a vez dela.
  */
-const COM_FILA = { maxWait: 15_000, timeout: 30_000 } as const;
+export const COM_FILA = { maxWait: 15_000, timeout: 30_000 } as const;
 
 /** Uma operação de numeração por vez na empresa. A trava some no fim da transação. */
 async function travarNumeracao(tx: Tx, tenantId: string): Promise<void> {
@@ -397,7 +401,7 @@ export async function removerCertificado(empresa: Empresa, quem: Quem): Promise<
   return fiscalDaEmpresa(empresa);
 }
 
-type CredencialDaEmpresa = Credencial & {
+export type CredencialDaEmpresa = Credencial & {
   /** Só o certificado do titular: é o que vai no `KeyInfo` da assinatura. */
   titularPem: string;
 };
@@ -407,7 +411,7 @@ type CredencialDaEmpresa = Credencial & {
  * Recusa (com a frase para a pessoa) quando não há certificado, quando ele
  * venceu ou quando o que está guardado não abre mais.
  */
-async function credencialDaEmpresa(empresa: Empresa): Promise<CredencialDaEmpresa> {
+export async function credencialDaEmpresa(empresa: Empresa): Promise<CredencialDaEmpresa> {
   if (!cifraLigada()) throw new Refusal(FISCAL_INDISPONIVEL, 503);
   const linha = await empresa.db.fiscalIssuer.findUnique({ where: { tenantId: empresa.id }, select: { certPfxEnc: true, certPasswordEnc: true, certNotAfter: true } });
   if (!linha?.certPfxEnc || !linha.certPasswordEnc) throw new Refusal(SEM_CERTIFICADO, 409);
@@ -531,7 +535,7 @@ type Situacao = {
 type LeituraDb = Pick<Tx, "collection" | "fiscalIssuer" | "cte">;
 
 /** O que falta no certificado para assinar e transmitir. Vazio = há certificado válido, da empresa, e chave para abri-lo. */
-function faltasDoCertificado(certificado: CertificadoDaEmpresa | null): string[] {
+export function faltasDoCertificado(certificado: CertificadoDaEmpresa | null): string[] {
   if (!cifraLigada()) return [FISCAL_INDISPONIVEL];
   if (!certificado) return [SEM_CERTIFICADO];
   if (certificado.vencido) return [`O certificado digital da empresa venceu. Envie o novo em ${ONDE_CONFIGURAR}.`];
@@ -598,10 +602,10 @@ const ENVIO_EM_ANDAMENTO_MS = 120_000;
 /** O código numérico aleatório da chave (`cCT`), 8 dígitos. */
 export const sortearCodigo = () => String(randomInt(0, 100_000_000)).padStart(8, "0");
 
-const STATUS_DA_FALHA = (erro: SefazError) => (erro.motivo === "tempo" ? 504 : 502);
+export const STATUS_DA_FALHA = (erro: SefazError) => (erro.motivo === "tempo" ? 504 : 502);
 
 const MOTIVO_MAXIMO = 300;
-const frase = (cStat: number, motivo: string) => `${cStat} - ${motivo}`.slice(0, MOTIVO_MAXIMO);
+export const frase = (cStat: number, motivo: string) => `${cStat} - ${motivo}`.slice(0, MOTIVO_MAXIMO);
 
 type Preparado = {
   id: string;

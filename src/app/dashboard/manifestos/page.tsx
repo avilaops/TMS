@@ -35,6 +35,10 @@ export default function ManifestosPage() {
   const veAcerto = pode(session?.user?.role, "financeiroVer");
   const aprovaDespesa = pode(session?.user?.role, "financeiro");
   const alteraViagem = pode(session?.user?.role, "manifestos");
+  const veFiscal = pode(session?.user?.role, "fiscalVer");
+  const emiteFiscal = pode(session?.user?.role, "fiscal");
+  // A aba em que a tela da viagem abre: "MDF-e" quando a pessoa aceita encerrar o MDF-e ao finalizar.
+  const [abaDaViagem, setAbaDaViagem] = useState<"Dados" | "MDF-e">("Dados");
 
   const [formData, setFormData] = useState({
     driverId: "",
@@ -172,7 +176,10 @@ export default function ManifestosPage() {
     try {
       const res = await fetch(`/api/manifestos/${manifesto.id}/${action}`, { method: "POST" });
       if (res.ok) {
+        // A saída não é bloqueada pela falta de MDF-e: o servidor só avisa quando a viagem exige o documento.
+        const corpo = (await res.json().catch(() => null)) as { aviso?: string | null } | null;
         await fetchData();
+        if (corpo?.aviso) alert(corpo.aviso);
       } else {
         alert(await errorMessage(res, fallback));
       }
@@ -225,7 +232,14 @@ export default function ManifestosPage() {
     try {
       const res = await fetch(`/api/manifestos/${manifesto.id}/finalizar`, { method: "POST" });
       if (res.ok) {
+        const corpo = (await res.json().catch(() => null)) as { mdfesAbertos?: { numero: number }[] } | null;
         await fetchData();
+        // O encerramento do MDF-e é obrigatório ao fim da viagem: a tela oferece, a pessoa informa data e município.
+        const abertos = corpo?.mdfesAbertos ?? [];
+        if (abertos.length > 0 && veFiscal && confirm(`Esta viagem tem MDF-e autorizado e ainda não encerrado (nº ${abertos.map((mdfe) => mdfe.numero).join(", ")}). O encerramento é obrigatório ao fim da viagem. Abrir o MDF-e para encerrar agora?`)) {
+          setAbaDaViagem("MDF-e");
+          setViagem(manifesto);
+        }
       } else {
         alert(await errorMessage(res, "Erro ao finalizar a viagem."));
       }
@@ -431,7 +445,21 @@ export default function ManifestosPage() {
       </div>
 
       {viagemAberta && (
-        <TelaDaViagem key={viagemAberta.id} manifesto={viagemAberta} veAcerto={veAcerto} aprovaDespesa={aprovaDespesa} alteraViagem={alteraViagem} onClose={() => setViagem(null)} onChange={recarregar} />
+        <TelaDaViagem
+          key={`${viagemAberta.id}:${abaDaViagem}`}
+          manifesto={viagemAberta}
+          veAcerto={veAcerto}
+          aprovaDespesa={aprovaDespesa}
+          alteraViagem={alteraViagem}
+          veFiscal={veFiscal}
+          emiteFiscal={emiteFiscal}
+          abaInicial={abaDaViagem}
+          onClose={() => {
+            setViagem(null);
+            setAbaDaViagem("Dados");
+          }}
+          onChange={recarregar}
+        />
       )}
 
       {isModalOpen && (

@@ -49,6 +49,10 @@ export const TIPOS_DE_AVISO = [
   "cobranca.a-conferir",
   "cte.autorizado",
   "cte.cancelado",
+  "mdfe.autorizado",
+  "mdfe.encerrado",
+  "mdfe.cancelado",
+  "mdfe.encerrar",
 ] as const;
 export type TipoDeAviso = (typeof TIPOS_DE_AVISO)[number];
 
@@ -310,6 +314,30 @@ export const avisoDeCte = (oQue: "autorizado" | "cancelado", cte: { numero: numb
   titulo: `CT-e nº ${cte.numero} ${oQue}${cte.ambiente === "PRODUCAO" ? "" : " (homologação)"}`,
   texto: `${oQue === "autorizado" ? "A SEFAZ autorizou o CT-e" : "A SEFAZ registrou o cancelamento do CT-e"} da carga ${cte.carga ?? "sem código"}.`,
   url: "/dashboard/fiscal/cte",
+});
+
+type MdfeDoAviso = { numero: number; ambiente: string; viagem: string };
+
+const FRASE_DO_MDFE = {
+  autorizado: "A SEFAZ autorizou o MDF-e",
+  encerrado: "A SEFAZ registrou o encerramento do MDF-e",
+  cancelado: "A SEFAZ registrou o cancelamento do MDF-e",
+} as const;
+
+/** Equipe (quem lê o fiscal): a SEFAZ autorizou, encerrou ou cancelou um MDF-e emitido pelo sistema. */
+export const avisoDeMdfe = (oQue: keyof typeof FRASE_DO_MDFE, mdfe: MdfeDoAviso): Conteudo => ({
+  tipo: `mdfe.${oQue}`,
+  titulo: `MDF-e nº ${mdfe.numero} ${oQue}${mdfe.ambiente === "PRODUCAO" ? "" : " (homologação)"}`,
+  texto: `${FRASE_DO_MDFE[oQue]} da viagem #${mdfe.viagem}.`,
+  url: "/dashboard/fiscal/mdfe",
+});
+
+/** Equipe (quem lê o fiscal): um MDF-e está autorizado há dias e ainda não foi encerrado. */
+export const avisoDeMdfeEmAberto = (mdfe: MdfeDoAviso & { dias: number; placa: string }): Conteudo => ({
+  tipo: "mdfe.encerrar",
+  titulo: `MDF-e nº ${mdfe.numero} sem encerrar há ${mdfe.dias} dias`,
+  texto: `Viagem #${mdfe.viagem}, veículo ${mdfe.placa}. Encerre ao fim da viagem: a SEFAZ bloqueia MDF-e novo da placa enquanto este estiver em aberto.`,
+  url: "/dashboard/fiscal/mdfe",
 });
 
 /* ----------------------- Avisos que as rotas compartilham ---------------------- */

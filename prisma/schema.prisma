@@ -104,6 +104,9 @@ model Tenant {
   proofPhotos        ProofPhoto[]
   proofRejections    ProofRejection[]
   deliveryAttempts   DeliveryAttempt[]
+  mdfeNumberings     MdfeNumbering[]
+  mdfes              Mdfe[]
+  mdfeEvents         MdfeEvent[]
 }
 
 model User {
@@ -142,6 +145,8 @@ model User {
   notifications        Notification[]
   pushSubscriptions    PushSubscription[]
   ctesIssued           Cte[]
+  mdfesIssued          Mdfe[]
+  mdfeEventsCreated    MdfeEvent[]
 
   @@index([clientId])
 
@@ -344,6 +349,22 @@ model Vehicle {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // O que o MDF-e pede do veículo (grupos veicTracao e veicReboque do modal
+  // rodoviário), tudo opcional no cadastro: a emissão lista o que falta
+  // (src/lib/mdfe/preparar.ts). A capacidade em kg é `capacity`.
+  renavam      String?  // 9 a 11 dígitos
+  tareKg       Int?     // tara, em kg
+  wheelType    String?  // tpRod: 01 truck, 02 toco, 03 cavalo mecânico, 04 van, 05 utilitário, 06 outros
+  bodyType     String?  // tpCar: 00 não aplicável, 01 aberta, 02 fechada/baú, 03 graneleira, 04 porta-contêiner, 05 sider
+  licenseState String?  // UF em que o veículo está licenciado
+  // Proprietário, só quando o veículo NÃO é da empresa emitente (grupo `prop`).
+  ownerTaxId   String?  // CPF ou CNPJ, sem pontuação
+  ownerName    String?
+  ownerRntrc   String?  // 8 dígitos
+  ownerIe      String?  // só dígitos, "ISENTO" ou vazio
+  ownerState   String?
+  ownerType    String?  // tpProp: 0 TAC agregado, 1 TAC independente, 2 outros
+
   // Relations
   driver       Driver?  @relation(fields: [driverId], references: [id])
   manifests    Manifest[]
@@ -521,6 +542,7 @@ model Manifest {
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
   helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: SetNull)
   collections Collection[]
+  mdfes       Mdfe[]
   advances    CrewAdvance[]
   expenses    TripExpense[]
   positions   TripPosition[]
@@ -1585,6 +1607,14 @@ model FiscalIssuer {
   rntrc        String
   taxRegime    String   // CRT: 1, 2, 3 ou 4
   cteSeries    Int      @default(1)
+  // MDF-e (src/lib/mdfe.ts): a série, o tipo de emitente (1 = prestador de
+  // serviço de transporte, relaciona CT-e; 2 = carga própria, relaciona NF-e) e
+  // o seguro da carga que a empresa usa por padrão (a averbação é de cada viagem).
+  mdfeSeries       Int     @default(1)
+  mdfeEmitterType  String  @default("1")
+  insurerName      String?
+  insurerTaxId     String?
+  insurancePolicy  String?
   environment  String   @default("HOMOLOGACAO") // HOMOLOGACAO, PRODUCAO
   cfopInState  String
   cfopOutState String
@@ -1685,4 +1715,112 @@ model Cte {
   @@unique([tenantId, environment, series, number])
   @@index([tenantId, collectionId])
   @@index([collectionId])
+}
+
+// A numeração do MDF-e: o próximo número de cada série, por ambiente
+// (homologação e produção têm numerações separadas), como a do CT-e.
+model MdfeNumbering {
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String   @id @default(uuid())
+  environment String   // HOMOLOGACAO, PRODUCAO
+  series      Int
+  nextNumber  Int      @default(1)
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, environment, series])
+}
+
+// Um MDF-e (modelo 58, modal rodoviário) montado para uma viagem. A viagem tem
+// um MDF-e por UF de descarregamento (Ajuste SINIEF 21/10, cláusula terceira,
+// § 2º). Situações: DRAFT (montado, ainda sem resposta que decida), REJECTED,
+// AUTHORIZED, CLOSED (encerrado) e CANCELLED. Só fica AUTHORIZED com o
+// protocolo que a SEFAZ devolveu (src/lib/mdfe-db.ts).
+model Mdfe {
+  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String   @id @default(uuid())
+  manifestId   String
+  environment  String   // HOMOLOGACAO, PRODUCAO
+  series       Int
+  number       Int
+  accessKey    String   // 44 posições
+  status       String   @default("DRAFT")
+  emitterType  String   // tpEmit: 1 ou 2
+  loadState    String   // UFIni
+  unloadState  String   // UFFim
+  plate        String   // placa do veículo de tração, como foi no documento
+
+  // O que a pessoa informou para este documento (percurso, CIOT, seguro,
+  // produto predominante...), para a tela reabrir como estava.
+  inputs       Json?
+
+  xmlSent      String   @db.Text  // o MDF-e assinado, como foi (ou vai ser) enviado
+  xmlReturn    String?  @db.Text  // o mdfeProc: MDF-e + protocolo de autorização
+  protocol     String?
+  statusCode   Int?     // cStat da última resposta
+  statusReason String?  // xMotivo da última resposta, ou o problema do envio
+  issuedAt     DateTime // dhEmi
+  authorizedAt DateTime?
+
+  closedAt       DateTime?
+  closeProtocol  String?
+  cancelledAt    DateTime?
+  cancelProtocol String?
+  cancelReason   String?
+
+  // Envio em andamento e envio que ficou sem resposta: a próxima tentativa
+  // consulta a SEFAZ pela chave antes de reenviar (como no CT-e).
+  sendingAt    DateTime?
+  unanswered   Boolean  @default(false)
+  // Rejeição 539: o número já foi usado por outro documento.
+  numberBurned Boolean  @default(false)
+  // Quando o aviso de "autorizado há dias e não encerrado" foi dado: um por MDF-e.
+  closeReminderAt DateTime?
+
+  issuedById   String?  // quem emitiu; nulo se o usuário foi apagado
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  manifest     Manifest @relation(fields: [manifestId], references: [id], onDelete: Restrict)
+  issuedBy     User?    @relation(fields: [issuedById], references: [id], onDelete: SetNull)
+  events       MdfeEvent[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, accessKey])
+  @@unique([tenantId, environment, series, number])
+  @@index([tenantId, manifestId])
+  @@index([manifestId])
+  @@index([status, authorizedAt])
+}
+
+// Cada evento que a SEFAZ REGISTROU para um MDF-e (cancelamento 110111,
+// encerramento 110112, inclusão de condutor 110114, inclusão de DF-e 110115):
+// o XML assinado que foi enviado, o retorno e o protocolo. Evento recusado não
+// vira linha: a resposta da SEFAZ volta para a tela e fica na auditoria.
+model MdfeEvent {
+  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String   @id @default(uuid())
+  mdfeId       String
+  type         String   // tpEvento
+  sequence     Int      // nSeqEvento
+  xmlSent      String   @db.Text
+  xmlReturn    String   @db.Text
+  protocol     String?  // nulo quando a SEFAZ só confirmou que o evento já estava lá
+  statusCode   Int
+  statusReason String
+  registeredAt DateTime
+  // O que o evento disse, para a tela: justificativa, município do encerramento, condutor incluído...
+  details      Json?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  mdfe         Mdfe     @relation(fields: [mdfeId], references: [id], onDelete: Restrict)
+  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, mdfeId, type, sequence])
+  @@index([mdfeId])
 }

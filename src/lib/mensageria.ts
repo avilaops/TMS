@@ -28,6 +28,9 @@ export const TIPOS_DE_AVISO = {
   "ocorrencia.status": "Chamado mudou de status",
   "cte.autorizado": "CT-e autorizado",
   "cte.cancelado": "CT-e cancelado",
+  "mdfe.autorizado": "MDF-e autorizado",
+  "mdfe.encerrado": "MDF-e encerrado",
+  "mdfe.cancelado": "MDF-e cancelado",
   teste: "Teste da integração",
 } as const;
 

@@ -22,12 +22,14 @@ import { enderecoCompleto } from "@/lib/endereco";
 import { rotuloDaRessalva, textoDasTentativas } from "@/lib/comprovantes";
 import type { MapaDaViagem } from "@/lib/mapa";
 import { MapaDaViagemNaTela } from "@/components/mapa/mapa-da-viagem";
+import { MdfeDaViagem } from "../fiscal/mdfe/painel";
 import type { Manifesto } from "./carregar";
 
 /**
  * A tela da viagem, aberta a partir do cartão do manifesto: dados (ajudante,
- * hodômetro, previsões), ordem das entregas com a rota no mapa, despesas e, para
- * quem lê o financeiro, o acerto da viagem finalizada. Uma aba por vez, para caber
+ * hodômetro, previsões), ordem das entregas com a rota no mapa, despesas, o
+ * MDF-e (para quem lê o fiscal; ../fiscal/mdfe/painel.tsx) e, para quem lê o
+ * financeiro, o acerto da viagem finalizada. Uma aba por vez, para caber
  * na tela do celular.
  */
 
@@ -36,7 +38,7 @@ const CAMPO =
 const ROTULO = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
 const BOTAO = "bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-xl flex items-center justify-center gap-2";
 
-type Aba = "Dados" | "Rota" | "Despesas" | "Acerto";
+type Aba = "Dados" | "Rota" | "Despesas" | "MDF-e" | "Acerto";
 
 type Ajudante = { id: string; name: string; active: boolean };
 
@@ -86,6 +88,9 @@ export function TelaDaViagem({
   veAcerto,
   aprovaDespesa,
   alteraViagem = true,
+  veFiscal = false,
+  emiteFiscal = false,
+  abaInicial = "Dados",
   onClose,
   onChange,
 }: {
@@ -96,12 +101,19 @@ export function TelaDaViagem({
   aprovaDespesa: boolean;
   /** O perfil altera a viagem (capacidade `manifestos`): o botão "Sugerir ordem" aparece. */
   alteraViagem?: boolean;
+  /** O perfil lê o fiscal (capacidade `fiscalVer`): a aba MDF-e aparece. */
+  veFiscal?: boolean;
+  /** O perfil emite documento fiscal (capacidade `fiscal`): emite, encerra e cancela o MDF-e. */
+  emiteFiscal?: boolean;
+  /** A aba em que a tela abre: a lista abre direto no MDF-e ao oferecer o encerramento. */
+  abaInicial?: "Dados" | "MDF-e";
   onClose: () => void;
   /** Algo da viagem mudou no servidor: a lista de manifestos precisa ser lida de novo. */
   onChange: () => void;
 }) {
-  const [aba, setAba] = useState<Aba>("Dados");
-  const abas: Aba[] = ["Dados", "Rota", "Despesas", ...(veAcerto && manifesto.status === "FINISHED" ? (["Acerto"] as const) : [])];
+  const [aba, setAba] = useState<Aba>(abaInicial === "MDF-e" && veFiscal ? "MDF-e" : "Dados");
+  // Viagem cancelada não recebe MDF-e: a aba some.
+  const abas: Aba[] = ["Dados", "Rota", "Despesas", ...(veFiscal && manifesto.status !== "CANCELLED" ? (["MDF-e"] as const) : []), ...(veAcerto && manifesto.status === "FINISHED" ? (["Acerto"] as const) : [])];
   const selo = statusBadge(MANIFEST_STATUS, manifesto.status);
 
   return (
@@ -146,6 +158,7 @@ export function TelaDaViagem({
           {aba === "Dados" && <Dados manifesto={manifesto} onChange={onChange} />}
           {aba === "Rota" && <Rota manifesto={manifesto} podeSugerir={alteraViagem} onChange={onChange} />}
           {aba === "Despesas" && <Despesas manifesto={manifesto} admin={aprovaDespesa} />}
+          {aba === "MDF-e" && <MdfeDaViagem manifestId={manifesto.id} podeAlterar={emiteFiscal} />}
           {aba === "Acerto" && <AcertoDaViagemFinalizada manifestId={manifesto.id} />}
         </div>
       </div>

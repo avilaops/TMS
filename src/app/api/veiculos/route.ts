@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
-import { INACTIVE_DRIVER_MESSAGE, VEHICLE_PUBLIC_INCLUDE, createVehicleSchema, isUniqueViolation } from '@/lib/cadastros';
+import { INACTIVE_DRIVER_MESSAGE, VEHICLE_FISCAL_FIELDS, VEHICLE_PUBLIC_INCLUDE, createVehicleSchema, isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
@@ -68,6 +68,8 @@ export async function POST(req: Request) {
           maxWeight: data.maxWeight ?? null,
           year: data.year ?? null,
           driverId: data.defaultDriverId ?? null,
+          // O que o MDF-e pede do veículo: os nomes do formulário são os do banco.
+          ...Object.fromEntries(VEHICLE_FISCAL_FIELDS.map((campo) => [campo, data[campo] ?? null])),
         },
         include: VEHICLE_PUBLIC_INCLUDE,
       });
@@ -79,7 +81,7 @@ export async function POST(req: Request) {
         entidade: 'veiculo',
         entidadeId: newVehicle.id,
         resumo: `Veículo ${newVehicle.plate} criado`,
-        depois: escolher(newVehicle, ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'status']),
+        depois: escolher(newVehicle, ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'status', ...VEHICLE_FISCAL_FIELDS]),
       });
 
       return NextResponse.json(newVehicle, { status: 201 });

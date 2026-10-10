@@ -566,6 +566,9 @@ const TIPO: Record<string, string> = {
   "ocorrencia.status": "Status de chamado",
   "cte.autorizado": "CT-e autorizado",
   "cte.cancelado": "CT-e cancelado",
+  "mdfe.autorizado": "MDF-e autorizado",
+  "mdfe.encerrado": "MDF-e encerrado",
+  "mdfe.cancelado": "MDF-e cancelado",
   teste: "Teste",
 };
 
