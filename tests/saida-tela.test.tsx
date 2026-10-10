@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ate, clicar, desmontarTudo, montar, porTexto } from "./tela";
-import { AVISO_DE_VIAGEM_SEM_MDFE, fraseDoBloqueioDaSaida, type FaltasParaSair } from "../src/lib/mdfe";
+import { avisoDeViagemSemMdfe, fraseDoBloqueioDaSaida, type FaltasParaSair } from "../src/lib/mdfe";
 
 /**
  * A tela de Manifestos quando o servidor não libera a saída por falta de
@@ -39,7 +39,8 @@ const VIAGEM = {
   ],
 };
 
-const FALTAS: FaltasParaSair = { ctes: [{ id: "c1", codigo: "9700000001" }, { id: "c2", codigo: "9700000002" }], mdfe: "interestadual" };
+const FALTAS: FaltasParaSair = { ctes: [{ id: "c1", codigo: "9700000001" }, { id: "c2", codigo: "9700000002" }], mdfe: { exigencia: "interestadual", ufs: ["RJ"] } };
+const AVISO = avisoDeViagemSemMdfe({ exigencia: "interestadual", ufs: ["MG", "RJ"] });
 
 /** As quatro leituras da tela e a resposta de liberar a saída. O resto (ausências) responde vazio. */
 function api(aoLiberar: { status: number; body: unknown }) {
@@ -84,7 +85,7 @@ describe("Manifestos: saída bloqueada por falta de CT-e ou de MDF-e", () => {
     expect(quadro.getAttribute("role")).toBe("alert");
     expect(quadro.textContent).toContain("Saída não liberada: falta documento fiscal autorizado.");
     expect(quadro.querySelector('[data-falta="cte"]')!.textContent).toContain("CT-e de 2 cargas: 9700000001, 9700000002");
-    expect(quadro.querySelector('[data-falta="mdfe"]')!.textContent).toContain("MDF-e da viagem (depois dos CT-e)");
+    expect(quadro.querySelector('[data-falta="mdfe"]')!.textContent).toContain("MDF-e com descarga em RJ (depois dos CT-e)");
     expect(quadro.querySelector('[data-atalho="cte"]')!.getAttribute("href")).toBe("/dashboard/fiscal/cte");
 
     // O atalho do MDF-e abre a viagem na aba do MDF-e.
@@ -97,7 +98,7 @@ describe("Manifestos: saída bloqueada por falta de CT-e ou de MDF-e", () => {
     vi.stubGlobal("confirm", () => true);
     vi.stubGlobal("alert", vi.fn());
     estado.papel = "WAREHOUSE";
-    api({ status: 409, body: { error: "x", faltas: { ctes: [], mdfe: "intermunicipal" } satisfies FaltasParaSair } });
+    api({ status: 409, body: { error: "x", faltas: { ctes: [], mdfe: { exigencia: "intermunicipal", ufs: [] } } satisfies FaltasParaSair } });
     const tela = await montar(<ManifestosPage />);
     await ate(() => expect(porTexto(tela, "button", "Liberar saída")).toHaveLength(1));
     await liberar(tela);
@@ -112,11 +113,11 @@ describe("Manifestos: saída bloqueada por falta de CT-e ou de MDF-e", () => {
     const alerta = vi.fn();
     vi.stubGlobal("confirm", () => true);
     vi.stubGlobal("alert", alerta);
-    api({ status: 200, body: { success: true, aviso: AVISO_DE_VIAGEM_SEM_MDFE.interestadual } });
+    api({ status: 200, body: { success: true, aviso: AVISO } });
     const tela = await montar(<ManifestosPage />);
     await ate(() => expect(porTexto(tela, "button", "Liberar saída")).toHaveLength(1));
     await liberar(tela);
-    await ate(() => expect(alerta).toHaveBeenCalledWith(AVISO_DE_VIAGEM_SEM_MDFE.interestadual));
+    await ate(() => expect(alerta).toHaveBeenCalledWith(AVISO));
     expect(tela.querySelector("[data-saida-bloqueada]")).toBeNull();
     await desmontarTudo();
 

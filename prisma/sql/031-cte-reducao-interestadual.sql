@@ -1,0 +1,11 @@
+-- Redução de base do ICMS (situação 20) na prestação interestadual: uma coluna
+-- nova em "FiscalIssuer", com valor padrão:
+--   "icmsReductionInterstate": a redução da base de cálculo também vale na
+--     prestação interestadual? Nasce desligada (false) para todas as empresas.
+--     Desligada, o CT-e interestadual da empresa que usa a situação 20 não é
+--     emitido (a conferência manda consultar o contador): o benefício é de cada
+--     estado ou convênio, e o sistema não o presume.
+-- Só acrescenta: nenhuma linha existente muda de valor, e não há tabela nova
+-- (não é preciso rodar o `npm run db:rls` por causa dela).
+-- AlterTable
+ALTER TABLE "FiscalIssuer" ADD COLUMN     "icmsReductionInterstate" BOOLEAN NOT NULL DEFAULT false;

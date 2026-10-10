@@ -84,6 +84,8 @@ export type EmitenteDoCte = {
   aliquota: number;
   /** Percentual de redução da base do ICMS (`pRedBC`), só na situação 20. */
   reducaoDaBase?: number | null;
+  /** A redução da base também vale na prestação interestadual? Ausente ou falso: a interestadual na situação 20 não é emitida. */
+  reducaoNaInterestadual?: boolean;
   /** IBS e CBS: a classificação que o contador dá e as alíquotas do ano, em %. `null`: o CT-e vai sem o grupo `IBSCBS`. */
   ibsCbs: ParametrosDoIbsCbs | null;
 };
@@ -222,7 +224,15 @@ export const bloqueioDaSituacaoEmOutraUf = (uf: string, situacao: SituacaoDoIcms
 export const BLOQUEIO_DO_DIFAL =
   `Prestação interestadual com tomador não contribuinte do ICMS: pode haver diferencial de alíquota para a UF de término (grupo ICMSUFFim), que este sistema não calcula. A emissão está bloqueada. Se o tomador é contribuinte, preencha a inscrição estadual no cadastro do cliente; senão, ${CONSULTE_O_CONTADOR.toLowerCase()}`;
 
-type EmitenteDoIcms = Pick<EmitenteDoCte, "icms" | "aliquota" | "regime" | "reducaoDaBase"> & { uf: string };
+/**
+ * Situação 20 em prestação interestadual, sem a confirmação na configuração:
+ * a redução da base é benefício de cada estado ou convênio, e o sistema não
+ * sabe se ele alcança a prestação que termina em outra UF. Não emite com a
+ * redução nem sem ela: quem decide é o contador, que liga o campo.
+ */
+export const BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL = `Prestação interestadual com ICMS de base reduzida (situação 20): a redução é benefício de cada estado ou convênio, e a configuração não diz que ela vale fora do estado. A emissão está bloqueada. ${CONSULTE_O_CONTADOR} Se a redução vale na interestadual, marque "A redução vale na prestação interestadual" em Empresa → Fiscal.`;
+
+type EmitenteDoIcms = Pick<EmitenteDoCte, "icms" | "aliquota" | "regime" | "reducaoDaBase" | "reducaoNaInterestadual"> & { uf: string };
 
 /**
  * O ICMS da prestação, ou o motivo pelo qual o sistema não o calcula
@@ -230,7 +240,9 @@ type EmitenteDoIcms = Pick<EmitenteDoCte, "icms" | "aliquota" | "regime" | "redu
  *
  * - Simples Nacional (pelo regime ou pela situação): `ICMSSN`, sem valores.
  * - Prestação que começa na UF do emitente: o grupo da situação configurada
- *   (00, 20, 45 para 40/41, 60 ou 90). A alíquota é a interna da configuração
+ *   (00, 20, 45 para 40/41, 60 ou 90). Na situação 20 a prestação interestadual
+ *   só sai com a redução quando a configuração diz que ela vale fora do estado
+ *   (`reducaoNaInterestadual`); senão, bloqueio. A alíquota é a interna da configuração
  *   quando a prestação termina na mesma UF, e a interestadual da Resolução do
  *   Senado 22/1989 (7% ou 12%, `aliquotaInterestadual`) quando termina em outra.
  * - Prestação que começa em OUTRA UF (CFOP 5932/6932): o ICMS é devido à UF de
@@ -262,6 +274,7 @@ export function resolverIcms(emitente: EmitenteDoIcms, valorDaPrestacao: number,
   if (emitente.icms === "40" || emitente.icms === "41") return semValores("ICMS45");
   const aliquota = interestadual ?? emitente.aliquota;
   if (emitente.icms === "20") {
+    if (interestadual !== null && !emitente.reducaoNaInterestadual) return { bloqueio: BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL };
     const reducao = emitente.reducaoDaBase ?? 0;
     return destacado("ICMS20", centavos(total * (1 - reducao / 100)), aliquota, reducao);
   }

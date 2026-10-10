@@ -37,7 +37,9 @@ import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL } from "../deposito/comum";
  * que vale no CT-e); a alíquota do ICMS é a INTERNA (a interestadual o sistema
  * calcula); uma linha explica a situação do ICMS escolhida. Uma configuração
  * antiga com valor que deixou de valer (o CST 400 do IBS/CBS, um CFOP que não é
- * de transporte) aparece marcada, com o pedido de correção.
+ * de transporte) aparece marcada, com o pedido de correção. Na situação 20 do
+ * ICMS aparecem o percentual de redução da base e a caixa que diz se a redução
+ * vale na prestação interestadual (desmarcada, a interestadual não é emitida).
  */
 
 const FALHA_AO_SALVAR = "Não foi possível salvar.";
@@ -68,6 +70,7 @@ const EM_BRANCO: Formulario = {
   icms: "00",
   aliquota: "12",
   reducaoDaBase: "",
+  reducaoNaInterestadual: "false",
   ibsCbsCst: "000",
   ibsCbsClasse: "000001",
   ibsUf: String(ALIQUOTAS_DE_2026.ibsUf).replace(".", ","),
@@ -104,6 +107,7 @@ const doServidor = (dados: DadosFiscais): Formulario => ({
   icms: dados.icms,
   aliquota: comVirgula(dados.aliquota),
   reducaoDaBase: dados.reducaoDaBase === null ? "" : comVirgula(dados.reducaoDaBase),
+  reducaoNaInterestadual: String(dados.reducaoNaInterestadual),
   ibsCbsCst: dados.ibsCbsCst ?? "",
   ibsCbsClasse: dados.ibsCbsClasse ?? "",
   ibsUf: comVirgula(dados.ibsUf),
@@ -298,7 +302,7 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
             "ICMS",
             // Na ordem do código: 00, 20, 40, 41, 60, 90 e, por último, o Simples.
             Object.entries(SITUACOES_DO_ICMS).sort(([a], [b]) => a.localeCompare(b)),
-            (situacao): Formulario => (situacao === "20" ? {} : { reducaoDaBase: "" }),
+            (situacao): Formulario => (situacao === "20" ? {} : { reducaoDaBase: "", reducaoNaInterestadual: "false" }),
           )}
           {comReducao ? (
             <div className="grid grid-cols-2 gap-x-2 min-w-0">
@@ -312,6 +316,20 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
             {EXPLICACAO_DO_ICMS[form.icms as SituacaoDoIcms]}
             {ICMS_COM_ALIQUOTA.includes(form.icms as SituacaoDoIcms) && " Fora do estado a alíquota é a interestadual (7% ou 12%), calculada pelo sistema."}
           </p>
+          {comReducao && (
+            <label data-reducao-na-interestadual className="col-span-2 flex items-start gap-2 text-[11px] leading-tight text-gray-600 dark:text-gray-300">
+              <input
+                type="checkbox"
+                data-campo="reducaoNaInterestadual"
+                checked={form.reducaoNaInterestadual === "true"}
+                onChange={(e) => setForm((atual) => ({ ...atual, reducaoNaInterestadual: String(e.target.checked) }))}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                <strong>A redução vale na prestação interestadual.</strong> Desmarcado, o CT-e para outro estado não é emitido: a redução é de cada estado ou convênio. Confirme com o contador antes de marcar.
+              </span>
+            </label>
+          )}
           {escolha("ibsCbsCst", "IBS/CBS: CST", [["", simples ? "Sem o grupo" : "Escolha"], ...csts], (cst) => ({ ibsCbsClasse: classesDoCst(cst)[0]?.[0] ?? "" }))}
           {escolha("ibsCbsClasse", "Classificação (cClassTrib)", classes)}
           {problemaDoPar && (

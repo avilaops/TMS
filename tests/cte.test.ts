@@ -11,6 +11,7 @@ import {
   IBSCBS_COM_ESTORNO,
   IBSCBS_CST_400,
   NOME_EM_HOMOLOGACAO,
+  REDUCAO_NA_INTERESTADUAL_MESSAGE,
   REDUCAO_OBRIGATORIA,
   REDUCAO_SO_NA_20,
   SITUACOES_DO_ICMS,
@@ -46,6 +47,7 @@ import { ChaveInvalida, anoEMes, chaveDoCte, dataHoraDoEvento, dataHoraDoXml, fu
 import { UFS } from "../src/lib/roteiro";
 import { ENDERECOS, autorizadorDaUf, enderecosDaUf, urlDoQrCode } from "../src/lib/cte/enderecos";
 import {
+  BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL,
   BLOQUEIO_DO_DIFAL,
   bloqueioDaAliquotaDeOutraUf,
   bloqueioDaSituacaoEmOutraUf,
@@ -362,7 +364,7 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
         tomador: {
           papel: "OUTRO",
           participante: {
-            documento: "60701190000104",
+            documento: "99888777000100",
             ie: null,
             nome: "Pagador do Frete Ltda",
             fantasia: "Pagador",
@@ -375,7 +377,7 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
     );
     await valido(terceiro.xml);
     expect(terceiro.xml).toContain(
-      "<indIEToma>9</indIEToma><toma4><toma>4</toma><CNPJ>60701190000104</CNPJ><xNome>Pagador do Frete Ltda</xNome><xFant>Pagador</xFant><fone>1130034070</fone><enderToma>",
+      "<indIEToma>9</indIEToma><toma4><toma>4</toma><CNPJ>99888777000100</CNPJ><xNome>Pagador do Frete Ltda</xNome><xFant>Pagador</xFant><fone>1130034070</fone><enderToma>",
     );
     expect(terceiro.xml).toContain("<email>fiscal@pagador.example</email></toma4>");
   });
@@ -581,6 +583,30 @@ describe("correções da revisão contra o MOC 4.00 e as Notas Técnicas", () =>
     expect(() => montarCte(dadosDeExemplo({ inicio: { codigoMunicipio: "3106200", municipio: "Belo Horizonte", uf: "MG" }, fim: { codigoMunicipio: "3170206", municipio: "Uberlândia", uf: "MG" } }))).toThrow("bloqueada");
   });
 
+  it("ICMS20 na interestadual: só com a redução confirmada na configuração; desligada, bloqueia a interestadual e emite a interna", async () => {
+    const vinte = { ...SP, icms: "20" as const, reducaoDaBase: 20 };
+    // Desligado (o padrão): a interestadual não sai, nem com a redução nem sem ela.
+    expect(resolverIcms(vinte, 1000, "SP", "MG")).toEqual({ bloqueio: BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL });
+    expect(resolverIcms({ ...vinte, reducaoNaInterestadual: false }, 1000, "SP", "BA")).toEqual({ bloqueio: BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL });
+    expect(BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL).toContain("Consulte o contador");
+    expect(BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL).toContain("Empresa → Fiscal");
+    expect(() => montarCte(dadosDeExemplo({ emitente: { ...EMITENTE, icms: "20", reducaoDaBase: 20 } }))).toThrow("bloqueada");
+    // A interna sai com a redução, ligado ou desligado.
+    expect(icmsDaPrestacao(vinte, 1000, "SP", "SP")).toMatchObject({ grupo: "ICMS20", base: 800, aliquota: 18, valor: 144, reducao: 20 });
+    expect(icmsDaPrestacao({ ...vinte, reducaoNaInterestadual: true }, 1000, "SP", "SP")).toMatchObject({ grupo: "ICMS20", base: 800, aliquota: 18, valor: 144, reducao: 20 });
+    const interna = assinado(CENARIOS_DO_CTE["icms-20-reducao-de-base-interna"]());
+    await valido(interna.xml);
+    expect(interna.cfop).toBe("5353");
+    expect(interna.xml).toContain("<ICMS20><CST>20</CST><pRedBC>20.00</pRedBC><vBC>680.40</vBC><pICMS>12.00</pICMS><vICMS>81.65</vICMS></ICMS20>");
+    // Ligado: a interestadual sai com a redução e a alíquota interestadual (7% para a Bahia).
+    expect(icmsDaPrestacao({ ...vinte, reducaoNaInterestadual: true }, 1000, "SP", "BA")).toMatchObject({ grupo: "ICMS20", base: 800, aliquota: 7, valor: 56, reducao: 20 });
+    const interestadual = assinado(CENARIOS_DO_CTE["icms-20-reducao-de-base"]());
+    await valido(interestadual.xml);
+    expect(interestadual.cfop).toBe("6353");
+    // O campo não muda as outras situações.
+    expect(icmsDaPrestacao({ ...SP, reducaoNaInterestadual: false }, 1000, "SP", "MG")).toMatchObject({ grupo: "ICMS00", base: 1000, aliquota: 12 });
+  });
+
   it("ICMS20: base reduzida, com o pRedBC da configuração", async () => {
     const { xml, icms, ibsCbs } = assinado(CENARIOS_DO_CTE["icms-20-reducao-de-base"]());
     await valido(xml);
@@ -669,6 +695,12 @@ describe("correções da revisão contra o MOC 4.00 e as Notas Técnicas", () =>
     expect(erro({ icms: "00", reducaoDaBase: "20" })).toBe(REDUCAO_SO_NA_20);
     expect(dadosFiscaisSchema.parse({ ...formulario, icms: "20", reducaoDaBase: "33,33" })).toMatchObject({ icms: "20", reducaoDaBase: 33.33 });
     expect(dadosFiscaisSchema.parse(formulario).reducaoDaBase).toBeNull();
+    // A redução na interestadual nasce desligada, e o formulário manda sim ou não.
+    expect(dadosFiscaisSchema.parse(formulario).reducaoNaInterestadual).toBe(false);
+    expect(dadosFiscaisSchema.parse({ ...formulario, icms: "20", reducaoDaBase: "20", reducaoNaInterestadual: "true" }).reducaoNaInterestadual).toBe(true);
+    expect(dadosFiscaisSchema.parse({ ...formulario, icms: "20", reducaoDaBase: "20", reducaoNaInterestadual: true }).reducaoNaInterestadual).toBe(true);
+    expect(dadosFiscaisSchema.parse({ ...formulario, icms: "20", reducaoDaBase: "20", reducaoNaInterestadual: "false" }).reducaoNaInterestadual).toBe(false);
+    expect(erro({ icms: "20", reducaoDaBase: "20", reducaoNaInterestadual: "talvez" })).toBe(REDUCAO_NA_INTERESTADUAL_MESSAGE);
     expect(erro({ icms: "60", aliquota: "0" })).toBe(TRIBUTADO_PEDE_ALIQUOTA);
     expect(erro({ icms: "60" })).toBeUndefined();
     // Toda situação tem a explicação que a tela mostra.
@@ -676,11 +708,11 @@ describe("correções da revisão contra o MOC 4.00 e as Notas Técnicas", () =>
   });
 
   it("responsável técnico: vem das variáveis RESPTEC_*; faltando ou fora do formato, não há grupo", () => {
-    const variaveis = { RESPTEC_CNPJ: "60.701.190/0001-04", RESPTEC_CONTATO: " Suporte de Teste ", RESPTEC_EMAIL: "suporte@desenvolvedora.example", RESPTEC_FONE: "(17) 3000-1000" };
+    const variaveis = { RESPTEC_CNPJ: "99.888.777/0001-00", RESPTEC_CONTATO: " Suporte de Teste ", RESPTEC_EMAIL: "suporte@desenvolvedora.example", RESPTEC_FONE: "(17) 3000-1000" };
     expect(responsavelTecnico(variaveis)).toEqual(RESPONSAVEL_TECNICO);
     expect(responsavelTecnico({})).toBeNull();
     for (const nome of VARIAVEIS_DO_RESPONSAVEL_TECNICO) expect(responsavelTecnico({ ...variaveis, [nome]: "" }), nome).toBeNull();
-    expect(responsavelTecnico({ ...variaveis, RESPTEC_CNPJ: "60.701.190/0001-05" })).toBeNull();
+    expect(responsavelTecnico({ ...variaveis, RESPTEC_CNPJ: "99.888.777/0001-01" })).toBeNull();
     expect(responsavelTecnico({ ...variaveis, RESPTEC_CNPJ: "00000000000000" })).toBeNull();
     expect(responsavelTecnico({ ...variaveis, RESPTEC_CONTATO: "X" })).toBeNull();
     expect(responsavelTecnico({ ...variaveis, RESPTEC_EMAIL: "sem-arroba" })).toBeNull();
@@ -692,7 +724,7 @@ describe("correções da revisão contra o MOC 4.00 e as Notas Técnicas", () =>
   it("infRespTec: com os dados o grupo fecha o infCte e passa no esquema; sem eles o CT-e vai sem o grupo", async () => {
     const com = assinado(CENARIOS_DO_CTE["com-responsavel-tecnico"]());
     await valido(com.xml);
-    expect(com.xml).toContain("</infCTeNorm><infRespTec><CNPJ>60701190000104</CNPJ><xContato>Suporte de Teste</xContato><email>suporte@desenvolvedora.example</email><fone>1730001000</fone></infRespTec></infCte>");
+    expect(com.xml).toContain("</infCTeNorm><infRespTec><CNPJ>99888777000100</CNPJ><xContato>Suporte de Teste</xContato><email>suporte@desenvolvedora.example</email><fone>1730001000</fone></infRespTec></infCte>");
     const sem = assinado();
     await valido(sem.xml);
     expect(sem.xml).not.toContain("infRespTec");
@@ -1326,13 +1358,13 @@ describe("da carga aos dados do CT-e", () => {
   });
 
   it("cliente pagador que não é remetente nem destinatário: tomador outro, com o endereço do cadastro; sem endereço, pendência", async () => {
-    const terceiro = { companyName: "Pagador do Frete Ltda", tradeName: null, cnpj: "60701190000104", ie: "ISENTO", email: "fiscal@pagador.example", phone: "(11) 3003-4070" };
+    const terceiro = { companyName: "Pagador do Frete Ltda", tradeName: null, cnpj: "99888777000100", ie: "ISENTO", email: "fiscal@pagador.example", phone: "(11) 3003-4070" };
     const preparo = preparar(carga({ client: { ...terceiro, address: "Praça Alfredo Egydio, 100 - Jabaquara, São Paulo - SP, CEP 04344-902" } }));
     expect(preparo.pendencias).toEqual([]);
     expect(preparo.dados?.contribuinte).toBe("2");
     expect(preparo.dados?.tomador).toMatchObject({
       papel: "OUTRO",
-      participante: { documento: "60701190000104", ie: "ISENTO", nome: "Pagador do Frete Ltda", endereco: { logradouro: "Praça Alfredo Egydio", numero: "100", bairro: "Jabaquara", codigoMunicipio: "3550308", municipio: "São Paulo", uf: "SP", cep: "04344902" } },
+      participante: { documento: "99888777000100", ie: "ISENTO", nome: "Pagador do Frete Ltda", endereco: { logradouro: "Praça Alfredo Egydio", numero: "100", bairro: "Jabaquara", codigoMunicipio: "3550308", municipio: "São Paulo", uf: "SP", cep: "04344902" } },
     });
     const montado = montarCte({ ...preparo.dados!, numero: 2, codigo: "12345678", emissao: new Date() });
     expect(await errosNoEsquema(assinarXml(montado.xml, ALVO_DO_CTE, { chavePem: lido.chavePem, certificadoPem: lido.titularPem }), "cte_v4.00.xsd")).toEqual([]);
@@ -1416,6 +1448,27 @@ describe("da carga aos dados do CT-e", () => {
     expect(isentaEmCasa.pendencias).toEqual([bloqueioDaSituacaoEmOutraUf("MG", "40")]);
   });
 
+  it("situação 20: a carga interestadual fica pendente até a configuração dizer que a redução vale fora do estado; a interna emite", async () => {
+    const vinte = { ...EMITENTE, icms: "20" as const, reducaoDaBase: 20 };
+    const desligado = preparar(carga(), vinte);
+    expect(desligado.dados).toBeNull();
+    expect(desligado.pendencias).toEqual([BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL]);
+    expect(desligado.resumo).toMatchObject({ cfop: "6353", icms: null });
+
+    const ligado = preparar(carga(), { ...vinte, reducaoNaInterestadual: true });
+    expect(ligado.pendencias).toEqual([]);
+    expect(ligado.resumo?.icms).toMatchObject({ situacao: "20", grupo: "ICMS20", base: 680.4, aliquota: 12, valor: 81.65 });
+    const montado = montarCte({ ...ligado.dados!, numero: 6, codigo: "12345678", emissao: new Date() });
+    expect(await errosNoEsquema(assinarXml(montado.xml, ALVO_DO_CTE, { chavePem: lido.chavePem, certificadoPem: lido.titularPem }), "cte_v4.00.xsd")).toEqual([]);
+
+    // Dentro do estado a redução vale sem a confirmação.
+    const semNota = { notas: [], invoiceKey: null, sender: "REMETENTE", receiver: "Maria da Silva", destination: "Mirassol - SP", deliveryStreet: "Rua Um", deliveryDistrict: "Vila Nova", deliveryZip: "15130000" };
+    const cliente = { companyName: "Indústria Remetente S/A", tradeName: "Remetente", cnpj: "45543915000181", ie: "110042490114", email: null, phone: null, address: "Av. Brasil, 1500 - Distrito Industrial, São José do Rio Preto - SP, CEP 15035-000" };
+    const interna = preparar(carga({ ...semNota, client: cliente, destinatarios: [{ name: "maria da silva", document: "390.533.447-05", address: null }] }), vinte);
+    expect(interna.pendencias).toEqual([]);
+    expect(interna.resumo?.icms).toMatchObject({ grupo: "ICMS20", base: 680.4, aliquota: 12 });
+  });
+
   it("situação 60 avisa do ICMS retido; configuração antiga com CST 400 do IBS/CBS pede a correção e não emite", () => {
     expect(preparar(carga(), { ...EMITENTE, icms: "60" }).avisos).toContain(AVISO_DO_ICMS_RETIDO);
     expect(preparar(carga()).avisos).not.toContain(AVISO_DO_ICMS_RETIDO);
@@ -1435,7 +1488,7 @@ describe("da carga aos dados do CT-e", () => {
     const com = prepararCte(carga(), EMITENTE, QR, municipioDoTexto, new Date(), RESPONSAVEL_TECNICO);
     expect(com.avisos).not.toContain(semResponsavelTecnico("cte"));
     expect(com.dados?.responsavelTecnico).toEqual(RESPONSAVEL_TECNICO);
-    expect(montarCte({ ...com.dados!, numero: 5, codigo: "12345678", emissao: new Date() }).xml).toContain("<infRespTec><CNPJ>60701190000104</CNPJ>");
+    expect(montarCte({ ...com.dados!, numero: 5, codigo: "12345678", emissao: new Date() }).xml).toContain("<infRespTec><CNPJ>99888777000100</CNPJ>");
   });
 
   it("o município da nota escrito fora do padrão ainda vale pelo código IBGE que a nota traz", () => {

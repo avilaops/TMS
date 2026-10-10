@@ -29,6 +29,7 @@ import { assinaturaConfere } from "../src/lib/cte/assinar";
 import { DE_OUTRO_CNPJ, SENHA_ERRADA, VENCIDO } from "../src/lib/cte/certificado";
 import { lerChaveDoCte } from "../src/lib/cte/chave";
 import { usarSefazDeTeste } from "../src/lib/cte/sefaz";
+import { BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL } from "../src/lib/cte/montar";
 import { chaveDeExemplo } from "./mdfe-apoio";
 import { chaveValida, type CargaParaCte } from "../src/lib/nfe";
 import { EMPRESA_OUTRA, EMPRESA_PADRAO } from "./empresas-de-teste";
@@ -54,7 +55,7 @@ const PREFIXO = "teste-cte-";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
 const SEM_ID = "00000000-0000-0000-0000-000000000000";
 const CNPJ_DA_PADRAO = "11222333000181";
-const CNPJ_DA_OUTRA = "60701190000104";
+const CNPJ_DA_OUTRA = "99888777000100";
 // O cliente pagador é o emitente das NF-e de exemplo: vira o tomador remetente.
 const CNPJ_DO_CLIENTE = REMETENTE.documento;
 const SENHA = "senha-secreta-do-certificado-QWERTY";
@@ -390,7 +391,7 @@ suite("rotas da emissão de CT-e", () => {
     it("produção só com o CNPJ digitado de novo; voltar a homologação não pede nada", async () => {
       await salvarDados();
       expect((await salvarDados({ ambiente: "PRODUCAO" })).corpo.error).toBe(PRODUCAO_PEDE_CONFIRMACAO);
-      expect((await salvarDados({ ambiente: "PRODUCAO", confirmacaoDoCnpj: "60.701.190/0001-04" })).corpo.error).toBe(PRODUCAO_PEDE_CONFIRMACAO);
+      expect((await salvarDados({ ambiente: "PRODUCAO", confirmacaoDoCnpj: "99.888.777/0001-00" })).corpo.error).toBe(PRODUCAO_PEDE_CONFIRMACAO);
       const emProducao = await salvarDados({ ambiente: "PRODUCAO", confirmacaoDoCnpj: "11.222.333/0001-81", proximoNumero: "900" });
       expect(emProducao.status).toBe(200);
       expect(emProducao.corpo.dados).toMatchObject({ ambiente: "PRODUCAO", proximoNumero: 900 });
@@ -400,6 +401,33 @@ suite("rotas da emissão de CT-e", () => {
       expect(await numeracao("PRODUCAO")).toBe(900);
       expect(await numeracao("HOMOLOGACAO")).toBe(1);
       expect((await salvarDados()).corpo.dados).toMatchObject({ ambiente: "HOMOLOGACAO", proximoNumero: 1 });
+    });
+  });
+
+  describe("redução da base (situação 20) na prestação interestadual", () => {
+    it("o campo nasce desligado e é gravado com auditoria; desligado, a carga interestadual não emite; ligado, emite com a redução", async () => {
+      await prepararEmpresa({ icms: "20", reducaoDaBase: "20" });
+      entrarComo("ADMIN");
+      expect((await lida<FiscalDaEmpresa>(await fiscalRota.GET())).corpo.dados).toMatchObject({ icms: "20", reducaoDaBase: 20, reducaoNaInterestadual: false });
+      const carga = await novaCarga();
+      const desligado = await conferir(carga.id);
+      expect(desligado.corpo.pendencias).toEqual([BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL]);
+      expect(await emitir(carga.id)).toMatchObject({ status: 409, corpo: { error: BLOQUEIO_DA_REDUCAO_NA_INTERESTADUAL } });
+      expect(await banco.sistema.cte.count({ where: DAS_EMPRESAS })).toBe(0);
+      expect(sefaz.chamadas).toHaveLength(0);
+
+      const salvo = await salvarDados({ icms: "20", reducaoDaBase: "20", reducaoNaInterestadual: true });
+      expect(salvo.corpo.dados).toMatchObject({ reducaoNaInterestadual: true });
+      expect((await trilha("empresa.fiscal")).at(-1)?.after).toEqual({ icmsReductionInterstate: true });
+      const ligado = await conferir(carga.id);
+      expect(ligado.corpo.pendencias).toEqual([]);
+      expect(ligado.corpo.resumo?.icms).toMatchObject({ situacao: "20", grupo: "ICMS20", base: 680.4, aliquota: 12, valor: 81.65 });
+      const emitido = await emitir(carga.id);
+      expect(emitido.corpo).toMatchObject({ autorizado: true });
+      expect((await cteDe(carga.id))[0].xmlSent).toContain("<ICMS20><CST>20</CST><pRedBC>20.00</pRedBC><vBC>680.40</vBC><pICMS>12.00</pICMS><vICMS>81.65</vICMS></ICMS20>");
+
+      // Fora da situação 20 o campo não fica ligado, mesmo que o formulário o mande.
+      expect((await salvarDados({ icms: "00", reducaoNaInterestadual: true, proximoNumero: "2" })).corpo.dados).toMatchObject({ icms: "00", reducaoDaBase: null, reducaoNaInterestadual: false });
     });
   });
 
@@ -612,7 +640,7 @@ suite("rotas da emissão de CT-e", () => {
         expect((await banco.sistema.collection.findUniqueOrThrow({ where: { id: carga.id }, select: { status: true } })).status).toBe("COLLECTED");
 
         // O registro manual (CT-e de outro sistema) segue a mesma regra.
-        const deFora = { cteNumber: 777, cteKey: chaveDeExemplo("57", 777, "35", "60701190000104") };
+        const deFora = { cteNumber: 777, cteKey: chaveDeExemplo("57", 777, "35", "99888777000100") };
         entrarComo("OPERATION");
         expect((await lida(await listaRota.POST(req("POST", { collectionId: fora.id, ...deFora })))).status).toBe(409);
         await banco.sistema.collection.update({ where: { id: fora.id }, data: { manifestId: viagem.id } });

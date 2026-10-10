@@ -218,7 +218,7 @@ export function dadosDeExemplo(trocas: Partial<DadosDoCte> = {}): DadosDoCte {
 }
 
 /** Um responsável técnico de mentira, no formato do esquema (`TRespTec`). Os dados de verdade vêm das variáveis RESPTEC_*. */
-export const RESPONSAVEL_TECNICO: ResponsavelTecnico = { cnpj: "60701190000104", contato: "Suporte de Teste", email: "suporte@desenvolvedora.example", telefone: "1730001000" };
+export const RESPONSAVEL_TECNICO: ResponsavelTecnico = { cnpj: "99888777000100", contato: "Suporte de Teste", email: "suporte@desenvolvedora.example", telefone: "1730001000" };
 
 const MIRASSOL = { codigoMunicipio: "3530300", municipio: "Mirassol", uf: "SP" };
 const SALVADOR = { codigoMunicipio: "2927408", municipio: "Salvador", uf: "BA" };
@@ -258,7 +258,9 @@ export const CENARIOS_DO_CTE: Record<string, () => DadosDoCte> = {
   "interestadual-7-sp-ba": () => dadosDeExemplo({ fim: SALVADOR }),
   "outra-uf-6932-mg-rj-12": () => dadosDeExemplo({ inicio: BELO_HORIZONTE, fim: RIO_DE_JANEIRO }),
   "outra-uf-6932-pr-ba-7": () => dadosDeExemplo({ inicio: CURITIBA, fim: SALVADOR }),
-  "icms-20-reducao-de-base": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "20", reducaoDaBase: 20 } }),
+  // Situação 20: a interestadual só sai quando a configuração diz que a redução vale fora do estado.
+  "icms-20-reducao-de-base": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "20", reducaoDaBase: 20, reducaoNaInterestadual: true } }),
+  "icms-20-reducao-de-base-interna": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "20", reducaoDaBase: 20 }, fim: MIRASSOL }),
   "icms-60-substituicao": () => dadosDeExemplo({ emitente: { ...EMITENTE, icms: "60" } }),
   "ibscbs-200-aliquota-zero": () => dadosDeExemplo({ emitente: { ...EMITENTE, ibsCbs: { ...EMITENTE.ibsCbs!, cst: "200", classe: "200001" } } }),
   "ibscbs-200-reducao-40": () => dadosDeExemplo({ emitente: { ...EMITENTE, ibsCbs: { ...EMITENTE.ibsCbs!, cst: "200", classe: "200050" } } }),

@@ -705,6 +705,7 @@ export const ROTULOS_DOS_CAMPOS: Record<string, string> = {
   icmsCst: "Situação do ICMS",
   icmsRate: "Alíquota interna do ICMS (%)",
   icmsBaseReduction: "Redução da base do ICMS (%)",
+  icmsReductionInterstate: "Redução da base vale na interestadual",
   ibsCbsCst: "CST do IBS/CBS",
   ibsCbsClass: "Classificação tributária do IBS/CBS",
   ibsStateRate: "IBS da UF (%)",

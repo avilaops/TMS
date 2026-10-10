@@ -384,6 +384,7 @@ const DADOS: DadosFiscais = {
   icms: "00",
   aliquota: 12,
   reducaoDaBase: null,
+  reducaoNaInterestadual: false,
   ibsCbsCst: "000",
   ibsCbsClasse: "000001",
   ibsUf: 0.1,
@@ -503,17 +504,25 @@ describe("Empresa → Fiscal", () => {
     await digitar(campo(tela, "icms"), "20");
     expect(explicacao()).toContain(EXPLICACAO_DO_ICMS["20"]);
     await digitar(campo(tela, "reducaoDaBase"), "20");
+    // A caixa da redução na interestadual só existe na situação 20, nasce desmarcada e explica o que acontece.
+    const caixa = () => secao(tela).querySelector<HTMLInputElement>('[data-campo="reducaoNaInterestadual"]');
+    expect(caixa()!.checked).toBe(false);
+    expect(secao(tela).querySelector("[data-reducao-na-interestadual]")!.textContent).toContain("Desmarcado, o CT-e para outro estado não é emitido");
+    await clicar(caixa()!);
+    expect(caixa()!.checked).toBe(true);
 
     await enviar(secao(tela).querySelector<HTMLFormElement>("[data-form-fiscal]")!);
     await ate(() => expect(secao(tela).querySelector('[role="status"]')?.textContent).toBe("Dados fiscais salvos."));
-    expect(pedidos.at(-1)).toMatchObject({ method: "PUT", body: { icms: "20", aliquota: "12", reducaoDaBase: "20", cfopDentro: "5353", cfopFora: "6353", ibsCbsCst: "000", ibsCbsClasse: "000001" } });
+    expect(pedidos.at(-1)).toMatchObject({ method: "PUT", body: { icms: "20", aliquota: "12", reducaoDaBase: "20", reducaoNaInterestadual: "true", cfopDentro: "5353", cfopFora: "6353", ibsCbsCst: "000", ibsCbsClasse: "000001" } });
 
     // Sair da situação 20 limpa a redução.
     await digitar(campo(tela, "icms"), "20");
     await digitar(campo(tela, "reducaoDaBase"), "15");
+    await clicar(caixa()!);
     await digitar(campo(tela, "icms"), "00");
+    expect(caixa()).toBeNull();
     await enviar(secao(tela).querySelector<HTMLFormElement>("[data-form-fiscal]")!);
-    await ate(() => expect(pedidos.at(-1)).toMatchObject({ body: { icms: "00", reducaoDaBase: "" } }));
+    await ate(() => expect(pedidos.at(-1)).toMatchObject({ body: { icms: "00", reducaoDaBase: "", reducaoNaInterestadual: "false" } }));
   });
 
   it("envia o certificado em base64 com a senha, limpa a senha da tela e mostra só titular, CNPJ e validade; remover apaga", async () => {

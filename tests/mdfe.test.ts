@@ -19,6 +19,9 @@ import {
   faltasParaSair,
   fraseDoBloqueioDaSaida,
   haFaltasParaSair,
+  rotuloDaFaltaDeMdfe,
+  avisoDeViagemSemMdfe,
+  AVISO_DE_VIAGEM_SEM_MDFE,
   seloDoMdfe,
 } from "../src/lib/mdfe";
 import { assinarXml, assinaturaConfere, resumoDaAssinatura } from "../src/lib/cte/assinar";
@@ -981,7 +984,7 @@ describe("correções da revisão: fuso da UF do emitente e responsável técnic
     const com = assinado(mdfeDeExemplo({ responsavelTecnico: RESPONSAVEL_TECNICO }));
     expect(await erros(mdfeDeExemplo({ responsavelTecnico: RESPONSAVEL_TECNICO }))).toEqual([]);
     expect(com.xml).toContain(
-      "<infAdic><infCpl>Viagem A1B2C3</infCpl></infAdic><infRespTec><CNPJ>60701190000104</CNPJ><xContato>Suporte de Teste</xContato><email>suporte@desenvolvedora.example</email><fone>1730001000</fone></infRespTec></infMDFe>",
+      "<infAdic><infCpl>Viagem A1B2C3</infCpl></infAdic><infRespTec><CNPJ>99888777000100</CNPJ><xContato>Suporte de Teste</xContato><email>suporte@desenvolvedora.example</email><fone>1730001000</fone></infRespTec></infMDFe>",
     );
     const sem = assinado();
     expect(await erros()).toEqual([]);
@@ -1006,7 +1009,7 @@ describe("correções da revisão: fuso da UF do emitente e responsável técnic
     const com = prepararMdfe(viagem([carga(1), carga(2)]), "MG", ENTRADAS, contexto({ responsavelTecnico: RESPONSAVEL_TECNICO }));
     expect(com.avisos).not.toContain(semResponsavelTecnico("mdfe"));
     expect(com.dados?.responsavelTecnico).toEqual(RESPONSAVEL_TECNICO);
-    expect(montarMdfe({ ...com.dados!, numero: 3, codigo: "12345678", emissao: new Date("2026-10-10T15:00:00.000Z") }).xml).toContain("<infRespTec><CNPJ>60701190000104</CNPJ>");
+    expect(montarMdfe({ ...com.dados!, numero: 3, codigo: "12345678", emissao: new Date("2026-10-10T15:00:00.000Z") }).xml).toContain("<infRespTec><CNPJ>99888777000100</CNPJ>");
   });
 });
 
@@ -1018,28 +1021,46 @@ describe("o que falta de documento fiscal para a viagem sair (Ajustes SINIEF 09/
   const municipal = { id: "c3", codigo: "TRK3", ufDeOrigem: "SP", ufDeDestino: "SP", mesmoMunicipio: true, cteAutorizado: false };
 
   it("transportadora: CT-e de cada carga que sai do município, e MDF-e quando a viagem o exige", () => {
-    expect(faltasParaSair([interestadual, intermunicipal, municipal], "1", false)).toEqual({ ctes: [{ id: "c1", codigo: "TRK1" }, { id: "c2", codigo: "TRK2" }], mdfe: "interestadual" });
-    expect(faltasParaSair([{ ...interestadual, cteAutorizado: true }, intermunicipal], "1", false)).toEqual({ ctes: [{ id: "c2", codigo: "TRK2" }], mdfe: "interestadual" });
-    expect(faltasParaSair([{ ...intermunicipal, cteAutorizado: true }], "1", false)).toEqual({ ctes: [], mdfe: "intermunicipal" });
-    const tudo = faltasParaSair([{ ...interestadual, cteAutorizado: true }], "1", true);
+    expect(faltasParaSair([interestadual, intermunicipal, municipal], "1", ["MG", "SP"], [])).toEqual({ ctes: [{ id: "c1", codigo: "TRK1" }, { id: "c2", codigo: "TRK2" }], mdfe: { exigencia: "interestadual", ufs: ["MG", "SP"] } });
+    expect(faltasParaSair([{ ...interestadual, cteAutorizado: true }, intermunicipal], "1", ["MG", "SP"], ["SP"])).toEqual({ ctes: [{ id: "c2", codigo: "TRK2" }], mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
+    expect(faltasParaSair([{ ...intermunicipal, cteAutorizado: true }], "1", ["SP"], [])).toEqual({ ctes: [], mdfe: { exigencia: "intermunicipal", ufs: ["SP"] } });
+    const tudo = faltasParaSair([{ ...interestadual, cteAutorizado: true }], "1", ["MG"], ["MG"]);
     expect(tudo).toEqual({ ctes: [], mdfe: null });
     expect(haFaltasParaSair(tudo)).toBe(false);
     // Dentro do município não há CT-e nem MDF-e a exigir.
-    expect(haFaltasParaSair(faltasParaSair([municipal], "1", false))).toBe(false);
+    expect(haFaltasParaSair(faltasParaSair([municipal], "1", [], []))).toBe(false);
     // Cidade fora da tabela: não dá para dizer que é municipal, então exige.
-    expect(faltasParaSair([{ ...municipal, ufDeOrigem: null, mesmoMunicipio: false }], "1", false)).toEqual({ ctes: [{ id: "c3", codigo: "TRK3" }], mdfe: "intermunicipal" });
+    expect(faltasParaSair([{ ...municipal, ufDeOrigem: null, mesmoMunicipio: false }], "1", ["SP"], [])).toEqual({ ctes: [{ id: "c3", codigo: "TRK3" }], mdfe: { exigencia: "intermunicipal", ufs: ["SP"] } });
+  });
+
+  it("um MDF-e por UF de descarregamento: o de uma UF não cobre a outra", () => {
+    const paraORio = { ...interestadual, id: "c4", codigo: "TRK4", ufDeDestino: "RJ", cteAutorizado: true };
+    const cargas = [{ ...interestadual, cteAutorizado: true }, paraORio];
+    // SP -> MG + RJ com o MDF-e de MG só: falta o do RJ.
+    expect(faltasParaSair(cargas, "1", ["MG", "RJ"], ["MG"])).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["RJ"] } });
+    expect(faltasParaSair(cargas, "1", ["MG", "RJ"], [])).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG", "RJ"] } });
+    expect(haFaltasParaSair(faltasParaSair(cargas, "1", ["MG", "RJ"], ["RJ", "MG"]))).toBe(false);
+    // MDF-e de uma UF em que a viagem não descarrega não cobre nenhuma.
+    expect(faltasParaSair(cargas, "1", ["MG", "RJ"], ["GO"]).mdfe?.ufs).toEqual(["MG", "RJ"]);
+    // Destino fora da tabela de municípios (sem UF conhecida): exige algum MDF-e na viagem.
+    expect(faltasParaSair([interestadual], "2", [], [])).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: [] } });
+    expect(faltasParaSair([interestadual], "2", [], ["MG"]).mdfe).toBeNull();
   });
 
   it("carga própria (tipo 2) não emite CT-e: só o MDF-e é exigido", () => {
-    expect(faltasParaSair([interestadual, intermunicipal], "2", false)).toEqual({ ctes: [], mdfe: "interestadual" });
-    expect(haFaltasParaSair(faltasParaSair([interestadual], "2", true))).toBe(false);
+    expect(faltasParaSair([interestadual, intermunicipal], "2", ["MG", "SP"], [])).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG", "SP"] } });
+    expect(haFaltasParaSair(faltasParaSair([interestadual], "2", ["MG"], ["MG"]))).toBe(false);
   });
 
   it("a frase do bloqueio diz o que falta e cita os Ajustes", () => {
-    expect(fraseDoBloqueioDaSaida({ ctes: [{ id: "c1", codigo: "TRK1" }], mdfe: "interestadual" })).toBe(
-      "A saída não foi liberada. Falta: CT-e autorizado de 1 carga (TRK1) e MDF-e autorizado da viagem. Os documentos têm de estar autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).",
+    expect(fraseDoBloqueioDaSaida({ ctes: [{ id: "c1", codigo: "TRK1" }], mdfe: { exigencia: "interestadual", ufs: ["MG", "RJ"] } })).toBe(
+      "A saída não foi liberada. Falta: CT-e autorizado de 1 carga (TRK1) e MDF-e com descarga em MG e RJ autorizado. Os documentos têm de estar autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).",
     );
     expect(fraseDoBloqueioDaSaida({ ctes: [{ id: "c1", codigo: "TRK1" }, { id: "c2", codigo: "TRK2" }], mdfe: null })).toContain("Falta: CT-e autorizado de 2 cargas (TRK1, TRK2).");
-    expect(fraseDoBloqueioDaSaida({ ctes: [], mdfe: "intermunicipal" })).toContain("Falta: MDF-e autorizado da viagem.");
+    expect(fraseDoBloqueioDaSaida({ ctes: [], mdfe: { exigencia: "intermunicipal", ufs: [] } })).toContain("Falta: MDF-e da viagem autorizado.");
+    expect(rotuloDaFaltaDeMdfe({ exigencia: "interestadual", ufs: ["MG", "RJ", "GO"] })).toBe("MDF-e com descarga em MG, RJ e GO");
+    // O aviso (homologação ou empresa que emite fora) diz as UF que faltam.
+    expect(avisoDeViagemSemMdfe({ exigencia: "interestadual", ufs: ["RJ"] })).toBe(`${AVISO_DE_VIAGEM_SEM_MDFE.interestadual} Falta o MDF-e (um por UF de descarregamento) com descarga em RJ.`);
+    expect(avisoDeViagemSemMdfe({ exigencia: "intermunicipal", ufs: [] })).toBe(AVISO_DE_VIAGEM_SEM_MDFE.intermunicipal);
   });
 });

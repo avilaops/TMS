@@ -20,6 +20,7 @@ import {
   SO_AUTORIZADO_TEM_XML,
   TRANSPORTE_JA_INICIADO,
   VIAGEM_NAO_ENCONTRADA,
+  avisoDeViagemSemMdfe,
   fraseDoBloqueioDaSaida,
   type ConferenciaDoMdfe,
   type FaltasParaSair,
@@ -1103,7 +1104,7 @@ suite("rotas da emissão de MDF-e", () => {
       const resposta = await sair(viagem.id);
       expect(resposta.status).toBe(409);
       const codigos = (await banco.sistema.collection.findMany({ where: { manifestId: viagem.id }, orderBy: { createdAt: "asc" }, select: { id: true, trackingCode: true } })).map((carga) => ({ id: carga.id, codigo: carga.trackingCode }));
-      expect(resposta.corpo.faltas).toEqual({ ctes: codigos, mdfe: "interestadual" });
+      expect(resposta.corpo.faltas).toEqual({ ctes: codigos, mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
       expect(resposta.corpo.error).toBe(fraseDoBloqueioDaSaida(resposta.corpo.faltas!));
       expect(resposta.corpo.error).toContain("CT-e autorizado de 2 cargas");
       expect(await situacao(viagem.id)).toEqual(EM_MONTAGEM);
@@ -1116,20 +1117,20 @@ suite("rotas da emissão de MDF-e", () => {
       await emProducao();
       // CT-e autorizado só em homologação: a carga continua sem CT-e com valor fiscal.
       const deTeste = await novaViagem(["MG"], { status: "ASSEMBLING" });
-      expect((await sair(deTeste.id)).corpo.faltas).toMatchObject({ ctes: [{ id: deTeste.cargas[0].id }], mdfe: "interestadual" });
+      expect((await sair(deTeste.id)).corpo.faltas).toMatchObject({ ctes: [{ id: deTeste.cargas[0].id }], mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
 
       const viagem = await novaViagem(["MG", "UDI"], { status: "ASSEMBLING", ambienteDoCte: "PRODUCAO" });
       await autorizarCtes(viagem);
       const resposta = await sair(viagem.id);
       expect(resposta.status).toBe(409);
-      expect(resposta.corpo.faltas).toEqual({ ctes: [], mdfe: "interestadual" });
-      expect(resposta.corpo.error).toContain("Falta: MDF-e autorizado da viagem.");
+      expect(resposta.corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
+      expect(resposta.corpo.error).toContain("Falta: MDF-e com descarga em MG autorizado.");
       expect(await situacao(viagem.id)).toEqual(EM_MONTAGEM);
 
       // O CT-e registrado à mão (emitido em outro sistema) também vale como CT-e da carga.
       const deFora = await novaViagem(["MG"], { status: "ASSEMBLING", semCte: true });
       await banco.sistema.collection.update({ where: { id: deFora.cargas[0].id }, data: { cteKey: chaveDeExemplo("57", 4321), cteNumber: 4321, cteStatus: "ISSUED" } });
-      expect((await sair(deFora.id)).corpo.faltas).toEqual({ ctes: [], mdfe: "interestadual" });
+      expect((await sair(deFora.id)).corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
     });
 
     it("produção com o CT-e de cada carga e o MDF-e autorizados: libera, sem aviso", async () => {
@@ -1146,19 +1147,59 @@ suite("rotas da emissão de MDF-e", () => {
       expect(await trilha("manifesto.liberar")).toHaveLength(1);
     });
 
+    it("um MDF-e por UF de descarregamento: com duas UF e um MDF-e só, bloqueia e diz a UF que falta; cancelado e de homologação não contam", async () => {
+      await emProducao();
+      const viagem = await novaViagem(["MG", "UDI", "RJ", "RJ"], { status: "ASSEMBLING", ambienteDoCte: "PRODUCAO" });
+      await autorizarCtes(viagem);
+      // Sem MDF-e nenhum faltam as duas UF.
+      expect((await sair(viagem.id)).corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG", "RJ"] } });
+
+      // Só o de MG: a viagem SP -> MG + RJ não sai.
+      expect((await emitir(viagem.id, "MG")).corpo).toMatchObject({ autorizado: true, mdfe: { ambiente: "PRODUCAO", ufDeFim: "MG" } });
+      const soMg = await sair(viagem.id);
+      expect(soMg.status).toBe(409);
+      expect(soMg.corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["RJ"] } });
+      expect(soMg.corpo.error).toContain("Falta: MDF-e com descarga em RJ autorizado.");
+      expect(await situacao(viagem.id)).toEqual(EM_MONTAGEM);
+      expect(await mdfeDb.exigenciaSemMdfe(banco.default, viagem.id)).toEqual({ exigencia: "interestadual", ufs: ["RJ"] });
+
+      // Com o do RJ também, não falta nada; cancelado, volta a faltar.
+      const doRj = await emitir(viagem.id, "RJ");
+      expect(doRj.corpo).toMatchObject({ autorizado: true, mdfe: { ambiente: "PRODUCAO", ufDeFim: "RJ" } });
+      expect(await mdfeDb.documentosDaSaida(banco.default, viagem.id)).toEqual({ faltas: { ctes: [], mdfe: null }, bloqueia: false });
+      expect((await cancelar(doRj.corpo.mdfe.id)).corpo).toMatchObject({ situacao: "CANCELLED" });
+      const comCancelado = await sair(viagem.id);
+      expect(comCancelado.status).toBe(409);
+      expect(comCancelado.corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["RJ"] } });
+
+      // Um MDF-e do RJ autorizado em homologação não tem valor fiscal: não conta.
+      await banco.sistema.mdfe.updateMany({ where: { manifestId: viagem.id, unloadState: "RJ" }, data: { status: "AUTHORIZED", environment: "HOMOLOGACAO" } });
+      expect((await sair(viagem.id)).corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["RJ"] } });
+      expect(await situacao(viagem.id)).toEqual(EM_MONTAGEM);
+
+      // Os dois autorizados em produção: libera, sem aviso.
+      await banco.sistema.mdfe.updateMany({ where: { manifestId: viagem.id, unloadState: "RJ" }, data: { environment: "PRODUCAO" } });
+      const liberada = await sair(viagem.id);
+      expect(liberada.status).toBe(200);
+      expect(liberada.corpo).toMatchObject({ success: true, aviso: null });
+      expect(await situacao(viagem.id)).toEqual(EM_ROTA);
+    });
+
     it("carga própria (tipo de emitente 2) em produção: não exige CT-e, só o MDF-e", async () => {
       await emProducao();
       await configurar({ tipoDeEmitente: "2" });
       const viagem = await novaViagem(["MG"], { status: "ASSEMBLING", semCte: true, comNfe: true });
-      expect((await sair(viagem.id)).corpo.faltas).toEqual({ ctes: [], mdfe: "interestadual" });
+      expect((await sair(viagem.id)).corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
     });
 
     it("homologação: só o aviso, como antes; a saída é liberada sem CT-e e sem MDF-e", async () => {
       await prepararEmpresa();
-      const viagem = await novaViagem(["MG", "UDI"], { status: "ASSEMBLING", semCte: true });
+      const viagem = await novaViagem(["MG", "UDI", "RJ"], { status: "ASSEMBLING", semCte: true });
       const resposta = await sair(viagem.id);
       expect(resposta.status).toBe(200);
-      expect(resposta.corpo).toMatchObject({ success: true, aviso: AVISO_DE_VIAGEM_SEM_MDFE.interestadual });
+      // O aviso diz as UF de descarregamento que ficaram sem MDF-e: um por UF.
+      expect(resposta.corpo).toMatchObject({ success: true, aviso: avisoDeViagemSemMdfe({ exigencia: "interestadual", ufs: ["MG", "RJ"] }) });
+      expect(resposta.corpo.aviso).toContain("com descarga em MG e RJ.");
       expect(resposta.corpo.faltas).toBeUndefined();
       expect(await situacao(viagem.id)).toEqual(EM_ROTA);
       expect(await mdfeDb.documentosDaSaida(banco.default, viagem.id)).toEqual({ faltas: { ctes: [], mdfe: null }, bloqueia: false });
@@ -1169,7 +1210,7 @@ suite("rotas da emissão de MDF-e", () => {
       expect(await banco.sistema.fiscalIssuer.count({ where: DAS_EMPRESAS })).toBe(0);
       const resposta = await sair(viagem.id);
       expect(resposta.status).toBe(200);
-      expect(resposta.corpo).toMatchObject({ success: true, aviso: AVISO_DE_VIAGEM_SEM_MDFE.interestadual });
+      expect(resposta.corpo).toMatchObject({ success: true, aviso: avisoDeViagemSemMdfe({ exigencia: "interestadual", ufs: ["MG"] }) });
       expect(await situacao(viagem.id)).toEqual(EM_ROTA);
     });
 
@@ -1194,7 +1235,7 @@ suite("rotas da emissão de MDF-e", () => {
 
         const liberada = await sair(daOutra.id, "ADMIN_DA_OUTRA");
         expect(liberada.status).toBe(200);
-        expect(liberada.corpo).toMatchObject({ success: true, aviso: AVISO_DE_VIAGEM_SEM_MDFE.interestadual });
+        expect(liberada.corpo).toMatchObject({ success: true, aviso: avisoDeViagemSemMdfe({ exigencia: "interestadual", ufs: ["MG"] }) });
         expect(await situacao(daOutra.id)).toEqual(EM_ROTA);
 
         // E a da empresa em produção continua bloqueada.
@@ -1217,11 +1258,11 @@ suite("rotas da emissão de MDF-e", () => {
     it("a viagem que sai do estado sem MDF-e de produção gera o aviso (sem bloquear); o de homologação não a cobre", async () => {
       await prepararEmpresa();
       const interestadual = await novaViagem();
-      expect(await mdfeDb.exigenciaSemMdfe(banco.default, interestadual.id)).toBe("interestadual");
+      expect(await mdfeDb.exigenciaSemMdfe(banco.default, interestadual.id)).toEqual({ exigencia: "interestadual", ufs: ["MG"] });
       expect(AVISO_DE_VIAGEM_SEM_MDFE.interestadual).toMatch(/o MDF-e é obrigatório/);
       await emitir(interestadual.id);
       // Autorizado em homologação: continua sem MDF-e com valor fiscal.
-      expect(await mdfeDb.exigenciaSemMdfe(banco.default, interestadual.id)).toBe("interestadual");
+      expect(await mdfeDb.exigenciaSemMdfe(banco.default, interestadual.id)).toEqual({ exigencia: "interestadual", ufs: ["MG"] });
       await banco.sistema.mdfe.updateMany({ where: { manifestId: interestadual.id }, data: { environment: "PRODUCAO" } });
       expect(await mdfeDb.exigenciaSemMdfe(banco.default, interestadual.id)).toBeNull();
       expect(await mdfeDb.exigenciaSemMdfe(banco.default, SEM_ID)).toBeNull();

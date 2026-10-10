@@ -27,14 +27,12 @@ import {
   dentroDoPrazoDeCancelamento,
   diasDesde,
   entradasSchema,
-  exigenciaDeMdfe,
   type Ambiente,
   type ConferenciaDoMdfe,
   type ConfiguracaoDoFormulario,
   type ConfiguracaoDoMdfe,
   type EntradasDoMdfe,
   type EventoDoMdfe,
-  type ExigenciaDeMdfe,
   type MdfeEmitido,
   type MdfesDaViagem,
   type RespostaDeNaoEncerrados,
@@ -45,6 +43,7 @@ import {
   type TipoDeEmitente,
   faltasParaSair,
   haFaltasParaSair,
+  type FaltaDeMdfe,
   type FaltasParaSair,
 } from "@/lib/mdfe";
 import { AUTORIZADOR_DO_MDFE, ENDERECO_DO_QR_CODE } from "@/lib/mdfe/enderecos";
@@ -498,53 +497,25 @@ export async function conferirMdfe(empresa: Empresa, manifestId: string, ufDeDes
   return conferencia(empresa.db, await lerViagem(empresa.db, empresa.id, manifestId), ufDeDescarga, entradas);
 }
 
-/**
- * A viagem exige MDF-e e ainda não tem um autorizado? É o aviso (que não
- * bloqueia) ao liberar a saída. `null`: nada a avisar.
- */
-export async function exigenciaSemMdfe(db: Pick<Tx, "manifest" | "mdfe">, manifestId: string): Promise<Exclude<ExigenciaDeMdfe, "nenhuma"> | null> {
-  const viagem = await db.manifest.findUnique({ where: { id: manifestId }, select: { collections: { select: { origin: true, destination: true } } } });
-  if (!viagem) return null;
-  const exigencia = exigenciaDeMdfe(
-    viagem.collections.map((carga) => {
-      const origem = municipioDoTexto(carga.origin);
-      const destino = municipioDoTexto(carga.destination);
-      return { ufDeOrigem: origem?.uf ?? null, ufDeDestino: destino?.uf ?? null, mesmoMunicipio: origem !== null && destino !== null && origem.codigo === destino.codigo };
-    }),
-  );
-  if (exigencia === "nenhuma") return null;
-  // Só o de produção tem valor fiscal: o de homologação não cobre a viagem.
-  const autorizado = await db.mdfe.findFirst({ where: { manifestId, environment: PRODUCAO, status: { in: ["AUTHORIZED", "CLOSED"] } }, select: { id: true } });
-  return autorizado ? null : exigencia;
-}
-
-export type DocumentosDaSaida = {
-  faltas: FaltasParaSair;
-  /** A empresa emite pelo TMS em produção e falta documento: a saída não é liberada. */
-  bloqueia: boolean;
-};
+type Saida = { emitente: EmitenteDoMdfe | null; ambiente: Ambiente; faltas: FaltasParaSair };
 
 /**
- * O que falta de documento fiscal para a viagem sair (`faltasParaSair`), e se
- * isso bloqueia a saída. Bloqueia só quando a empresa tem emitente fiscal
- * configurado em PRODUÇÃO: aí o CT-e de cada carga e o MDF-e da viagem são
- * emitidos por aqui, e têm de estar autorizados antes de o veículo sair. Em
- * homologação, ou sem emitente (a empresa emite em outro sistema), nada
- * bloqueia.
+ * O que falta de documento fiscal para a viagem sair, lido uma vez só para o
+ * bloqueio e para o aviso. O MDF-e é um por UF de descarregamento: as UF são
+ * as de `ufsDeDescarga` (as mesmas da aba MDF-e da viagem), só das cargas que
+ * saem do município, e cada uma é comparada com o `unloadState` dos MDF-e da
+ * viagem autorizados em PRODUÇÃO e não cancelados (o de homologação não tem
+ * valor fiscal e não cobre a viagem). `null`: a viagem não existe.
  *
  * Vale como CT-e da carga o de produção: o autorizado por este sistema ou o
  * registrado à mão (os dois deixam a carga com `cteStatus` "ISSUED").
  */
-export async function documentosDaSaida(db: Pick<Tx, "manifest" | "mdfe" | "fiscalIssuer">, manifestId: string): Promise<DocumentosDaSaida> {
-  const semFaltas: DocumentosDaSaida = { faltas: { ctes: [], mdfe: null }, bloqueia: false };
-  const doEmitente = await db.fiscalIssuer.findFirst({ select: { environment: true, mdfeEmitterType: true } });
-  if (!doEmitente || ambienteDaLinha(doEmitente.environment) !== PRODUCAO) return semFaltas;
-  const viagem = await db.manifest.findUnique({
-    where: { id: manifestId },
-    select: { collections: { orderBy: { createdAt: "asc" }, select: { id: true, trackingCode: true, origin: true, destination: true, cteKey: true, cteStatus: true } } },
-  });
-  if (!viagem) return semFaltas;
-  const cargas = viagem.collections.map((carga) => {
+async function lerSaida(db: LeituraDb, manifestId: string): Promise<Saida | null> {
+  const dona = await db.manifest.findUnique({ where: { id: manifestId }, select: { tenantId: true } });
+  if (!dona) return null;
+  const lido = await lerViagem(db, dona.tenantId, manifestId);
+  const tipo = lido.emitente?.tipo ?? "1";
+  const cargas = lido.linha.collections.map((carga) => {
     const origem = municipioDoTexto(carga.origin);
     const destino = municipioDoTexto(carga.destination);
     return {
@@ -556,9 +527,40 @@ export async function documentosDaSaida(db: Pick<Tx, "manifest" | "mdfe" | "fisc
       cteAutorizado: carga.cteKey !== null && carga.cteStatus === "ISSUED",
     };
   });
-  const autorizado = await db.mdfe.findFirst({ where: { manifestId, environment: PRODUCAO, status: { in: ["AUTHORIZED", "CLOSED"] } }, select: { id: true } });
-  const faltas = faltasParaSair(cargas, tipoDaLinha(doEmitente.mdfeEmitterType), autorizado !== null);
-  return { faltas, bloqueia: haFaltasParaSair(faltas) };
+  const municipais = new Set(cargas.filter((carga) => carga.mesmoMunicipio).map((carga) => carga.id));
+  const ufs = ufsDeDescarga({ cargas: lido.viagem.cargas.filter((carga) => !municipais.has(carga.id)) }, tipo, municipioDoTexto);
+  const autorizados = await db.mdfe.findMany({ where: { manifestId, environment: PRODUCAO, status: { in: ["AUTHORIZED", "CLOSED"] } }, select: { unloadState: true }, distinct: ["unloadState"] });
+  const comMdfe = autorizados.map((mdfe) => mdfe.unloadState);
+  return { emitente: lido.emitente, ambiente: lido.ambiente, faltas: faltasParaSair(cargas, tipo, ufs, comMdfe) };
+}
+
+/**
+ * A viagem exige MDF-e e alguma UF de descarregamento não tem um autorizado
+ * em produção? É o aviso (que não bloqueia) ao liberar a saída, com as UF que
+ * faltam. `null`: nada a avisar.
+ */
+export async function exigenciaSemMdfe(db: LeituraDb, manifestId: string): Promise<FaltaDeMdfe | null> {
+  return (await lerSaida(db, manifestId))?.faltas.mdfe ?? null;
+}
+
+export type DocumentosDaSaida = {
+  faltas: FaltasParaSair;
+  /** A empresa emite pelo TMS em produção e falta documento: a saída não é liberada. */
+  bloqueia: boolean;
+};
+
+/**
+ * O que falta de documento fiscal para a viagem sair (`faltasParaSair`), e se
+ * isso bloqueia a saída. Bloqueia só quando a empresa tem emitente fiscal
+ * configurado em PRODUÇÃO: aí o CT-e de cada carga e o MDF-e de cada UF de
+ * descarregamento são emitidos por aqui, e têm de estar autorizados antes de o
+ * veículo sair. Em homologação, ou sem emitente (a empresa emite em outro
+ * sistema), nada bloqueia.
+ */
+export async function documentosDaSaida(db: LeituraDb, manifestId: string): Promise<DocumentosDaSaida> {
+  const saida = await lerSaida(db, manifestId);
+  if (!saida || !saida.emitente || saida.ambiente !== PRODUCAO) return { faltas: { ctes: [], mdfe: null }, bloqueia: false };
+  return { faltas: saida.faltas, bloqueia: haFaltasParaSair(saida.faltas) };
 }
 
 /** Os MDF-e autorizados (e não encerrados) da viagem, no ambiente de produção: é o que se oferece encerrar ao finalizar a viagem. */

@@ -550,8 +550,8 @@ export function exigenciaDeMdfe(cargas: readonly { ufDeOrigem: string | null; uf
 }
 
 export const AVISO_DE_VIAGEM_SEM_MDFE: Record<Exclude<ExigenciaDeMdfe, "nenhuma">, string> = {
-  interestadual: "Esta viagem cruza a divisa do estado: o MDF-e é obrigatório e ainda não há um autorizado. Emita o CT-e das cargas e o MDF-e (aba MDF-e da viagem) antes de o veículo sair.",
-  intermunicipal: "Esta viagem sai do município e ainda não há MDF-e autorizado. Na maioria dos estados o MDF-e é obrigatório também dentro do estado: confira e emita na aba MDF-e da viagem.",
+  interestadual: "Esta viagem cruza a divisa do estado: o MDF-e é obrigatório e falta MDF-e autorizado. Emita o CT-e das cargas e o MDF-e (aba MDF-e da viagem) antes de o veículo sair.",
+  intermunicipal: "Esta viagem sai do município e falta MDF-e autorizado. Na maioria dos estados o MDF-e é obrigatório também dentro do estado: confira e emita na aba MDF-e da viagem.",
 };
 
 /* --------------------------- Documentos antes da saída ------------------------- */
@@ -575,31 +575,66 @@ export const AVISO_DE_VIAGEM_SEM_MDFE: Record<Exclude<ExigenciaDeMdfe, "nenhuma"
  * rota de liberar a saída); em homologação, ou sem emitente configurado (a
  * empresa emite em outro sistema), isto vira só aviso.
  */
+/**
+ * O MDF-e que falta à viagem: o porquê da exigência e as UF de
+ * descarregamento ainda sem MDF-e autorizado. O MDF-e é um por UF de
+ * descarregamento (Ajuste SINIEF 21/10, cláusula terceira, § 2º): uma viagem
+ * de SP para MG e RJ precisa dos dois. `ufs` vazio: não foi possível dizer a
+ * UF (o destino da carga não está na tabela de municípios) e a viagem não tem
+ * MDF-e nenhum.
+ */
+export type FaltaDeMdfe = { exigencia: Exclude<ExigenciaDeMdfe, "nenhuma">; ufs: string[] };
+
 export type FaltasParaSair = {
   /** As cargas sem CT-e autorizado. */
   ctes: { id: string; codigo: string }[];
-  /** A viagem exige MDF-e e não tem um autorizado: o porquê da exigência. */
-  mdfe: Exclude<ExigenciaDeMdfe, "nenhuma"> | null;
+  /** A viagem exige MDF-e e alguma UF de descarregamento não tem um autorizado. */
+  mdfe: FaltaDeMdfe | null;
 };
 
 export type CargaNaSaida = { id: string; codigo: string; ufDeOrigem: string | null; ufDeDestino: string | null; mesmoMunicipio: boolean; cteAutorizado: boolean };
 
-export function faltasParaSair(cargas: readonly CargaNaSaida[], tipoDeEmitente: TipoDeEmitente, mdfeAutorizado: boolean): FaltasParaSair {
+/**
+ * `ufsDeDescarga`: as UF de descarregamento das cargas que saem do município
+ * (a lista de `ufsDeDescarga`, de src/lib/mdfe/preparar.ts). `ufsComMdfe`: as
+ * UF de descarregamento (`Mdfe.unloadState`) dos MDF-e autorizados em
+ * produção e não cancelados da viagem.
+ */
+export function faltasParaSair(cargas: readonly CargaNaSaida[], tipoDeEmitente: TipoDeEmitente, ufsDeDescarga: readonly string[], ufsComMdfe: readonly string[]): FaltasParaSair {
   const exigencia = exigenciaDeMdfe(cargas);
+  const semMdfe = ufsDeDescarga.filter((uf) => !ufsComMdfe.includes(uf));
+  // Sem UF conhecida, o que dá para exigir é que a viagem tenha algum MDF-e.
+  const falta = semMdfe.length > 0 || (ufsDeDescarga.length === 0 && ufsComMdfe.length === 0);
   return {
     ctes: tipoDeEmitente === "1" ? cargas.filter((carga) => !carga.mesmoMunicipio && !carga.cteAutorizado).map(({ id, codigo }) => ({ id, codigo })) : [],
-    mdfe: exigencia !== "nenhuma" && !mdfeAutorizado ? exigencia : null,
+    mdfe: exigencia !== "nenhuma" && falta ? { exigencia, ufs: semMdfe } : null,
   };
 }
 
 export const haFaltasParaSair = (faltas: FaltasParaSair) => faltas.ctes.length > 0 || faltas.mdfe !== null;
 
+/** "MG", "MG e RJ", "MG, RJ e GO". */
+const emLista = (itens: readonly string[]) => (itens.length <= 1 ? itens.join("") : `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`);
+
+/** O MDF-e que falta, em poucas palavras: "MDF-e com descarga em MG e RJ" ou, sem UF conhecida, "MDF-e da viagem". */
+export const rotuloDaFaltaDeMdfe = (falta: FaltaDeMdfe) => (falta.ufs.length > 0 ? `MDF-e com descarga em ${emLista(falta.ufs)}` : "MDF-e da viagem");
+
 /** A frase do bloqueio da saída (resposta 409 de liberar a saída). */
 export function fraseDoBloqueioDaSaida(faltas: FaltasParaSair): string {
   const partes: string[] = [];
   if (faltas.ctes.length > 0) partes.push(`CT-e autorizado de ${faltas.ctes.length === 1 ? "1 carga" : `${faltas.ctes.length} cargas`} (${faltas.ctes.map((carga) => carga.codigo).join(", ")})`);
-  if (faltas.mdfe) partes.push("MDF-e autorizado da viagem");
+  if (faltas.mdfe) partes.push(`${rotuloDaFaltaDeMdfe(faltas.mdfe)} autorizado`);
   return `A saída não foi liberada. Falta: ${partes.join(" e ")}. Os documentos têm de estar autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).`;
+}
+
+/**
+ * O aviso (que não bloqueia) da viagem liberada sem todos os MDF-e: empresa em
+ * homologação ou que emite em outro sistema. Diz as UF de descarregamento que
+ * ficaram sem MDF-e, quando se sabe quais são.
+ */
+export function avisoDeViagemSemMdfe(falta: FaltaDeMdfe): string {
+  const quais = falta.ufs.length > 0 ? ` Falta o MDF-e (um por UF de descarregamento) com descarga em ${emLista(falta.ufs)}.` : "";
+  return `${AVISO_DE_VIAGEM_SEM_MDFE[falta.exigencia]}${quais}`;
 }
 
 /* ---------------------------------- Mensagens --------------------------------- */

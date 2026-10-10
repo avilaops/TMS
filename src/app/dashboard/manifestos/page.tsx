@@ -10,7 +10,7 @@ import { diaNoBrasil } from "@/lib/financeiro";
 import { rotuloDaAusencia } from "@/lib/equipe";
 import { haQuantoTempo } from "@/lib/posicao";
 import { pode } from "@/lib/permissoes";
-import type { FaltasParaSair } from "@/lib/mdfe";
+import { rotuloDaFaltaDeMdfe, type FaltasParaSair } from "@/lib/mdfe";
 import { loadManifestos, type Manifesto, type ManifestosState, type Minuta } from "./carregar";
 import { TelaDaViagem } from "./viagem";
 
@@ -414,7 +414,10 @@ export default function ManifestosPage() {
                     )}
                     {bloqueio.faltas.mdfe && (
                       <p data-falta="mdfe" className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span>MDF-e da viagem{bloqueio.faltas.ctes.length > 0 ? " (depois dos CT-e)" : ""}</span>
+                        <span className="min-w-0">
+                          {rotuloDaFaltaDeMdfe(bloqueio.faltas.mdfe)}
+                          {bloqueio.faltas.ctes.length > 0 ? " (depois dos CT-e)" : ""}
+                        </span>
                         {veFiscal && (
                           <button
                             type="button"

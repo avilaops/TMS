@@ -112,6 +112,7 @@ export const EMITENTE_SELECT = {
   icmsCst: true,
   icmsRate: true,
   icmsBaseReduction: true,
+  icmsReductionInterstate: true,
   ibsCbsCst: true,
   ibsCbsClass: true,
   ibsStateRate: true,
@@ -148,6 +149,7 @@ export function emitenteDaLinha(linha: LinhaDoEmitente): EmitenteDoCte {
     icms: linha.icmsCst as SituacaoDoIcms,
     aliquota: linha.icmsRate,
     reducaoDaBase: linha.icmsBaseReduction,
+    reducaoNaInterestadual: linha.icmsReductionInterstate,
     ibsCbs:
       linha.ibsCbsCst && linha.ibsCbsClass
         ? { cst: linha.ibsCbsCst, classe: linha.ibsCbsClass, ibsUf: linha.ibsStateRate, ibsMunicipio: linha.ibsCityRate, cbs: linha.cbsRate, pis: linha.pisRate, cofins: linha.cofinsRate }
@@ -208,6 +210,7 @@ export async function fiscalDaEmpresa(empresa: Empresa): Promise<FiscalDaEmpresa
     icms: emitente.icms,
     aliquota: emitente.aliquota,
     reducaoDaBase: linha.icmsBaseReduction,
+    reducaoNaInterestadual: linha.icmsReductionInterstate,
     ibsCbsCst: linha.ibsCbsCst,
     ibsCbsClasse: linha.ibsCbsClass,
     ibsUf: linha.ibsStateRate,
@@ -249,6 +252,7 @@ const paraAuditoria = (linha: LinhaDoEmitente | null) =>
     icmsCst: linha.icmsCst,
     icmsRate: linha.icmsRate,
     icmsBaseReduction: linha.icmsBaseReduction,
+    icmsReductionInterstate: linha.icmsReductionInterstate,
     ibsCbsCst: linha.ibsCbsCst,
     ibsCbsClass: linha.ibsCbsClass,
     ibsStateRate: linha.ibsStateRate,
@@ -306,6 +310,8 @@ export async function salvarDadosFiscais(empresa: Empresa, dados: DadosFiscaisDo
       icmsCst: dados.icms,
       icmsRate: dados.aliquota,
       icmsBaseReduction: dados.reducaoDaBase ?? null,
+      // Só tem sentido na situação 20: fora dela fica desligado.
+      icmsReductionInterstate: dados.icms === "20" && dados.reducaoNaInterestadual,
       ibsCbsCst: dados.ibsCbsCst ?? null,
       ibsCbsClass: dados.ibsCbsClasse ?? null,
       ibsStateRate: dados.ibsUf,

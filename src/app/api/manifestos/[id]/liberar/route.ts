@@ -14,7 +14,7 @@ import { ManifestError, lockManifest } from '@/lib/manifestos-db';
 import { recordStatusChanges } from '@/lib/historico';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 import { avisar, avisarStatusAoCliente, avisoDeViagemLiberada, usuarioDoMotorista } from '@/lib/notificacoes';
-import { AVISO_DE_VIAGEM_SEM_MDFE, fraseDoBloqueioDaSaida, type FaltasParaSair } from '@/lib/mdfe';
+import { avisoDeViagemSemMdfe, fraseDoBloqueioDaSaida, type FaltasParaSair } from '@/lib/mdfe';
 import { documentosDaSaida, exigenciaSemMdfe } from '@/lib/mdfe-db';
 
 /** A saída foi bloqueada por falta de documento fiscal: a resposta 409 leva a lista do que falta. */
@@ -30,12 +30,14 @@ class SaidaBloqueada extends ManifestError {
  * DOCUMENTOS FISCAIS: o CT-e de cada carga e o MDF-e da viagem têm de estar
  * autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).
  * - Empresa com emitente fiscal em PRODUÇÃO (emite pelo TMS): sem o CT-e de
- *   cada carga que precisa dele, ou sem o MDF-e quando a viagem o exige, a
- *   saída NÃO é liberada: 409, com `faltas` (as cargas sem CT-e e se falta o
- *   MDF-e), que a tela mostra com o atalho para emitir.
+ *   cada carga que precisa dele, ou sem o MDF-e de CADA UF de descarregamento
+ *   quando a viagem o exige, a saída NÃO é liberada: 409, com `faltas` (as
+ *   cargas sem CT-e e as UF sem MDF-e), que a tela mostra com o atalho para
+ *   emitir.
  * - Empresa em homologação ou sem emitente configurado (emite em outro
- *   sistema): a saída é liberada; quando a viagem exige MDF-e e não há um
- *   autorizado em produção, a resposta leva `aviso`.
+ *   sistema): a saída é liberada; quando a viagem exige MDF-e e alguma UF de
+ *   descarregamento não tem um autorizado em produção, a resposta leva
+ *   `aviso`, com as UF que faltam.
  */
 export async function POST(
   req: Request,
@@ -124,7 +126,7 @@ export async function POST(
     const manifest = await prisma.manifest.findUnique({ where: { id: manifestId } });
     // A saída já valeu: se a leitura do aviso falhar, a resposta segue sem ele.
     const exigencia = await exigenciaSemMdfe(prisma, manifestId).catch(() => null);
-    return NextResponse.json({ success: true, manifest, aviso: exigencia ? AVISO_DE_VIAGEM_SEM_MDFE[exigencia] : null });
+    return NextResponse.json({ success: true, manifest, aviso: exigencia ? avisoDeViagemSemMdfe(exigencia) : null });
   } catch (error) {
     if (error instanceof SaidaBloqueada) {
       return NextResponse.json({ error: error.message, faltas: error.faltas }, { status: error.status });

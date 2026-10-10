@@ -1623,6 +1623,10 @@ model FiscalIssuer {
   icmsRate     Float    @default(0)
   // Percentual de redução da base de cálculo (pRedBC), só na situação 20.
   icmsBaseReduction Float?
+  // A redução da base (situação 20) também vale na prestação interestadual? Quem
+  // diz é o contador: o benefício é de cada estado ou convênio. Desligado, a
+  // prestação interestadual na situação 20 não é emitida.
+  icmsReductionInterstate Boolean @default(false)
 
   // IBS e CBS da Reforma Tributária (grupo imp/IBSCBS do CT-e). CST e
   // classificação nulos = o CT-e vai sem o grupo. As alíquotas, em %, são as do

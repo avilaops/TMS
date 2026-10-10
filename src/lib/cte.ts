@@ -54,7 +54,7 @@ export type SituacaoDoIcms = keyof typeof SITUACOES_DO_ICMS;
 /** O que cada situação quer dizer, para a tela de configuração. Quem escolhe é o contador. */
 export const EXPLICACAO_DO_ICMS: Record<SituacaoDoIcms, string> = {
   "00": "ICMS destacado sobre o valor inteiro do frete, com a alíquota interna (dentro do estado) ou a interestadual (calculada pelo sistema).",
-  "20": "ICMS destacado sobre a base reduzida: informe o percentual de redução que a legislação do seu estado dá ao transporte.",
+  "20": "ICMS destacado sobre a base reduzida: informe o percentual de redução que a legislação do seu estado dá ao transporte, e se ela vale também fora do estado.",
   "40": "Prestação isenta de ICMS pela legislação do estado: o CT-e vai sem base, alíquota e valor.",
   "41": "Prestação não tributada pelo ICMS: o CT-e vai sem base, alíquota e valor.",
   "60": "O ICMS é recolhido por outra empresa (o tomador ou um terceiro), por substituição tributária: o CT-e informa a base e o valor retidos.",
@@ -152,6 +152,7 @@ export const SN_SO_NO_SIMPLES = "A situação \"Simples Nacional\" só vale para
 export const TRIBUTADO_PEDE_ALIQUOTA = "Informe a alíquota interna do ICMS (maior que zero) para a situação escolhida.";
 const REDUCAO_MESSAGE = "A redução da base precisa ser um número maior que 0 e menor que 100, com até 2 casas.";
 export const REDUCAO_OBRIGATORIA = "Informe o percentual de redução da base de cálculo do ICMS (situação 20).";
+export const REDUCAO_NA_INTERESTADUAL_MESSAGE = "Diga se a redução da base vale na prestação interestadual (sim ou não).";
 export const REDUCAO_SO_NA_20 = "A redução da base de cálculo só vale para a situação 20 do ICMS.";
 
 /**
@@ -353,6 +354,11 @@ export const dadosFiscaisSchema = z
       // A alíquota INTERNA (prestação que começa e termina na UF do emitente). A interestadual é calculada (`aliquotaInterestadual`).
       aliquota: z.preprocess(numeroDoFormulario, z.number(ALIQUOTA_MESSAGE).min(0, ALIQUOTA_MESSAGE).max(100, ALIQUOTA_MESSAGE)),
       reducaoDaBase,
+      // A redução da base também vale na prestação interestadual? Ausente = não. O formulário manda `true`/`false` (ou o texto).
+      reducaoNaInterestadual: z.preprocess(
+        (valor) => (valor === undefined || valor === null || valor === "" ? false : valor === "true" ? true : valor === "false" ? false : valor),
+        z.boolean(REDUCAO_NA_INTERESTADUAL_MESSAGE),
+      ),
       confirmacaoDoCnpj: z.preprocess(cnpjLimpo, z.string(INVALIDO).max(20, INVALIDO).optional()),
       // IBS e CBS da Reforma Tributária (grupo `imp/IBSCBS`). CST e classificação em branco = o CT-e vai sem o grupo.
       ibsCbsCst: z.preprocess((valor) => emBrancoViraNulo(soDigitos(valor)), z.string(IBSCBS_CST_MESSAGE).regex(/^\d{3}$/, IBSCBS_CST_MESSAGE).nullish()),
@@ -417,6 +423,8 @@ export type DadosFiscais = {
   aliquota: number;
   /** Percentual de redução da base do ICMS (só na situação 20). */
   reducaoDaBase: number | null;
+  /** A redução da base também vale na prestação interestadual (só na situação 20)? */
+  reducaoNaInterestadual: boolean;
   /** CST e classificação tributária do IBS/CBS. Os dois nulos = CT-e sem o grupo `IBSCBS`. */
   ibsCbsCst: string | null;
   ibsCbsClasse: string | null;
