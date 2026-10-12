@@ -88,10 +88,10 @@ afterEach(async () => {
 describe("tela da equipe", () => {
   const abas = (tela: HTMLElement) => [...tela.querySelectorAll("[data-aba]")].map((aba) => aba.textContent);
 
-  it("administrador vê as quatro abas; a operação não vê Adiantamentos", async () => {
+  it("administrador vê as cinco abas; a operação não vê Adiantamentos nem Fechamento", async () => {
     api({ "/api/equipe": { body: PESSOAS } });
     const admin = await montar(<EquipePage />);
-    await ate(() => expect(abas(admin)).toEqual(["Pessoas", "Ausências", "Adiantamentos", "Produtividade"]));
+    await ate(() => expect(abas(admin)).toEqual(["Pessoas", "Ausências", "Adiantamentos", "Produtividade", "Fechamento"]));
     await desmontarTudo();
 
     estado.perfil = "OPERATION";

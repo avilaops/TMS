@@ -25,7 +25,9 @@ import { MapaDaViagemNaTela } from "@/components/mapa/mapa-da-viagem";
 import { MdfeDaViagem } from "../fiscal/mdfe/painel";
 import { FreteDaViagem } from "./frete";
 import { DocumentosDaSubcontratada } from "./subcontratacao";
+import { EXPLICACAO_DO_PARCEIRO, EXPLICACAO_SEM_KM } from "@/lib/remuneracao";
 import type { Manifesto } from "./carregar";
+import { LinhaDeOcupacao } from "./ocupacao";
 
 /**
  * A tela da viagem, aberta a partir do cartão do manifesto: dados (ajudante,
@@ -70,6 +72,8 @@ type Adiantamento = {
 type RespostaDoAcerto = {
   viagem: { finalizadaEm: string | null; saiuEm: string | null };
   acerto: AcertoDaViagem;
+  /** O que a viagem rende ao motorista e ao ajudante (src/lib/remuneracao-db.ts). */
+  remuneracao?: { motorista: number; ajudante: number; total: number; fora: "PARCEIRO" | null; semKm: boolean } | null;
   saldoDoAdiantamento: Acerto | null;
   adiantamentos: Adiantamento[];
 };
@@ -295,6 +299,9 @@ function Dados({ manifesto, onChange }: { manifesto: Manifesto; onChange: () => 
         {manifesto.departedAt ? ` · Saiu em ${formatDate(manifesto.departedAt)}` : ""}
         {manifesto.finishedAt ? ` · Finalizada em ${formatDate(manifesto.finishedAt)}` : ""}
       </p>
+
+      {/* A carga cabe no veículo? Peso e cubagem das cargas contra a capacidade cadastrada. */}
+      {manifesto.collections.length > 0 && <LinhaDeOcupacao cargas={manifesto.collections} veiculo={manifesto.vehicle} className="col-span-2" />}
 
       {aviso && (
         <p role={aviso.erro ? "alert" : "status"} className={`col-span-2 text-sm ${aviso.erro ? "text-red-600" : "text-emerald-700"}`}>
@@ -875,13 +882,15 @@ function AcertoDaViagemFinalizada({ manifestId }: { manifestId: string }) {
     );
   }
 
-  const { acerto, adiantamentos, saldoDoAdiantamento } = estado;
+  const { acerto, adiantamentos, saldoDoAdiantamento, remuneracao } = estado;
   const linhas: [string, string][] = [
     ["Frete das cargas", formatCurrency(acerto.frete)],
     ["Despesas aprovadas", formatCurrency(acerto.despesas)],
     ["Combustível (frota)", formatCurrency(acerto.combustivel)],
     // Só em viagem feita com veículo de parceiro: o custo do contrato de frete (aba Frete).
     ...(acerto.freteContratado > 0 ? ([["Frete contratado", formatCurrency(acerto.freteContratado)]] as [string, string][]) : []),
+    // A remuneração variável do motorista e do ajudante: custo da viagem, detalhado logo abaixo.
+    ...(acerto.remuneracao > 0 ? ([["Remuneração do motorista", formatCurrency(acerto.remuneracao)]] as [string, string][]) : []),
     ["Custo total", formatCurrency(acerto.custoTotal)],
     ["Km rodados", acerto.km === null ? "-" : `${acerto.km.toLocaleString("pt-BR")} km`],
     ["Custo por km", acerto.custoPorKm === null ? "-" : formatCurrency(acerto.custoPorKm)],
@@ -903,6 +912,25 @@ function AcertoDaViagemFinalizada({ manifestId }: { manifestId: string }) {
           </div>
         ))}
       </dl>
+
+      {/* A remuneração separada: quanto é do motorista, quanto é do ajudante, e por que ficou de fora quando ficou. */}
+      {remuneracao && (remuneracao.total > 0 || remuneracao.fora || remuneracao.semKm) && (
+        <p className="text-xs text-gray-600 dark:text-gray-300" data-remuneracao-da-viagem>
+          {remuneracao.total > 0 && (
+            <>
+              Remuneração variável: motorista <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(remuneracao.motorista)}</span>
+              {remuneracao.ajudante > 0 && (
+                <>
+                  {" "}· ajudante <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(remuneracao.ajudante)}</span>
+                </>
+              )}
+              .{" "}
+            </>
+          )}
+          {remuneracao.fora === "PARCEIRO" && EXPLICACAO_DO_PARCEIRO}
+          {remuneracao.semKm && EXPLICACAO_SEM_KM}
+        </p>
+      )}
 
       {acerto.cargasACotar > 0 && (
         <p className="text-xs text-amber-700">

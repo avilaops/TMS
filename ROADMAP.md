@@ -162,6 +162,8 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Custos detalhados de frota e checklists.
 - [x] Atendimento e ocorrências.
 - [x] Equipe: ajudantes, ausências, adiantamentos e produtividade.
+- [x] Remuneração variável do motorista próprio (comissão, diária, km, entrega e fixo por viagem) e do ajudante (diária e fixo), com apuração por viagem, fechamento mensal que lança o saldo no Financeiro, demonstrativo imprimível, custo no acerto da viagem e, se a empresa ligar, os ganhos no aplicativo do motorista. Falta (e é do contador, não do sistema): folha de pagamento, encargos, hora extra, jornada e ponto, banco de horas, DSR e férias.
+- [x] Capacidade do veículo em peso e em cubagem na montagem da viagem: ocupação no cartão, veículos que não comportam a carga marcados no formulário e confirmação explícita (auditada) para sair com excesso. Falta: capacidade na ordem sugerida das entregas e tipo de veículo no cálculo do frete.
 - [x] Parceiros de transporte (agregados e terceiros) e frete contratado por viagem: contrato, adiantamento, saldo, recibo e fechamento por parceiro. A conferência do MDF-e sugere o pagamento do frete a partir do contrato (só para quem lê o frete contratado). Falta: cálculo de retenções, RPA, CIOT/PEF e piso mínimo da ANTT.
 - [x] Portal do cliente: cotação, destinatários, exportação e tabela de frete.
 

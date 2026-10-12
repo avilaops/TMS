@@ -6,7 +6,7 @@ import { firstIssue } from '@/lib/usuarios';
 import { escolher, nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
 // O que entra no "antes" e no "depois" da auditoria.
-const CAMPOS_AUDITADOS = ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'carrierId', 'status', ...VEHICLE_FISCAL_FIELDS] as const;
+const CAMPOS_AUDITADOS = ['plate', 'model', 'type', 'capacity', 'maxWeight', 'cubicCapacity', 'year', 'driverId', 'carrierId', 'status', ...VEHICLE_FISCAL_FIELDS] as const;
 
 /** O veículo, para o cabeçalho da tela de frota (`/dashboard/veiculos/[id]`). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -75,6 +75,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         type: data.type,
         capacity: data.capacityKg,
         maxWeight: data.maxWeight,
+        cubicCapacity: data.cubicCapacity,
         year: data.year,
         driverId: data.defaultDriverId,
         carrierId: data.carrierId,

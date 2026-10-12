@@ -139,6 +139,10 @@ suite("permissões das rotas internas", () => {
   let equipeAdiantamentos: typeof import("../src/app/api/equipe/adiantamentos/route");
   let equipeAdiantamento: typeof import("../src/app/api/equipe/adiantamentos/[id]/route");
   let equipeProdutividade: typeof import("../src/app/api/equipe/produtividade/route");
+  let equipeFechamento: typeof import("../src/app/api/equipe/fechamento/route");
+  let equipeFechamentoPorId: typeof import("../src/app/api/equipe/fechamento/[id]/route");
+  let equipeRemuneracaoDoAjudante: typeof import("../src/app/api/equipe/ajudantes/[id]/remuneracao/route");
+  let empresaRemuneracao: typeof import("../src/app/api/empresa/remuneracao/route");
   let parceiros: typeof import("../src/app/api/parceiros/route");
   let parceiro: typeof import("../src/app/api/parceiros/[id]/route");
   let parceiroContratacao: typeof import("../src/app/api/parceiros/[id]/contratacao/route");
@@ -305,6 +309,10 @@ suite("permissões das rotas internas", () => {
     equipeAdiantamentos = await import("../src/app/api/equipe/adiantamentos/route");
     equipeAdiantamento = await import("../src/app/api/equipe/adiantamentos/[id]/route");
     equipeProdutividade = await import("../src/app/api/equipe/produtividade/route");
+    equipeFechamento = await import("../src/app/api/equipe/fechamento/route");
+    equipeFechamentoPorId = await import("../src/app/api/equipe/fechamento/[id]/route");
+    equipeRemuneracaoDoAjudante = await import("../src/app/api/equipe/ajudantes/[id]/remuneracao/route");
+    empresaRemuneracao = await import("../src/app/api/empresa/remuneracao/route");
     parceiros = await import("../src/app/api/parceiros/route");
     parceiro = await import("../src/app/api/parceiros/[id]/route");
     parceiroContratacao = await import("../src/app/api/parceiros/[id]/contratacao/route");
@@ -521,6 +529,14 @@ suite("permissões das rotas internas", () => {
         () => equipeAdiantamentos.POST(req("POST", { driverId: semId, date: "2026-01-10", amount: "100", reason: "TRIP" })),
       ],
       ["PATCH /api/equipe/adiantamentos/[id]", () => equipeAdiantamento.PATCH(req("PATCH", { action: "acertar", spentAmount: "1" }), ctx(semId))],
+      // Remuneração variável: o fechamento mensal, a remuneração do ajudante e o interruptor da empresa.
+      ["GET /api/equipe/fechamento", () => equipeFechamento.GET()],
+      ["POST /api/equipe/fechamento", () => equipeFechamento.POST(req("POST", { pessoa: `motorista:${semId}`, mes: "2026-01" }))],
+      ["GET /api/equipe/fechamento/[id]", () => equipeFechamentoPorId.GET(req(), ctx(semId))],
+      ["DELETE /api/equipe/fechamento/[id]", () => equipeFechamentoPorId.DELETE(req("DELETE"), ctx(semId))],
+      ["PATCH /api/equipe/ajudantes/[id]/remuneracao", () => equipeRemuneracaoDoAjudante.PATCH(req("PATCH", { dailyRate: "1" }), ctx(semId))],
+      ["GET /api/empresa/remuneracao", () => empresaRemuneracao.GET()],
+      ["PATCH /api/empresa/remuneracao", () => empresaRemuneracao.PATCH(req("PATCH", { visivelAoMotorista: false }))],
       ["PUT /api/parceiros/[id]/contratacao", () => parceiroContratacao.PUT(req("PUT", { defaultCalcMode: "FIXO", defaultCalcBase: "1" }), ctx(semId))],
       ["GET /api/parceiros/[id]/fechamento", () => parceiroFechamento.GET(req(), ctx(semId))],
       ["GET /api/manifestos/[id]/frete", () => viagemFrete.GET(req(), ctx(semId))],

@@ -11,7 +11,9 @@ import { rotuloDaAusencia } from "@/lib/equipe";
 import { haQuantoTempo } from "@/lib/posicao";
 import { pode } from "@/lib/permissoes";
 import { rotuloDaFaltaDeMdfe, type FaltasParaSair } from "@/lib/mdfe";
+import { CONFIRMACAO_DE_EXCESSO, avisoDeExcesso, capacidadeDoVeiculo, linhaDaOcupacao, ocupacaoDaViagem } from "@/lib/ocupacao";
 import { loadManifestos, type Manifesto, type ManifestosState, type Minuta } from "./carregar";
+import { LinhaDeOcupacao } from "./ocupacao";
 import { TelaDaViagem } from "./viagem";
 
 // A mensagem que o servidor devolveu; `fallback` quando a resposta não é JSON.
@@ -44,6 +46,8 @@ export default function ManifestosPage() {
   const [abaDaViagem, setAbaDaViagem] = useState<"Dados" | "MDF-e">("Dados");
   // A saída que o servidor não liberou por falta de CT-e ou de MDF-e (409): o cartão da viagem mostra o que falta.
   const [bloqueio, setBloqueio] = useState<{ manifestId: string; faltas: FaltasParaSair } | null>(null);
+  // A saída que o servidor segurou porque a carga passa da capacidade do veículo (409 com `confirmar`): o cartão pede a confirmação.
+  const [excesso, setExcesso] = useState<{ manifestId: string; mensagem: string } | null>(null);
 
   const [formData, setFormData] = useState({
     driverId: "",
@@ -100,6 +104,11 @@ export default function ManifestosPage() {
   const minutas = ready ? state.coletas.filter(canEmbark) : [];
   const motoristas = ready ? state.motoristas.filter((m) => m.active) : [];
   const veiculos = ready ? state.veiculos : [];
+  // As cargas da viagem do formulário: as que ela já tem (na alteração) e as marcadas agora.
+  // É o que a lista de veículos e o resumo conferem contra a capacidade (src/lib/ocupacao.ts).
+  const cargasDoFormulario = [...(editing?.collections ?? []), ...minutas.filter((minuta) => formData.collectionIds.includes(minuta.id))];
+  const veiculoDoFormulario = veiculos.find((veiculo) => veiculo.id === formData.vehicleId) ?? null;
+  const ocupacaoDoFormulario = ocupacaoDaViagem(cargasDoFormulario, veiculoDoFormulario);
   // A viagem aberta, como veio na última leitura; enquanto a lista recarrega, a que já estava na tela.
   const viagemAberta = viagem && (manifestos.find((m) => m.id === viagem.id) ?? viagem);
 
@@ -160,9 +169,12 @@ export default function ManifestosPage() {
           });
 
       if (res.ok) {
+        const salvo = (await res.json().catch(() => null)) as { aviso?: string | null } | null;
         closeModal();
         setFormData({ driverId: "", vehicleId: "", collectionIds: [] });
         fetchData();
+        // A carga passa da capacidade do veículo: a viagem foi gravada assim mesmo, e o servidor avisa com os números.
+        if (salvo?.aviso) alert(`${salvo.aviso} A viagem foi gravada; a liberação da saída vai pedir confirmação.`);
       } else {
         alert(await errorMessage(res, fallback));
       }
@@ -173,22 +185,28 @@ export default function ManifestosPage() {
     }
   };
 
-  // Liberar a saída e cancelar: um POST sem corpo na rota da ação.
-  const handleAction = async (manifesto: Manifesto, action: "liberar" | "cancelar", question: string, fallback: string) => {
-    if (!confirm(question)) return;
-
+  // Liberar a saída e cancelar: um POST na rota da ação. Sem corpo, a não ser na
+  // liberação já confirmada de uma viagem com excesso (`sairComExcesso`).
+  const chamarAcao = async (manifesto: Manifesto, action: "liberar" | "cancelar", fallback: string, sairComExcesso = false) => {
     setBusyId(manifesto.id);
     setBloqueio(null);
     try {
-      const res = await fetch(`/api/manifestos/${manifesto.id}/${action}`, { method: "POST" });
-      const corpo = (await res.json().catch(() => null)) as { aviso?: string | null; error?: string; faltas?: FaltasParaSair } | null;
+      const res = await fetch(
+        `/api/manifestos/${manifesto.id}/${action}`,
+        sairComExcesso ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [CONFIRMACAO_DE_EXCESSO]: true }) } : { method: "POST" },
+      );
+      const corpo = (await res.json().catch(() => null)) as { aviso?: string | null; error?: string; faltas?: FaltasParaSair; confirmar?: string } | null;
       if (res.ok) {
         // Em homologação ou sem emitente fiscal a falta de documento não bloqueia: o servidor só avisa.
+        setExcesso(null);
         await fetchData();
         if (corpo?.aviso) alert(corpo.aviso);
       } else if (res.status === 409 && corpo?.faltas) {
         // Empresa que emite pelo TMS em produção: a saída espera o CT-e de cada carga e o MDF-e. O cartão mostra o que falta.
         setBloqueio({ manifestId: manifesto.id, faltas: corpo.faltas });
+      } else if (res.status === 409 && corpo?.confirmar === CONFIRMACAO_DE_EXCESSO && typeof corpo.error === "string") {
+        // A carga passa da capacidade do veículo: a saída só vale com a confirmação explícita, no cartão.
+        setExcesso({ manifestId: manifesto.id, mensagem: corpo.error });
       } else {
         alert(typeof corpo?.error === "string" ? corpo.error : fallback);
       }
@@ -198,6 +216,15 @@ export default function ManifestosPage() {
       setBusyId(null);
     }
   };
+
+  const handleAction = async (manifesto: Manifesto, action: "liberar" | "cancelar", question: string, fallback: string) => {
+    if (!confirm(question)) return;
+    setExcesso(null);
+    await chamarAcao(manifesto, action, fallback);
+  };
+
+  // `comExcesso`: a pessoa já confirmou, no cartão, a saída com a carga acima da capacidade.
+  const liberar = (manifesto: Manifesto, comExcesso: boolean) => chamarAcao(manifesto, "liberar", "Erro ao liberar a viagem.", comExcesso);
 
   const handleRelease = (manifesto: Manifesto) =>
     handleAction(
@@ -358,6 +385,9 @@ export default function ManifestosPage() {
                       Viagem
                     </button>
                   </div>
+
+                  {/* A carga cabe no veículo? Uma linha só: peso e cubagem contra a capacidade cadastrada. */}
+                  {total > 0 && <LinhaDeOcupacao cargas={manifesto.collections} veiculo={manifesto.vehicle} className="!mt-2" />}
                 </div>
 
                 <div className="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
@@ -441,6 +471,23 @@ export default function ManifestosPage() {
                         O veículo é da transportadora {bloqueio.faltas.subcontratada}: se é ela quem emite o MDF-e, registre a chave dele na aba MDF-e.
                       </p>
                     )}
+                  </div>
+                )}
+
+                {emMontagem && excesso?.manifestId === manifesto.id && (
+                  <div role="alertdialog" aria-label="Sair com excesso de peso" data-confirmar-excesso={manifesto.id} className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 space-y-2">
+                    <p className="flex items-start gap-1.5">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span className="min-w-0">{excesso.mensagem}</span>
+                    </p>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button type="button" data-voltar-do-excesso onClick={() => setExcesso(null)} disabled={busyId !== null} className="border border-amber-300 bg-white text-amber-900 font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                        Voltar
+                      </button>
+                      <button type="button" data-sair-com-excesso onClick={() => liberar(manifesto, true)} disabled={busyId !== null} className="bg-amber-600 hover:bg-amber-700 text-white font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50">
+                        Sair com excesso de peso
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -567,11 +614,16 @@ export default function ManifestosPage() {
                         className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white uppercase"
                       >
                         <option value="">Selecione um veículo...</option>
-                        {veiculos.map(v => (
-                          <option key={v.id} value={v.id} disabled={v.status === "MAINTENANCE"}>
-                            {v.plate} ({v.type}){v.status === "MAINTENANCE" ? " - em manutenção" : ""}
-                          </option>
-                        ))}
+                        {veiculos.map(v => {
+                          // A capacidade ao lado da placa, e a marca nos que não comportam as cargas escolhidas. Nenhum é escondido.
+                          const capacidade = capacidadeDoVeiculo(v);
+                          const naoComporta = cargasDoFormulario.length > 0 && ocupacaoDaViagem(cargasDoFormulario, v).excesso;
+                          return (
+                            <option key={v.id} value={v.id} disabled={v.status === "MAINTENANCE"} data-nao-comporta={naoComporta || undefined}>
+                              {v.plate} ({v.type}){capacidade ? ` · ${capacidade}` : ""}{naoComporta ? " · não comporta" : ""}{v.status === "MAINTENANCE" ? " - em manutenção" : ""}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   </div>
@@ -586,6 +638,18 @@ export default function ManifestosPage() {
                       {minutas.filter(m => formData.collectionIds.includes(m.id)).reduce((acc, curr) => acc + curr.weight, 0)} kg
                     </span></p>
                   </div>
+                  {/* A ocupação do veículo escolhido com as cargas da viagem. Passar de 100% é aviso, não impede a montagem. */}
+                  {veiculoDoFormulario && cargasDoFormulario.length > 0 && (
+                    <p
+                      role={ocupacaoDoFormulario.excesso ? "alert" : undefined}
+                      data-ocupacao-do-formulario={ocupacaoDoFormulario.excesso ? "excesso" : ocupacaoDoFormulario.semCapacidade ? "sem-capacidade" : "cabe"}
+                      className={`mt-1 text-xs ${ocupacaoDoFormulario.excesso ? "font-semibold text-amber-700 dark:text-amber-400" : ocupacaoDoFormulario.semCapacidade ? "text-gray-500" : "text-blue-700 dark:text-blue-300"}`}
+                    >
+                      {ocupacaoDoFormulario.excesso
+                        ? `${avisoDeExcesso(ocupacaoDoFormulario)} A viagem pode ser montada; a saída vai pedir confirmação.`
+                        : `${veiculoDoFormulario.plate}: ${linhaDaOcupacao(ocupacaoDoFormulario)}`}
+                    </p>
+                  )}
                 </div>
 
                 <p className="hidden md:block text-xs text-gray-500 dark:text-gray-400">

@@ -20,6 +20,8 @@ interface Veiculo {
   // O formulário usa capacityKg/defaultDriverId, que a API traduz na escrita.
   capacity: number | null;
   maxWeight: number | null;
+  /** Cubagem útil, em m³. */
+  cubicCapacity?: number | null;
   year: number | null;
   driverId: string | null;
   // O parceiro de transporte dono do veículo; nulo = frota própria.
@@ -60,6 +62,8 @@ const FORM_VAZIO = {
   type: "VAN",
   capacityKg: "",
   maxWeight: "",
+  // Cubagem útil em m³.
+  cubicCapacity: "",
   year: "",
   defaultDriverId: "",
   // O parceiro de transporte dono do veículo; vazio = frota própria.
@@ -149,6 +153,7 @@ export default function VeiculosPage() {
       type: veiculo.type,
       capacityKg: veiculo.capacity == null ? "" : String(veiculo.capacity),
       maxWeight: veiculo.maxWeight == null ? "" : String(veiculo.maxWeight),
+      cubicCapacity: veiculo.cubicCapacity == null ? "" : String(veiculo.cubicCapacity).replace(".", ","),
       year: veiculo.year == null ? "" : String(veiculo.year),
       defaultDriverId: veiculo.driverId ?? "",
       carrierId: veiculo.carrierId ?? "",
@@ -349,8 +354,9 @@ export default function VeiculosPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
-                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+              {/* Tipo e capacidade numa linha; peso máximo, cubagem e ano na outra: a cubagem não acrescenta uma linha no celular. */}
+              <div className="grid grid-cols-6 gap-x-3 gap-y-2 md:gap-4">
+                <div className="col-span-3 space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Tipo</label>
                   <select 
                     value={formData.type}
@@ -365,7 +371,7 @@ export default function VeiculosPage() {
                     ))}
                   </select>
                 </div>
-                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                <div className="col-span-3 space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Capacidade (KG)</label>
                   <input
                     type="number"
@@ -375,8 +381,8 @@ export default function VeiculosPage() {
                     className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                   />
                 </div>
-                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                  <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Peso Máximo (KG)</label>
+                <div className="col-span-2 space-y-0.5 md:space-y-1.5 min-w-0">
+                  <label className="block truncate text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Peso máx. (kg)</label>
                   <input
                     type="number"
                     value={formData.maxWeight}
@@ -385,8 +391,21 @@ export default function VeiculosPage() {
                     className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                   />
                 </div>
-                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                  <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Ano</label>
+                {/* Cubagem útil do baú: com a capacidade em kg, é o que a montagem da viagem confere contra as cargas. */}
+                <div className="col-span-2 space-y-0.5 md:space-y-1.5 min-w-0">
+                  <label htmlFor="veiculo-cubagem" className="block truncate text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Cubagem (m³)</label>
+                  <input
+                    id="veiculo-cubagem"
+                    data-cubagem-do-veiculo
+                    inputMode="decimal"
+                    value={formData.cubicCapacity}
+                    onChange={(e) => setFormData({...formData, cubicCapacity: e.target.value})}
+                    placeholder="Ex: 20"
+                    className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                  />
+                </div>
+                <div className="col-span-2 space-y-0.5 md:space-y-1.5 min-w-0">
+                  <label className="block truncate text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Ano</label>
                   <input
                     type="number"
                     value={formData.year}

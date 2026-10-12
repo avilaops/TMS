@@ -12,7 +12,8 @@ import {
   isManifestEditable,
   updateManifestSchema,
 } from '@/lib/manifestos';
-import { ManifestError, lockManifest } from '@/lib/manifestos-db';
+import { ManifestError, lockManifest, ocupacaoNoBanco } from '@/lib/manifestos-db';
+import { avisoDeExcesso } from '@/lib/ocupacao';
 import { criarContratoDoParceiro } from '@/lib/frete-contratado-db';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
@@ -103,7 +104,10 @@ export async function PATCH(
     });
 
     const manifest = await prisma.manifest.findUnique({ where: { id: manifestId } });
-    return NextResponse.json({ success: true, manifest });
+    // A carga cabe no veículo depois da alteração? É aviso, não trava (src/lib/ocupacao.ts).
+    // A alteração já valeu: se esta leitura falhar, a resposta segue sem o aviso.
+    const ocupacao = await ocupacaoNoBanco(prisma, manifestId).catch(() => null);
+    return NextResponse.json({ success: true, manifest, ocupacao, aviso: ocupacao ? avisoDeExcesso(ocupacao) : null });
   } catch (error) {
     if (error instanceof ManifestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

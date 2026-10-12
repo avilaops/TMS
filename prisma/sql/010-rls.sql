@@ -100,6 +100,7 @@ DECLARE
     "AuditLog": ["userId", "User"],
     "Absence": ["driverId", "Driver", "helperId", "Helper"],
     "CrewAdvance": ["driverId", "Driver", "helperId", "Helper", "manifestId", "Manifest"],
+    "CrewPayClosing": ["driverId", "Driver", "helperId", "Helper", "closedById", "User", "transactionId", "FinancialTransaction"],
     "TripExpense": ["manifestId", "Manifest", "createdById", "User", "reviewedById", "User", "fuelingId", "Fueling", "transactionId", "FinancialTransaction"],
     "FreightContract": ["manifestId", "Manifest", "carrierId", "Carrier"],
     "FreightPayment": ["contractId", "FreightContract", "transactionId", "FinancialTransaction"],

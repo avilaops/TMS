@@ -12,7 +12,8 @@ import {
   cannotEmbarkMessage,
   createManifestSchema,
 } from '@/lib/manifestos';
-import { ManifestError, ORDEM_DAS_CARGAS, conferirAjudante } from '@/lib/manifestos-db';
+import { ManifestError, ORDEM_DAS_CARGAS, conferirAjudante, ocupacaoNoBanco } from '@/lib/manifestos-db';
+import { avisoDeExcesso } from '@/lib/ocupacao';
 import { criarContratoDoParceiro } from '@/lib/frete-contratado-db';
 import { incoerenciaDaViagem } from '@/lib/viagem';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
@@ -173,7 +174,11 @@ export async function POST(req: Request) {
       return manifest;
     });
 
-    return NextResponse.json(newManifest, { status: 201 });
+    // A carga cabe no veículo? Passar da capacidade não impede a montagem: a
+    // resposta leva a ocupação e o aviso com os números (src/lib/ocupacao.ts).
+    // A viagem já foi criada: se esta leitura falhar, a resposta segue sem o aviso.
+    const ocupacao = await ocupacaoNoBanco(prisma, newManifest.id).catch(() => null);
+    return NextResponse.json({ ...newManifest, ocupacao, aviso: ocupacao ? avisoDeExcesso(ocupacao) : null }, { status: 201 });
   } catch (error) {
     if (error instanceof Refused) return error.response;
     if (error instanceof ManifestError) {

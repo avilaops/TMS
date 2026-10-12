@@ -125,10 +125,12 @@ export const CAPACIDADES = {
   equipeVer: ["ADMIN", "DIRECTOR", "OPERATION", "EXPEDITION", "FINANCE"],
   /** Cadastrar ajudante e lançar ausência. */
   equipe: ["ADMIN", "DIRECTOR", "OPERATION"],
-  /** Ler o que é dinheiro na equipe: adiantamentos, frete e comissão na produtividade, percentual de comissão. */
+  /** Ler o que é dinheiro na equipe: adiantamentos, frete e comissão na produtividade, as formas de remuneração (comissão, diária, km, entrega e fixo), o fechamento mensal e o recibo dele. */
   equipeValoresVer: ["ADMIN", "DIRECTOR", "FINANCE"],
-  /** Lançar e acertar adiantamento; alterar o percentual de comissão (junto de `motoristas`). */
+  /** Lançar e acertar adiantamento; alterar as formas de remuneração do motorista (junto de `motoristas`) e do ajudante. */
   equipeValores: ["ADMIN", "FINANCE"],
+  /** Fechar e reabrir o mês da remuneração variável: congela os valores e lança (ou desfaz) a despesa no Financeiro. */
+  equipeFechamento: ["ADMIN"],
 
   /** Ler o cadastro de parceiros de transporte (agregados e terceiros), com os veículos e motoristas ligados. Sem valores. */
   parceirosVer: ["ADMIN", "DIRECTOR", "OPERATION", "FINANCE"],

@@ -17,6 +17,11 @@ interface Motorista {
   active: boolean;
   /** Percentual do frete entregue que vira comissão. Só vem para o administrador. */
   commissionPct?: number | null;
+  /** Diária, valor por km, por entrega e fixo por viagem. Como a comissão, só vêm para quem lê os valores da equipe. */
+  dailyRate?: number | null;
+  perKmRate?: number | null;
+  perDeliveryRate?: number | null;
+  perTripRate?: number | null;
   /** O parceiro de transporte de quem o motorista é; nulo = motorista da empresa. */
   carrierId?: string | null;
 }
@@ -32,9 +37,25 @@ const FORM_VAZIO = {
   category: "B",
   cnhExpiry: "",
   commissionPct: "",
+  // As outras formas de remuneração variável (src/lib/remuneracao.ts); vazio = não usa a forma.
+  dailyRate: "",
+  perKmRate: "",
+  perDeliveryRate: "",
+  perTripRate: "",
   // O parceiro de transporte de quem o motorista é; vazio = motorista da empresa.
   carrierId: "",
 };
+
+// As formas além da comissão, na ordem do formulário.
+const FORMAS = [
+  { campo: "dailyRate", rotulo: "Diária (R$ por dia)" },
+  { campo: "perKmRate", rotulo: "Por km (R$)" },
+  { campo: "perDeliveryRate", rotulo: "Por entrega (R$)" },
+  { campo: "perTripRate", rotulo: "Fixo por viagem (R$)" },
+] as const;
+
+// O valor gravado no formato do campo: vírgula decimal, vazio sem valor.
+const paraOCampo = (valor: number | null | undefined) => (valor == null ? "" : String(valor).replace(".", ","));
 
 const INPUT =
   "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500";
@@ -69,6 +90,9 @@ export default function MotoristasPage() {
   // Só para mostrar o campo: quem decide é a API, que recusa o percentual dos demais perfis.
   const { data: session } = useSession();
   const admin = pode(session?.user?.role, "equipeValores");
+  // A parte do cadastro aberta: o cadastro ou a remuneração, uma por vez.
+  const [parte, setParte] = useState<"cadastro" | "remuneracao">("cadastro");
+  const mostraRemuneracao = admin && editingId !== null;
 
   // Parceiros de transporte, para o seletor do cadastro. Quem não lê parceiros fica sem o seletor.
   const [parceiros, setParceiros] = useState<{ id: string; name: string; active: boolean }[]>([]);
@@ -114,9 +138,14 @@ export default function MotoristasPage() {
       cnh: motorista.cnh,
       category: motorista.category,
       cnhExpiry: diaDaValidade(motorista.cnhExpiry),
-      commissionPct: motorista.commissionPct == null ? "" : String(motorista.commissionPct).replace(".", ","),
+      commissionPct: paraOCampo(motorista.commissionPct),
+      dailyRate: paraOCampo(motorista.dailyRate),
+      perKmRate: paraOCampo(motorista.perKmRate),
+      perDeliveryRate: paraOCampo(motorista.perDeliveryRate),
+      perTripRate: paraOCampo(motorista.perTripRate),
       carrierId: motorista.carrierId ?? "",
     });
+    setParte("cadastro");
     setIsModalOpen(true);
   };
 
@@ -128,9 +157,9 @@ export default function MotoristasPage() {
 
     setIsSaving(true);
     try {
-      // Na edição o CPF não muda. A comissão só vai na edição feita pelo administrador.
-      const { cpf, commissionPct, ...resto } = formData;
-      const body = editingId ? { ...resto, ...(admin && { commissionPct }) } : { ...resto, cpf };
+      // Na edição o CPF não muda. A comissão e as outras formas de remuneração só vão na edição feita por quem altera os valores da equipe.
+      const { cpf, commissionPct, dailyRate, perKmRate, perDeliveryRate, perTripRate, ...resto } = formData;
+      const body = editingId ? { ...resto, ...(admin && { commissionPct, dailyRate, perKmRate, perDeliveryRate, perTripRate }) } : { ...resto, cpf };
 
       const res = await fetch(editingId ? `/api/motoristas/${editingId}` : '/api/motoristas', {
         method: editingId ? 'PATCH' : 'POST',
@@ -301,6 +330,31 @@ export default function MotoristasPage() {
             </div>
 
             <div className="p-3 md:p-6 space-y-2 md:space-y-4 overflow-y-auto">
+              {/* O cadastro e a remuneração ficam em duas partes, para cada uma caber na tela (no celular e no computador). */}
+              {mostraRemuneracao && (
+                <div role="tablist" aria-label="Parte do cadastro" className="grid grid-cols-2 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+                  {(
+                    [
+                      ["cadastro", "Cadastro"],
+                      ["remuneracao", "Remuneração"],
+                    ] as const
+                  ).map(([chave, rotulo]) => (
+                    <button
+                      key={chave}
+                      type="button"
+                      role="tab"
+                      aria-selected={parte === chave}
+                      data-parte={chave}
+                      onClick={() => setParte(chave)}
+                      className={`py-1.5 rounded-lg text-sm font-semibold ${parte === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className={`space-y-2 md:space-y-4 ${parte === "cadastro" || !mostraRemuneracao ? "" : "hidden"}`}>
               <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                 <label className={LABEL}>Nome Completo</label>
                 <input
@@ -405,21 +459,46 @@ export default function MotoristasPage() {
                     className={INPUT}
                   />
                 </div>
-                {/* Comissão é dinheiro: só o administrador vê e altera, e só no cadastro já criado. */}
-                {admin && editingId && (
-                  <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                    <label className={LABEL} htmlFor="comissao">Comissão (% do frete)</label>
-                    <input
-                      id="comissao"
-                      inputMode="decimal"
-                      value={formData.commissionPct}
-                      onChange={(e) => setFormData({...formData, commissionPct: e.target.value})}
-                      placeholder="Sem comissão"
-                      className={INPUT}
-                    />
-                  </div>
-                )}
               </div>
+              </div>
+
+              {/* Remuneração é dinheiro: só quem altera os valores da equipe vê e altera, e só no cadastro já criado. */}
+              {mostraRemuneracao && (
+                <fieldset data-remuneracao className={`${parte === "remuneracao" ? "" : "hidden"} space-y-2 md:space-y-4`}>
+                  <legend className="sr-only">Remuneração variável</legend>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-2 md:gap-4">
+                    <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                      <label className={LABEL} htmlFor="comissao">Comissão (% do frete)</label>
+                      <input
+                        id="comissao"
+                        inputMode="decimal"
+                        value={formData.commissionPct}
+                        onChange={(e) => setFormData({...formData, commissionPct: e.target.value})}
+                        placeholder="Sem comissão"
+                        className={INPUT}
+                      />
+                    </div>
+                    {FORMAS.map(({ campo, rotulo }) => (
+                      <div key={campo} className="space-y-0.5 md:space-y-1.5 min-w-0">
+                        <label className={LABEL} htmlFor={`forma-${campo}`}>{rotulo}</label>
+                        <input
+                          id={`forma-${campo}`}
+                          data-forma={campo}
+                          inputMode="decimal"
+                          value={formData[campo]}
+                          onChange={(e) => setFormData({...formData, [campo]: e.target.value})}
+                          placeholder="Não usa"
+                          className={INPUT}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    As formas com valor somam em cada viagem finalizada. Em branco, a forma não entra. O fechamento do mês fica em Equipe.
+                    {formData.carrierId ? " Motorista de parceiro: viagem com frete contratado não gera remuneração por aqui." : ""}
+                  </p>
+                </fieldset>
+              )}
             </div>
 
             <div className="p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">

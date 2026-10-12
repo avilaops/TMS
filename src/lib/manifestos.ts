@@ -72,6 +72,13 @@ export const updateManifestSchema = z
     { message: "Informe motorista, veículo ou carga para alterar." },
   );
 
+/**
+ * O corpo da liberação da saída (`POST /api/manifestos/[id]/liberar`). É
+ * opcional: só leva a confirmação de quem libera mesmo com a carga acima da
+ * capacidade do veículo (src/lib/ocupacao.ts).
+ */
+export const releaseSchema = z.object({ sairComExcesso: z.boolean("A confirmação de saída com excesso precisa ser verdadeiro ou falso.").optional() }, INVALID_BODY);
+
 export const MANIFEST_NOT_FOUND_MESSAGE = "Manifesto não encontrado.";
 export const NOT_ASSEMBLING_MESSAGE = "Só viagem em montagem pode ser alterada.";
 export const EMPTY_MANIFEST_MESSAGE = "Não dá para liberar uma viagem sem carga.";

@@ -72,6 +72,7 @@ export async function POST(req: Request) {
           type: data.type,
           capacity: data.capacityKg ?? null,
           maxWeight: data.maxWeight ?? null,
+          cubicCapacity: data.cubicCapacity ?? null,
           year: data.year ?? null,
           driverId: data.defaultDriverId ?? null,
           carrierId: data.carrierId ?? null,
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
         entidade: 'veiculo',
         entidadeId: newVehicle.id,
         resumo: `Veículo ${newVehicle.plate} criado`,
-        depois: escolher(newVehicle, ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'carrierId', 'status', ...VEHICLE_FISCAL_FIELDS]),
+        depois: escolher(newVehicle, ['plate', 'model', 'type', 'capacity', 'maxWeight', 'cubicCapacity', 'year', 'driverId', 'carrierId', 'status', ...VEHICLE_FISCAL_FIELDS]),
       });
 
       return NextResponse.json(newVehicle, { status: 201 });

@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { MANIFEST_NOT_FOUND_MESSAGE } from "@/lib/manifestos";
 import { HELPER_NOT_FOUND_OR_INACTIVE } from "@/lib/viagem";
+import { CARGA_DA_OCUPACAO_SELECT, VEICULO_DA_OCUPACAO_SELECT, type Ocupacao, ocupacaoDaViagem } from "@/lib/ocupacao";
 
 // Apoio das rotas que mudam uma viagem dentro de transação (alterar, liberar,
 // finalizar, cancelar). Só o servidor importa este arquivo.
@@ -37,6 +38,19 @@ export async function conferirAjudante(tx: Pick<Tx, "helper">, helperId: string 
   if (!helperId) return;
   const ajudante = await tx.helper.findFirst({ where: { id: helperId, active: true }, select: { id: true } });
   if (!ajudante) throw new ManifestError(400, HELPER_NOT_FOUND_OR_INACTIVE);
+}
+
+/**
+ * A ocupação do veículo da viagem com as cargas que ela tem agora (peso e
+ * cubagem contra a capacidade cadastrada; src/lib/ocupacao.ts). `null` se a
+ * viagem não existe nesta empresa.
+ */
+export async function ocupacaoNoBanco(db: Pick<Tx, "manifest">, manifestId: string): Promise<Ocupacao | null> {
+  const viagem = await db.manifest.findUnique({
+    where: { id: manifestId },
+    select: { vehicle: { select: VEICULO_DA_OCUPACAO_SELECT }, collections: { select: CARGA_DA_OCUPACAO_SELECT } },
+  });
+  return viagem ? ocupacaoDaViagem(viagem.collections, viagem.vehicle) : null;
 }
 
 /**

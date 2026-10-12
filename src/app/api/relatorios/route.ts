@@ -5,6 +5,7 @@ import { limitesDoPeriodo, montarRelatorio, montarResultado, periodoDoRelatorio 
 import { acertoDaViagem, finalizadaEm, finalizadaNoPeriodo } from '@/lib/viagem';
 import { combustivelDasViagens } from '@/lib/viagem-db';
 import { CONTRACT_COST_SELECT, custoParaAViagem } from '@/lib/frete-contratado';
+import { VIAGEM_DA_REMUNERACAO_SELECT, remuneracaoDasViagens } from '@/lib/remuneracao-db';
 
 /**
  * Relatórios básicos (operação, comercial e financeiro) de um período, e o
@@ -77,23 +78,18 @@ export async function GET(req?: Request) {
     const viagens = await prisma.manifest.findMany({
       where: { OR: [{ id: { in: viagensDasEntregas } }, finalizadaNoPeriodo(noPeriodo)] },
       select: {
-        id: true,
-        status: true,
+        // As bases e as formas de remuneração do motorista e do ajudante (src/lib/remuneracao-db.ts).
+        ...VIAGEM_DA_REMUNERACAO_SELECT,
         vehicleId: true,
-        createdAt: true,
-        updatedAt: true,
-        departedAt: true,
-        finishedAt: true,
-        departureOdometer: true,
-        returnOdometer: true,
-        driver: { select: { user: { select: { name: true } } } },
-        vehicle: { select: { plate: true } },
-        collections: { select: { weight: true, freightValue: true } },
+        driver: { select: { ...VIAGEM_DA_REMUNERACAO_SELECT.driver.select, user: { select: { name: true } } } },
+        collections: { select: { weight: true, freightValue: true, status: true } },
         expenses: { where: { status: 'APPROVED' }, select: { type: true, amount: true, status: true } },
         freightContract: { select: CONTRACT_COST_SELECT },
       },
     });
     const combustivel = await combustivelDasViagens(prisma, viagens);
+    // A remuneração variável de cada viagem finalizada: custo dela, uma vez só.
+    const remuneracao = await remuneracaoDasViagens(prisma, viagens);
     const contas = viagens.map((viagem) => ({
       viagem,
       acerto: acertoDaViagem({
@@ -102,6 +98,7 @@ export async function GET(req?: Request) {
         abastecimentos: combustivel.get(viagem.id) ?? [],
         adiantamentos: [],
         freteContratado: custoParaAViagem(viagem.freightContract),
+        remuneracao: remuneracao.get(viagem.id)?.total ?? 0,
         departureOdometer: viagem.departureOdometer,
         returnOdometer: viagem.returnOdometer,
       }),

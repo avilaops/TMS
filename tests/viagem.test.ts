@@ -283,6 +283,7 @@ describe("regras da viagem", () => {
         pendentes: { quantidade: 0, total: 0 },
         combustivel: 0,
         freteContratado: 0,
+        remuneracao: 0,
         custoTotal: 0,
         resultado: 0,
         margem: null,
@@ -320,6 +321,7 @@ describe("regras da viagem", () => {
         pendentes: { quantidade: 1, total: 200 },
         combustivel: 400.25,
         freteContratado: 0,
+        remuneracao: 0,
         custoTotal: 560.25,
         resultado: 940.25,
         margem: 62.7,
@@ -1176,6 +1178,7 @@ suite("rotas da viagem", () => {
         // 150 + 50,50 da frota; os 200 do abastecimento gerado pela despesa já estão em "despesas".
         combustivel: 200.5,
         freteContratado: 0,
+        remuneracao: 0,
         custoTotal: 500.5,
         resultado: 999.5,
         margem: 66.6,

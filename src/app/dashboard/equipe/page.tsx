@@ -9,6 +9,7 @@ import { pode } from "@/lib/permissoes";
 import { deniedReason, type DeniedReason } from "../financeiro/carregar";
 import { Adiantamentos } from "./adiantamentos";
 import { Ausencias } from "./ausencias";
+import { Fechamento } from "./fechamento";
 import { Pessoas } from "./pessoas";
 import { Produtividade } from "./produtividade";
 import type { PessoaDaEquipe } from "./comum";
@@ -18,16 +19,17 @@ import type { PessoaDaEquipe } from "./comum";
  * adiantamentos com acerto e a produtividade dos motoristas. Uma aba por
  * assunto; no celular cada aba cabe numa tela.
  *
- * Adiantamentos são dinheiro: a aba só aparece para quem lê os valores da
- * equipe (`equipeValoresVer`), e a API recusa os demais. Na Produtividade,
- * frete e comissão seguem a mesma regra.
+ * Adiantamentos e Fechamento (a remuneração variável do mês; ./fechamento.tsx)
+ * são dinheiro: as abas só aparecem para quem lê os valores da equipe
+ * (`equipeValoresVer`), e a API recusa os demais. Na Produtividade, frete e
+ * comissão seguem a mesma regra.
  */
 
 type Carga = { denied: DeniedReason } | { denied: null; erro: string } | { denied: null; erro: null; pessoas: PessoaDaEquipe[] };
 
 const FALHA = "Não foi possível carregar a equipe.";
 
-const ABAS = ["Pessoas", "Ausências", "Adiantamentos", "Produtividade"] as const;
+const ABAS = ["Pessoas", "Ausências", "Adiantamentos", "Produtividade", "Fechamento"] as const;
 type Aba = (typeof ABAS)[number];
 
 async function carregar(): Promise<Carga> {
@@ -113,9 +115,11 @@ export default function EquipePage() {
     );
   }
 
-  const abas = ABAS.filter((nome) => nome !== "Adiantamentos" || admin);
+  const abas = ABAS.filter((nome) => (nome !== "Adiantamentos" && nome !== "Fechamento") || admin);
   // Perfil rebaixado com a aba aberta: volta para a primeira.
   const ativa = abas.includes(aba) ? aba : "Pessoas";
+  // Com cinco abas os nomes não cabem numa linha do celular: lá elas ficam em duas linhas de três.
+  const emDuasLinhas = abas.length > 4;
 
   return (
     <div className="space-y-3 md:space-y-6">
@@ -127,8 +131,8 @@ export default function EquipePage() {
       <div
         role="tablist"
         aria-label="Assunto"
-        className="grid gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl md:inline-grid"
-        style={{ gridTemplateColumns: `repeat(${abas.length}, minmax(0, 1fr))` }}
+        className={`grid gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl md:inline-grid ${emDuasLinhas ? "grid-cols-3 md:grid-cols-[repeat(var(--abas),minmax(0,1fr))]" : "grid-cols-[repeat(var(--abas),minmax(0,1fr))]"}`}
+        style={{ "--abas": abas.length } as React.CSSProperties}
       >
         {abas.map((nome) => (
           <button
@@ -149,6 +153,7 @@ export default function EquipePage() {
       {ativa === "Ausências" && <Ausencias pessoas={carga.pessoas} recarregarPessoas={recarregar} />}
       {ativa === "Adiantamentos" && admin && <Adiantamentos pessoas={carga.pessoas} />}
       {ativa === "Produtividade" && <Produtividade />}
+      {ativa === "Fechamento" && admin && <Fechamento podeFechar={pode(session?.user?.role, "equipeFechamento")} alteraValores={pode(session?.user?.role, "equipeValores")} />}
     </div>
   );
 }

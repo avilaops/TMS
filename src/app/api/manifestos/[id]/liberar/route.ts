@@ -8,9 +8,12 @@ import {
   VEHICLE_BUSY_MESSAGE,
   VEHICLE_IN_MAINTENANCE_MESSAGE,
   VEHICLE_NOT_FOUND_MESSAGE,
+  releaseSchema,
 } from '@/lib/manifestos';
 import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
-import { ManifestError, lockManifest } from '@/lib/manifestos-db';
+import { ManifestError, lockManifest, ocupacaoNoBanco } from '@/lib/manifestos-db';
+import { CONFIRMACAO_DE_EXCESSO, type Ocupacao, avisoDeExcesso, confirmarSaidaComExcesso } from '@/lib/ocupacao';
+import { firstIssue } from '@/lib/usuarios';
 import { recordStatusChanges } from '@/lib/historico';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 import { avisar, avisarStatusAoCliente, avisoDeViagemLiberada, usuarioDoMotorista } from '@/lib/notificacoes';
@@ -24,8 +27,22 @@ class SaidaBloqueada extends ManifestError {
   }
 }
 
+/** A carga passa da capacidade do veículo e a liberação veio sem a confirmação: 409 com `confirmar` e a ocupação. */
+class PedeConfirmacao extends ManifestError {
+  constructor(readonly ocupacao: Ocupacao) {
+    super(409, confirmarSaidaComExcesso(ocupacao));
+  }
+}
+
 /**
  * Libera a saída: as cargas passam para "em rota" e o veículo fica ocupado.
+ *
+ * EXCESSO DE PESO OU DE CUBAGEM: a soma das cargas contra a capacidade
+ * cadastrada do veículo (src/lib/ocupacao.ts). Acima de 100% a saída NÃO é
+ * proibida — o cadastro pode estar desatualizado —, mas pede a confirmação
+ * explícita: sem `sairComExcesso: true` no corpo a resposta é 409 com
+ * `confirmar: "sairComExcesso"` e os números; com ela, a saída é liberada e a
+ * confirmação fica na auditoria. Veículo sem capacidade cadastrada não pede nada.
  *
  * DOCUMENTOS FISCAIS: o CT-e de cada carga e o MDF-e da viagem têm de estar
  * autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).
@@ -49,6 +66,22 @@ export async function POST(
 
     const manifestId = (await params).id;
     const origem = origemDaRequisicao(req);
+
+    // O corpo é opcional (a liberação sempre foi um POST vazio): só leva a confirmação do excesso.
+    const texto = await req.text().catch(() => '');
+    let corpo: unknown = {};
+    if (texto.trim() !== '') {
+      try {
+        corpo = JSON.parse(texto);
+      } catch {
+        corpo = null;
+      }
+    }
+    const confirmacao = releaseSchema.safeParse(corpo);
+    if (!confirmacao.success) {
+      return NextResponse.json({ error: firstIssue(confirmacao.error) }, { status: 400 });
+    }
+    const sairComExcesso = confirmacao.data.sairComExcesso === true;
 
     await transacao(async (tx) => {
       const manifest = await lockManifest(tx, manifestId);
@@ -92,6 +125,11 @@ export async function POST(
       const documentos = await documentosDaSaida(tx, manifestId);
       if (documentos.bloqueia) throw new SaidaBloqueada(documentos.faltas);
 
+      // A carga passa da capacidade do veículo: a saída pede o "sim" explícito de quem libera.
+      const ocupacao = await ocupacaoNoBanco(tx, manifestId);
+      const excesso = ocupacao?.excesso ? ocupacao : null;
+      if (excesso && !sairComExcesso) throw new PedeConfirmacao(excesso);
+
       await tx.collection.updateMany({
         where: { id: { in: ids }, manifestId, status: 'COLLECTED' },
         data: { status: 'ROUTE' },
@@ -117,9 +155,20 @@ export async function POST(
         acao: 'manifesto.liberar',
         entidade: 'manifesto',
         entidadeId: manifestId,
-        resumo: `Manifesto liberado: ${ids.length} carga(s) em rota`,
+        resumo: `Manifesto liberado: ${ids.length} carga(s) em rota${excesso ? `, com excesso confirmado. ${avisoDeExcesso(excesso)}` : ''}`,
         antes: { status: manifest.status },
-        depois: { status: 'ROUTE', cargas: ids.length },
+        // A confirmação do excesso fica registrada com os números de quando a viagem saiu.
+        depois: {
+          status: 'ROUTE',
+          cargas: ids.length,
+          ...(excesso && {
+            excessoDePeso: true,
+            pesoKg: excesso.peso.total,
+            capacidadeKg: excesso.peso.capacidade,
+            cubagemM3: excesso.cubagem.total,
+            capacidadeM3: excesso.cubagem.capacidade,
+          }),
+        },
       });
     });
 
@@ -130,6 +179,9 @@ export async function POST(
   } catch (error) {
     if (error instanceof SaidaBloqueada) {
       return NextResponse.json({ error: error.message, faltas: error.faltas }, { status: error.status });
+    }
+    if (error instanceof PedeConfirmacao) {
+      return NextResponse.json({ error: error.message, confirmar: CONFIRMACAO_DE_EXCESSO, ocupacao: error.ocupacao }, { status: error.status });
     }
     if (error instanceof ManifestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

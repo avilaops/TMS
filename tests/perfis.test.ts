@@ -85,6 +85,8 @@ const SO_DO_ADMIN_ANTES: Capacidade[] = [
   // Frete contratado: capacidade nova, que nasceu sem a operação (é dinheiro).
   "freteContratadoVer",
   "freteContratado",
+  // Fechar e reabrir o mês da remuneração variável: capacidade nova, só do administrador.
+  "equipeFechamento",
 ];
 
 const ESPERADO: Record<Perfil, Capacidade[]> = {
@@ -203,6 +205,13 @@ const ROTAS: Record<string, Capacidade> = {
   "PATCH /api/equipe/ausencias/[id]": "equipe",
   "DELETE /api/equipe/ausencias/[id]": "equipe",
   "GET /api/equipe/ausencias": "equipeVer",
+  "GET /api/equipe/fechamento": "equipeValoresVer",
+  "POST /api/equipe/fechamento": "equipeFechamento",
+  "GET /api/equipe/fechamento/[id]": "equipeValoresVer",
+  "DELETE /api/equipe/fechamento/[id]": "equipeFechamento",
+  "PATCH /api/equipe/ajudantes/[id]/remuneracao": "equipeValores",
+  "GET /api/empresa/remuneracao": "empresa",
+  "PATCH /api/empresa/remuneracao": "empresa",
   "POST /api/equipe/ausencias": "equipe",
   "GET /api/equipe/produtividade": "equipeVer",
   "GET /api/equipe": "equipeVer",
@@ -359,6 +368,7 @@ const FORA_DA_MATRIZ = [
   "/api/driver/manifestos/[id]/mapa",
   "/api/driver/manifestos/[id]/posicao",
   "/api/driver/perfil",
+  "/api/driver/remuneracao",
   "/api/empresas",
   "/api/health",
   "/api/leads",
@@ -462,7 +472,7 @@ describe("matriz de permissões", () => {
     for (const capacidade of ["financeiro", "faturamento", "equipeValores", "freteContratado"] as const) {
       expect(ordenado(perfisQuePodem(capacidade)), capacidade).toEqual(["ADMIN", "FINANCE"]);
     }
-    for (const capacidade of ["usuarios", "empresa", "mensageria"] as const) {
+    for (const capacidade of ["usuarios", "empresa", "mensageria", "equipeFechamento"] as const) {
       expect(perfisQuePodem(capacidade), capacidade).toEqual(["ADMIN"]);
     }
   });

@@ -18,7 +18,13 @@ import { PAYMENT_METHODS, diaDoVencimento, diaNoBrasil } from "@/lib/financeiro"
  *   (bruto + acréscimos − descontos; src/lib/frete-contratado.ts). Os
  *   pagamentos do contrato lançam despesa no Financeiro, mas não são despesa
  *   de viagem: não entram em "despesas", e o custo conta uma vez só, aqui.
- * - **Resultado** = frete − despesas − combustível − frete contratado. Adiantamento não é custo: é
+ * - **Remuneração do motorista**: a remuneração variável que a viagem rende ao
+ *   motorista e ao ajudante (comissão, diária, km, entrega e fixo;
+ *   src/lib/remuneracao.ts). O lançamento que o fechamento do mês faz no
+ *   Financeiro não é despesa de viagem, e motorista de parceiro em viagem com
+ *   frete contratado não tem remuneração por aqui: o custo conta uma vez só.
+ * - **Resultado** = frete − despesas − combustível − frete contratado −
+ *   remuneração do motorista. Adiantamento não é custo: é
  *   dinheiro entregue por conta das despesas, e o quadro mostra quanto sobrou
  *   ou faltou dele.
  *
@@ -229,6 +235,8 @@ export type DadosDoAcerto = {
   adiantamentos: readonly { amount: number }[];
   /** O custo do frete contratado com o parceiro (`valoresDoContrato(...).custo`). Sem contrato, ou com ele cancelado, zero. */
   freteContratado?: number;
+  /** A remuneração variável do motorista e do ajudante na viagem (`remuneracaoDasViagens(...).total`). Sem ela, zero. */
+  remuneracao?: number;
   departureOdometer?: number | null;
   returnOdometer?: number | null;
 };
@@ -246,6 +254,8 @@ export type AcertoDaViagem = {
   combustivel: number;
   /** O custo do contrato com o parceiro dono do veículo; zero em viagem de frota própria. */
   freteContratado: number;
+  /** A remuneração variável do motorista e do ajudante; zero sem forma de remuneração ou em viagem de motorista de parceiro com contrato. */
+  remuneracao: number;
   custoTotal: number;
   resultado: number;
   /** % do frete que sobrou; `null` sem frete. */
@@ -281,7 +291,8 @@ export function acertoDaViagem(dados: DadosDoAcerto): AcertoDaViagem {
 
   const combustivel = abastecimentos.reduce((soma, abastecimento) => soma + abastecimento.totalCost, 0);
   const freteContratado = dados.freteContratado ?? 0;
-  const custoTotal = aprovadas + combustivel + freteContratado;
+  const remuneracao = dados.remuneracao ?? 0;
+  const custoTotal = aprovadas + combustivel + freteContratado + remuneracao;
   const resultado = frete - custoTotal;
   const km = kmRodados(dados.departureOdometer, dados.returnOdometer);
 
@@ -296,6 +307,7 @@ export function acertoDaViagem(dados: DadosDoAcerto): AcertoDaViagem {
     pendentes: { quantidade: pendentes.quantidade, total: centavos(pendentes.total) },
     combustivel: centavos(combustivel),
     freteContratado: centavos(freteContratado),
+    remuneracao: centavos(remuneracao),
     custoTotal: centavos(custoTotal),
     resultado: centavos(resultado),
     margem: frete === 0 ? null : umaCasa((resultado / frete) * 100),

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { normalizeTaxId } from "@/lib/tracking";
 import { DRIVER_OMIT, DRIVER_USER_SELECT } from "@/lib/usuarios";
+import { formasDoMotorista } from "@/lib/remuneracao";
 
 // Validação dos cadastros de clientes, motoristas e veículos. As rotas gravam
 // só o que sai destes schemas: documento e placa já normalizados, texto vazio
@@ -324,8 +325,10 @@ export const updateDriverSchema = z
       phone: driverPhone,
       carrierId: driverCarrierId,
       active: activeFlag.optional(),
-      // Só o administrador manda este campo: a rota recusa dos demais perfis.
+      // Só quem altera os valores da equipe manda estes campos: a rota recusa dos demais perfis.
       commissionPct,
+      // Diária, valor por km, por entrega e fixo por viagem (src/lib/remuneracao.ts). Vazio ou `null` tira a forma.
+      ...formasDoMotorista,
     },
     INVALID_BODY,
   )
@@ -347,6 +350,7 @@ const vehicleType = z.string("Informe o tipo.").trim().min(1, "Informe o tipo.")
 export const INACTIVE_DRIVER_MESSAGE = "Motorista inativo não pode ser o motorista padrão.";
 
 const YEAR_MIN = 1950;
+const CUBAGEM_MESSAGE = "A cubagem útil precisa ser um número de 0 a 1000 m³.";
 
 const vehicleYear = z.preprocess(
   fromFormNumber,
@@ -398,6 +402,8 @@ export const VEHICLE_FISCAL_FIELDS = ["renavam", "tareKg", "wheelType", "bodyTyp
 const vehicleOptionalFields = {
   capacityKg: optionalAmount("A capacidade precisa ser um número maior ou igual a zero."),
   maxWeight: optionalAmount("O peso máximo precisa ser um número maior ou igual a zero."),
+  // Cubagem útil em m³: com a capacidade em kg, é o que a montagem da viagem confere (src/lib/ocupacao.ts).
+  cubicCapacity: z.preprocess(fromFormNumber, z.number(CUBAGEM_MESSAGE).min(0, CUBAGEM_MESSAGE).max(1000, CUBAGEM_MESSAGE).nullish()),
   year: vehicleYear,
   // Vazio ou `null` desvincula o motorista.
   defaultDriverId: optionalText(64, "Motorista inválido."),

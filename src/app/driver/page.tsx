@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Loader2, Route, Truck, Package, ChevronRight, Clock, MapPin, Camera } from "lucide-react";
+import { Loader2, Route, Truck, Package, ChevronRight, Clock, MapPin, Camera, Wallet } from "lucide-react";
 import type { ComprovanteParaRefazer } from "@/lib/comprovantes";
+import { formatCurrency } from "@/lib/format";
+import type { RemuneracaoDoMotorista } from "@/lib/remuneracao";
 import { buscarComprovantesDoMotorista } from "@/lib/comprovantes-motorista";
 
 export default function DriverHome() {
@@ -12,6 +14,8 @@ export default function DriverHome() {
   // Comprovantes que a conferência devolveu a este motorista. A mesma consulta
   // traz o perfil da empresa, que fica lembrado no aparelho para a baixa sem sinal.
   const [refazer, setRefazer] = useState<ComprovanteParaRefazer[]>([]);
+  // O total do mês em aberto e quantas viagens finalizadas ele soma; nulo enquanto a empresa não liga.
+  const [ganhos, setGanhos] = useState<{ total: number; viagens: number } | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -22,6 +26,21 @@ export default function DriverHome() {
     void buscarComprovantesDoMotorista().then((resposta) => {
       if (ativo && resposta) setRefazer(resposta.refazer);
     });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  // Os ganhos do mês só aparecem se a empresa ligou isso: desligado, a rota responde
+  // `visivel: false` e o cartão não existe. Se a leitura falhar, a tela segue sem ele.
+  useEffect(() => {
+    let ativo = true;
+    fetch("/api/driver/remuneracao")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((corpo: RemuneracaoDoMotorista | null) => {
+        if (ativo && corpo?.visivel) setGanhos({ total: corpo.total, viagens: corpo.viagens.length });
+      })
+      .catch(() => {});
     return () => {
       ativo = false;
     };
@@ -49,6 +68,21 @@ export default function DriverHome() {
         <h2 className="text-xl font-bold font-outfit text-gray-900 mb-1">Olá, Motorista! 👋</h2>
         <p className="text-gray-500 text-sm">Bem-vindo à sua jornada de entregas de hoje.</p>
       </div>
+
+      {/* Só quando a empresa ligou em Empresa: o que as viagens finalizadas do mês renderam. */}
+      {ganhos && (
+        <Link href="/driver/remuneracao" data-meus-ganhos className="flex items-center gap-3 bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-100 active:scale-95 transition-transform">
+          <Wallet className="w-5 h-5 text-blue-600 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-gray-500">Meus ganhos no mês</p>
+            <p className="font-bold text-gray-900">{formatCurrency(ganhos.total)}</p>
+          </div>
+          <span className="text-xs text-gray-500 shrink-0">
+            {ganhos.viagens} {ganhos.viagens === 1 ? "viagem" : "viagens"}
+          </span>
+          <ChevronRight className="w-5 h-5 text-blue-600 shrink-0" />
+        </Link>
+      )}
 
       {refazer.length > 0 && (
         <div data-comprovantes-para-refazer className="space-y-2">

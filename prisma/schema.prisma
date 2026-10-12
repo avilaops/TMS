@@ -54,6 +54,10 @@ model Tenant {
   // assinatura opcionais), ECOMMERCE (foto da carga no local) ou B2B (foto do
   // canhoto assinado). Ver src/lib/comprovantes.ts.
   podProfile      String @default("LIVRE")
+  // O aplicativo do motorista mostra a ele a remuneração variável das viagens
+  // dele (só leitura)? Desligado por padrão: o dono pode não querer mostrar.
+  // Ver src/lib/remuneracao.ts.
+  driverPayVisible Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -112,6 +116,7 @@ model Tenant {
   mdfes              Mdfe[]
   mdfeEvents         MdfeEvent[]
   cteEvents          CteEvent[]
+  crewPayClosings    CrewPayClosing[]
 }
 
 model User {
@@ -154,6 +159,7 @@ model User {
   mdfeEventsCreated    MdfeEvent[]
   cteEventsCreated     CteEvent[]
   subcontractDocumentsCreated SubcontractDocument[]
+  crewPayClosings      CrewPayClosing[] @relation("CrewPayClosingClosedBy")
 
   @@index([clientId])
 
@@ -325,6 +331,14 @@ model Driver {
   // Percentual do frete entregue que vira comissão. Nulo = sem comissão. Só o
   // administrador lê e altera (src/lib/equipe.ts).
   commissionPct Float?
+  // As outras formas de remuneração variável, todas opcionais e somadas à
+  // comissão: R$ por dia de viagem, por km rodado, por entrega feita e fixo
+  // por viagem. Nulo = não usa a forma. Dinheiro, como a comissão: só lê e
+  // altera quem lê e altera os valores da equipe (src/lib/remuneracao.ts).
+  dailyRate       Float?
+  perKmRate       Float?
+  perDeliveryRate Float?
+  perTripRate     Float?
   // O parceiro de transporte de quem este motorista é (agregado ou terceiro).
   // Nulo = motorista da própria empresa.
   carrierId String?
@@ -340,6 +354,7 @@ model Driver {
   fuelings  Fueling[]
   absences  Absence[]
   advances  CrewAdvance[]
+  payClosings CrewPayClosing[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -354,6 +369,9 @@ model Vehicle {
   type         String
   capacity     Float?
   maxWeight    Float?
+  // Cubagem útil do baú ou da carroceria, em m³. Com `capacity` (kg), é o que
+  // a montagem da viagem confere contra as cargas (src/lib/ocupacao.ts).
+  cubicCapacity Float?
   year         Int?
   driverId     String?
   status       String   @default("AVAILABLE") // AVAILABLE, ON_ROUTE, MAINTENANCE
@@ -653,6 +671,8 @@ model FinancialTransaction {
   tripExpense TripExpense?
   // O pagamento de frete contratado que lançou esta despesa (src/lib/frete-contratado.ts).
   freightPayment FreightPayment?
+  // O fechamento mensal de remuneração variável que lançou esta despesa (src/lib/remuneracao.ts).
+  crewPayClosing CrewPayClosing?
   // A linha do extrato bancário com que este lançamento foi conciliado.
   statementLine BankStatementLine?
 
@@ -798,6 +818,10 @@ model Helper {
   cpf       String   // só dígitos
   phone     String?
   active    Boolean  @default(true)
+  // Remuneração variável do ajudante: R$ por dia de viagem e fixo por viagem.
+  // Nulo = não usa a forma. Dinheiro: só quem lê os valores da equipe recebe.
+  dailyRate   Float?
+  perTripRate Float?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -805,6 +829,7 @@ model Helper {
   absences  Absence[]
   advances  CrewAdvance[]
   manifests Manifest[]
+  payClosings CrewPayClosing[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -865,6 +890,41 @@ model CrewAdvance {
   @@index([driverId])
   @@index([helperId])
   @@index([manifestId])
+}
+
+// Fechamento mensal da remuneração variável de um motorista ou de um ajudante
+// (src/lib/remuneracao.ts). A linha existe enquanto o mês está fechado: guarda
+// os valores congelados (o variável, os adiantamentos descontados, o saldo e,
+// em `details`, cada viagem e cada adiantamento como estavam) e quem fechou.
+// Reabrir apaga a linha e o lançamento que ela fez no Financeiro, e a
+// auditoria guarda o que havia. Um por pessoa e mês.
+model CrewPayClosing {
+  tenantId    String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String    @id @default(uuid())
+  driverId    String?
+  helperId    String?
+  month       String    // AAAA-MM, no relógio do Brasil
+  variableTotal Float   // a soma do variável das viagens finalizadas no mês
+  advancesTotal Float   // os adiantamentos e vales em aberto do mês, descontados
+  balance     Float     // variável − adiantamentos (negativo quando a pessoa ficou devendo)
+  details     Json      // { viagens: [...], adiantamentos: [...] } como estavam no fechamento
+  closedById  String?
+  closedByName String
+  closedAt    DateTime  @default(now())
+  // A despesa que o fechamento lançou no Financeiro (o saldo a pagar). Nulo
+  // quando não havia saldo a pagar, ou se o lançamento foi apagado por lá.
+  transactionId String? @unique
+
+  // Relations
+  driver      Driver?   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: Cascade)
+  closedBy    User?     @relation("CrewPayClosingClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, driverId, month])
+  @@unique([tenantId, helperId, month])
 }
 
 // Comprovante da entrega de uma carga, registrado pelo motorista na baixa.

@@ -3,7 +3,8 @@ import { requireStaff } from '@/lib/staff';
 import { pode } from '@/lib/permissoes';
 import prisma, { sistema, transacao } from '@/lib/prisma';
 import { CARRIER_NOT_FOUND_MESSAGE, COMMISSION_ADMIN_ONLY, DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
-import { firstIssue } from '@/lib/usuarios';
+import { DRIVER_OMIT, firstIssue } from '@/lib/usuarios';
+import { CAMPOS_DAS_FORMAS, CAMPOS_DE_VALOR_DO_MOTORISTA, REMUNERACAO_SO_DE_QUEM_PAGA } from '@/lib/remuneracao';
 import { dadosDoConvite, liberarAcesso, revogarAcesso } from '@/lib/acessos';
 import { nadaMudou, origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
 
@@ -30,6 +31,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (data.commissionPct !== undefined && !alteraComissao) {
       return NextResponse.json({ error: COMMISSION_ADMIN_ONLY }, { status: 403 });
     }
+    // Diária, km, entrega e fixo por viagem seguem a regra da comissão.
+    if (CAMPOS_DE_VALOR_DO_MOTORISTA.some((campo) => data[campo] !== undefined) && !alteraComissao) {
+      return NextResponse.json({ error: REMUNERACAO_SO_DE_QUEM_PAGA }, { status: 403 });
+    }
 
     // Nome e e-mail ficam no User; o resto, no Driver. Uma transação só:
     // ou muda tudo, ou não muda nada.
@@ -49,6 +54,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           phone: true,
           active: true,
           commissionPct: true,
+          dailyRate: true,
+          perKmRate: true,
+          perDeliveryRate: true,
+          perTripRate: true,
           carrierId: true,
           user: { select: { role: true, email: true, name: true } },
         }
@@ -103,12 +112,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           phone: data.phone,
           active: data.active,
           commissionPct: data.commissionPct,
+          dailyRate: data.dailyRate,
+          perKmRate: data.perKmRate,
+          perDeliveryRate: data.perDeliveryRate,
+          perTripRate: data.perTripRate,
           carrierId: data.carrierId,
         },
         include: DRIVER_PUBLIC_INCLUDE,
       });
 
-      const campos = (m: { cnh: string | null; category: string | null; cnhExpiry: Date | null; phone: string | null; active: boolean; commissionPct: number | null; carrierId: string | null }, u: { name: string; email: string }) => ({
+      type Cadastro = { cnh: string | null; category: string | null; cnhExpiry: Date | null; phone: string | null; active: boolean; commissionPct: number | null; dailyRate: number | null; perKmRate: number | null; perDeliveryRate: number | null; perTripRate: number | null; carrierId: string | null };
+      const campos = (m: Cadastro, u: { name: string; email: string }) => ({
         name: u.name,
         email: u.email,
         cnh: m.cnh,
@@ -117,8 +131,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         phone: m.phone,
         active: m.active,
         commissionPct: m.commissionPct,
+        dailyRate: m.dailyRate,
+        perKmRate: m.perKmRate,
+        perDeliveryRate: m.perDeliveryRate,
+        perTripRate: m.perTripRate,
         carrierId: m.carrierId,
       });
+      // O cadastro sem as formas de remuneração: é o que diz se só elas mudaram.
+      const semFormas = (cadastro: ReturnType<typeof campos>) => ({ ...cadastro, ...Object.fromEntries(CAMPOS_DAS_FORMAS.map((campo) => [campo, null])) });
       const antes = campos(target, target.user);
       const depois = campos(atualizado, atualizado.user);
       if (!nadaMudou(antes, depois)) {
@@ -127,22 +147,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         // Só o percentual mudou: a linha diz isso, em vez de um "alterado" genérico.
         const soComissao = !nadaMudou({ commissionPct: antes.commissionPct }, { commissionPct: depois.commissionPct })
           && nadaMudou({ ...antes, commissionPct: null }, { ...depois, commissionPct: null });
+        // Só as formas de remuneração mudaram (com ou sem a comissão junto).
+        const soRemuneracao = !soComissao && nadaMudou(semFormas(antes), semFormas(depois));
         await registrarAuditoria(tx, {
           ator: user,
           origem,
-          acao: desativou ? 'motorista.desativar' : reativou ? 'motorista.reativar' : soComissao ? 'motorista.comissao' : 'motorista.alterar',
+          acao: desativou ? 'motorista.desativar' : reativou ? 'motorista.reativar' : soComissao ? 'motorista.comissao' : soRemuneracao ? 'motorista.remuneracao' : 'motorista.alterar',
           entidade: 'motorista',
           entidadeId: id,
           resumo: soComissao
             ? `Comissão de ${depois.name} ${depois.commissionPct === null ? 'retirada' : `passou para ${depois.commissionPct}%`}`
-            : `Motorista ${depois.name} ${desativou ? 'desativado' : reativou ? 'reativado' : 'alterado'}`,
+            : soRemuneracao
+              ? `Remuneração variável de ${depois.name} alterada`
+              : `Motorista ${depois.name} ${desativou ? 'desativado' : reativou ? 'reativado' : 'alterado'}`,
           antes,
           depois,
         });
       }
 
-      // O percentual só volta para quem pode vê-lo.
-      return veComissao ? atualizado : { ...atualizado, commissionPct: undefined };
+      // O percentual e as outras formas de remuneração só voltam para quem pode vê-los.
+      return veComissao ? atualizado : { ...atualizado, ...Object.fromEntries(Object.keys(DRIVER_OMIT).map((campo) => [campo, undefined])) };
     });
 
     // E-mail novo é outra conta no login único: libera a nova e revoga a

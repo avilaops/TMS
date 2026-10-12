@@ -14,6 +14,8 @@ export interface Minuta {
   destination: string;
   volumes: number;
   weight: number;
+  /** Cubagem da carga, em m³; nula quando não foi informada. Entra na ocupação do veículo (src/lib/ocupacao.ts). */
+  cubicMeters?: number | null;
   client: Cliente;
   status: string;
   manifestId: string | null;
@@ -41,6 +43,9 @@ export interface Veiculo {
   model: string;
   type: string;
   status: string;
+  /** Capacidade em kg e cubagem útil em m³; nulas quando o cadastro não tem. */
+  capacity?: number | null;
+  cubicCapacity?: number | null;
   /** O parceiro de transporte dono do veículo, quando há (src/lib/parceiros.ts). */
   carrierId?: string | null;
 }
