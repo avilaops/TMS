@@ -1,6 +1,19 @@
 import { campo, filho, type No } from "@/lib/nfe";
 import type { Ambiente } from "@/lib/cte";
-import { CSTAT as CSTAT_DO_CTE, achar, compactar, corpoDaResposta, type Protocolo, type RespostaDaRecepcao, type RespostaDoEvento } from "@/lib/cte/sefaz";
+import {
+  CSTAT as CSTAT_DO_CTE,
+  FINALIZADOS_DO_CTE,
+  achar,
+  compactar,
+  corpoDaResposta,
+  decidir,
+  type Decisao,
+  type Esperado,
+  type Protocolo,
+  type RespostaDaRecepcao,
+  type RespostaDoEvento,
+  type SituacaoFinal,
+} from "@/lib/cte/sefaz";
 import { SEFAZ_RESPOSTA_INVALIDA, SefazError, chamarSoap, type Credencial } from "@/lib/cte/soap";
 import { escapar } from "@/lib/cte/texto";
 import { FORMATO_DA_CHAVE } from "@/lib/mdfe/chave";
@@ -15,8 +28,9 @@ import { VERSAO_DO_MDFE, mensagemDeConsulta, mensagemDeNaoEncerrados, mensagemDe
  * O transporte é o do CT-e (src/lib/cte/soap.ts: SOAP 1.2, TLS 1.2 com
  * autenticação mútua, GZip + Base64 na recepção), com o campo `mdfeDadosMsg`.
  * A decisão sobre o que a resposta da recepção significa também é a do CT-e
- * (`decidir`, em src/lib/cte/sefaz.ts): os códigos 100, 204, 539, 108 e 109
- * querem dizer a mesma coisa nos dois documentos.
+ * (`decidir`, em src/lib/cte/sefaz.ts): os códigos 100, 101, 204, 218, 539, 108
+ * e 109 querem dizer a mesma coisa nos dois documentos. O MDF-e acrescenta o
+ * encerramento (132 e 609): use `decidirMdfe`.
  *
  * REGRA: "autorizado" só existe com `cStat` 100 E número de protocolo, para a
  * chave e o ambiente que foram enviados.
@@ -24,7 +38,28 @@ import { VERSAO_DO_MDFE, mensagemDeConsulta, mensagemDeNaoEncerrados, mensagemDe
  * Só o servidor importa este arquivo.
  */
 
-/** Códigos de resposta que o MDF-e trata de forma própria (MOC 3.00b), além dos que divide com o CT-e. */
+/**
+ * Códigos de resposta que o MDF-e trata de forma própria, além dos que divide
+ * com o CT-e. Conferidos, em 12/10/2026, contra o MOC do MDF-e 3.00b (Visão
+ * Geral e Anexo I, de 07/12/2022) e as NTs 2023.001, 2024.001 e 2025.001:
+ *
+ * | cStat | Onde no MOC | O que quer dizer |
+ * | --- | --- | --- |
+ * | 100 | Visão Geral, 4.3.6 | Autorizado o uso (a recepção e a consulta trazem o `protMDFe`) |
+ * | 101 e 132 | Visão Geral, 4.3.6 | Consulta: o MDF-e está CANCELADO ou ENCERRADO (o `protMDFe` que vem junto é o da autorização) |
+ * | 107, 108, 109 | Visão Geral, 4.5.5 e 4.5.6 (regras I02 e I03) e regras B03 e B04 | Serviço em operação, paralisado momentaneamente, paralisado sem previsão |
+ * | 111 e 112 | Visão Geral, 4.4.6 | Não encerrados: localizados (com a relação) e não localizados |
+ * | 134, 135, 136 | Visão Geral, 5.1.7 | Evento guardado: 135 vinculado ao MDF-e; 134 vinculado, com alerta da situação do MDF-e; 136 guardado SEM vínculo |
+ * | 204 | Anexo I, regra F82 | Duplicidade: este mesmo MDF-e (mesma chave) já está autorizado |
+ * | 217 | Visão Geral, regra G04 | Consulta: o MDF-e não consta |
+ * | 218 e 609 | Anexo I, regras F83 e F84; Visão Geral, regras K dos eventos | O MDF-e desta chave já está cancelado, ou já está encerrado |
+ * | 462, 611, 662, 686 | Anexo I, regras F87, F85, F88 e F86 | Há MDF-e anterior não encerrado (placa há mais de 5 dias, placa + tipo + UF, sentido oposto, emitente há mais de 30 dias) |
+ * | 539 | Anexo I, regra F81 | Duplicidade com diferença na chave: o número foi usado por outro documento |
+ *
+ * Os códigos 103, 104 e 105 (lote recebido, processado, em processamento) eram
+ * da recepção assíncrona, desligada em 30/06/2024 (NT 2024.001): não são
+ * tratados.
+ */
 export const CSTAT = {
   ...CSTAT_DO_CTE,
   /** Consulta de não encerrados: há MDF-e em aberto, e a resposta traz a relação. */
@@ -39,6 +74,20 @@ export const CSTAT = {
   NAO_ENCERRADO_HA_5_DIAS: 462,
   NAO_ENCERRADO_NO_SENTIDO_OPOSTO: 662,
 } as const;
+
+/**
+ * Os códigos que dizem que o MDF-e da chave já não está "autorizado" na SEFAZ:
+ * cancelado (101 na consulta, 218 na recepção) ou encerrado (132 na consulta,
+ * 609 na recepção). Um MDF-e assim não é gravado como autorizado.
+ */
+export const FINALIZADOS_DO_MDFE: Readonly<Record<number, SituacaoFinal>> = {
+  ...FINALIZADOS_DO_CTE,
+  [CSTAT.ENCERRADO]: "encerrado",
+  [CSTAT.JA_ENCERRADO]: "encerrado",
+};
+
+/** `decidir` (src/lib/cte/sefaz.ts) com os códigos de documento finalizado do MDF-e. */
+export const decidirMdfe = (resposta: RespostaDaRecepcao, esperado: Esperado): Decisao => decidir(resposta, esperado, FINALIZADOS_DO_MDFE);
 
 /** As rejeições que querem dizer "feche o MDF-e anterior primeiro". */
 export const REJEICOES_POR_NAO_ENCERRADO: readonly number[] = [CSTAT.NAO_ENCERRADO_PARA_A_PLACA, CSTAT.NAO_ENCERRADO_HA_30_DIAS, CSTAT.NAO_ENCERRADO_HA_5_DIAS, CSTAT.NAO_ENCERRADO_NO_SENTIDO_OPOSTO];

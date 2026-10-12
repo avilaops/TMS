@@ -8,9 +8,18 @@ import type { Ambiente } from "@/lib/cte";
  * 3.2.2).
  *
  * FONTE: Portal do MDF-e, "Serviços" → "Relação de Serviços Web"
- * (https://dfe-portal.svrs.rs.gov.br/Mdfe/Servicos), lida em 10/10/2026. O
- * endereço do QR Code é o mesmo nos dois ambientes (a página e o MOC, item
- * 9.2.1, dizem isso: quem separa é o `tpAmb` da própria URL).
+ * (https://dfe-portal.svrs.rs.gov.br/Mdfe/Servicos), lida em 10/10/2026 e
+ * conferida de novo, endereço por endereço, em 12/10/2026 (sem diferença: os
+ * cinco serviços abaixo, nos dois ambientes, e o QR Code). O endereço do QR
+ * Code é o mesmo nos dois ambientes (a página e o MOC, item 9.2.1, dizem isso:
+ * quem separa é o `tpAmb` da própria URL).
+ *
+ * Nome, método e espaço de nomes de cada serviço são os do MOC 3.00b (Visão
+ * Geral, itens 4.2 a 4.5 e 5.1, e os exemplos de envelope do item 3.4:
+ * `http://www.portalfiscal.inf.br/mdfe/wsdl/<serviço>`). NÃO CONFERIDO no
+ * WSDL: a SVRS responde 403 a quem pede o `?wsdl` sem certificado (tentado em
+ * 12/10/2026 nos cinco serviços), e a ação SOAP (`.../<serviço>/<método>`) não
+ * está escrita no MOC: segue o padrão dos serviços `.asmx`.
  *
  * Os serviços assíncronos (`MDFeRecepcao` e `MDFeRetRecepcao`) foram desligados
  * em 30/06/2024 (NT 2024.001): só existe a recepção síncrona.

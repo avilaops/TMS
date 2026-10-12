@@ -10,6 +10,11 @@ import { respostaDeErro } from '../../../erro';
  * (mdfeProc). Quem baixa o XML baixa o DAMDFE: a mesma capacidade. MDF-e sem
  * autorização (rascunho, rejeitado) e MDF-e cancelado não têm DAMDFE: 409.
  *
+ * O MDF-e emitido em contingência e ainda não transmitido também tem DAMDFE,
+ * a partir do XML assinado (sem protocolo): é o papel que acompanha a carga,
+ * com "EMISSÃO EM CONTINGÊNCIA" impresso pelo serviço fiscal. O arquivo leva
+ * CONTINGENCIA no nome.
+ *
  * Nada é gravado. Sem `FISCAL_MCP_URL` a rota responde 503; serviço fora do ar,
  * XML recusado ou protocolo não reconhecido pelo serviço, 502; demora, 504. O
  * arquivo de homologação leva no nome que não tem valor fiscal.
@@ -20,8 +25,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   try {
     const { id } = await params;
-    const { chave, xml, homologacao } = await damdfeDoMdfe(await empresaDaSessao(), id);
-    return await respostaDoDamdfe(chave, xml, homologacao);
+    const { chave, xml, homologacao, contingencia } = await damdfeDoMdfe(await empresaDaSessao(), id);
+    return await respostaDoDamdfe(chave, xml, homologacao, contingencia);
   } catch (erro) {
     return respostaDeErro(erro, 'gerar o DAMDFE');
   }

@@ -1,3 +1,4 @@
+import { createSign, createVerify } from "node:crypto";
 import { SignedXml } from "xml-crypto";
 
 /**
@@ -58,6 +59,29 @@ export function assinarXml(xml: string, alvo: AlvoDaAssinatura, chave: ChaveDeAs
   } catch (erro) {
     // Só a mensagem da biblioteca: ela não leva a chave.
     throw new AssinaturaError(`Não foi possível assinar o XML: ${erro instanceof Error ? erro.message : "erro desconhecido"}`);
+  }
+}
+
+/**
+ * A assinatura de um texto curto, fora do XML: RSA-SHA1 em Base64. É o
+ * parâmetro `sign` do QR Code do MDF-e emitido em contingência, que assina a
+ * chave de acesso "a partir do certificado digital que assina o MDFe" (MOC do
+ * MDF-e 3.00b, Visão Geral, item 9.2.2).
+ */
+export function assinarTexto(texto: string, chavePem: string): string {
+  try {
+    return createSign("RSA-SHA1").update(texto, "utf8").sign(chavePem, "base64");
+  } catch (erro) {
+    throw new AssinaturaError(`Não foi possível assinar: ${erro instanceof Error ? erro.message : "erro desconhecido"}`);
+  }
+}
+
+/** Confere uma assinatura de `assinarTexto` contra o certificado. */
+export function assinaturaDoTextoConfere(texto: string, assinatura: string, certificadoPem: string): boolean {
+  try {
+    return createVerify("RSA-SHA1").update(texto, "utf8").verify(certificadoPem, assinatura, "base64");
+  } catch {
+    return false;
   }
 }
 

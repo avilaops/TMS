@@ -69,7 +69,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-const CHAVE_CTE = "35261011222333000181570010000000401482159377";
+const CHAVE_CTE = "35261099000108000141570010000000401482159377";
 
 const carga = (extra: Partial<CargaParaCte> = {}): CargaParaCte => ({
   id: "c1",
@@ -115,9 +115,9 @@ const resumo: ResumoDoCte = {
   serie: 1,
   numeroPrevisto: 40,
   cfop: "5353",
-  emitente: { nome: "Transportadora de Teste Ltda", documento: "11.222.333/0001-81", ie: "123456789012", endereco: "Rua das Flores, 120 - Centro, Mirassol - SP" },
+  emitente: { nome: "Transportadora de Teste Ltda", documento: "99.000.108/0001-41", ie: "123456789012", endereco: "Rua das Flores, 120 - Centro, Mirassol - SP" },
   remetente: { nome: "Fábrica de Tintas LTDA", documento: "99.444.333/0001-81", ie: "110042490114", endereco: "Av. Brasil, 1500 - Distrito Industrial, São José do Rio Preto - SP" },
-  destinatario: { nome: "Mercado Bom Preço", documento: "07.526.557/0001-00", ie: null, endereco: "Rua Um, 10 - Centro, Mirassol - SP" },
+  destinatario: { nome: "Mercado Bom Preço", documento: "99.000.703/0001-87", ie: null, endereco: "Rua Um, 10 - Centro, Mirassol - SP" },
   tomador: { papel: "REMETENTE", nome: "Fábrica de Tintas LTDA", documento: "99.444.333/0001-81", contribuinte: "1" },
   origem: "São José do Rio Preto - SP",
   destino: "Mirassol - SP",
@@ -361,7 +361,7 @@ describe("tela de CT-e", () => {
 /* ------------------------------ Empresa → Fiscal ------------------------------ */
 
 const DADOS: DadosFiscais = {
-  cnpj: "11222333000181",
+  cnpj: "99000108000141",
   ie: "123456789012",
   razaoSocial: "Transportadora de Teste Ltda",
   fantasia: null,
@@ -394,7 +394,7 @@ const DADOS: DadosFiscais = {
   cofins: 0,
 };
 
-const CERTIFICADO = { titular: "TRANSPORTADORA DE TESTE LTDA:11222333000181", cnpj: "11222333000181", validoDe: "2026-01-01T00:00:00.000Z", validoAte: "2027-01-01T00:00:00.000Z", vencido: false, confere: "MESMO_CNPJ" as const, enviadoEm: "2026-10-10T12:00:00.000Z" };
+const CERTIFICADO = { titular: "TRANSPORTADORA DE TESTE LTDA:99000108000141", cnpj: "99000108000141", validoDe: "2026-01-01T00:00:00.000Z", validoAte: "2027-01-01T00:00:00.000Z", vencido: false, confere: "MESMO_CNPJ" as const, enviadoEm: "2026-10-10T12:00:00.000Z" };
 
 /** As outras seções da tela da Empresa, que não são o assunto destes testes. */
 const RESTO_DA_EMPRESA = {
@@ -419,7 +419,7 @@ describe("Empresa → Fiscal", () => {
     expect(secao(tela).className).not.toContain("hidden md:block");
     expect([...secao(tela).querySelectorAll("[data-parte-fiscal]")].map((parte) => parte.textContent)).toEqual(["Emitente", "Tributos", "Certificado"]);
 
-    expect(campo(tela, "cnpj").value).toBe("11222333000181");
+    expect(campo(tela, "cnpj").value).toBe("99000108000141");
     expect(campo(tela, "cidade").value).toBe("Mirassol");
     expect(campo(tela, "proximoNumero").value).toBe("41");
     expect(campo(tela, "ibsCbsCst").value).toBe("000");
@@ -434,7 +434,7 @@ describe("Empresa → Fiscal", () => {
       ...RESTO_DA_EMPRESA,
       "/api/empresa/fiscal": { body: { disponivel: true, dados: DADOS, certificado: null } },
       "PUT /api/empresa/fiscal": (body) =>
-        body?.ambiente === "PRODUCAO" && body.confirmacaoDoCnpj !== "11.222.333/0001-81"
+        body?.ambiente === "PRODUCAO" && body.confirmacaoDoCnpj !== "99.000.108/0001-41"
           ? { status: 400, body: { error: "Para emitir em produção, digite o CNPJ do emitente no campo de confirmação." } }
           : { body: { disponivel: true, dados: { ...DADOS, ambiente: body?.ambiente, proximoNumero: Number(body?.proximoNumero) }, certificado: null } },
     });
@@ -445,14 +445,14 @@ describe("Empresa → Fiscal", () => {
     await digitar(campo(tela, "proximoNumero"), "50");
     await enviar(form);
     await ate(() => expect(secao(tela).querySelector('[role="status"]')?.textContent).toBe("Dados fiscais salvos."));
-    expect(pedidos.at(-1)).toMatchObject({ method: "PUT", url: "/api/empresa/fiscal", body: { cnpj: "11222333000181", proximoNumero: "50", ambiente: "HOMOLOGACAO", ibsCbsCst: "000", ibsCbsClasse: "000001", ibsUf: "0,1", cbs: "0,9" } });
+    expect(pedidos.at(-1)).toMatchObject({ method: "PUT", url: "/api/empresa/fiscal", body: { cnpj: "99000108000141", proximoNumero: "50", ambiente: "HOMOLOGACAO", ibsCbsCst: "000", ibsCbsClasse: "000001", ibsUf: "0,1", cbs: "0,9" } });
 
     await digitar(campo(tela, "ambiente"), "PRODUCAO");
     expect(secao(tela).querySelector("[data-confirmar-producao]")!.textContent).toContain("Produção emite CT-e com valor fiscal");
     await digitar(campo(tela, "confirmacaoDoCnpj"), "outro");
     await enviar(form);
     await ate(() => expect(secao(tela).querySelector('[role="alert"]')?.textContent).toContain("digite o CNPJ do emitente"));
-    await digitar(campo(tela, "confirmacaoDoCnpj"), "11.222.333/0001-81");
+    await digitar(campo(tela, "confirmacaoDoCnpj"), "99.000.108/0001-41");
     await enviar(form);
     await ate(() => expect(secao(tela).querySelector('[role="status"]')?.textContent).toBe("Dados fiscais salvos."));
     // Já em produção, o campo de confirmação some.
@@ -552,8 +552,8 @@ describe("Empresa → Fiscal", () => {
     await enviar(bloco.querySelector("form")!);
     await ate(() => expect(bloco.querySelector("[data-certificado-guardado]")).not.toBeNull());
     expect(pedidos.at(-1)).toMatchObject({ method: "PUT", url: "/api/empresa/fiscal/certificado", body: { arquivo: "MIIBAv8=", senha: "senha-certa" } });
-    expect(bloco.querySelector("[data-certificado-guardado]")!.textContent).toContain("TRANSPORTADORA DE TESTE LTDA:11222333000181");
-    expect(bloco.querySelector("[data-certificado-guardado]")!.textContent).toContain("CNPJ 11222333000181 · válido até 01/01/2027 · confere com o emitente");
+    expect(bloco.querySelector("[data-certificado-guardado]")!.textContent).toContain("TRANSPORTADORA DE TESTE LTDA:99000108000141");
+    expect(bloco.querySelector("[data-certificado-guardado]")!.textContent).toContain("CNPJ 99000108000141 · válido até 01/01/2027 · confere com o emitente");
     // A senha sai da tela assim que é guardada, e a tela não mostra nada do arquivo.
     expect(bloco.querySelector<HTMLInputElement>('[data-campo="senha"]')!.value).toBe("");
     expect(tela.textContent).not.toContain("senha-certa");

@@ -44,7 +44,21 @@ import { enderecosDaUf } from "@/lib/cte/enderecos";
 import { TIPO_DO_CANCELAMENTO, montarCancelamento, montarCte, montarProcCte, type EmitenteDoCte } from "@/lib/cte/montar";
 import { prepararCte, type CargaDoCte, type Preparo } from "@/lib/cte/preparar";
 import { responsavelTecnico } from "@/lib/cte/responsavel-tecnico";
-import { CSTAT, consultarCte, decidir, enviarCte, enviarEvento, eventoRegistrado, statusDoServico, type Decisao, type Destino, type Esperado, type Protocolo } from "@/lib/cte/sefaz";
+import {
+  CSTAT,
+  consultarCte,
+  decidir,
+  enviarCte,
+  enviarEvento,
+  eventoGuardadoComRessalva,
+  eventoRegistrado,
+  fraseDoEventoComRessalva,
+  statusDoServico,
+  type Decisao,
+  type Destino,
+  type Esperado,
+  type Protocolo,
+} from "@/lib/cte/sefaz";
 import { SefazError, type Credencial } from "@/lib/cte/soap";
 import { danfeLigado } from "@/lib/fiscal-mcp";
 import { municipioDoTexto } from "@/lib/municipios";
@@ -769,7 +783,8 @@ export async function emitirCte(empresa: Empresa, collectionId: string, quem: Qu
     let jaEstaLa: Decisao | null = null;
     if (preparado.retomar) {
       const consulta = decidir(await consultarCte(destino, preparado.chave), esperado);
-      if (consulta.tipo === "autorizado") jaEstaLa = consulta;
+      // Autorizado, ou já cancelado lá (101): a consulta esclareceu, e nada é reenviado.
+      if (consulta.tipo === "autorizado" || consulta.tipo === "finalizado") jaEstaLa = consulta;
       // "Não consta" é o único caso em que o mesmo XML é enviado de novo. Qualquer outra resposta não
       // esclarece se o envio anterior valeu: o CT-e continua "sem resposta", e nada novo é montado.
       else if (!(consulta.tipo === "rejeitado" && consulta.cStat === CSTAT.NAO_CONSTA)) {
@@ -781,7 +796,8 @@ export async function emitirCte(empresa: Empresa, collectionId: string, quem: Qu
     // 204: este mesmo CT-e já está autorizado lá. O protocolo vem pela consulta.
     if (decisao.tipo === "ja-autorizado") {
       const consulta = decidir(await consultarCte(destino, preparado.chave), esperado);
-      decisao = consulta.tipo === "autorizado" ? consulta : { tipo: "incoerente", motivo: `${frase(decisao.cStat, decisao.motivo)} A consulta pela chave não devolveu o protocolo.` };
+      decisao =
+        consulta.tipo === "autorizado" || consulta.tipo === "finalizado" ? consulta : { tipo: "incoerente", motivo: `${frase(decisao.cStat, decisao.motivo)} A consulta pela chave não devolveu o protocolo.` };
     }
   } catch (erro) {
     if (!(erro instanceof SefazError)) {
@@ -809,6 +825,25 @@ export async function emitirCte(empresa: Empresa, collectionId: string, quem: Qu
     // Nada foi processado: o rascunho fica como estava antes deste envio.
     const cte = await gravarSemAutorizacao(empresa, preparado.id, { statusCode: decisao.cStat, statusReason: decisao.motivo, unanswered: preparado.retomar });
     return resultado(cte, false, `A SEFAZ não processou o CT-e: ${frase(decisao.cStat, decisao.motivo)}. Tente de novo mais tarde.`);
+  }
+
+  if (decisao.tipo === "finalizado") {
+    // A SEFAZ tem o CT-e desta chave, mas já cancelado lá (101 na consulta, 218 na recepção): só acontece quando o envio
+    // ficou sem resposta e o documento foi cancelado fora deste sistema. NÃO é gravado como autorizado. O número foi usado.
+    const cte = await gravarSemAutorizacao(empresa, preparado.id, { status: "REJECTED", statusCode: decisao.cStat, statusReason: decisao.motivo, unanswered: false, numberBurned: true });
+    await registrarAuditoriaDepois(empresa.db, {
+      ...quem,
+      acao: "cte.rejeitar",
+      entidade: "cte",
+      entidadeId: preparado.id,
+      resumo: `CT-e nº ${preparado.numero} da carga ${preparado.carga.trackingCode ?? ""} já está ${decisao.situacao} na SEFAZ: ${frase(decisao.cStat, decisao.motivo)}`,
+      depois: { number: preparado.numero, environment: preparado.ambiente, statusCode: decisao.cStat, collectionId: preparado.carga.id },
+    });
+    return resultado(
+      cte,
+      false,
+      `A SEFAZ informa que o CT-e nº ${preparado.numero} já está ${decisao.situacao} lá (${frase(decisao.cStat, decisao.motivo)}): ele não foi gravado como autorizado. O número foi usado: a próxima emissão usa o seguinte.`,
+    );
   }
 
   const numeroUsado = decisao.tipo === "numero-usado";
@@ -864,6 +899,12 @@ export async function cancelarCte(empresa: Empresa, cteId: string, justificativa
       // Um pedido anterior chegou lá e a resposta se perdeu: o CT-e está cancelado na SEFAZ.
       protocolo = null;
       quando = new Date();
+      retorno = resposta.xml;
+    } else if (eventoGuardadoComRessalva(resposta, { chave: cte.accessKey, tipo: TIPO_DO_CANCELAMENTO })) {
+      // 134 ou 136 (MOC 4.00, Visão Geral, item 5.1.7): a SEFAZ guardou o evento, com ressalva. Só vale como cancelamento se a consulta disser que o CT-e está cancelado.
+      if ((await consultarCte(destino, cte.accessKey)).cStat !== CSTAT.CANCELADO) throw new Refusal(fraseDoEventoComRessalva("o cancelamento", resposta), 409);
+      protocolo = resposta.protocolo;
+      quando = resposta.registradoEm ?? new Date();
       retorno = resposta.xml;
     } else {
       throw new Refusal(`A SEFAZ recusou o cancelamento: ${frase(resposta.cStat, resposta.motivo)}.`, 409);

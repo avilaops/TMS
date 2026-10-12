@@ -11,13 +11,18 @@ import {
   DATA_DE_ENCERRAMENTO_INVALIDA,
   DIAS_PARA_AVISAR_ENCERRAMENTO,
   EMISSAO_EM_ANDAMENTO,
+  EM_CONTINGENCIA_A_TRANSMITIR,
   FORA_DO_PRAZO,
   JA_AUTORIZADO,
   MDFE_NAO_ENCONTRADO,
+  PAGAMENTO_JA_INFORMADO,
+  PAGAMENTO_SO_DE_TAC_AGREGADO,
+  SEFAZ_EM_OPERACAO,
   SO_AUTORIZADO_CANCELA,
   SO_AUTORIZADO_ENCERRA,
   SO_AUTORIZADO_TEM_DAMDFE,
   SO_AUTORIZADO_TEM_XML,
+  SO_CONTINGENCIA_TRANSMITE,
   TRANSPORTE_JA_INICIADO,
   VIAGEM_NAO_ENCONTRADA,
   avisoDeViagemSemMdfe,
@@ -36,7 +41,8 @@ import { usarSefazDeTesteDoMdfe } from "../src/lib/mdfe/sefaz";
 import { chaveValida } from "../src/lib/nfe";
 import { EMPRESA_OUTRA, EMPRESA_PADRAO } from "./empresas-de-teste";
 import { REMETENTE, certificadoDeTeste, dadosDeExemplo, impressaoDigital, type CertificadoDeTeste } from "./cte-apoio";
-import { chaveDeExemplo, errosNoEsquemaDoMdfe, modalDoXml, subirSefazDoMdfe, type SefazDoMdfe } from "./mdfe-apoio";
+import { chaveDeExemplo, detalheDoEvento, errosNoEsquemaDoMdfe, modalDoXml, subirSefazDoMdfe, type SefazDoMdfe } from "./mdfe-apoio";
+import { assinaturaDoTextoConfere } from "../src/lib/cte/assinar";
 
 /**
  * Emissão de MDF-e, com banco: a configuração, a numeração e o caminho inteiro
@@ -58,7 +64,7 @@ const suite = temBanco ? describe : describe.skip;
 const PREFIXO = "teste-mdfe-";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
 const SEM_ID = "00000000-0000-0000-0000-000000000000";
-const CNPJ_DA_PADRAO = "11222333000181";
+const CNPJ_DA_PADRAO = "99000108000141";
 const SENHA = "senha-secreta-do-certificado-ZXCVBN";
 const CPF_DO_MOTORISTA = "52998224725";
 
@@ -66,7 +72,7 @@ type Perfil = "ADMIN" | "OPERATION" | "FINANCE" | "EXPEDITION" | "COMMERCIAL" | 
 type Corpo = Record<string, unknown> & { error?: string };
 
 const FORMULARIO = {
-  cnpj: "11.222.333/0001-81",
+  cnpj: "99.000.108/0001-41",
   ie: "123456789012",
   razaoSocial: `${PREFIXO}Transportadora Ltda`,
   fantasia: "Trans Teste",
@@ -91,7 +97,7 @@ const FORMULARIO = {
   ibsCbsClasse: "000001",
 };
 
-const SEGURO = { responsavel: "1", seguradora: "Seguradora de Teste S/A", cnpjDaSeguradora: "61.198.164/0001-60", apolice: "AP-2026-0001", averbacoes: ["AV-0001"] };
+const SEGURO = { responsavel: "1", seguradora: "Seguradora de Teste S/A", cnpjDaSeguradora: "99.000.502/0001-80", apolice: "AP-2026-0001", averbacoes: ["AV-0001"] };
 /** O que a transportadora informa na tela para um MDF-e com mais de um documento. */
 const ENTRADAS = { ciots: [{ codigo: "123456789012", documento: CNPJ_DA_PADRAO }], seguro: SEGURO };
 
@@ -119,6 +125,8 @@ suite("rotas da emissão de MDF-e", () => {
   let encerrarRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/encerrar/route");
   let cancelarRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/cancelar/route");
   let condutorRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/condutor/route");
+  let transmitirRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/transmitir/route");
+  let pagamentoRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/pagamento/route");
   let liberarRota: typeof import("../src/app/api/manifestos/[id]/liberar/route");
   let eventos: typeof import("../src/lib/eventos");
 
@@ -132,6 +140,8 @@ suite("rotas da emissão de MDF-e", () => {
   let enderecoDoN8n: string;
   let enderecoDoFiscal: string;
   let fiscalDizAutorizado = true;
+  /** A chave que o serviço fiscal de mentira diz ter lido. `null`: a do XML recebido, como o serviço de verdade. */
+  let chaveQueOFiscalDevolve: string | null = null;
   let recebidosNoN8n: { tipo: string; dados: Record<string, Record<string, unknown> | null> }[] = [];
   const avisosDeMdfeNoN8n = () => recebidosNoN8n.filter((recebido) => recebido.tipo.startsWith("mdfe."));
   const pedidosAoFiscal: { ferramenta: string; xml: string }[] = [];
@@ -190,6 +200,23 @@ suite("rotas da emissão de MDF-e", () => {
   const incluirCondutor = async (mdfeId: string, condutor: Record<string, unknown> = { nome: "Maria de Souza", cpf: "111.444.777-35" }, perfil: Perfil = "OPERATION") => {
     entrarComo(perfil);
     return lida<MdfeEmitido & Corpo>(await condutorRota.POST(req("POST", condutor), ctx(mdfeId)));
+  };
+  const emitirEmContingencia = async (manifestId: string, ufDeDescarga = "MG", entradas: unknown = ENTRADAS, perfil: Perfil = "OPERATION") => {
+    entrarComo(perfil);
+    return lida<ResultadoDaEmissao & Corpo>(await emissaoRota.POST(req("POST", { manifestId, ufDeDescarga, entradas, contingencia: true })));
+  };
+  const transmitir = async (mdfeId: string, perfil: Perfil = "OPERATION") => {
+    entrarComo(perfil);
+    return lida<ResultadoDaEmissao & Corpo>(await transmitirRota.POST(req("POST"), ctx(mdfeId)));
+  };
+  const PAGAMENTO = { documento: CNPJ_DA_PADRAO, valor: "1850,75", aPrazo: false, conta: { pix: "52998224725" } };
+  const informarPagamento = async (mdfeId: string, corpo: unknown = { viagens: { quantidade: "4", numero: "2" }, pagamento: PAGAMENTO }, perfil: Perfil = "OPERATION") => {
+    entrarComo(perfil);
+    return lida<MdfeEmitido & Corpo>(await pagamentoRota.POST(req("POST", corpo), ctx(mdfeId)));
+  };
+  const alterarPagamento = async (mdfeId: string, corpo: unknown = { pagamento: { ...PAGAMENTO, valor: "2000" } }, perfil: Perfil = "OPERATION") => {
+    entrarComo(perfil);
+    return lida<MdfeEmitido & Corpo>(await pagamentoRota.PUT(req("PUT", corpo), ctx(mdfeId)));
   };
   const listar = async (perfil: Perfil = "OPERATION", manifestId: string | null = null) => {
     entrarComo(perfil);
@@ -309,8 +336,11 @@ suite("rotas da emissão de MDF-e", () => {
         const rpc = JSON.parse(corpo) as { id?: number; method: string; params?: { name?: string; arguments?: { xml_content?: string } } };
         if (rpc.method === "initialize") return void resposta.writeHead(200, { "Content-Type": "application/json", "mcp-session-id": "sessao-de-teste" }).end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result: {} }));
         if (rpc.method !== "tools/call") return void resposta.writeHead(202).end();
-        pedidosAoFiscal.push({ ferramenta: rpc.params?.name ?? "", xml: rpc.params?.arguments?.xml_content ?? "" });
-        const estruturado = { pdf_base64: Buffer.from("%PDF-1.4 damdfe de mentira").toString("base64"), autorizado: fiscalDizAutorizado };
+        const xmlRecebido = rpc.params?.arguments?.xml_content ?? "";
+        pedidosAoFiscal.push({ ferramenta: rpc.params?.name ?? "", xml: xmlRecebido });
+        // Como o serviço de verdade: devolve a chave que leu do XML (`chave_acesso`) e se achou o protocolo de autorização.
+        const chaveLida = chaveQueOFiscalDevolve ?? /Id="MDFe([0-9A-Z]{44})"/.exec(xmlRecebido)?.[1] ?? "";
+        const estruturado = { pdf_base64: Buffer.from("%PDF-1.4 damdfe de mentira").toString("base64"), chave_acesso: chaveLida, autorizado: fiscalDizAutorizado && xmlRecebido.includes("<protMDFe") };
         resposta.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result: { structuredContent: estruturado, content: [] } }));
       });
     });
@@ -340,6 +370,8 @@ suite("rotas da emissão de MDF-e", () => {
     encerrarRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/encerrar/route");
     cancelarRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/cancelar/route");
     condutorRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/condutor/route");
+    transmitirRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/transmitir/route");
+    pagamentoRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/pagamento/route");
     liberarRota = await import("../src/app/api/manifestos/[id]/liberar/route");
     eventos = await import("../src/lib/eventos");
     await limpar();
@@ -366,9 +398,11 @@ suite("rotas da emissão de MDF-e", () => {
     sefaz.cancelados.clear();
     sefaz.abertosDeFora = [];
     sefaz.eventos.length = 0;
+    sefaz.eventoComRessalva = null;
     recebidosNoN8n = [];
     pedidosAoFiscal.length = 0;
     fiscalDizAutorizado = true;
+    chaveQueOFiscalDevolve = null;
     delete process.env.FISCAL_MCP_URL;
     await limparMovimento();
   });
@@ -404,6 +438,10 @@ suite("rotas da emissão de MDF-e", () => {
         ["POST encerrar", () => encerrarRota.POST(req("POST", { dia: hoje(), cidade: "Belo Horizonte", uf: "MG" }), ctx(SEM_ID))],
         ["POST cancelar", () => cancelarRota.POST(req("POST", { justificativa: "Tentativa de quem não pode", transporteNaoIniciado: true }), ctx(SEM_ID))],
         ["POST condutor", () => condutorRota.POST(req("POST", { nome: "Maria", cpf: "11144477735" }), ctx(SEM_ID))],
+        ["POST emissão em contingência", () => emissaoRota.POST(req("POST", { manifestId: SEM_ID, ufDeDescarga: "MG", contingencia: true }))],
+        ["POST transmitir", () => transmitirRota.POST(req("POST"), ctx(SEM_ID))],
+        ["POST pagamento", () => pagamentoRota.POST(req("POST", { viagens: { quantidade: "1", numero: "1" }, pagamento: PAGAMENTO }), ctx(SEM_ID))],
+        ["PUT pagamento", () => pagamentoRota.PUT(req("PUT", { pagamento: PAGAMENTO }), ctx(SEM_ID))],
       ];
       const daEmpresa: [string, () => Promise<Response>][] = [
         ["GET configuração", () => configuracaoRota.GET()],
@@ -461,9 +499,9 @@ suite("rotas da emissão de MDF-e", () => {
       expect((await configurar()).corpo.error).toBe(SEM_EMITENTE_CADASTRADO);
 
       await prepararEmpresa();
-      const salvo = await configurar({ serie: "3", proximoNumero: "120", tipoDeEmitente: "2", seguradora: "Seguradora X", cnpjDaSeguradora: "61.198.164/0001-60", apolice: "AP-9" });
+      const salvo = await configurar({ serie: "3", proximoNumero: "120", tipoDeEmitente: "2", seguradora: "Seguradora X", cnpjDaSeguradora: "99.000.502/0001-80", apolice: "AP-9" });
       expect(salvo.status).toBe(200);
-      expect(salvo.corpo).toMatchObject({ disponivel: true, ambiente: "HOMOLOGACAO", serie: 3, proximoNumero: 120, tipoDeEmitente: "2", seguradora: "Seguradora X", cnpjDaSeguradora: "61198164000160", apolice: "AP-9" });
+      expect(salvo.corpo).toMatchObject({ disponivel: true, ambiente: "HOMOLOGACAO", serie: 3, proximoNumero: 120, tipoDeEmitente: "2", seguradora: "Seguradora X", cnpjDaSeguradora: "99000502000180", apolice: "AP-9" });
       expect(await numeracao("HOMOLOGACAO", 3)).toBe(120);
       const registro = await trilha("mdfe.configurar");
       expect(registro).toHaveLength(1);
@@ -502,7 +540,7 @@ suite("rotas da emissão de MDF-e", () => {
 
     it("um documento por UF de descarregamento, com os municípios, o que falta e o que o cadastro sugere", async () => {
       await prepararEmpresa();
-      await configurar({ seguradora: "Seguradora de Teste S/A", cnpjDaSeguradora: "61198164000160", apolice: "AP-2026-0001" });
+      await configurar({ seguradora: "Seguradora de Teste S/A", cnpjDaSeguradora: "99000502000180", apolice: "AP-2026-0001" });
       const viagem = await novaViagem(["MG", "UDI", "MG", "RJ"]);
       const { corpo } = await daViagem(viagem.id, "EXPEDITION");
       expect(corpo.pronta).toBe(true);
@@ -856,6 +894,56 @@ suite("rotas da emissão de MDF-e", () => {
       expect(resposta.corpo.mdfe.chave).toBe(antes.accessKey);
     });
 
+    it("envio sem resposta de MDF-e que a SEFAZ já tem cancelado (101) ou encerrado (132): a consulta traz o protocolo da autorização, e mesmo assim ele NÃO é gravado como autorizado", async () => {
+      await prepararEmpresa();
+      for (const [situacao, cStat, marcar] of [
+        ["cancelado", 101, (chave: string) => sefaz.cancelados.add(chave)],
+        ["encerrado", 132, (chave: string) => sefaz.encerrados.add(chave)],
+      ] as const) {
+        const viagem = await novaViagem();
+        sefaz.modoDe = { MDFeRecepcaoSinc: "mudo-processando" };
+        expect((await emitir(viagem.id)).status, situacao).toBe(504);
+        const [rascunho] = await mdfesDe(viagem.id);
+        // Autorizado lá, e depois cancelado (ou encerrado) fora deste sistema.
+        expect(sefaz.autorizados.has(rascunho.accessKey)).toBe(true);
+        marcar(rascunho.accessKey);
+
+        sefaz.modoDe = {};
+        sefaz.chamadas.length = 0;
+        const resposta = await emitir(viagem.id);
+        expect(resposta.status, situacao).toBe(200);
+        expect(resposta.corpo.autorizado, situacao).toBe(false);
+        expect(resposta.corpo.mdfe).toMatchObject({ situacao: "REJECTED", cStat, protocolo: null, autorizadoEm: null, semResposta: false });
+        expect(resposta.corpo.mensagem).toMatch(new RegExp(`já está ${situacao} lá \\(${cStat} - .*não foi gravado como autorizado\\. O número foi usado`));
+        // Consultou pela chave e parou ali: nada foi reenviado.
+        expect(servicosChamados()).toEqual(["MDFeConsNaoEnc", "MDFeConsulta"]);
+        const [gravado] = await mdfesDe(viagem.id);
+        expect(gravado).toMatchObject({ status: "REJECTED", protocol: null, authorizedAt: null, xmlReturn: null, numberBurned: true, unanswered: false, sendingAt: null });
+        expect(await trilha("mdfe.emitir")).toHaveLength(0);
+      }
+      expect((await trilha("mdfe.rejeitar")).map((registro) => registro.summary)).toEqual([expect.stringMatching(/já está cancelado na SEFAZ: 101/), expect.stringMatching(/já está encerrado na SEFAZ: 132/)]);
+      expect(await avisosDe("ADMIN", "mdfe.autorizado")).toHaveLength(0);
+    });
+
+    it("a recepção diz que o MDF-e da chave já está cancelado (218): finalizado, com o número dado como usado", async () => {
+      await prepararEmpresa();
+      const viagem = await novaViagem();
+      sefaz.modoDe = { MDFeRecepcaoSinc: "mudo-processando" };
+      await emitir(viagem.id);
+      const [rascunho] = await mdfesDe(viagem.id);
+      sefaz.cancelados.add(rascunho.accessKey);
+      // A consulta ainda não vê o MDF-e (217): o mesmo XML é reenviado, e é a recepção que responde 218.
+      sefaz.modoDe = {};
+      sefaz.consultasCegas = 1;
+      sefaz.chamadas.length = 0;
+      const resposta = await emitir(viagem.id);
+      expect(servicosChamados()).toEqual(["MDFeConsNaoEnc", "MDFeConsulta", "MDFeRecepcaoSinc"]);
+      expect(resposta.corpo).toMatchObject({ autorizado: false, mdfe: { situacao: "REJECTED", cStat: 218, numero: 1 } });
+      // O número 1 foi usado: a emissão seguinte leva o 2.
+      const nova = await emitir(viagem.id);
+      expect(nova.corpo).toMatchObject({ autorizado: true, mdfe: { situacao: "AUTHORIZED", numero: 2 } });
+    });
+
     it("uma emissão por vez por MDF-e, e a numeração em concorrência não repete nem pula", async () => {
       await prepararEmpresa();
       const viagem = await novaViagem();
@@ -1022,6 +1110,314 @@ suite("rotas da emissão de MDF-e", () => {
       expect(falhou.status).toBe(502);
       expect((await mdfesDe(viagem.id))[0].events).toHaveLength(2);
     });
+
+    it("evento guardado com ressalva (134 e 136): não é recusa; só muda o MDF-e quando a consulta confirma", async () => {
+      const { viagem, mdfe } = await autorizado();
+
+      // 136: a SEFAZ guardou o encerramento sem vincular ao MDF-e. A consulta diz que ele continua autorizado: nada muda aqui.
+      sefaz.eventoComRessalva = 136;
+      const semVinculo = await encerrar(mdfe.id);
+      expect(semVinculo.status).toBe(409);
+      expect(semVinculo.corpo.error).toMatch(/^A SEFAZ guardou o encerramento com ressalva \(136 - Evento registrado, mas não vinculado a MDF-e; protocolo \d{15}\), sem confirmar que valeu para o documento/);
+      expect(semVinculo.corpo.error).not.toMatch(/recusou/);
+      expect((await mdfesDe(viagem.id))[0]).toMatchObject({ status: "AUTHORIZED", closedAt: null });
+      expect((await mdfesDe(viagem.id))[0].events).toHaveLength(0);
+      // O condutor também não entra: o evento ficou sem vínculo.
+      expect((await incluirCondutor(mdfe.id)).status).toBe(409);
+      expect((await mdfesDe(viagem.id))[0].events).toHaveLength(0);
+
+      // 134: guardado e vinculado, com alerta. O condutor entra (o evento está no MDF-e)...
+      sefaz.eventoComRessalva = 134;
+      const condutor = await incluirCondutor(mdfe.id);
+      expect(condutor.status).toBe(200);
+      expect(condutor.corpo.eventos.map((evento) => evento.tipo)).toEqual(["110114"]);
+      // ...e o encerramento vale porque a consulta pela chave confirma (132), com o protocolo do evento.
+      sefaz.chamadas.length = 0;
+      const encerrado = await encerrar(mdfe.id);
+      expect(encerrado.status).toBe(200);
+      expect(encerrado.corpo.situacao).toBe("CLOSED");
+      expect(servicosChamados()).toEqual(["MDFeRecepcaoEvento", "MDFeConsulta"]);
+      const [gravado] = await mdfesDe(viagem.id);
+      expect(gravado.closeProtocol).toMatch(/^\d{15}$/);
+      expect(gravado.events.at(-1)).toMatchObject({ type: "110112", statusCode: 134 });
+    });
+
+    it("pagamento da operação (110116): só para veículo de TAC agregado; registra, grava e audita; depois só a alteração (110118), também com o MDF-e encerrado", async () => {
+      await prepararEmpresa();
+      // MDF-e de veículo próprio: a SEFAZ rejeitaria (723). O sistema recusa sem enviar.
+      const proprio = await novaViagem();
+      const doProprio = (await emitir(proprio.id)).corpo.mdfe;
+      sefaz.chamadas.length = 0;
+      const recusado = await informarPagamento(doProprio.id);
+      expect(recusado.status).toBe(409);
+      expect(recusado.corpo.error).toBe(PAGAMENTO_SO_DE_TAC_AGREGADO);
+      expect(sefaz.chamadas).toHaveLength(0);
+
+      // Veículo de terceiro, TAC agregado (tpProp 0).
+      const agregado = await novoVeiculo({ ownerTaxId: "11144477735", ownerName: "José Agregado", ownerRntrc: "87654321", ownerState: "SP", ownerType: "0" });
+      const viagem = await novaViagem(["MG", "UDI"], { veiculoId: agregado.id });
+      const emitido = await emitir(viagem.id, "MG", { ...ENTRADAS, ciots: [{ codigo: "123456789012", documento: "11144477735" }] });
+      expect(emitido.corpo.autorizado, emitido.corpo.mensagem ?? emitido.corpo.error).toBe(true);
+      const mdfe = emitido.corpo.mdfe;
+      expect((await mdfesDe(viagem.id))[0].xmlSent).toContain("<tpProp>0</tpProp>");
+
+      // Validação: 400, sem enviar.
+      sefaz.chamadas.length = 0;
+      expect((await informarPagamento(mdfe.id, { viagens: { quantidade: "1", numero: "2" }, pagamento: PAGAMENTO })).status).toBe(400);
+      expect((await informarPagamento(mdfe.id, { viagens: { quantidade: "1", numero: "1" }, pagamento: { ...PAGAMENTO, documento: "123" } })).corpo.error).toBe("Informe o CPF ou CNPJ de quem paga o frete.");
+      expect((await informarPagamento(mdfe.id, {})).status).toBe(400);
+      expect((await informarPagamento(SEM_ID)).corpo.error).toBe(MDFE_NAO_ENCONTRADO);
+      expect(sefaz.chamadas).toHaveLength(0);
+
+      // A SEFAZ recusa: nada é gravado.
+      sefaz.modoDe = { MDFeRecepcaoEvento: "rejeitar" };
+      const rejeitado = await informarPagamento(mdfe.id);
+      expect(rejeitado.status).toBe(409);
+      expect(rejeitado.corpo.error).toMatch(/^A SEFAZ recusou o pagamento da operação: 615/);
+      expect((await mdfesDe(viagem.id))[0].events).toHaveLength(0);
+      sefaz.modoDe = {};
+
+      const informado = await informarPagamento(mdfe.id);
+      expect(informado.status).toBe(200);
+      expect(informado.corpo.situacao).toBe("AUTHORIZED");
+      expect(informado.corpo.eventos).toHaveLength(1);
+      expect(informado.corpo.eventos[0]).toMatchObject({ tipo: "110116", sequencia: 1 });
+      expect(informado.corpo.eventos[0].descricao).toMatch(/^Pagamento informado: R\$\s1\.850,75, viagem 2 de 4$/);
+      expect(informado.corpo.eventos[0].protocolo).toMatch(/^\d{15}$/);
+      const [gravado] = await mdfesDe(viagem.id);
+      const evento = gravado.events[0];
+      expect(evento).toMatchObject({ type: "110116", sequence: 1, statusCode: 135 });
+      expect(assinaturaConfere(evento.xmlSent, certificado.certificadoPem)).toBe(true);
+      expect(evento.xmlSent).toContain(`Id="ID110116${mdfe.chave}01"`);
+      expect(evento.xmlSent).toContain(`<nProt>${mdfe.protocolo}</nProt><infViagens><qtdViagens>00004</qtdViagens><nroViagem>00002</nroViagem></infViagens><infPag><CNPJ>${CNPJ_DA_PADRAO}</CNPJ>`);
+      expect(evento.xmlSent).toContain("<vContrato>1850.75</vContrato><indPag>0</indPag><infBanc><PIX>52998224725</PIX></infBanc>");
+      expect(await errosNoEsquemaDoMdfe(evento.xmlSent, "eventoMDFe_v3.00.xsd")).toEqual([]);
+      expect(await errosNoEsquemaDoMdfe(detalheDoEvento(evento.xmlSent), "evPagtoOperMDFe_v3.00.xsd")).toEqual([]);
+      expect(await errosNoEsquemaDoMdfe(evento.xmlReturn, "procEventoMDFe_v3.00.xsd")).toEqual([]);
+      expect((await trilha("mdfe.pagamento")).map((registro) => registro.summary)).toEqual([expect.stringMatching(/^Pagamento da operação \(R\$\s1\.850,75\) informado no MDF-e nº \d+ da viagem #.{6}$/)]);
+
+      // Um só por MDF-e (regra K01): o segundo é recusado sem enviar.
+      sefaz.chamadas.length = 0;
+      expect((await informarPagamento(mdfe.id)).corpo.error).toBe(PAGAMENTO_JA_INFORMADO);
+      expect(sefaz.chamadas).toHaveLength(0);
+
+      // A alteração (110118) segue a sequência, e vale também depois do encerramento.
+      const alterado = await alterarPagamento(mdfe.id);
+      expect(alterado.status).toBe(200);
+      expect(alterado.corpo.eventos.map((cada) => [cada.tipo, cada.sequencia])).toEqual([
+        ["110116", 1],
+        ["110118", 1],
+      ]);
+      expect((await encerrar(mdfe.id)).corpo.situacao).toBe("CLOSED");
+      const depois = await alterarPagamento(mdfe.id, { pagamento: { ...PAGAMENTO, valor: "2100" } });
+      expect(depois.status).toBe(200);
+      expect(depois.corpo.situacao).toBe("CLOSED");
+      const eventosGravados = (await mdfesDe(viagem.id))[0].events.filter((cada) => cada.type === "110118");
+      expect(eventosGravados.map((cada) => cada.sequence)).toEqual([1, 2]);
+      expect(eventosGravados[1].xmlSent).toContain(`Id="ID110118${mdfe.chave}02"`);
+      expect(await errosNoEsquemaDoMdfe(detalheDoEvento(eventosGravados[1].xmlSent), "evAlteracaoPagtoServMDFe_v3.00.xsd")).toEqual([]);
+      expect(await trilha("mdfe.pagamento")).toHaveLength(3);
+
+      // A outra empresa não alcança o MDF-e desta, e quem só lê o fiscal não envia o evento.
+      expect((await alterarPagamento(mdfe.id, undefined, "ADMIN_DA_OUTRA")).status).toBe(404);
+      expect((await informarPagamento(mdfe.id, undefined, "EXPEDITION")).status).toBe(403);
+    });
+  });
+
+  /* --------------------------- Contingência off-line -------------------------- */
+
+  describe("contingência off-line (MOC 3.00b, Visão Geral, item 11)", () => {
+    it("só quando não se consegue a autorização e só a pedido: não transmite nada, e o MDF-e fica 'a transmitir', sem protocolo; a transmissão manda o MESMO XML", async () => {
+      await prepararEmpresa();
+      const viagem = await novaViagem();
+
+      // SEFAZ em operação e nenhum envio sem resposta: a contingência é recusada, e nada é gravado nem numerado.
+      const recusada = await emitirEmContingencia(viagem.id);
+      expect(recusada.status).toBe(409);
+      expect(recusada.corpo.error).toBe(SEFAZ_EM_OPERACAO);
+      expect(servicosChamados()).toEqual(["MDFeStatusServico"]);
+      expect(await mdfesDe(viagem.id)).toHaveLength(0);
+      expect(await numeracao()).toBeNull();
+
+      // A SEFAZ para de responder: a emissão normal não sai (nem chega a montar: a consulta de não encerrados falha antes).
+      sefaz.modo = "mudo";
+      expect((await emitir(viagem.id)).status).toBe(504);
+      expect(await mdfesDe(viagem.id)).toHaveLength(0);
+
+      // Quem só lê o fiscal não emite em contingência.
+      expect((await emitirEmContingencia(viagem.id, "MG", ENTRADAS, "EXPEDITION")).status).toBe(403);
+
+      sefaz.chamadas.length = 0;
+      const { status, corpo } = await emitirEmContingencia(viagem.id);
+      expect(status).toBe(200);
+      expect(corpo.autorizado).toBe(false);
+      expect(corpo.mdfe).toMatchObject({ situacao: "CONTINGENCY", numero: 1, ambiente: "HOMOLOGACAO", protocolo: null, autorizadoEm: null, contingencia: true, semResposta: false });
+      expect(corpo.mdfe.chave[34]).toBe("2");
+      expect(chaveValida(corpo.mdfe.chave)).toBe(true);
+      expect(new Date(corpo.mdfe.transmitirAte!).getTime() - new Date(corpo.mdfe.emitidoEm).getTime()).toBe(168 * 3_600_000);
+      expect(corpo.mensagem).toMatch(/^MDF-e nº 1 emitido em contingência em homologação \(sem valor fiscal\): ainda NÃO está autorizado\. Imprima o DAMDFE .* Transmita à SEFAZ até \d{2}\/\d{2}\/\d{4},? \d{2}:\d{2} \(168 horas da emissão\)\.$/);
+      // Só o status do serviço foi perguntado: nada foi transmitido.
+      expect(servicosChamados()).toEqual(["MDFeStatusServico"]);
+
+      const [gravado] = await mdfesDe(viagem.id);
+      expect(gravado).toMatchObject({ status: "CONTINGENCY", number: 1, protocol: null, authorizedAt: null, xmlReturn: null, sendingAt: null, unanswered: false, numberBurned: false });
+      expect(gravado.xmlSent).toContain(`Id="MDFe${corpo.mdfe.chave}"`);
+      expect(gravado.xmlSent).toContain("<tpEmis>2</tpEmis>");
+      expect(assinaturaConfere(gravado.xmlSent, certificado.certificadoPem)).toBe(true);
+      expect(await errosNoEsquemaDoMdfe(gravado.xmlSent, "mdfe_v3.00.xsd")).toEqual([]);
+      expect(await errosNoEsquemaDoMdfe(modalDoXml(gravado.xmlSent), "mdfeModalRodoviario_v3.00.xsd")).toEqual([]);
+      // O QR Code leva a chave assinada com o certificado da empresa.
+      const sign = /<qrCodMDFe>[^<]*&amp;sign=([^<]+)<\/qrCodMDFe>/.exec(gravado.xmlSent)![1];
+      expect(assinaturaDoTextoConfere(corpo.mdfe.chave, sign, certificado.certificadoPem)).toBe(true);
+      expect(await numeracao()).toBe(2);
+
+      // Auditado como contingência; nada de "autorizado" em lugar nenhum.
+      expect((await trilha("mdfe.contingencia")).map((registro) => registro.summary)).toEqual([expect.stringMatching(/^MDF-e nº 1 emitido em contingência em homologação \(sem valor fiscal\) para a viagem #.{6} \(descarga em MG\), sem transmissão$/)]);
+      expect(await trilha("mdfe.emitir")).toHaveLength(0);
+      expect(await avisosDe("ADMIN", "mdfe.autorizado")).toHaveLength(0);
+
+      // A SEFAZ volta. Enquanto o de contingência não é transmitido, não se emite outro para a UF.
+      sefaz.modo = "autorizar";
+      expect((await daViagem(viagem.id)).corpo.documentos[0]).toMatchObject({ pendencias: [EM_CONTINGENCIA_A_TRANSMITIR], mdfe: { situacao: "CONTINGENCY", numero: 1 } });
+      expect((await emitir(viagem.id)).corpo.error).toBe(EM_CONTINGENCIA_A_TRANSMITIR);
+      expect((await emitirEmContingencia(viagem.id)).corpo.error).toBe(EM_CONTINGENCIA_A_TRANSMITIR);
+      // Sem protocolo não há mdfeProc, nem encerramento, nem cancelamento, nem evento.
+      entrarComo("OPERATION");
+      expect((await lida(await xmlRota.GET(req(), ctx(gravado.id)))).corpo.error).toBe(SO_AUTORIZADO_TEM_XML);
+      expect((await encerrar(gravado.id)).corpo.error).toBe(SO_AUTORIZADO_ENCERRA);
+      expect((await cancelar(gravado.id)).corpo.error).toBe(SO_AUTORIZADO_CANCELA);
+      expect((await incluirCondutor(gravado.id)).status).toBe(409);
+      expect(await mdfeDb.mdfesAbertosDaViagem(banco.default, viagem.id)).toEqual([]);
+
+      // Transmitir: quem só lê não transmite; quem emite manda o MESMO XML, e só então fica autorizado.
+      expect((await transmitir(gravado.id, "EXPEDITION")).status).toBe(403);
+      expect((await transmitir(SEM_ID)).corpo.error).toBe(MDFE_NAO_ENCONTRADO);
+      sefaz.chamadas.length = 0;
+      const transmitido = await transmitir(gravado.id);
+      expect(transmitido.status).toBe(200);
+      expect(transmitido.corpo).toMatchObject({ autorizado: true, mdfe: { situacao: "AUTHORIZED", numero: 1, chave: corpo.mdfe.chave, contingencia: true, transmitirAte: null } });
+      expect(transmitido.corpo.mdfe.protocolo).toMatch(/^9\d{14}$/);
+      expect(transmitido.corpo.mensagem).toMatch(/^MDF-e nº 1 \(emitido em contingência\) autorizado em homologação \(sem valor fiscal\)\. Protocolo \d{15}\.$/);
+      expect(servicosChamados()).toEqual(["MDFeConsNaoEnc", "MDFeRecepcaoSinc"]);
+      expect(sefaz.chamadas[1].dados).toBe(gravado.xmlSent);
+      const [autorizado] = await mdfesDe(viagem.id);
+      expect(autorizado).toMatchObject({ status: "AUTHORIZED", accessKey: gravado.accessKey, xmlSent: gravado.xmlSent, protocol: transmitido.corpo.mdfe.protocolo });
+      expect(await errosNoEsquemaDoMdfe(autorizado.xmlReturn ?? "", "procMDFe_v3.00.xsd")).toEqual([]);
+      expect(await trilha("mdfe.emitir")).toHaveLength(1);
+      expect(await avisosDe("ADMIN", "mdfe.autorizado")).toHaveLength(1);
+      // Autorizado, não se transmite de novo; e passa a ser um MDF-e como os outros.
+      expect((await transmitir(gravado.id)).corpo.error).toBe(SO_CONTINGENCIA_TRANSMITE);
+      expect((await encerrar(gravado.id)).corpo.situacao).toBe("CLOSED");
+    });
+
+    it("serviço paralisado (108) também abre a contingência; a outra empresa não transmite o MDF-e desta", async () => {
+      await prepararEmpresa();
+      const viagem = await novaViagem();
+      sefaz.modo = "parado";
+      const { status, corpo } = await emitirEmContingencia(viagem.id);
+      expect(status).toBe(200);
+      expect(corpo.mdfe.situacao).toBe("CONTINGENCY");
+      sefaz.modo = "autorizar";
+      expect((await transmitir(corpo.mdfe.id, "ADMIN_DA_OUTRA")).corpo.error).toBe(MDFE_NAO_ENCONTRADO);
+      expect((await mdfesDe(viagem.id))[0].status).toBe("CONTINGENCY");
+      expect(sefaz.autorizados.size).toBe(0);
+    });
+
+    it("depois de um envio normal sem resposta: número novo, o rascunho antigo fica com a chave, e a transmissão confere esse envio na SEFAZ antes", async () => {
+      await prepararEmpresa();
+      const viagem = await novaViagem();
+      sefaz.modoDe = { MDFeRecepcaoSinc: "mudo" };
+      expect((await emitir(viagem.id)).status).toBe(504);
+
+      // O status responde "em operação", mas há um envio desta viagem sem resposta: a contingência é aceita, sem perguntar o status.
+      sefaz.chamadas.length = 0;
+      const { corpo } = await emitirEmContingencia(viagem.id);
+      expect(corpo.mdfe).toMatchObject({ situacao: "CONTINGENCY", numero: 2 });
+      expect(servicosChamados()).toEqual([]);
+      const [rascunho, contingencia] = await mdfesDe(viagem.id);
+      expect(rascunho).toMatchObject({ status: "DRAFT", unanswered: true, number: 1 });
+      expect(contingencia).toMatchObject({ status: "CONTINGENCY", number: 2 });
+      expect(rascunho.accessKey[34]).toBe("1");
+      expect(contingencia.accessKey[34]).toBe("2");
+      expect(await numeracao()).toBe(3);
+      // A aba da viagem mostra o de contingência, não o rascunho antigo.
+      expect((await daViagem(viagem.id)).corpo.documentos[0].mdfe).toMatchObject({ situacao: "CONTINGENCY", numero: 2 });
+
+      // A SEFAZ volta e não tem o envio antigo (217): ele vira rejeitado, e o de contingência é transmitido.
+      sefaz.modoDe = {};
+      sefaz.chamadas.length = 0;
+      const transmitido = await transmitir(contingencia.id);
+      expect(transmitido.corpo).toMatchObject({ autorizado: true, mdfe: { situacao: "AUTHORIZED", numero: 2 } });
+      expect(servicosChamados()).toEqual(["MDFeConsulta", "MDFeConsNaoEnc", "MDFeRecepcaoSinc"]);
+      expect(sefaz.chamadas[0].dados).toContain(`<chMDFe>${rascunho.accessKey}</chMDFe>`);
+      const [antigo, novo] = await mdfesDe(viagem.id);
+      expect(antigo).toMatchObject({ status: "REJECTED", statusCode: 217, unanswered: false, protocol: null });
+      expect(antigo.statusReason).toMatch(/^A SEFAZ não tem este envio \(217 - .*Foi substituído pelo MDF-e nº 2, emitido em contingência\.$/);
+      expect(novo.status).toBe("AUTHORIZED");
+    });
+
+    it("o envio normal sem resposta TINHA sido autorizado: ele é gravado com o protocolo, e o de contingência não é transmitido (a viagem ficou com dois)", async () => {
+      await prepararEmpresa();
+      const viagem = await novaViagem();
+      sefaz.modoDe = { MDFeRecepcaoSinc: "mudo-processando" };
+      expect((await emitir(viagem.id)).status).toBe(504);
+      const { corpo } = await emitirEmContingencia(viagem.id);
+      expect(corpo.mdfe).toMatchObject({ situacao: "CONTINGENCY", numero: 2 });
+
+      sefaz.modoDe = {};
+      sefaz.chamadas.length = 0;
+      const resposta = await transmitir(corpo.mdfe.id);
+      expect(resposta.status).toBe(409);
+      expect(resposta.corpo.error).toMatch(/^O envio normal anterior \(MDF-e nº 1\) tinha sido autorizado pela SEFAZ \(protocolo \d{15}\) e agora está gravado\. A viagem ficou com dois MDF-e para esta UF: o de contingência \(nº 2\) não foi transmitido/);
+      expect(servicosChamados()).toEqual(["MDFeConsulta"]);
+      const [normal, contingencia] = await mdfesDe(viagem.id);
+      expect(normal).toMatchObject({ status: "AUTHORIZED", number: 1, unanswered: false });
+      expect(normal.protocol).toMatch(/^9\d{14}$/);
+      expect(contingencia).toMatchObject({ status: "CONTINGENCY", number: 2, protocol: null, sendingAt: null });
+      expect(sefaz.autorizados.has(contingencia.accessKey)).toBe(false);
+    });
+
+    it("transmissão rejeitada, parada ou sem resposta: continua em contingência, com o motivo; a retomada consulta pela chave e não reenvia", async () => {
+      await prepararEmpresa();
+      const viagem = await novaViagem();
+      sefaz.modo = "parado";
+      const { corpo } = await emitirEmContingencia(viagem.id);
+      const id = corpo.mdfe.id;
+      sefaz.modo = "autorizar";
+
+      // Rejeição por MDF-e anterior em aberto (611): resolve-se fora do documento.
+      sefaz.modoDe = { MDFeRecepcaoSinc: "nao-encerrado" };
+      const rejeitada = await transmitir(id);
+      expect(rejeitada.status).toBe(200);
+      expect(rejeitada.corpo).toMatchObject({ autorizado: false, mdfe: { situacao: "CONTINGENCY", cStat: 611, protocolo: null } });
+      expect(rejeitada.corpo.mensagem).toMatch(/^A SEFAZ rejeitou a transmissão do MDF-e: 611 - .*O MDF-e continua emitido em contingência, sem autorização\. Há MDF-e anterior em aberto na SEFAZ: encerre-o/);
+      expect((await trilha("mdfe.rejeitar")).at(-1)?.summary).toMatch(/^Transmissão do MDF-e nº 1 \(contingência\) da viagem #.{6} rejeitada pela SEFAZ: 611/);
+
+      // Rejeição que exige mudar o documento: o sistema não o refaz, e diz isso.
+      sefaz.modoDe = { MDFeRecepcaoSinc: "rejeitar" };
+      const outra = await transmitir(id);
+      expect(outra.corpo.mdfe).toMatchObject({ situacao: "CONTINGENCY", cStat: 698 });
+      expect(outra.corpo.mensagem).toMatch(/consulte o contador: o sistema não refaz o MDF-e de contingência\.$/);
+
+      sefaz.modoDe = { MDFeRecepcaoSinc: "parado" };
+      const parada = await transmitir(id);
+      expect(parada.corpo).toMatchObject({ autorizado: false, mdfe: { situacao: "CONTINGENCY", cStat: 108 } });
+
+      // Sem resposta: a SEFAZ processou, o sistema não sabe.
+      sefaz.modoDe = { MDFeRecepcaoSinc: "mudo-processando" };
+      const perdida = await transmitir(id);
+      expect(perdida.status).toBe(504);
+      expect(perdida.corpo.error).toMatch(/O MDF-e continua emitido em contingência, sem autorização\. A próxima transmissão começa consultando a SEFAZ pela chave, sem duplicar\.$/);
+      const [semResposta] = await mdfesDe(viagem.id);
+      expect(semResposta).toMatchObject({ status: "CONTINGENCY", unanswered: true, protocol: null, sendingAt: null });
+
+      sefaz.modoDe = {};
+      sefaz.chamadas.length = 0;
+      const retomada = await transmitir(id);
+      expect(retomada.corpo).toMatchObject({ autorizado: true, mdfe: { situacao: "AUTHORIZED", chave: semResposta.accessKey } });
+      expect(servicosChamados()).toEqual(["MDFeConsNaoEnc", "MDFeConsulta"]);
+      expect((await mdfesDe(viagem.id))[0].xmlSent).toBe(semResposta.xmlSent);
+    });
   });
 
   /* ------------------------------ XML, DAMDFE, status ------------------------- */
@@ -1147,6 +1543,60 @@ suite("rotas da emissão de MDF-e", () => {
       expect(await trilha("manifesto.liberar")).toHaveLength(1);
     });
 
+    it("produção com a SEFAZ fora do ar: o MDF-e emitido em contingência cobre a UF dele, o DAMDFE de contingência sai do XML assinado (sem protocolo), e a saída é liberada", async () => {
+      await emProducao();
+      const viagem = await novaViagem(["MG", "UDI"], { status: "ASSEMBLING", ambienteDoCte: "PRODUCAO" });
+      await autorizarCtes(viagem);
+      sefaz.modo = "mudo";
+      expect((await emitir(viagem.id)).status).toBe(504);
+      // Sem MDF-e nenhum, a saída continua bloqueada.
+      expect((await sair(viagem.id)).corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
+
+      const { corpo } = await emitirEmContingencia(viagem.id);
+      expect(corpo.mdfe).toMatchObject({ situacao: "CONTINGENCY", ambiente: "PRODUCAO", protocolo: null });
+      expect(corpo.mensagem).toMatch(/^MDF-e nº 1 emitido em contingência: ainda NÃO está autorizado\./);
+      const [gravado] = await mdfesDe(viagem.id);
+      expect(gravado.xmlSent).toContain("<tpAmb>1</tpAmb>");
+      expect(gravado.xmlSent).toContain("<tpEmis>2</tpEmis>");
+
+      // O DAMDFE: o serviço fiscal recebe o MDF-e assinado, sem protocolo, e devolve o PDF; o arquivo diz que é de contingência.
+      process.env.FISCAL_MCP_URL = enderecoDoFiscal;
+      entrarComo("EXPEDITION");
+      const pdf = await damdfeRota.GET(req(), ctx(gravado.id));
+      expect(pdf.status).toBe(200);
+      expect(pdf.headers.get("Content-Disposition")).toBe(`attachment; filename="${gravado.accessKey}-damdfe-CONTINGENCIA.pdf"`);
+      expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
+      expect(pedidosAoFiscal).toHaveLength(1);
+      expect(pedidosAoFiscal[0]).toEqual({ ferramenta: "gerar_damdfe", xml: gravado.xmlSent });
+      expect(pedidosAoFiscal[0].xml).not.toContain("<protMDFe");
+      // O serviço devolveu o DAMDFE de outro documento: não é entregue.
+      chaveQueOFiscalDevolve = chaveDeExemplo("58", 77);
+      const deOutro = await lida(await damdfeRota.GET(req(), ctx(gravado.id)));
+      expect(deOutro.status).toBe(502);
+      expect(deOutro.corpo.error).toBe("O serviço fiscal devolveu o DAMDFE de outro documento: ele não foi entregue.");
+      chaveQueOFiscalDevolve = null;
+
+      // Um MDF-e de contingência de HOMOLOGAÇÃO não cobre a viagem em produção: a saída dela continua bloqueada.
+      const outra = await novaViagem(["MG"], { status: "ASSEMBLING", ambienteDoCte: "PRODUCAO" });
+      await autorizarCtes(outra);
+      await emitirEmContingencia(outra.id, "MG", { ...ENTRADAS, produto: { tipoDeCarga: "05", descricao: "Peças", ncm: "84821010" }, lotacao: { cepDeCarregamento: "15035000", cepDeDescarregamento: "30160011" }, pagamento: PAGAMENTO });
+      const [daOutra] = await mdfesDe(outra.id);
+      expect(daOutra.status).toBe("CONTINGENCY");
+      await banco.sistema.mdfe.update({ where: { id: daOutra.id }, data: { environment: "HOMOLOGACAO" } });
+      expect((await sair(outra.id)).corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
+
+      // A saída é liberada com o MDF-e em contingência (MOC, item 11): a carga circula com o DAMDFE de contingência.
+      const resposta = await sair(viagem.id);
+      expect(resposta.status).toBe(200);
+      expect(resposta.corpo).toMatchObject({ success: true, aviso: null });
+      expect(await situacao(viagem.id)).toEqual(EM_ROTA);
+      // O motorista vê a chave e a situação "em contingência".
+      const motorista = await banco.sistema.driver.findUniqueOrThrow({ where: { id: motoristaId }, select: { userId: true } });
+      sessao.mockResolvedValue({ user: { id: motorista.userId, role: "DRIVER", clientId: null } });
+      const viagens = (await (await (await import("../src/app/api/driver/manifestos/route")).GET()).json()) as { id: string; mdfes: Record<string, unknown>[] }[];
+      expect(viagens.find((cada) => cada.id === viagem.id)?.mdfes).toEqual([{ id: gravado.id, number: 1, accessKey: gravado.accessKey, status: "CONTINGENCY", environment: "PRODUCAO", unloadState: "MG" }]);
+    });
+
     it("um MDF-e por UF de descarregamento: com duas UF e um MDF-e só, bloqueia e diz a UF que falta; cancelado e de homologação não contam", async () => {
       await emProducao();
       const viagem = await novaViagem(["MG", "UDI", "RJ", "RJ"], { status: "ASSEMBLING", ambienteDoCte: "PRODUCAO" });
@@ -1223,7 +1673,7 @@ suite("rotas da emissão de MDF-e", () => {
       const usuario = await outra.user.create({ data: { name: `${PREFIXO}motorista-da-outra`, email: `${PREFIXO}motorista-da-outra@exemplo.br`, password: HASH_FALSO, role: "DRIVER" } });
       const motorista = await outra.driver.create({ data: { userId: usuario.id, cpf: "11144477735", cnh: "98765432100", cnhExpiry: new Date("2030-01-01"), category: "E" } });
       const veiculo = await outra.vehicle.create({ data: { plate: "MDF9Z99", model: "Truck da outra", type: "TRUCK", capacity: 14000 } });
-      const cliente = await outra.client.create({ data: { companyName: `${PREFIXO}Cliente da Outra Ltda`, cnpj: "07526557000100" } });
+      const cliente = await outra.client.create({ data: { companyName: `${PREFIXO}Cliente da Outra Ltda`, cnpj: "99000703000187" } });
       const daOutra = await outra.manifest.create({ data: { driverId: motorista.id, vehicleId: veiculo.id, status: "ASSEMBLING" }, select: { id: true } });
       await outra.collection.create({
         data: { clientId: cliente.id, manifestId: daOutra.id, sender: "Remetente", receiver: "Destinatário", origin: "São José do Rio Preto - SP", destination: "Belo Horizonte - MG", volumes: 1, weight: 10, status: "COLLECTED", trackingCode: `97${String(Date.now() % 100_000_000).padStart(8, "0")}` },

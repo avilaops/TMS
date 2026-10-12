@@ -126,6 +126,8 @@ export const ACOES = {
   "mdfe.encerrar": "MDF-e encerrado",
   "mdfe.cancelar": "MDF-e cancelado",
   "mdfe.condutor": "Condutor incluído no MDF-e",
+  "mdfe.contingencia": "MDF-e emitido em contingência",
+  "mdfe.pagamento": "Pagamento do frete informado no MDF-e",
   "abastecimento.registrar": "Abastecimento registrado",
   "abastecimento.excluir": "Abastecimento excluído",
   "documento-veiculo.registrar": "Documento de veículo registrado",

@@ -20,14 +20,34 @@ import { escapar } from "@/lib/cte/texto";
  * Só o servidor importa este arquivo.
  */
 
-/** Códigos de resposta que a emissão trata de forma própria (MOC 4.00). */
+/**
+ * Códigos de resposta que a emissão trata de forma própria. Conferidos, em
+ * 12/10/2026, contra o MOC do CT-e 4.00 (Visão Geral e Anexo I):
+ *
+ * | cStat | Onde no MOC | O que quer dizer |
+ * | --- | --- | --- |
+ * | 100 | Visão Geral, 4.2.6 e 4.5.6 | Autorizado o uso (a recepção e a consulta trazem o `protCTe`) |
+ * | 101 | Visão Geral, 4.5.6 | Consulta: o CT-e está CANCELADO (o `protCTe` que vem junto é o da autorização) |
+ * | 107, 108, 109 | Visão Geral, 4.6.5 e 4.6.6 (regras M02 e M03) e regras B03 e B04 | Serviço em operação, paralisado momentaneamente, paralisado sem previsão |
+ * | 134, 135, 136 | Visão Geral, 5.1.7 | Evento guardado: 135 vinculado ao CT-e; 134 vinculado, com alerta de que o CT-e não está "autorizado"; 136 guardado SEM vínculo (o CT-e não existe lá) |
+ * | 204 | Anexo I, regra G158 | Duplicidade: este mesmo CT-e (mesma chave) já está autorizado |
+ * | 217 | Visão Geral, regra L04 | Consulta: o CT-e não consta |
+ * | 218 | Anexo I, regra G159; Visão Geral, regra O05 | O CT-e desta chave já está cancelado |
+ * | 539 | Anexo I, regra G157 | Duplicidade com diferença na chave: o número foi usado por outro documento |
+ *
+ * Os códigos 103, 104 e 105 (lote recebido, processado, em processamento) são
+ * do serviço assíncrono, que o CT-e 4.00 não tem: este sistema só usa a
+ * recepção síncrona, e eles não são tratados.
+ */
 export const CSTAT = {
   AUTORIZADO: 100,
   CANCELADO: 101,
   EM_OPERACAO: 107,
   PARALISADO: 108,
   PARALISADO_SEM_PREVISAO: 109,
+  EVENTO_REGISTRADO_COM_ALERTA: 134,
   EVENTO_REGISTRADO: 135,
+  EVENTO_REGISTRADO_SEM_VINCULO: 136,
   DUPLICIDADE: 204,
   NAO_CONSTA: 217,
   JA_CANCELADO: 218,
@@ -221,12 +241,38 @@ export type Decisao =
   /** O serviço está parado: nada foi processado. */
   | { tipo: "parado"; cStat: number; motivo: string }
   | { tipo: "rejeitado"; cStat: number; motivo: string }
+  /**
+   * O documento desta chave existe na SEFAZ, mas já foi cancelado (ou, no
+   * MDF-e, encerrado) lá: não vale como autorização, e o número foi usado.
+   */
+  | { tipo: "finalizado"; situacao: SituacaoFinal; cStat: number; motivo: string }
   /** A resposta diz "autorizado" mas não fecha com o que foi enviado: não vale como autorização. */
   | { tipo: "incoerente"; motivo: string };
 
-/** O que a resposta da recepção (ou da consulta) significa para o CT-e enviado. */
-export function decidir(resposta: RespostaDaRecepcao, esperado: Esperado): Decisao {
+export type SituacaoFinal = "cancelado" | "encerrado";
+
+/**
+ * Os códigos que dizem que o documento da chave já não está "autorizado" na
+ * SEFAZ. No CT-e: 101 (consulta, MOC 4.00, Visão Geral, item 4.5.6) e 218
+ * (recepção, Anexo I, regra G159). O MDF-e acrescenta os do encerramento
+ * (src/lib/mdfe/sefaz.ts).
+ */
+export const FINALIZADOS_DO_CTE: Readonly<Record<number, SituacaoFinal>> = { [CSTAT.CANCELADO]: "cancelado", [CSTAT.JA_CANCELADO]: "cancelado" };
+
+/**
+ * O que a resposta da recepção (ou da consulta) significa para o CT-e enviado.
+ *
+ * A SITUAÇÃO ATUAL É A DO TOPO DA RESPOSTA. Na consulta, o `protCTe` é sempre o
+ * protocolo da AUTORIZAÇÃO (com `cStat` 100 dentro), mesmo quando o documento
+ * já foi cancelado: quem diz isso é o `cStat` do `retConsSitCTe` (MOC 4.00,
+ * Visão Geral, itens 4.5.2 e 4.5.6: "retornando o cStat com um dos valores, 100
+ * ou 101, e o respectivo protocolo de autorização de uso"). Por isso o topo é
+ * olhado antes do protocolo: documento cancelado não é gravado como autorizado.
+ */
+export function decidir(resposta: RespostaDaRecepcao, esperado: Esperado, finalizados: Readonly<Record<number, SituacaoFinal>> = FINALIZADOS_DO_CTE): Decisao {
   const protocolo = resposta.protocolo;
+  const situacaoFinal = finalizados[resposta.cStat];
+  if (situacaoFinal) return { tipo: "finalizado", situacao: situacaoFinal, cStat: resposta.cStat, motivo: resposta.motivo.trim() || "sem descrição" };
   const cStat = protocolo?.cStat ?? resposta.cStat;
   const motivo = (protocolo?.motivo || resposta.motivo || "").trim() || "sem descrição";
 
@@ -302,6 +348,22 @@ export function lerEvento(corpo: No, resposta: string): RespostaDoEvento {
 export function eventoRegistrado(resposta: RespostaDoEvento, esperado: { chave: string; tipo: string }): boolean {
   return resposta.cStat === CSTAT.EVENTO_REGISTRADO && resposta.protocolo !== null && resposta.chave === esperado.chave && resposta.tipo === esperado.tipo;
 }
+
+/**
+ * A SEFAZ GUARDOU o evento, com ressalva: 134 (vinculado ao documento, que não
+ * está "autorizado") ou 136 (guardado sem vínculo: o documento não existe lá),
+ * com protocolo, para a chave e o tipo enviados (MOC do CT-e 4.00 e do MDF-e
+ * 3.00b, Visão Geral, item 5.1.7). Não é recusa, e também não prova que o
+ * documento mudou de situação: quem chama confere pela consulta.
+ */
+export function eventoGuardadoComRessalva(resposta: RespostaDoEvento, esperado: { chave: string; tipo: string }): boolean {
+  const comRessalva = resposta.cStat === CSTAT.EVENTO_REGISTRADO_COM_ALERTA || resposta.cStat === CSTAT.EVENTO_REGISTRADO_SEM_VINCULO;
+  return comRessalva && resposta.protocolo !== null && resposta.chave === esperado.chave && resposta.tipo === esperado.tipo;
+}
+
+/** A frase para a pessoa quando o evento foi guardado com ressalva e nada confirmou que ele valeu para o documento. */
+export const fraseDoEventoComRessalva = (oQue: string, resposta: Pick<RespostaDoEvento, "cStat" | "motivo" | "protocolo">) =>
+  `A SEFAZ guardou ${oQue} com ressalva (${resposta.cStat} - ${resposta.motivo.trim() || "sem descrição"}; protocolo ${resposta.protocolo ?? "não informado"}), sem confirmar que valeu para o documento: ele continua como estava neste sistema. Confira a situação na SEFAZ antes de tentar de novo.`;
 
 export async function enviarEvento(destino: Destino, xmlAssinado: string): Promise<RespostaDoEvento> {
   const { resposta, corpo } = await chamar(destino, "evento", xmlAssinado);

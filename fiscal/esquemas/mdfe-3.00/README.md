@@ -31,10 +31,11 @@ rodoviário, consultas e eventos do emitente), sem alteração:
 | `consMDFeNaoEnc_v3.00.xsd`, `retConsMDFeNaoEnc_v3.00.xsd`, `consMDFeNaoEncTiposBasico_v3.00.xsd` | Consulta dos MDF-e não encerrados |
 | `eventoMDFe_v3.00.xsd`, `retEventoMDFe_v3.00.xsd`, `procEventoMDFe_v3.00.xsd`, `eventoMDFeTiposBasico_v3.00.xsd` | O envelope do evento, o retorno e o evento registrado |
 | `evEncMDFe_v3.00.xsd`, `evCancMDFe_v3.00.xsd`, `evIncCondutorMDFe_v3.00.xsd`, `evInclusaoDFeMDFe_v3.00.xsd` | O `detEvento` de cada evento (encerramento, cancelamento, inclusão de condutor e inclusão de DF-e) |
+| `evPagtoOperMDFe_v3.00.xsd`, `evAlteracaoPagtoServMDFe_v3.00.xsd` | O `detEvento` dos eventos de pagamento da operação de transporte (110116) e de alteração do pagamento (110118). Copiados do mesmo zip em 12/10/2026 |
 
 Ficaram de fora: os outros modais (aéreo, aquaviário e ferroviário), o lote
 assíncrono (`enviMDFe`, `consReciMDFe`: o serviço foi desligado em 30/06/2024
-pela NT 2024.001), a distribuição de DF-e e os eventos de pagamento e de
+pela NT 2024.001), a distribuição de DF-e e o evento de
 confirmação do serviço.
 
 **Limitação conhecida deste pacote:** o atributo `Id` do `infMDFe` ainda é

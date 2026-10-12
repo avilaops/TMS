@@ -96,8 +96,8 @@ describe("tabela de frete que o cliente vê", () => {
 describe("destinatário frequente: validação", () => {
   it("aceita o cadastro, guarda só os dígitos do documento e transforma vazio em nulo", () => {
     expect(
-      criarDestinatarioSchema.parse({ name: "  Loja do Zé  ", document: "11.222.333/0001-81", city: "Mirassol - SP", address: "", contactName: " Zé ", phone: "" }),
-    ).toEqual({ name: "Loja do Zé", document: "11222333000181", city: "Mirassol - SP", address: null, contactName: "Zé", phone: null });
+      criarDestinatarioSchema.parse({ name: "  Loja do Zé  ", document: "99.000.108/0001-41", city: "Mirassol - SP", address: "", contactName: " Zé ", phone: "" }),
+    ).toEqual({ name: "Loja do Zé", document: "99000108000141", city: "Mirassol - SP", address: null, contactName: "Zé", phone: null });
     expect(criarDestinatarioSchema.parse({ name: "Loja", city: "Mirassol" })).toEqual({ name: "Loja", city: "Mirassol" });
     expect(criarDestinatarioSchema.parse({ name: "Loja", city: "Mirassol", document: "529.982.247-25" }).document).toBe("52998224725");
     expect(criarDestinatarioSchema.parse({ name: "Loja", city: "Mirassol", document: "" }).document).toBeNull();
@@ -479,9 +479,9 @@ suite("portal do cliente: cotação, tabela, destinatários, pedido e exportaç�
     });
 
     it("o cliente cadastra, lista em ordem de nome, altera e apaga os seus", async () => {
-      const loja = await criar("CLIENTE_A", { name: "Loja do Zé", document: "11.222.333/0001-81", city: "Mirassol - SP", address: "Rua 1, 100", contactName: "Zé", phone: "17 3333-0000" });
+      const loja = await criar("CLIENTE_A", { name: "Loja do Zé", document: "99.000.108/0001-41", city: "Mirassol - SP", address: "Rua 1, 100", contactName: "Zé", phone: "17 3333-0000" });
       expect(loja.status).toBe(201);
-      expect(loja.corpo).toEqual({ id: expect.any(String), name: "Loja do Zé", document: "11222333000181", city: "Mirassol - SP", address: "Rua 1, 100", contactName: "Zé", phone: "17 3333-0000" });
+      expect(loja.corpo).toEqual({ id: expect.any(String), name: "Loja do Zé", document: "99000108000141", city: "Mirassol - SP", address: "Rua 1, 100", contactName: "Zé", phone: "17 3333-0000" });
       await criar("CLIENTE_A", { name: "Armazém Central", city: "Bady Bassitt - SP" });
 
       expect((await listar("CLIENTE_A")).map((d) => d.name)).toEqual(["Armazém Central", "Loja do Zé"]);

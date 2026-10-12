@@ -28,9 +28,9 @@ const EXEMPLO_DO_MANUAL =
 
 // Montado à mão, campo a campo, com o CRC calculado fora deste código.
 const COM_VALOR =
-  "00020126360014br.gov.bcb.pix0114112223330001815204000053039865406480.505802BR5917Mello Transportes6015Sao Jose do Rio62130509FAT009001630432F5";
+  "00020126360014br.gov.bcb.pix0114990001080001415204000053039865406480.505802BR5917Mello Transportes6015Sao Jose do Rio62130509FAT009001630418FF";
 
-const CNPJ_VALIDO = "11222333000181";
+const CNPJ_VALIDO = "99000108000141";
 const CPF_VALIDO = "52998224725";
 const RECEBEDOR = { chave: CNPJ_VALIDO, nome: "Mello Transportes", cidade: "São José do Rio Preto" };
 
@@ -108,9 +108,9 @@ describe("Pix Copia e Cola: o código", () => {
 describe("Pix Copia e Cola: a chave", () => {
   it("CPF e CNPJ: só dígitos, com o dígito verificador certo", () => {
     expect(normalizarChave("CPF", "529.982.247-25")).toBe(CPF_VALIDO);
-    expect(normalizarChave("CNPJ", "11.222.333/0001-81")).toBe(CNPJ_VALIDO);
+    expect(normalizarChave("CNPJ", "99.000.108/0001-41")).toBe(CNPJ_VALIDO);
     for (const cpf of ["529.982.247-26", "111.111.111-11", "5299822472", "", "abc"]) expect(normalizarChave("CPF", cpf), cpf).toBeNull();
-    for (const cnpj of ["11.222.333/0001-82", "00000000000000", CPF_VALIDO, ""]) expect(normalizarChave("CNPJ", cnpj), cnpj).toBeNull();
+    for (const cnpj of ["99.000.108/0001-42", "00000000000000", CPF_VALIDO, ""]) expect(normalizarChave("CNPJ", cnpj), cnpj).toBeNull();
   });
 
   it("e-mail em minúsculas; telefone como +55 com DDD; aleatória como UUID", () => {
@@ -128,7 +128,7 @@ describe("Pix Copia e Cola: a chave", () => {
 
   it("o cadastro da empresa: aceita, normaliza a chave, e recusa o que não confere com o tipo ou passa do limite", () => {
     const base = { multaPct: 2, jurosPct: 1 };
-    const pix = { tipo: "CNPJ", chave: "11.222.333/0001-81", nome: " Mello Transportes ", cidade: "Rio Preto" };
+    const pix = { tipo: "CNPJ", chave: "99.000.108/0001-41", nome: " Mello Transportes ", cidade: "Rio Preto" };
 
     expect(parametrosDeCobrancaSchema.parse({ ...base, pix }).pix).toEqual({ tipo: "CNPJ", chave: CNPJ_VALIDO, nome: "Mello Transportes", cidade: "Rio Preto" });
     // `null` remove; ausente não mexe.
@@ -136,7 +136,7 @@ describe("Pix Copia e Cola: a chave", () => {
     expect(parametrosDeCobrancaSchema.parse(base).pix).toBeUndefined();
 
     const recusa = (corpo: unknown) => parametrosDeCobrancaSchema.safeParse({ ...base, pix: corpo });
-    expect(recusa({ ...pix, chave: "11.222.333/0001-99" }).error?.issues[0]?.message).toBe(CHAVE_PIX_INVALIDA);
+    expect(recusa({ ...pix, chave: "99.000.108/0001-99" }).error?.issues[0]?.message).toBe(CHAVE_PIX_INVALIDA);
     for (const corpo of [
       { ...pix, tipo: "BOLETO" },
       { ...pix, tipo: "CPF" }, // CNPJ no tipo CPF
@@ -236,7 +236,7 @@ const CNPJ_DA_OUTRA = "99414141000393";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
 
 // A cidade cabe no limite do padrão (15) e tem acento e ponto, que saem só na hora de montar o código.
-const PIX = { tipo: "CNPJ", chave: "11.222.333/0001-81", nome: "Mello Transportes", cidade: "S. J. Rio Prêto" };
+const PIX = { tipo: "CNPJ", chave: "99.000.108/0001-41", nome: "Mello Transportes", cidade: "S. J. Rio Prêto" };
 
 suite("cobrança por Pix: rotas", () => {
   let banco: typeof import("../src/lib/prisma");
@@ -425,7 +425,7 @@ suite("cobrança por Pix: rotas", () => {
 
     it("chave que não confere com o tipo, nome ou cidade fora do limite: 400 e nada é gravado", async () => {
       for (const pix of [
-        { ...PIX, chave: "11.222.333/0001-99" },
+        { ...PIX, chave: "99.000.108/0001-99" },
         { ...PIX, tipo: "EMAIL" },
         { ...PIX, tipo: "QUALQUER" },
         { ...PIX, nome: "x".repeat(26) },

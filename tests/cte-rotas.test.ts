@@ -54,7 +54,7 @@ const suite = temBanco ? describe : describe.skip;
 const PREFIXO = "teste-cte-";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
 const SEM_ID = "00000000-0000-0000-0000-000000000000";
-const CNPJ_DA_PADRAO = "11222333000181";
+const CNPJ_DA_PADRAO = "99000108000141";
 const CNPJ_DA_OUTRA = "99888777000100";
 // O cliente pagador é o emitente das NF-e de exemplo: vira o tomador remetente.
 const CNPJ_DO_CLIENTE = REMETENTE.documento;
@@ -64,7 +64,7 @@ type Perfil = "ADMIN" | "DIRECTOR" | "OPERATION" | "FINANCE" | "EXPEDITION" | "C
 type Corpo = Record<string, unknown> & { error?: string };
 
 const FORMULARIO = {
-  cnpj: "11.222.333/0001-81",
+  cnpj: "99.000.108/0001-41",
   ie: "123456789012",
   razaoSocial: `${PREFIXO}Transportadora Ltda`,
   fantasia: "Trans Teste",
@@ -292,6 +292,7 @@ suite("rotas da emissão de CT-e", () => {
     sefaz.modo = "autorizar";
     sefaz.atrasoMs = 0;
     sefaz.consultasCegas = 0;
+    sefaz.eventoComRessalva = null;
     sefaz.chamadas.length = 0;
     recebidosNoN8n = [];
     await limparMovimento();
@@ -366,7 +367,7 @@ suite("rotas da emissão de CT-e", () => {
 
   describe("dados fiscais do emitente", () => {
     it("valida o formulário, acha o código IBGE e guarda; a leitura devolve o que foi salvo", async () => {
-      expect((await salvarDados({ cnpj: "11.222.333/0001-82" })).corpo.error).toContain("CNPJ válido");
+      expect((await salvarDados({ cnpj: "99.000.108/0001-42" })).corpo.error).toContain("CNPJ válido");
       expect((await salvarDados({ cidade: "Cidade Que Não Existe" })).corpo.error).toBe(MUNICIPIO_DESCONHECIDO);
       // Mirassol existe em SP, não em MG.
       expect((await salvarDados({ uf: "MG" })).corpo.error).toBe(MUNICIPIO_DESCONHECIDO);
@@ -392,7 +393,7 @@ suite("rotas da emissão de CT-e", () => {
       await salvarDados();
       expect((await salvarDados({ ambiente: "PRODUCAO" })).corpo.error).toBe(PRODUCAO_PEDE_CONFIRMACAO);
       expect((await salvarDados({ ambiente: "PRODUCAO", confirmacaoDoCnpj: "99.888.777/0001-00" })).corpo.error).toBe(PRODUCAO_PEDE_CONFIRMACAO);
-      const emProducao = await salvarDados({ ambiente: "PRODUCAO", confirmacaoDoCnpj: "11.222.333/0001-81", proximoNumero: "900" });
+      const emProducao = await salvarDados({ ambiente: "PRODUCAO", confirmacaoDoCnpj: "99.000.108/0001-41", proximoNumero: "900" });
       expect(emProducao.status).toBe(200);
       expect(emProducao.corpo.dados).toMatchObject({ ambiente: "PRODUCAO", proximoNumero: 900 });
       // Já está em produção: salvar de novo não pede a confirmação outra vez.
@@ -495,7 +496,7 @@ suite("rotas da emissão de CT-e", () => {
 
       const auditoria = await banco.sistema.auditLog.findMany({ where: { ...DAS_EMPRESAS, userName: { startsWith: PREFIXO } } });
       expect(auditoria.find((a) => a.action === "empresa.certificado")).toMatchObject({ summary: "Certificado digital A1 enviado" });
-      expect(JSON.stringify(auditoria.find((a) => a.action === "empresa.certificado")?.after)).toContain("TRANSPORTADORA DE TESTE LTDA (CNPJ 11222333000181), válido até");
+      expect(JSON.stringify(auditoria.find((a) => a.action === "empresa.certificado")?.after)).toContain("TRANSPORTADORA DE TESTE LTDA (CNPJ 99000108000141), válido até");
       const cte = (await cteDe(carga.id))[0];
       const eventosDaFila = await banco.sistema.outboxEvent.findMany({ where: DAS_EMPRESAS });
 
@@ -519,7 +520,7 @@ suite("rotas da emissão de CT-e", () => {
       await prepararEmpresa();
       expect(await salvarDados({ cnpj: CNPJ_DA_OUTRA })).toMatchObject({ status: 409, corpo: { error: CNPJ_COM_OUTRO_CERTIFICADO } });
       // Filial da mesma empresa: aceita, e a tela é avisada de que o certificado é de outro estabelecimento.
-      expect((await salvarDados({ cnpj: "11.222.333/0002-62" })).corpo.certificado).toMatchObject({ confere: "MESMA_EMPRESA" });
+      expect((await salvarDados({ cnpj: "99.000.108/0002-22" })).corpo.certificado).toMatchObject({ confere: "MESMA_EMPRESA" });
 
       entrarComo("ADMIN");
       const removido = await lida<FiscalDaEmpresa>(await certificadoRota.DELETE(req("DELETE")));
@@ -576,9 +577,9 @@ suite("rotas da emissão de CT-e", () => {
         valorDaPrestacao: 850.5,
         valorDaCarga: 32500.9,
         icms: { situacao: "00", aliquota: 12, valor: 102.06 },
-        tomador: { papel: "REMETENTE", documento: "45.543.915/0001-81", contribuinte: "1" },
+        tomador: { papel: "REMETENTE", documento: "99.000.303/0001-71", contribuinte: "1" },
         remetente: { nome: "Indústria Remetente S/A", ie: "110042490114" },
-        destinatario: { nome: "Comércio Destinatário Ltda", documento: "07.526.557/0001-00" },
+        destinatario: { nome: "Comércio Destinatário Ltda", documento: "99.000.703/0001-87" },
       });
       expect(corpo.resumo?.chavesDeNfe).toHaveLength(1);
       expect(corpo.avisos.join(" ")).toContain("Em homologação");
@@ -862,6 +863,32 @@ suite("rotas da emissão de CT-e", () => {
       expect(await numeracao()).toBe(91);
     });
 
+    it("sem resposta de CT-e que a SEFAZ já tem CANCELADO (101): a consulta traz o protocolo da autorização, e mesmo assim ele NÃO é gravado como autorizado", async () => {
+      await prepararEmpresa({ proximoNumero: "92" });
+      const carga = await novaCarga();
+      sefaz.modo = "mudo-processando";
+      expect((await emitir(carga.id)).status).toBe(504);
+      const [antes] = await cteDe(carga.id);
+      // Autorizado lá, e depois cancelado fora deste sistema.
+      expect(sefaz.autorizados.has(antes.accessKey)).toBe(true);
+      sefaz.cancelados.add(antes.accessKey);
+
+      sefaz.modo = "autorizar";
+      sefaz.chamadas.length = 0;
+      const retomada = await emitir(carga.id);
+      expect(retomada.status).toBe(200);
+      expect(retomada.corpo.autorizado).toBe(false);
+      expect(retomada.corpo.cte).toMatchObject({ id: antes.id, situacao: "REJECTED", cStat: 101, protocolo: null });
+      expect(retomada.corpo.mensagem).toMatch(/^A SEFAZ informa que o CT-e nº 92 já está cancelado lá \(101 - .*\): ele não foi gravado como autorizado\. O número foi usado: a próxima emissão usa o seguinte\.$/);
+      // Só a consulta: nada foi reenviado.
+      expect(sefaz.chamadas.map((c) => c.servico)).toEqual(["CTeConsultaV4"]);
+      expect((await cteDe(carga.id))[0]).toMatchObject({ status: "REJECTED", protocol: null, authorizedAt: null, numberBurned: true, unanswered: false });
+      expect(await trilha("cte.emitir")).toHaveLength(0);
+      // A carga continua sem CT-e, e a emissão seguinte leva o número 93.
+      const nova = await emitir(carga.id);
+      expect(nova.corpo).toMatchObject({ autorizado: true, cte: { numero: 93, situacao: "AUTHORIZED" } });
+    });
+
     it("sem resposta e a consulta também falha: continua sem resposta, sem montar documento novo", async () => {
       await prepararEmpresa({ proximoNumero: "95" });
       const carga = await novaCarga();
@@ -1057,6 +1084,29 @@ suite("rotas da emissão de CT-e", () => {
       expect(segunda.status).toBe(200);
       expect(segunda.corpo.situacao).toBe("CANCELLED");
       expect((await cteDe(carga.id))[0]).toMatchObject({ status: "CANCELLED", cancelProtocol: null });
+    });
+
+    it("evento guardado com ressalva (134 e 136): não é recusa; só cancela quando a consulta pela chave diz que o CT-e está cancelado", async () => {
+      await prepararEmpresa({ proximoNumero: "660" });
+      const carga = await novaCarga();
+      const emitido = (await emitir(carga.id)).corpo.cte;
+
+      // 136: a SEFAZ guardou o evento sem vincular ao CT-e. A consulta diz que ele continua autorizado: nada muda aqui.
+      sefaz.eventoComRessalva = 136;
+      const semVinculo = await cancelar(emitido.id);
+      expect(semVinculo.status).toBe(409);
+      expect(semVinculo.corpo.error).toMatch(/^A SEFAZ guardou o cancelamento com ressalva \(136 - Evento registrado, mas não vinculado a CT-e; protocolo \d{15}\), sem confirmar que valeu para o documento/);
+      expect((await cteDe(carga.id))[0]).toMatchObject({ status: "AUTHORIZED", cancelledAt: null });
+      expect(await trilha("cte.cancelar")).toHaveLength(0);
+
+      // 134: guardado e vinculado, com alerta. A consulta confirma o cancelamento (101): cancelado, com o protocolo do evento.
+      sefaz.eventoComRessalva = 134;
+      sefaz.chamadas.length = 0;
+      const comAlerta = await cancelar(emitido.id);
+      expect(comAlerta.status).toBe(200);
+      expect(comAlerta.corpo.situacao).toBe("CANCELLED");
+      expect(sefaz.chamadas.map((c) => c.servico)).toEqual(["CTeRecepcaoEventoV4", "CTeConsultaV4"]);
+      expect((await cteDe(carga.id))[0].cancelProtocol).toMatch(/^\d{15}$/);
     });
   });
 

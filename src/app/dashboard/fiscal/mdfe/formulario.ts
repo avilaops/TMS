@@ -134,6 +134,9 @@ export function formularioDasEntradas(entradas: EntradasDoMdfe): FormularioDoMdf
   };
 }
 
+/** Só o pagamento do frete, como a rota do evento de pagamento o recebe. `null`: nem quem paga nem o valor foram informados. */
+export const pagamentoDoFormulario = (form: FormularioDoMdfe): unknown => entradasDoFormulario(form, false).pagamento ?? null;
+
 const valorDoTexto = (texto: string) => Number(texto.trim().replace(/\./g, "").replace(",", "."));
 
 /**

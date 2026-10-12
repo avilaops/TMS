@@ -18,6 +18,12 @@ import { respostaDeErro } from '../erro';
  * monta, assina e transmite. A resposta traz o MDF-e como ficou e a mensagem da
  * SEFAZ; ele só volta "autorizado" com o protocolo que a SEFAZ devolveu. Falha
  * de rede é 502 ou 504, com a frase do que fazer.
+ *
+ * `POST { ..., contingencia: true }`: emissão em contingência off-line, pedida
+ * de forma explícita por quem emite quando não se consegue a autorização. Nada
+ * é transmitido: o MDF-e volta "CONTINGENCY" (emitido, sem protocolo, a
+ * transmitir em até 168 horas por `POST .../emissao/[id]/transmitir`). É
+ * recusada (409) quando a SEFAZ responde que o serviço está em operação.
  */
 export async function GET(req: Request) {
   const { error } = await requireStaff({ pode: 'fiscalVer' });
@@ -41,8 +47,8 @@ export async function POST(req: Request) {
   if (!dados.success) return NextResponse.json({ error: firstIssue(dados.error) }, { status: 400 });
 
   try {
-    const { manifestId, ufDeDescarga, entradas } = dados.data;
-    return NextResponse.json(await emitirMdfe(await empresaDaSessao(), manifestId, ufDeDescarga, entradas, { ator: user, origem: origemDaRequisicao(req) }));
+    const { manifestId, ufDeDescarga, entradas, contingencia } = dados.data;
+    return NextResponse.json(await emitirMdfe(await empresaDaSessao(), manifestId, ufDeDescarga, entradas, { ator: user, origem: origemDaRequisicao(req) }, { contingencia: contingencia === true }));
   } catch (erro) {
     return respostaDeErro(erro, 'emitir o MDF-e');
   }

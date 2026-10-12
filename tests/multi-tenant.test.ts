@@ -24,7 +24,7 @@ if (!temBanco) {
 const suite = temBanco ? describe : describe.skip;
 
 const PREFIXO = "teste-multitenant-";
-const CNPJ = "11222333000181";
+const CNPJ = "99000108000141";
 const PLACA = "MTT1A23";
 const SENHA = "senha-de-teste-123";
 const SENHA_OUTRA = "outra-senha-de-teste-456";

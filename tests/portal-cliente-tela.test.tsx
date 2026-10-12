@@ -258,7 +258,7 @@ describe("pedido de coleta no portal", () => {
 });
 
 describe("Pix Copia e Cola nas faturas", () => {
-  const CODIGO = "00020126360014br.gov.bcb.pix0114112223330001815204000053039865406480.505802BR5917Mello Transportes6008Mirassol62130509FAT0000126304ABCD";
+  const CODIGO = "00020126360014br.gov.bcb.pix0114990001080001415204000053039865406480.505802BR5917Mello Transportes6008Mirassol62130509FAT0000126304ABCD";
 
   it("portal: o título em aberto com chave abre o código, copia e avisa que a baixa é manual; o resto não tem botão", async () => {
     const copiados: string[] = [];
@@ -299,7 +299,7 @@ describe("Pix Copia e Cola nas faturas", () => {
     issuedAt: "2026-10-01T12:00:00.000Z",
     paidAt: null,
     notes: null,
-    client: { companyName: "Cliente Ltda", tradeName: null, cnpj: "11222333000181" },
+    client: { companyName: "Cliente Ltda", tradeName: null, cnpj: "99000108000141" },
     transaction: { id: "t1" },
     collections: [],
   };

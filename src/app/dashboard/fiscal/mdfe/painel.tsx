@@ -8,10 +8,14 @@ import {
   CATEGORIAS_DE_COMBINACAO,
   JUSTIFICATIVA_MAXIMA,
   JUSTIFICATIVA_MINIMA,
+  PRAZO_DA_CONTINGENCIA_HORAS,
+  QUANDO_ALTERAR_O_PAGAMENTO,
+  QUANDO_INFORMAR_O_PAGAMENTO,
   ROTULO_DA_SITUACAO,
   TIPOS_DE_CARGA,
   TIPOS_DE_EMITENTE,
   TIPOS_DE_VALE_PEDAGIO,
+  avisoDoPrazoDaContingencia,
   dentroDoPrazoDeCancelamento,
   seloDoMdfe,
   type ConferenciaDoMdfe,
@@ -24,13 +28,18 @@ import { UFS } from "@/lib/roteiro";
 import { BotaoDanfe } from "@/components/fiscal/botao-danfe";
 import { BOTAO_AZUL, BOTAO_CLARO, INPUT, LABEL, erroDe, quando } from "../../deposito/comum";
 import { chaveEmBlocos } from "../comum";
-import { entradasDoFormulario, formularioDasEntradas, type FormularioDoMdfe } from "./formulario";
+import { FORMULARIO_EM_BRANCO, entradasDoFormulario, formularioDasEntradas, pagamentoDoFormulario, type FormularioDoMdfe } from "./formulario";
 
 /**
  * O MDF-e na tela: a aba "MDF-e" da viagem (conferir, informar o que falta e
  * emitir, um documento por UF de descarregamento) e as ações de um MDF-e
- * autorizado (XML, DAMDFE, encerrar, cancelar, incluir condutor), que a lista
- * de MDF-e também usa.
+ * autorizado (XML, DAMDFE, encerrar, cancelar, incluir condutor, pagamento do
+ * frete), que a lista de MDF-e também usa.
+ *
+ * A contingência off-line é sempre uma escolha de quem emite: a opção só
+ * aparece depois de uma emissão que ficou sem resposta ou encontrou o serviço
+ * parado, pede uma confirmação e deixa o MDF-e "em contingência, a transmitir",
+ * com o prazo e o botão de transmitir.
  *
  * A tela nunca diz "autorizado", "encerrado" ou "cancelado" por conta própria:
  * mostra o que a rota devolveu, e a rota só devolve isso com o protocolo da
@@ -47,9 +56,10 @@ export const COR_DO_SELO: Record<MdfeEmitido["situacao"], string> = {
   CANCELLED: "bg-gray-200 text-gray-700",
   REJECTED: "bg-red-100 text-red-700",
   DRAFT: "bg-amber-100 text-amber-800",
+  CONTINGENCY: "bg-orange-100 text-orange-900",
 };
 
-const json = (corpo: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+const json = (corpo: unknown, method: "POST" | "PUT" = "POST"): RequestInit => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
 
 const Alerta = ({ texto }: { texto: string }) => (
   <p role="alert" className="px-3 py-2 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50">
@@ -90,7 +100,10 @@ function Cabecalho({ titulo, mdfe, aoFechar }: { titulo: string; mdfe: MdfeEmiti
 
 /* ---------------------------- Eventos de um MDF-e ---------------------------- */
 
-type Acao = "encerrar" | "cancelar" | "condutor";
+type Acao = "encerrar" | "cancelar" | "condutor" | "pagamento";
+
+/** Os eventos de pagamento, como a SEFAZ os numera (src/lib/mdfe/montar.ts, `TIPO_DO_EVENTO`). */
+const EVENTO_DE_PAGAMENTO = "110116";
 
 /** O dia de hoje no relógio de Brasília (AAAA-MM-DD), para o campo de data. */
 const hoje = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
@@ -277,12 +290,167 @@ function Condutor({ mdfe, aoFechar, aoMudar }: { mdfe: MdfeEmitido; aoFechar: ()
 }
 
 /**
+ * O pagamento do frete por evento: informar (110116, uma vez) ou, depois de
+ * informado, alterar (110118). A tela oferece o caso comum (um pagador, à vista
+ * ou a prazo com uma parcela); a rota aceita mais parcelas.
+ */
+function Pagamento({ mdfe, aoFechar, aoMudar }: { mdfe: MdfeEmitido; aoFechar: () => void; aoMudar: () => void }) {
+  const alterar = mdfe.eventos.some((evento) => evento.tipo === EVENTO_DE_PAGAMENTO);
+  const [form, setForm] = useState<FormularioDoMdfe>(FORMULARIO_EM_BRANCO);
+  const [quantidade, setQuantidade] = useState("1");
+  const [numero, setNumero] = useState("1");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+  const falha = alterar ? "Não foi possível alterar o pagamento." : "Não foi possível informar o pagamento.";
+  const mudar = (campo: keyof FormularioDoMdfe, valor: string | boolean) => setForm((atual) => ({ ...atual, [campo]: valor }));
+
+  const enviar = async () => {
+    setEnviando(true);
+    setErro("");
+    try {
+      const pagamento = pagamentoDoFormulario(form);
+      const pedido = alterar ? json({ pagamento }, "PUT") : json({ viagens: { quantidade, numero }, pagamento });
+      const res = await fetch(`/api/fiscal/mdfe/emissao/${mdfe.id}/pagamento`, pedido);
+      if (!res.ok) return setErro(await erroDe(res, falha));
+      aoMudar();
+      aoFechar();
+    } catch {
+      setErro(falha);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const campo = (nome: keyof FormularioDoMdfe, rotulo: string, opcoes: { numerico?: boolean; tipo?: string } = {}) => (
+    <label className="block space-y-0.5 min-w-0">
+      <span className={LABEL}>{rotulo}</span>
+      <input data-campo={nome} type={opcoes.tipo} inputMode={opcoes.numerico ? "decimal" : undefined} value={String(form[nome])} onChange={(e) => mudar(nome, e.target.value)} className={INPUT} />
+    </label>
+  );
+  const titulo = alterar ? `Alterar pagamento do MDF-e nº ${mdfe.numero}` : `Informar pagamento do MDF-e nº ${mdfe.numero}`;
+
+  return (
+    <div className={MOLDURA} role="dialog" aria-modal="true" aria-label={alterar ? "Alterar pagamento do MDF-e" : "Informar pagamento do MDF-e"}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void enviar();
+        }}
+        className={JANELA}
+      >
+        <Cabecalho titulo={titulo} mdfe={mdfe} aoFechar={aoFechar} />
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+          <p data-quando className="text-xs text-gray-600 dark:text-gray-400">
+            {alterar ? QUANDO_ALTERAR_O_PAGAMENTO : QUANDO_INFORMAR_O_PAGAMENTO}
+          </p>
+          {erro && <Alerta texto={erro} />}
+          <div className={GRADE}>
+            {!alterar && (
+              <>
+                <label className="block space-y-0.5 min-w-0">
+                  <span className={LABEL}>Viagens pagas (total)</span>
+                  <input required data-campo="quantidade" inputMode="numeric" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} className={INPUT} />
+                </label>
+                <label className="block space-y-0.5 min-w-0">
+                  <span className={LABEL}>Nº desta viagem</span>
+                  <input required data-campo="numero" inputMode="numeric" value={numero} onChange={(e) => setNumero(e.target.value)} className={INPUT} />
+                </label>
+              </>
+            )}
+            {campo("pagador", "CPF/CNPJ de quem paga")}
+            {campo("valorDoFrete", "Valor do contrato (R$)", { numerico: true })}
+            <label className="block space-y-0.5 min-w-0">
+              <span className={LABEL}>Recebe por</span>
+              <select data-campo="conta" value={form.conta} onChange={(e) => mudar("conta", e.target.value)} className={INPUT}>
+                <option value="pix">Pix</option>
+                <option value="banco">Banco e agência</option>
+                <option value="ipef">Instituição de pagamento</option>
+              </select>
+            </label>
+            {form.conta === "pix" && campo("pix", "Chave Pix")}
+            {form.conta === "banco" && campo("banco", "Banco (código)", { numerico: true })}
+            {form.conta === "banco" && campo("agencia", "Agência", { numerico: true })}
+            {form.conta === "ipef" && campo("cnpjDaIpef", "CNPJ da instituição")}
+            <label className="col-span-2 flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+              <input type="checkbox" data-campo="aPrazo" checked={form.aPrazo} onChange={(e) => mudar("aPrazo", e.target.checked)} />
+              <span>Pagamento a prazo</span>
+            </label>
+            {form.aPrazo && campo("adiantamento", "Adiantamento (R$)", { numerico: true })}
+            {form.aPrazo && campo("vencimento", "Vencimento do saldo", { tipo: "date" })}
+          </div>
+          <button type="submit" disabled={enviando || form.pagador.trim() === "" || form.valorDoFrete.trim() === ""} className={`${BOTAO_AZUL} w-full`}>
+            {enviando && <Loader2 className="w-4 h-4 animate-spin" />}
+            {alterar ? "Alterar o pagamento na SEFAZ" : "Informar o pagamento na SEFAZ"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+const FALHA_AO_TRANSMITIR = "Não foi possível falar com o servidor. Confira a situação do MDF-e antes de transmitir de novo.";
+
+/**
+ * O MDF-e emitido em contingência que ainda não foi transmitido: o prazo, o
+ * DAMDFE de contingência e o botão que transmite. Ele só passa a "autorizado"
+ * quando a rota devolve o protocolo da SEFAZ.
+ */
+function Contingencia({ mdfe, damdfe, podeAlterar, aoMudar }: { mdfe: MdfeEmitido; damdfe: boolean; podeAlterar: boolean; aoMudar: () => void }) {
+  const [enviando, setEnviando] = useState(false);
+  const [recado, setRecado] = useState<{ ok: boolean; texto: string } | null>(null);
+
+  const transmitir = async () => {
+    setEnviando(true);
+    setRecado(null);
+    try {
+      const res = await fetch(`/api/fiscal/mdfe/emissao/${mdfe.id}/transmitir`, { method: "POST" });
+      if (!res.ok) setRecado({ ok: false, texto: await erroDe(res, FALHA_AO_TRANSMITIR) });
+      else {
+        const lido = (await res.json()) as ResultadoDaEmissao;
+        setRecado({ ok: lido.autorizado, texto: lido.mensagem });
+      }
+    } catch {
+      setRecado({ ok: false, texto: FALHA_AO_TRANSMITIR });
+    } finally {
+      setEnviando(false);
+      aoMudar();
+    }
+  };
+
+  return (
+    <div data-contingencia className="space-y-1.5">
+      {mdfe.transmitirAte && (
+        <p data-prazo role="note" className="px-3 py-2 text-xs text-orange-900 border border-orange-200 rounded-lg bg-orange-50">
+          Emitido em contingência, <strong>sem autorização da SEFAZ</strong>. {avisoDoPrazoDaContingencia(mdfe.transmitirAte)}
+        </p>
+      )}
+      {recado && (
+        <p data-transmissao={recado.ok ? "autorizado" : "nao-autorizado"} role="status" className={`px-3 py-2 text-sm rounded-lg border ${recado.ok ? "text-emerald-800 border-emerald-200 bg-emerald-50" : "text-red-700 border-red-200 bg-red-50"}`}>
+          {recado.texto}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium">
+        {damdfe && <BotaoDanfe documento="damdfe" endereco={`/api/fiscal/mdfe/emissao/${mdfe.id}/damdfe`} className="text-blue-600" />}
+        {podeAlterar && (
+          <button type="button" data-acao="transmitir" disabled={enviando} onClick={() => void transmitir()} className="inline-flex items-center gap-1 text-blue-600 hover:underline disabled:opacity-60">
+            {enviando && <Loader2 className="w-4 h-4 animate-spin" />}
+            {enviando ? "Transmitindo…" : "Transmitir à SEFAZ"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * As ações de um MDF-e que a SEFAZ autorizou: baixar o XML, o DAMDFE, encerrar,
- * cancelar e incluir condutor. `podeAlterar`: o perfil tem a capacidade
- * `fiscal` (quem só lê o fiscal baixa, mas não envia evento).
+ * cancelar, incluir condutor e o pagamento do frete. `podeAlterar`: o perfil
+ * tem a capacidade `fiscal` (quem só lê o fiscal baixa, mas não envia evento).
+ * O MDF-e em contingência, ainda sem autorização, tem as ações dele.
  */
 export function AcoesDoMdfe({ mdfe, damdfe, podeAlterar, aoMudar }: { mdfe: MdfeEmitido; damdfe: boolean; podeAlterar: boolean; aoMudar: () => void }) {
   const [aberta, setAberta] = useState<Acao | null>(null);
+  if (mdfe.situacao === "CONTINGENCY") return <Contingencia mdfe={mdfe} damdfe={damdfe} podeAlterar={podeAlterar} aoMudar={aoMudar} />;
   const autorizado = mdfe.situacao === "AUTHORIZED";
   const temXml = autorizado || mdfe.situacao === "CLOSED" || mdfe.situacao === "CANCELLED";
   if (!temXml) return null;
@@ -307,10 +475,17 @@ export function AcoesDoMdfe({ mdfe, damdfe, podeAlterar, aoMudar }: { mdfe: Mdfe
             </button>
           </>
         )}
+        {/* O pagamento do agregado é acertado no fim do período: o evento vale também para o MDF-e já encerrado. */}
+        {mdfe.situacao !== "CANCELLED" && podeAlterar && (
+          <button type="button" data-acao="pagamento" onClick={() => setAberta("pagamento")} className="text-gray-700 dark:text-gray-300 hover:underline">
+            Pagamento
+          </button>
+        )}
       </div>
       {aberta === "encerrar" && <Encerramento mdfe={mdfe} aoFechar={() => setAberta(null)} aoMudar={aoMudar} />}
       {aberta === "cancelar" && <Cancelamento mdfe={mdfe} aoFechar={() => setAberta(null)} aoMudar={aoMudar} />}
       {aberta === "condutor" && <Condutor mdfe={mdfe} aoFechar={() => setAberta(null)} aoMudar={aoMudar} />}
+      {aberta === "pagamento" && <Pagamento mdfe={mdfe} aoFechar={() => setAberta(null)} aoMudar={aoMudar} />}
     </>
   );
 }
@@ -325,6 +500,13 @@ export function SituacaoDoMdfe({ mdfe }: { mdfe: MdfeEmitido }) {
       {mdfe.situacao === "REJECTED" && (
         <span data-rejeicao className="block mt-1 text-[11px] text-red-700">
           {mdfe.cStat} - {mdfe.motivo}
+        </span>
+      )}
+      {/* A última resposta da transmissão de um MDF-e em contingência (rejeição, serviço parado, falta de resposta). */}
+      {mdfe.situacao === "CONTINGENCY" && mdfe.motivo && (
+        <span data-ultima-transmissao className="block mt-1 text-[11px] text-red-700">
+          Última transmissão: {mdfe.cStat !== null ? `${mdfe.cStat} - ` : ""}
+          {mdfe.motivo}
         </span>
       )}
       {mdfe.situacao !== "DRAFT" && mdfe.situacao !== "REJECTED" && <span className="block mt-1 font-mono text-[10px] text-gray-500 break-all">{chaveEmBlocos(mdfe.chave)}</span>}
@@ -348,6 +530,9 @@ const FALHA_AO_CARREGAR = "Não foi possível carregar os MDF-e da viagem.";
 const FALHA_AO_CONFERIR = "Não foi possível conferir o MDF-e.";
 const FALHA_NA_EMISSAO = "Não foi possível falar com o servidor. Confira a situação do MDF-e antes de tentar de novo.";
 
+/** `cStat` de serviço paralisado (108 momentaneamente, 109 sem previsão): a SEFAZ não processou o MDF-e. */
+const SERVICO_PARADO: readonly number[] = [108, 109];
+
 const maisNovo = (a: MdfeEmitido | null, b: MdfeEmitido | null) => (!a ? b : !b ? a : b.atualizadoEm > a.atualizadoEm ? b : a);
 
 /** Um MDF-e da viagem (uma UF de descarregamento): resumo, o que falta, o formulário e o botão que transmite. */
@@ -368,15 +553,21 @@ function Documento({
   const [form, setForm] = useState<FormularioDoMdfe>(() => formularioDasEntradas(inicial.entradas));
   const [percursoInformado, setPercursoInformado] = useState(false);
   const [aberto, setAberto] = useState(false);
-  const [ocupado, setOcupado] = useState<"conferir" | "emitir" | null>(null);
+  const [ocupado, setOcupado] = useState<"conferir" | "emitir" | "contingencia" | null>(null);
   const [erro, setErro] = useState("");
-  const [resultado, setResultado] = useState<{ autorizado: boolean; mensagem: string } | null>(null);
+  const [resultado, setResultado] = useState<{ autorizado: boolean; contingencia?: boolean; mensagem: string } | null>(null);
+  // A emissão desta tela não conseguiu a autorização por falta de resposta ou serviço parado: é quando a contingência é oferecida.
+  const [semAutorizacao, setSemAutorizacao] = useState(false);
+  const [confirmaContingencia, setConfirmaContingencia] = useState(false);
 
   const { resumo } = conferencia;
   // O MDF-e mais novo entre o que esta tela recebeu ao emitir e o que a viagem releu depois (um evento muda a situação).
   const mdfe = maisNovo(conferencia.mdfe, inicial.mdfe);
   const uf = conferencia.ufDeDescarga;
-  const jaAutorizado = mdfe?.situacao === "AUTHORIZED" || mdfe?.situacao === "CLOSED";
+  // Autorizado, encerrado ou emitido em contingência: a viagem já tem o MDF-e desta UF.
+  const jaAutorizado = mdfe?.situacao === "AUTHORIZED" || mdfe?.situacao === "CLOSED" || mdfe?.situacao === "CONTINGENCY";
+  const ultimoEnvioParado = mdfe?.situacao === "DRAFT" && mdfe.cStat !== null && SERVICO_PARADO.includes(mdfe.cStat);
+  const ofereceContingencia = semAutorizacao || Boolean(mdfe?.semResposta) || ultimoEnvioParado;
   const corpo = () => ({ manifestId, ufDeDescarga: uf, entradas: entradasDoFormulario(form, percursoInformado) });
   const mudar = (campo: keyof FormularioDoMdfe, valor: string | boolean) => setForm((atual) => ({ ...atual, [campo]: valor }));
 
@@ -400,16 +591,41 @@ function Documento({
     setResultado(null);
     try {
       const res = await fetch("/api/fiscal/mdfe/emissao", json(corpo()));
-      if (!res.ok) setErro(await erroDe(res, FALHA_NA_EMISSAO));
-      else {
+      if (!res.ok) {
+        setErro(await erroDe(res, FALHA_NA_EMISSAO));
+        // 502 e 504: a SEFAZ não respondeu, ou respondeu o que não dá para usar.
+        if (res.status === 502 || res.status === 504) setSemAutorizacao(true);
+      } else {
         const lido = (await res.json()) as ResultadoDaEmissao;
         setResultado({ autorizado: lido.autorizado, mensagem: lido.mensagem });
         setConferencia((atual) => ({ ...atual, mdfe: lido.mdfe, pendencias: lido.autorizado ? [] : atual.pendencias }));
+        if (!lido.autorizado && lido.mdfe.cStat !== null && SERVICO_PARADO.includes(lido.mdfe.cStat)) setSemAutorizacao(true);
       }
     } catch {
       setErro(FALHA_NA_EMISSAO);
     } finally {
       setOcupado(null);
+      aoMudar();
+    }
+  };
+
+  const emitirEmContingencia = async () => {
+    setOcupado("contingencia");
+    setErro("");
+    setResultado(null);
+    try {
+      const res = await fetch("/api/fiscal/mdfe/emissao", json({ ...corpo(), contingencia: true }));
+      if (!res.ok) setErro(await erroDe(res, FALHA_NA_EMISSAO));
+      else {
+        const lido = (await res.json()) as ResultadoDaEmissao;
+        setResultado({ autorizado: false, contingencia: true, mensagem: lido.mensagem });
+        setConferencia((atual) => ({ ...atual, mdfe: lido.mdfe }));
+      }
+    } catch {
+      setErro(FALHA_NA_EMISSAO);
+    } finally {
+      setOcupado(null);
+      setConfirmaContingencia(false);
       aoMudar();
     }
   };
@@ -441,7 +657,11 @@ function Documento({
       </div>
 
       {resultado && (
-        <p data-resultado={resultado.autorizado ? "autorizado" : "nao-autorizado"} role="status" className={`flex items-start gap-2 px-3 py-2 text-sm rounded-lg border ${resultado.autorizado ? "text-emerald-800 border-emerald-200 bg-emerald-50" : "text-red-700 border-red-200 bg-red-50"}`}>
+        <p
+          data-resultado={resultado.autorizado ? "autorizado" : resultado.contingencia ? "contingencia" : "nao-autorizado"}
+          role="status"
+          className={`flex items-start gap-2 px-3 py-2 text-sm rounded-lg border ${resultado.autorizado ? "text-emerald-800 border-emerald-200 bg-emerald-50" : resultado.contingencia ? "text-orange-900 border-orange-200 bg-orange-50" : "text-red-700 border-red-200 bg-red-50"}`}
+        >
           {resultado.autorizado ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />}
           <span>{resultado.mensagem}</span>
         </p>
@@ -595,6 +815,28 @@ function Documento({
                   {ocupado === "emitir" ? "Transmitindo…" : viagem.ambiente === "HOMOLOGACAO" ? "Emitir em homologação" : "Emitir"}
                 </button>
               </div>
+
+              {ofereceContingencia && (
+                <div data-oferta-de-contingencia className="px-3 py-2 space-y-1.5 text-xs text-orange-900 border border-orange-200 rounded-lg bg-orange-50">
+                  <p>
+                    <strong>Sem resposta da SEFAZ?</strong> Dá para emitir em contingência: o MDF-e sai sem autorização, com o DAMDFE de contingência para acompanhar a carga, e tem de ser transmitido em até {PRAZO_DA_CONTINGENCIA_HORAS} horas. É exceção: só use quando não conseguir autorizar.
+                  </p>
+                  <label className="flex items-start gap-2">
+                    <input type="checkbox" data-campo="confirmaContingencia" checked={confirmaContingencia} onChange={(e) => setConfirmaContingencia(e.target.checked)} className="mt-0.5" />
+                    <span>Confirmo que não consigo a autorização da SEFAZ agora.</span>
+                  </label>
+                  <button
+                    type="button"
+                    data-contingencia-emitir
+                    disabled={ocupado !== null || !confirmaContingencia || conferencia.pendencias.length > 0}
+                    onClick={() => void emitirEmContingencia()}
+                    className={`${BOTAO_CLARO} w-full`}
+                  >
+                    {ocupado === "contingencia" && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Emitir em contingência
+                  </button>
+                </div>
+              )}
             </>
           )}
         </>

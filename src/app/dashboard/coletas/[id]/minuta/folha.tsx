@@ -8,6 +8,13 @@ import { CodigoDeBarras } from "../../../deposito/comum";
  * A folha da minuta de despacho: uma A4 em retrato, em preto e branco. Só
  * desenha o que `montarMinuta` (src/lib/minuta.ts) entregou: seção que veio
  * `null` não aparece, e campo vazio fica em branco para preencher à mão.
+ *
+ * Carga com muitas NF-e ou observação longa passa de uma folha. As regras de
+ * impressão cuidam da quebra: nenhum quadro curto é cortado ao meio; os dois
+ * que podem ser maiores que uma folha (a carga, pelas notas, e as observações)
+ * quebram entre linhas, nunca no meio de uma chave de nota; o título de um
+ * quadro não fica sozinho no pé da folha; e as assinaturas e o rodapé saem
+ * sempre juntos, na mesma folha.
  */
 
 // No papel só a folha sai: o menu, o cabeçalho do painel e os botões ficam
@@ -17,12 +24,44 @@ export const ESTILO_DE_IMPRESSAO = `
   body * { visibility: hidden; }
   [data-minuta], [data-minuta] * { visibility: visible; }
   [data-minuta] { position: absolute; left: 0; top: 0; width: 100%; max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
-  [data-minuta] section { break-inside: avoid; }
+  [data-minuta] section { break-inside: avoid; page-break-inside: avoid; }
+  /* A carga (uma linha por NF-e) e as observações podem não caber numa folha: quebram entre linhas. */
+  [data-minuta] section[data-secao="carga"], [data-minuta] section[data-secao="observacoes"] { break-inside: auto; page-break-inside: auto; orphans: 3; widows: 3; }
+  [data-minuta] [data-nota], [data-minuta] [data-campos], [data-minuta] [data-composicao] li { break-inside: avoid; page-break-inside: avoid; }
+  [data-minuta] h2 { break-after: avoid; page-break-after: avoid; }
+  /* As assinaturas e o rodapé não se separam: se não couberem no fim da folha, vão juntos para a seguinte. */
+  [data-minuta] [data-fecho] { break-inside: avoid; page-break-inside: avoid; }
   /* O símbolo padrão é um desenho branco sobre fundo de cor: sem isto o navegador tira o fundo e ele some. */
   [data-minuta] header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 @page { size: A4 portrait; margin: 10mm; }
 `;
+
+/** O texto dentro de uma cadeia de CSS: sem aspas, barras, sinais de tag nem quebra de linha. */
+const textoParaCss = (texto: string) =>
+  texto
+    .replace(/["\\<>{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+
+/**
+ * As regras de impressão desta minuta: as de sempre e o cabeçalho mínimo
+ * (empresa e número) no alto das folhas de continuação.
+ *
+ * O cabeçalho repetido é só CSS: uma caixa de margem da página (`@top-right`),
+ * vazia na primeira folha (`@page :first`), que já tem o cabeçalho completo.
+ * Navegador que não desenha caixas de margem de página imprime as folhas
+ * seguintes sem ele; nada mais muda. (Não foi conferido em impressão real em
+ * cada navegador: os testes conferem as regras, não o papel.)
+ */
+export function estiloDeImpressao(minuta: Pick<Minuta, "empresa" | "codigo">): string {
+  const empresa = textoParaCss(minuta.empresa.name);
+  const numero = minuta.codigo ? ` nº ${textoParaCss(minuta.codigo)}` : "";
+  return `${ESTILO_DE_IMPRESSAO}@page { @top-right { content: "${empresa} · Minuta de despacho${numero} · continuação"; font-size: 8pt; color: #000; } }
+@page :first { @top-right { content: none; } }
+`;
+}
 
 const ROTULO = "text-[10px] uppercase tracking-wide text-gray-600 leading-tight";
 const SECAO = "border border-gray-400 rounded-md p-2";
@@ -113,7 +152,7 @@ export function FolhaDaMinuta({ minuta }: { minuta: Minuta }) {
 
       <section data-secao="carga" className={SECAO}>
         <h2 className={TITULO_DA_SECAO}>Carga</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-x-3 gap-y-0.5">
+        <div data-campos className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-x-3 gap-y-0.5">
           <Campo rotulo="Volumes">{carga.volumes}</Campo>
           <Campo rotulo="Peso">{formatWeight(carga.peso)}</Campo>
           <Campo rotulo="Cubagem">{carga.cubagem === null ? null : `${carga.cubagem.toLocaleString("pt-BR")} m³`}</Campo>
@@ -181,15 +220,18 @@ export function FolhaDaMinuta({ minuta }: { minuta: Minuta }) {
         </section>
       )}
 
-      <section data-secao="assinaturas" className="grid grid-cols-1 sm:grid-cols-3 print:grid-cols-3 gap-x-5 gap-y-2 pt-1">
-        <Assinatura de="Remetente" />
-        <Assinatura de="Motorista" />
-        <Assinatura de="Recebedor" completa />
-      </section>
+      {/* O fecho da folha: na impressão, as assinaturas e o rodapé nunca ficam em folhas diferentes. */}
+      <div data-fecho className="space-y-2">
+        <section data-secao="assinaturas" className="grid grid-cols-1 sm:grid-cols-3 print:grid-cols-3 gap-x-5 gap-y-2 pt-1">
+          <Assinatura de="Remetente" />
+          <Assinatura de="Motorista" />
+          <Assinatura de="Recebedor" completa />
+        </section>
 
-      <footer data-aviso className="border-t-2 border-black pt-1.5 text-center text-xs font-bold">
-        {AVISO_SEM_VALOR_FISCAL}
-      </footer>
+        <footer data-aviso className="border-t-2 border-black pt-1.5 text-center text-xs font-bold">
+          {AVISO_SEM_VALOR_FISCAL}
+        </footer>
+      </div>
     </article>
   );
 }

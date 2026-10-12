@@ -1,7 +1,8 @@
 /**
  * Endereços dos web services do CT-e 4.00, por autorizador e ambiente.
  *
- * FONTE: Portal do CT-e, página "Relação de Serviços Web", lida em 10/10/2026:
+ * FONTE: Portal do CT-e, página "Relação de Serviços Web", lida em 10/10/2026
+ * e conferida de novo em 12/10/2026 (as 48 URL de cada ambiente, sem diferença):
  * - produção:    https://www.cte.fazenda.gov.br/portal/webServices.aspx
  * - homologação: https://hom.cte.fazenda.gov.br/portal/webServices.aspx
  *

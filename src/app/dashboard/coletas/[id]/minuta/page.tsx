@@ -7,15 +7,16 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import type { Minuta } from "@/lib/minuta";
 import { deniedReason, type DeniedReason } from "../../../financeiro/carregar";
 import { BOTAO_AZUL, erroDe } from "../../../deposito/comum";
-import { ESTILO_DE_IMPRESSAO, FolhaDaMinuta } from "./folha";
+import { FolhaDaMinuta, estiloDeImpressao } from "./folha";
 
 /**
  * Minuta de despacho da carga, para imprimir: uma folha A4 com as partes, a
  * carga, o frete, a viagem e as assinaturas. Abre pelo atalho "Minuta" da
  * lista de minutas. Não é documento fiscal.
  *
- * Na impressão só a folha sai (`ESTILO_DE_IMPRESSAO`, em ./folha.tsx). O botão
- * de imprimir fica no alto para aparecer no celular sem rolar.
+ * Na impressão só a folha sai (`estiloDeImpressao`, em ./folha.tsx), e a
+ * carga que passa de uma folha quebra sem cortar quadro ao meio. O botão de
+ * imprimir fica no alto para aparecer no celular sem rolar.
  */
 
 type Dados = { denied: DeniedReason } | { denied: null; erro: string } | { denied: null; erro: null; minuta: Minuta };
@@ -108,7 +109,7 @@ export default function MinutaPage({ params }: { params: Promise<{ id: string }>
 
   return (
     <div className="space-y-3 md:space-y-6">
-      <style>{ESTILO_DE_IMPRESSAO}</style>
+      <style>{estiloDeImpressao(dados.minuta)}</style>
 
       <div className="flex items-center justify-between gap-3">
         {voltar}

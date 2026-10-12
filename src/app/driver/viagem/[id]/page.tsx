@@ -60,7 +60,7 @@ interface MdfeDaViagem {
   unloadState: string;
 }
 
-const SITUACAO_DO_MDFE: Record<string, string> = { AUTHORIZED: "Autorizado", CLOSED: "Encerrado", CANCELLED: "Cancelado" };
+const SITUACAO_DO_MDFE: Record<string, string> = { AUTHORIZED: "Autorizado", CLOSED: "Encerrado", CANCELLED: "Cancelado", CONTINGENCY: "Em contingência" };
 
 interface Viagem {
   id: string;

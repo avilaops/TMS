@@ -107,6 +107,22 @@ export const PRAZO_DO_CANCELAMENTO_HORAS = 24;
  */
 export const DIAS_PARA_AVISAR_ENCERRAMENTO = 3;
 
+/**
+ * Prazo para transmitir o MDF-e emitido em contingência: 168 horas contadas da
+ * emissão (MOC do MDF-e 3.00b, Visão Geral, item 11.1: "deve ser observado o
+ * prazo de envio para autorização do MDFe até 168 horas contadas a partir de
+ * sua emissão em contingência").
+ */
+export const PRAZO_DA_CONTINGENCIA_HORAS = 168;
+
+/** Até quando o MDF-e emitido em contingência tem de ser transmitido. */
+export function prazoDaContingencia(emitidoEm: string | Date): Date {
+  return new Date(new Date(emitidoEm).getTime() + PRAZO_DA_CONTINGENCIA_HORAS * 3_600_000);
+}
+
+/** A chave de acesso é de emissão em contingência off-line? O tipo de emissão (`tpEmis`) é a posição 35 da chave. */
+export const chaveDeContingencia = (chave: string) => chave.length === 44 && chave[34] === "2";
+
 /** Os bloqueios da SEFAZ por MDF-e em aberto, em dias (regras F87 e F86). */
 export const DIAS_DO_BLOQUEIO_DA_PLACA = 5;
 export const DIAS_DO_BLOQUEIO_DO_EMITENTE = 30;
@@ -342,6 +358,12 @@ export const emitirSchema = z.object(
     manifestId: id(VIAGEM_MESSAGE),
     ufDeDescarga: z.enum(UFS, "Informe a UF de descarregamento do MDF-e."),
     entradas: entradasSchema.default({}),
+    /**
+     * `true`: emitir em contingência off-line (`tpEmis` 2), sem transmitir
+     * agora. É sempre uma escolha explícita de quem emite; o sistema nunca
+     * entra em contingência sozinho.
+     */
+    contingencia: z.boolean("Informe se a emissão é em contingência.").optional(),
   },
   INVALIDO,
 );
@@ -380,6 +402,38 @@ export const condutorSchema = z.object(
   INVALIDO,
 );
 
+const VIAGENS_MESSAGE = "Informe um número de 1 a 99999.";
+const viagens = z.preprocess(numeroDoFormulario, z.number(VIAGENS_MESSAGE).int(VIAGENS_MESSAGE).min(1, VIAGENS_MESSAGE).max(99_999, VIAGENS_MESSAGE));
+
+/**
+ * Evento de pagamento da operação de transporte (110116): o pagamento do TAC
+ * agregado informado depois da emissão (MOC do MDF-e 3.00b, Visão Geral, item
+ * 6.5). `quantidade`: o total de viagens que este pagamento cobre; `numero`: o
+ * número desta viagem dentro desse total.
+ */
+export const pagamentoDaOperacaoSchema = z
+  .object({ viagens: z.object({ quantidade: viagens, numero: viagens }, INVALIDO), pagamento: pagamentoSchema }, INVALIDO)
+  .superRefine((dados, contexto) => {
+    if (dados.viagens.numero > dados.viagens.quantidade) contexto.addIssue({ code: "custom", message: "O número da viagem não pode ser maior que a quantidade de viagens.", path: ["viagens"] });
+  });
+
+/** Evento de alteração do pagamento do serviço de transporte (110118): os novos dados do pagamento (MOC, Visão Geral, item 6.7). */
+export const alteracaoDoPagamentoSchema = z.object({ pagamento: pagamentoSchema }, INVALIDO);
+
+export type PagamentoDoFormulario = z.infer<typeof pagamentoSchema>;
+
+/**
+ * Quando cada evento de pagamento se aplica, em uma linha, para a tela.
+ * Fonte: MOC do MDF-e 3.00b, Visão Geral, itens 6.5 ("informar o pagamento do
+ * TAC-Agregado ou equiparado a TAC a ocorrer no final do período conforme a
+ * relação de viagens realizadas"; regra K06, rejeição 723, exige `tpProp` 0) e
+ * 6.7 ("modificar os dados do pagamento do serviço de transporte em relação a
+ * um contratante nos casos em que for necessário").
+ */
+export const QUANDO_INFORMAR_O_PAGAMENTO =
+  "Só para veículo de TAC agregado, quando o frete é pago depois, no fim do período (MOC do MDF-e, item 6.5): quem informou o pagamento na emissão não precisa deste evento.";
+export const QUANDO_ALTERAR_O_PAGAMENTO = "Para corrigir os dados do pagamento do frete já informado à SEFAZ para um contratante (MOC do MDF-e, item 6.7).";
+
 /** Ainda dá para pedir o cancelamento? A SEFAZ é quem decide; isto só evita o pedido que ela recusaria (220). */
 export function dentroDoPrazoDeCancelamento(autorizadoEm: string | Date | null, agora: Date = new Date()): boolean {
   if (!autorizadoEm) return false;
@@ -395,12 +449,18 @@ export function diasDesde(autorizadoEm: string | Date | null, agora: Date = new 
 
 /* ------------------------------ Situação do MDF-e ------------------------------ */
 
-export const SITUACOES_DO_MDFE = ["DRAFT", "REJECTED", "AUTHORIZED", "CLOSED", "CANCELLED"] as const;
+/**
+ * `CONTINGENCY`: emitido em contingência off-line (`tpEmis` 2), assinado e
+ * ainda NÃO transmitido à SEFAZ. Não tem protocolo: não é "autorizado". Passa
+ * a `AUTHORIZED` quando a transmissão devolve o protocolo.
+ */
+export const SITUACOES_DO_MDFE = ["DRAFT", "REJECTED", "CONTINGENCY", "AUTHORIZED", "CLOSED", "CANCELLED"] as const;
 export type SituacaoDoMdfe = (typeof SITUACOES_DO_MDFE)[number];
 
 export const ROTULO_DA_SITUACAO: Record<SituacaoDoMdfe, string> = {
   DRAFT: "Rascunho",
   REJECTED: "Rejeitado",
+  CONTINGENCY: "Emitido em contingência, a transmitir",
   AUTHORIZED: "Autorizado",
   CLOSED: "Encerrado",
   CANCELLED: "Cancelado",
@@ -434,6 +494,12 @@ export type MdfeEmitido = {
   cStat: number | null;
   motivo: string | null;
   protocolo: string | null;
+  /** O `dhEmi` do documento. */
+  emitidoEm: string;
+  /** Emitido em contingência off-line (`tpEmis` 2), mesmo depois de autorizado. */
+  contingencia: boolean;
+  /** Só enquanto está "em contingência, a transmitir": o fim do prazo de 168 horas. */
+  transmitirAte: string | null;
   autorizadoEm: string | null;
   encerradoEm: string | null;
   canceladoEm: string | null;
@@ -450,7 +516,17 @@ export function seloDoMdfe(mdfe: Pick<MdfeEmitido, "situacao" | "ambiente" | "nu
   if (mdfe.situacao === "CLOSED") return `Encerrado nº ${mdfe.numero}${sufixo}`;
   if (mdfe.situacao === "CANCELLED") return `Cancelado nº ${mdfe.numero}${sufixo}`;
   if (mdfe.situacao === "REJECTED") return `Rejeitado${sufixo}`;
+  if (mdfe.situacao === "CONTINGENCY") return `Contingência nº ${mdfe.numero}, a transmitir${sufixo}`;
   return mdfe.semResposta ? `Sem resposta da SEFAZ${sufixo}` : `Rascunho${sufixo}`;
+}
+
+/** O aviso do prazo do MDF-e em contingência que ainda não foi transmitido: "Transmita até 17/10/2026, 11:30" ou o atraso. */
+export function avisoDoPrazoDaContingencia(transmitirAte: string | Date, agora: Date = new Date()): string {
+  const limite = new Date(transmitirAte);
+  const quando = limite.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return agora.getTime() > limite.getTime()
+    ? `O prazo de ${PRAZO_DA_CONTINGENCIA_HORAS} horas para transmitir terminou em ${quando}: transmita agora e consulte o contador.`
+    : `Transmita à SEFAZ até ${quando} (${PRAZO_DA_CONTINGENCIA_HORAS} horas da emissão).`;
 }
 
 /** A empresa está pronta para emitir MDF-e? É o que as telas perguntam ao abrir. */
@@ -597,8 +673,13 @@ export type CargaNaSaida = { id: string; codigo: string; ufDeOrigem: string | nu
 /**
  * `ufsDeDescarga`: as UF de descarregamento das cargas que saem do município
  * (a lista de `ufsDeDescarga`, de src/lib/mdfe/preparar.ts). `ufsComMdfe`: as
- * UF de descarregamento (`Mdfe.unloadState`) dos MDF-e autorizados em
- * produção e não cancelados da viagem.
+ * UF de descarregamento (`Mdfe.unloadState`) dos MDF-e de produção da viagem
+ * que cobrem o transporte: os autorizados e não cancelados e os emitidos em
+ * contingência off-line. O de contingência vale para sair porque a
+ * contingência existe para isso: o MOC do MDF-e 3.00b (Visão Geral, item 11)
+ * manda "emiti-lo em contingência Off-line, imprimir o DAMDFE e depois de
+ * superado o problema técnico, transmitir", e avisa que a rejeição posterior
+ * acontece quando "a carga já está em circulação no trânsito".
  */
 export function faltasParaSair(cargas: readonly CargaNaSaida[], tipoDeEmitente: TipoDeEmitente, ufsDeDescarga: readonly string[], ufsComMdfe: readonly string[]): FaltasParaSair {
   const exigencia = exigenciaDeMdfe(cargas);
@@ -649,7 +730,14 @@ export const SO_AUTORIZADO_ENCERRA = "Só MDF-e autorizado pode ser encerrado.";
 export const SO_AUTORIZADO_CANCELA = "Só MDF-e autorizado (e ainda não encerrado) pode ser cancelado.";
 export const SO_AUTORIZADO_RECEBE_EVENTO = "Só MDF-e autorizado (e ainda não encerrado) recebe este evento.";
 export const SO_AUTORIZADO_TEM_XML = "Só MDF-e autorizado tem XML para baixar.";
-export const SO_AUTORIZADO_TEM_DAMDFE = "Só MDF-e autorizado (e não cancelado) tem DAMDFE.";
+export const SO_AUTORIZADO_TEM_DAMDFE = "Só MDF-e autorizado (e não cancelado) ou emitido em contingência tem DAMDFE.";
+export const EM_CONTINGENCIA_A_TRANSMITIR = "Esta viagem tem MDF-e emitido em contingência para esta UF neste ambiente: transmita-o à SEFAZ.";
+export const SO_CONTINGENCIA_TRANSMITE = "Só MDF-e emitido em contingência e ainda não autorizado pode ser transmitido.";
+export const SEFAZ_EM_OPERACAO =
+  "A SEFAZ respondeu que o serviço de MDF-e está em operação: emita normalmente. A contingência é só para quando não se consegue a autorização (MOC do MDF-e, item 11).";
+export const PAGAMENTO_SO_DE_TAC_AGREGADO =
+  "O evento de pagamento só vale para MDF-e cujo veículo de tração é de TAC agregado (proprietário cadastrado no veículo com esse tipo): a SEFAZ rejeita os demais (723).";
+export const PAGAMENTO_JA_INFORMADO = "O pagamento da operação já foi informado para este MDF-e: use a alteração do pagamento.";
 export const FORA_DO_PRAZO = "O prazo de cancelamento (24 horas da autorização) já passou. Encerre o MDF-e.";
 export const TRANSPORTE_JA_INICIADO = "Esta viagem já tem entrega feita ou foi finalizada: o transporte começou, e MDF-e de transporte iniciado não se cancela. Encerre o MDF-e.";
 export const DATA_DE_ENCERRAMENTO_INVALIDA = "A data do encerramento não pode ser anterior à emissão do MDF-e nem depois de hoje.";

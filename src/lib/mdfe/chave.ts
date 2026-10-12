@@ -23,6 +23,13 @@ import { CODIGO_DA_UF, ChaveInvalida, TIPO_DE_EMISSAO_NORMAL, anoEMes } from "@/
 
 export const MODELO_DO_MDFE = "58";
 
+/**
+ * `tpEmis` 2, contingência off-line (MOC do MDF-e 3.00b, Anexo I, campo 16, e
+ * Visão Geral, item 11.2: "Gerar nova chave de acesso com o tpEmis = 2").
+ */
+export const TIPO_DE_EMISSAO_EM_CONTINGENCIA = "2";
+export type TipoDeEmissaoDoMdfe = typeof TIPO_DE_EMISSAO_NORMAL | typeof TIPO_DE_EMISSAO_EM_CONTINGENCIA;
+
 export type PartesDaChaveDoMdfe = {
   uf: string;
   /** Instante da emissão: entram o ano e o mês no relógio da UF do emitente (o mesmo do `dhEmi`). */
@@ -33,6 +40,8 @@ export type PartesDaChaveDoMdfe = {
   numero: number;
   /** Código numérico aleatório (`cMDF`), 8 dígitos. */
   codigo: string;
+  /** `tpEmis`, a posição 35 da chave. Ausente: emissão normal. */
+  tipoDeEmissao?: TipoDeEmissaoDoMdfe;
 };
 
 /** A chave de 44 posições, com o dígito verificador. Parte fora do formato é erro de programação, não de usuário. */
@@ -52,7 +61,7 @@ export function chaveDoMdfe(partes: PartesDaChaveDoMdfe): string {
     MODELO_DO_MDFE,
     String(partes.serie).padStart(3, "0"),
     String(partes.numero).padStart(9, "0"),
-    TIPO_DE_EMISSAO_NORMAL,
+    partes.tipoDeEmissao ?? TIPO_DE_EMISSAO_NORMAL,
     partes.codigo,
   ].join("");
   const digito = digitoDaChave(corpo);

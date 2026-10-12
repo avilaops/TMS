@@ -30,7 +30,7 @@ export const detalheDoEvento = (xml: string) => /<detEvento[^>]*>([\s\S]*)<\/det
 /* ------------------------------ Dados de exemplo ----------------------------- */
 
 export const EMITENTE_DO_MDFE: EmitenteDoMdfe = {
-  cnpj: "11222333000181",
+  cnpj: "99000108000141",
   ie: "123456789012",
   razaoSocial: "Transportadora de Teste Ltda",
   fantasia: "Trans Teste",
@@ -43,16 +43,16 @@ export const EMITENTE_DO_MDFE: EmitenteDoMdfe = {
 };
 
 /** Uma chave de acesso de exemplo, com o dígito verificador certo. Modelo 57 = CT-e, 55 = NF-e. */
-export function chaveDeExemplo(modelo: "55" | "57" | "58", numero: number, uf = "35", cnpj = "11222333000181"): string {
+export function chaveDeExemplo(modelo: "55" | "57" | "58", numero: number, uf = "35", cnpj = "99000108000141"): string {
   const corpo = `${uf}2610${cnpj}${modelo}001${String(numero).padStart(9, "0")}1${String(numero).padStart(8, "0")}`;
   return `${corpo}${digitoDaChave(corpo)}`;
 }
 
-export const SEGURO: SeguroDoMdfe = { responsavel: "1", seguradora: "Seguradora de Teste S/A", cnpjDaSeguradora: "61198164000160", apolice: "AP-2026-0001", averbacoes: ["0612345678901234567890123456789012345678"] };
+export const SEGURO: SeguroDoMdfe = { responsavel: "1", seguradora: "Seguradora de Teste S/A", cnpjDaSeguradora: "99000502000180", apolice: "AP-2026-0001", averbacoes: ["0612345678901234567890123456789012345678"] };
 
 export const RODO: RodoviarioDoMdfe = {
   ciots: [],
-  contratantes: [{ nome: "Indústria Remetente S/A", documento: "45543915000181" }],
+  contratantes: [{ nome: "Indústria Remetente S/A", documento: "99000303000171" }],
   pagamentos: [],
   tracao: {
     placa: "ABC1D23",
@@ -83,7 +83,7 @@ export function mdfeDeExemplo(trocas: Partial<DadosDoMdfe> = {}): DadosDoMdfe {
       { municipio: { codigo: "3106200", nome: "Belo Horizonte" }, chaves: [chaveDeExemplo("57", 15)] },
       { municipio: { codigo: "3170206", nome: "Uberlândia" }, chaves: [chaveDeExemplo("57", 16)] },
     ],
-    rodo: { ...RODO, ciots: [{ codigo: "123456789012", documento: "11222333000181" }] },
+    rodo: { ...RODO, ciots: [{ codigo: "123456789012", documento: "99000108000141" }] },
     seguros: [SEGURO],
     produto: { tipoDeCarga: "05", descricao: "Peças automotivas" },
     valorDaCarga: 65001.8,
@@ -150,6 +150,12 @@ export type SefazDoMdfe = {
   autorizados: Map<string, Autorizado>;
   encerrados: Set<string>;
   cancelados: Set<string>;
+  /**
+   * O registro de evento responde com ressalva (MOC, Visão Geral, item 5.1.7):
+   * 134 registra o evento e o vincula, com alerta da situação do MDF-e; 136
+   * guarda o evento SEM vínculo (o MDF-e não muda de situação).
+   */
+  eventoComRessalva: 134 | 136 | null;
   /** MDF-e em aberto que não foram emitidos por este sistema: a consulta de não encerrados os devolve também. */
   abertosDeFora: { chave: string; protocolo: string }[];
   /** Os eventos que este servidor registrou, na ordem. */
@@ -172,7 +178,14 @@ function protocoloXml(chave: string, autorizado: Autorizado, cStat = 100, motivo
   return `<protMDFe versao="3.00"><infProt Id="ID${autorizado.protocolo}"><tpAmb>${autorizado.ambiente}</tpAmb><verAplic>TESTE-1.0</verAplic><chMDFe>${chave}</chMDFe><dhRecbto>${autorizado.recebidoEm}</dhRecbto><nProt>${autorizado.protocolo}</nProt><digVal>${autorizado.resumo}</digVal><cStat>${cStat}</cStat><xMotivo>${motivo}</xMotivo></infProt></protMDFe>`;
 }
 
-const DESCRICAO_DO_EVENTO: Record<string, string> = { "110111": "Cancelamento", "110112": "Encerramento", "110114": "Inclusao Condutor", "110115": "Inclusao DF-e" };
+const DESCRICAO_DO_EVENTO: Record<string, string> = {
+  "110111": "Cancelamento",
+  "110112": "Encerramento",
+  "110114": "Inclusao Condutor",
+  "110115": "Inclusao DF-e",
+  "110116": "Pagamento Operacao MDF-e",
+  "110118": "Alteracao Pagamento Servico MDFe",
+};
 
 /**
  * Sobe um servidor HTTPS em 127.0.0.1 que responde como os web services do
@@ -192,6 +205,7 @@ export async function subirSefazDoMdfe(): Promise<SefazDoMdfe> {
     autorizados: new Map(),
     encerrados: new Set(),
     cancelados: new Set(),
+    eventoComRessalva: null,
     abertosDeFora: [],
     eventos: [],
     fechar: async () => undefined,
@@ -227,6 +241,13 @@ export async function subirSefazDoMdfe(): Promise<SefazDoMdfe> {
       if (modo === "numero-usado") {
         return envelope(servico, metodo, retorno("retMDFe", 539, `Rejeição: Duplicidade de MDFe, com diferença na Chave de Acesso [chMDFe: ${chaveDeExemplo("58", 98)}]`));
       }
+      // Regras F83 e F84 do Anexo I: o MDF-e desta chave já foi cancelado ou encerrado.
+      if (estado.cancelados.has(chave)) {
+        return envelope(servico, metodo, retorno("retMDFe", 218, "Rejeição: MDFe já está cancelado na base de dados da SEFAZ [nProt:935260000000002][dhCanc: 2026-10-10T10:00:00-03:00]"));
+      }
+      if (estado.encerrados.has(chave)) {
+        return envelope(servico, metodo, retorno("retMDFe", 609, "Rejeição: MDFe já está encerrado na base de dados da SEFAZ [nProt:935260000000003][dhEnc: 2026-10-10T10:00:00-03:00]"));
+      }
       if (modo === "duplicidade" || estado.autorizados.has(chave)) {
         return envelope(servico, metodo, retorno("retMDFe", 204, "Rejeição: Duplicidade de MDFe [nProt:935260000000001][dhAut: 2026-10-10T10:00:00-03:00]"));
       }
@@ -247,8 +268,9 @@ export async function subirSefazDoMdfe(): Promise<SefazDoMdfe> {
       const cega = estado.consultasCegas > 0;
       if (cega) estado.consultasCegas -= 1;
       if (!autorizado || cega) return envelope(servico, "mdfeConsultaMDF", raiz(217, "Rejeição: MDF-e não consta na base de dados da SEFAZ"));
-      if (estado.cancelados.has(chave)) return envelope(servico, "mdfeConsultaMDF", raiz(101, "Cancelamento de MDF-e homologado", protocoloXml(chave, autorizado, 101, "Cancelamento de MDF-e homologado")));
-      if (estado.encerrados.has(chave)) return envelope(servico, "mdfeConsultaMDF", raiz(132, "Encerramento de MDF-e homologado", protocoloXml(chave, autorizado, 132, "Encerramento de MDF-e homologado")));
+      // Como na SEFAZ (MOC, Visão Geral, itens 4.3.2 e 4.3.6): a situação atual vai no topo, e o `protMDFe` é sempre o da AUTORIZAÇÃO (cStat 100).
+      if (estado.cancelados.has(chave)) return envelope(servico, "mdfeConsultaMDF", raiz(101, "Cancelamento de MDF-e homologado", protocoloXml(chave, autorizado)));
+      if (estado.encerrados.has(chave)) return envelope(servico, "mdfeConsultaMDF", raiz(132, "Encerramento de MDF-e homologado", protocoloXml(chave, autorizado)));
       return envelope(servico, "mdfeConsultaMDF", raiz(100, "Autorizado o uso do MDF-e", protocoloXml(chave, autorizado)));
     }
 
@@ -285,7 +307,8 @@ export async function subirSefazDoMdfe(): Promise<SefazDoMdfe> {
       if (estado.cancelados.has(chave)) {
         return envelope(servico, metodo, evento(218, "Rejeição: MDF-e já está cancelado na base de dados da SEFAZ [nProt:935260000000002][dhCanc: 2026-10-10T10:00:00-03:00]"));
       }
-      if (estado.encerrados.has(chave)) {
+      // Os eventos de pagamento (110116 e 110118) só barram o MDF-e cancelado (MOC, itens 6.5.1 e 6.7): o encerrado os recebe.
+      if (estado.encerrados.has(chave) && tipo !== "110116" && tipo !== "110118") {
         return envelope(servico, metodo, evento(609, "Rejeição: MDF-e já está encerrado na base de dados da SEFAZ [nProt:935260000000003][dhEnc: 2026-10-10T10:00:00-03:00]"));
       }
       // Só MDF-e com indicação de carregamento posterior aceita inclusão de DF-e (regra K05).
@@ -293,14 +316,14 @@ export async function subirSefazDoMdfe(): Promise<SefazDoMdfe> {
       if (estado.eventos.some((registrado) => registrado.chave === chave && registrado.tipo === tipo && registrado.sequencia === sequencia)) {
         return envelope(servico, metodo, evento(631, "Rejeição: Duplicidade de evento"));
       }
+      const registro = `<xEvento>${DESCRICAO_DO_EVENTO[tipo] ?? "Evento"}</xEvento><nSeqEvento>${sequencia}</nSeqEvento><dhRegEvento>${horario()}</dhRegEvento><nProt>${novoProtocolo()}</nProt>`;
+      // 136: o evento fica guardado, sem vínculo com o MDF-e. Nada muda nele.
+      if (estado.eventoComRessalva === 136) return envelope(servico, metodo, evento(136, "Evento registrado, mas não vinculado a MDF-e", registro));
       if (tipo === "110111") estado.cancelados.add(chave);
       if (tipo === "110112") estado.encerrados.add(chave);
       estado.eventos.push({ chave, tipo, sequencia });
-      return envelope(
-        servico,
-        metodo,
-        evento(135, "Evento registrado e vinculado a MDF-e", `<xEvento>${DESCRICAO_DO_EVENTO[tipo] ?? "Evento"}</xEvento><nSeqEvento>${sequencia}</nSeqEvento><dhRegEvento>${horario()}</dhRegEvento><nProt>${novoProtocolo()}</nProt>`),
-      );
+      if (estado.eventoComRessalva === 134) return envelope(servico, metodo, evento(134, "Evento registrado e vinculado ao MDF-e com alerta para situação do documento", registro));
+      return envelope(servico, metodo, evento(135, "Evento registrado e vinculado a MDF-e", registro));
     }
     return null;
   };

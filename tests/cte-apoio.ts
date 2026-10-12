@@ -60,7 +60,7 @@ function parDeChaves() {
  * assinatura e a conexão com autenticação mútua contra o servidor local.
  */
 export function certificadoDeTeste(opcoes: OpcoesDoCertificado = {}): CertificadoDeTeste {
-  const cnpj = opcoes.cnpj ?? "11222333000181";
+  const cnpj = opcoes.cnpj ?? "99000108000141";
   const senha = opcoes.senha ?? "senha-do-teste";
   const tipo = opcoes.tipo === undefined ? 1 : opcoes.tipo;
   const { chavePem, chave, publica } = parDeChaves();
@@ -153,8 +153,31 @@ export async function errosNoEsquema(xml: string, esquema: string, pasta: string
 
 /* ------------------------------ Dados de exemplo ----------------------------- */
 
+/*
+ * OS CNPJ DE EXEMPLO SÃO SINTÉTICOS. Os quatro que estavam aqui e em
+ * tests/mdfe-apoio.ts (o do emitente, o do remetente, o do destinatário e o da
+ * seguradora, inclusive o "de exemplo" que tanta documentação repete) são de
+ * empresas de verdade, com cadastro ativo na Receita (ferramenta
+ * `consultar_cnpj` do serviço fiscal, em 12/10/2026), e foram trocados no
+ * repositório inteiro por:
+ *
+ *   99000108000141  emitente (a transportadora de teste); 99000108000222 é a "filial"
+ *   99000303000171  remetente / contratante
+ *   99000703000187  destinatário
+ *   99000502000180  seguradora
+ *   99888777000100  responsável técnico (já era este)
+ *
+ * Todos têm dígito verificador válido e, na mesma consulta, na mesma data, não
+ * têm cadastro. Cada um foi escolhido para somar o mesmo que o antigo no
+ * módulo 11 da chave de acesso (o CNPJ ocupa as posições 7 a 20): as chaves
+ * escritas à mão nos testes continuam com o dígito verificador certo. As
+ * inscrições estaduais de exemplo não são conferidas por UF em teste nenhum.
+ * O CPF 52998224725 é o exemplo de sempre do cálculo do dígito: não há
+ * consulta pública que diga se é de alguém.
+ */
+
 export const EMITENTE: EmitenteDoCte = {
-  cnpj: "11222333000181",
+  cnpj: "99000108000141",
   ie: "123456789012",
   razaoSocial: "Transportadora de Teste Ltda",
   fantasia: "Trans Teste",
@@ -172,7 +195,7 @@ export const EMITENTE: EmitenteDoCte = {
 };
 
 export const REMETENTE: ParticipanteDoCte = {
-  documento: "45543915000181",
+  documento: "99000303000171",
   ie: "110042490114",
   nome: "Indústria Remetente S/A",
   fantasia: "Remetente",
@@ -181,7 +204,7 @@ export const REMETENTE: ParticipanteDoCte = {
 };
 
 export const DESTINATARIO: ParticipanteDoCte = {
-  documento: "07526557000100",
+  documento: "99000703000187",
   ie: "0623079040081",
   nome: "Comércio Destinatário Ltda",
   endereco: { logradouro: "Rua da Bahia", numero: "900", bairro: "Centro", codigoMunicipio: "3106200", municipio: "Belo Horizonte", uf: "MG", cep: "30160011" },
@@ -209,7 +232,7 @@ export function dadosDeExemplo(trocas: Partial<DadosDoCte> = {}): DadosDoCte {
     produto: "Peças automotivas",
     pesoKg: 1250.5,
     volumes: 12,
-    chavesDeNfe: ["35261045543915000181550010000012341000012341"],
+    chavesDeNfe: ["35261099000303000171550010000012341000012341"],
     documento: "1234567890",
     observacao: "Veiculo placa ABC1D23. Motorista João da Silva.",
     enderecoDoQrCode: "https://homologacao.nfe.fazenda.sp.gov.br/CTeConsulta/qrCode",
@@ -278,7 +301,7 @@ export function chaveDeNfe(numero: number): string {
 /** O XML de uma NF-e autorizada, com o que a emissão do CT-e lê dela: emitente, destinatário (com IE e endereço com código IBGE) e o primeiro produto. */
 export function nfeDeExemplo(trocas: { numero?: number; destCnpj?: string; destIe?: string } = {}): string {
   const chave = chaveDeNfe(trocas.numero ?? 1234);
-  return `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe><infNFe Id="NFe${chave}" versao="4.00"><ide><mod>55</mod><serie>1</serie><nNF>${trocas.numero ?? 1234}</nNF></ide><emit><CNPJ>45543915000181</CNPJ><xNome>Indústria Remetente S/A</xNome><xFant>Remetente</xFant><enderEmit><xLgr>Av. Brasil</xLgr><nro>1500</nro><xBairro>Distrito Industrial</xBairro><cMun>3549805</cMun><xMun>SAO JOSE DO RIO PRETO</xMun><UF>SP</UF><CEP>15035000</CEP><fone>1733334444</fone></enderEmit><IE>110042490114</IE></emit><dest><CNPJ>${trocas.destCnpj ?? "07526557000100"}</CNPJ><xNome>Comércio Destinatário Ltda</xNome><enderDest><xLgr>Rua da Bahia</xLgr><nro>900</nro><xCpl>Loja 2</xCpl><xBairro>Centro</xBairro><cMun>3106200</cMun><xMun>Belo Horizonte</xMun><UF>MG</UF><CEP>30160011</CEP></enderDest><IE>${trocas.destIe ?? "0623079040081"}</IE></dest><det nItem="1"><prod><xProd>Rolamento de esferas 6204</xProd></prod></det><total><ICMSTot><vNF>32500.90</vNF></ICMSTot></total></infNFe></NFe></nfeProc>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe><infNFe Id="NFe${chave}" versao="4.00"><ide><mod>55</mod><serie>1</serie><nNF>${trocas.numero ?? 1234}</nNF></ide><emit><CNPJ>99000303000171</CNPJ><xNome>Indústria Remetente S/A</xNome><xFant>Remetente</xFant><enderEmit><xLgr>Av. Brasil</xLgr><nro>1500</nro><xBairro>Distrito Industrial</xBairro><cMun>3549805</cMun><xMun>SAO JOSE DO RIO PRETO</xMun><UF>SP</UF><CEP>15035000</CEP><fone>1733334444</fone></enderEmit><IE>110042490114</IE></emit><dest><CNPJ>${trocas.destCnpj ?? "99000703000187"}</CNPJ><xNome>Comércio Destinatário Ltda</xNome><enderDest><xLgr>Rua da Bahia</xLgr><nro>900</nro><xCpl>Loja 2</xCpl><xBairro>Centro</xBairro><cMun>3106200</cMun><xMun>Belo Horizonte</xMun><UF>MG</UF><CEP>30160011</CEP></enderDest><IE>${trocas.destIe ?? "0623079040081"}</IE></dest><det nItem="1"><prod><xProd>Rolamento de esferas 6204</xProd></prod></det><total><ICMSTot><vNF>32500.90</vNF></ICMSTot></total></infNFe></NFe></nfeProc>`;
 }
 
 /* ---------------------------- A SEFAZ de mentira ----------------------------- */
@@ -319,6 +342,12 @@ export type SefazDeMentira = {
   /** Chaves que este servidor já autorizou (a consulta responde por elas) e cancelou. */
   autorizados: Map<string, { protocolo: string; resumo: string; recebidoEm: string; ambiente: string }>;
   cancelados: Set<string>;
+  /**
+   * O registro de evento responde com ressalva (MOC 4.00, Visão Geral, item
+   * 5.1.7): 134 registra o cancelamento, com alerta; 136 guarda o evento SEM
+   * vínculo (o CT-e não muda de situação).
+   */
+  eventoComRessalva: 134 | 136 | null;
   fechar: () => Promise<void>;
 };
 
@@ -352,6 +381,7 @@ export async function subirSefazDeMentira(): Promise<SefazDeMentira> {
     chamadas: [],
     autorizados: new Map(),
     cancelados: new Set(),
+    eventoComRessalva: null,
     fechar: async () => undefined,
   };
 
@@ -376,7 +406,11 @@ export async function subirSefazDeMentira(): Promise<SefazDeMentira> {
       if (estado.modo === "parado") return envelope(servico, "cteRecepcao", retorno("retCTe", 108, "Serviço Paralisado Momentaneamente"));
       if (estado.modo === "rejeitar") return envelope(servico, "cteRecepcao", retorno("retCTe", 481, "Rejeição: IE deve ser informada para tomador Contribuinte"));
       if (estado.modo === "numero-usado") {
-        return envelope(servico, "cteRecepcao", retorno("retCTe", 539, "Rejeição: Duplicidade de CTe, com diferença na Chave de Acesso [chCTe: 35261011222333000181570010000000011999999990]"));
+        return envelope(servico, "cteRecepcao", retorno("retCTe", 539, "Rejeição: Duplicidade de CTe, com diferença na Chave de Acesso [chCTe: 35261099000108000141570010000000011999999990]"));
+      }
+      // Regra G159 do Anexo I: o CT-e desta chave já foi cancelado.
+      if (estado.cancelados.has(chave)) {
+        return envelope(servico, "cteRecepcao", retorno("retCTe", 218, "Rejeição: CTe já está cancelado na base de dados da SEFAZ [nProt:135260000000002][dhCanc: 2026-10-10T10:00:00-03:00]"));
       }
       if (estado.modo === "duplicidade" || estado.autorizados.has(chave)) {
         return envelope(servico, "cteRecepcao", retorno("retCTe", 204, "Rejeição: Duplicidade de CTe [nProt:135260000000001][dhAut: 2026-10-10T10:00:00-03:00]"));
@@ -398,7 +432,8 @@ export async function subirSefazDeMentira(): Promise<SefazDeMentira> {
       const cega = estado.consultasCegas > 0;
       if (cega) estado.consultasCegas -= 1;
       if (!autorizado || cega) return envelope(servico, "cteConsultaCT", raiz(217, "Rejeição: CTe não consta na base de dados da SEFAZ"));
-      if (estado.cancelados.has(chave)) return envelope(servico, "cteConsultaCT", raiz(101, "Cancelamento de CT-e homologado", protocoloXml(chave, autorizado, 101, "Cancelamento de CT-e homologado")));
+      // Como na SEFAZ (MOC 4.00, Visão Geral, itens 4.5.2 e 4.5.6): a situação atual vai no topo, e o `protCTe` é sempre o da AUTORIZAÇÃO (cStat 100).
+      if (estado.cancelados.has(chave)) return envelope(servico, "cteConsultaCT", raiz(101, "Cancelamento de CT-e homologado", protocoloXml(chave, autorizado)));
       return envelope(servico, "cteConsultaCT", raiz(100, "Autorizado o uso do CT-e", protocoloXml(chave, autorizado)));
     }
 
@@ -411,12 +446,12 @@ export async function subirSefazDeMentira(): Promise<SefazDeMentira> {
       if (estado.cancelados.has(chave)) {
         return envelope(servico, "cteRecepcaoEvento", evento(218, "Rejeição: CTe já está cancelado na base de dados da SEFAZ [nProt:135260000000002][dhCanc: 2026-10-10T10:00:00-03:00]"));
       }
+      const registro = `<xEvento>Cancelamento</xEvento><nSeqEvento>1</nSeqEvento><dhRegEvento>${horario()}</dhRegEvento><nProt>${novoProtocolo()}</nProt>`;
+      // 136: o evento fica guardado, sem vínculo com o CT-e. Nada muda nele.
+      if (estado.eventoComRessalva === 136) return envelope(servico, "cteRecepcaoEvento", evento(136, "Evento registrado, mas não vinculado a CT-e", registro));
       estado.cancelados.add(chave);
-      return envelope(
-        servico,
-        "cteRecepcaoEvento",
-        evento(135, "Evento registrado e vinculado a CT-e", `<xEvento>Cancelamento</xEvento><nSeqEvento>1</nSeqEvento><dhRegEvento>${horario()}</dhRegEvento><nProt>${novoProtocolo()}</nProt>`),
-      );
+      if (estado.eventoComRessalva === 134) return envelope(servico, "cteRecepcaoEvento", evento(134, "Evento registrado e vinculado ao CT-e com alerta para situação do documento", registro));
+      return envelope(servico, "cteRecepcaoEvento", evento(135, "Evento registrado e vinculado a CT-e", registro));
     }
     return null;
   };

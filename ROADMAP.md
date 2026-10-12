@@ -169,6 +169,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Emissão de CT-e implementada (montagem validada no esquema oficial, assinatura, transmissão e cancelamento), em homologação.
 - [x] DACTE em PDF do CT-e autorizado, pelo serviço fiscal.
 - [x] Emissão de MDF-e implementada (montagem validada no esquema oficial, assinatura, transmissão, encerramento e cancelamento), em homologação.
+- [x] MDF-e: contingência off-line (emissão, DAMDFE de contingência e transmissão posterior), eventos de pagamento do frete (110116 e 110118) e revisão do retorno da SEFAZ contra o manual; CT-e e MDF-e: código de segurança do responsável técnico (opcional).
 - [ ] Primeira autorização real de CT-e e de MDF-e em homologação e liberação para produção (precisa do certificado A1 e do credenciamento da transportadora na SEFAZ).
 - [x] Auditoria de ações.
 - [x] Notificações no sistema (sininho), por push no navegador e por WhatsApp via n8n.

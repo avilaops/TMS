@@ -145,7 +145,7 @@ describe("chave de acesso do CT-e", () => {
     const virada = new Date("2026-11-01T01:30:00.000Z");
     expect(anoEMes(virada, "SP")).toBe("2610");
     expect(dataHoraDoXml(virada, "SP")).toBe("2026-10-31T22:30:00-03:00");
-    expect(chaveDoCte({ uf: "SP", emissao: virada, cnpj: "11222333000181", serie: 1, numero: 1, codigo: "00000001" }).slice(2, 6)).toBe("2610");
+    expect(chaveDoCte({ uf: "SP", emissao: virada, cnpj: "99000108000141", serie: 1, numero: 1, codigo: "00000001" }).slice(2, 6)).toBe("2610");
   });
 
   it("fuso por UF (Lei 12.876/2013): UTC-4 em AM, MT, MS, RO e RR; UTC-5 no AC; UTC-3 nas demais", () => {
@@ -174,7 +174,7 @@ describe("chave de acesso do CT-e", () => {
   it("dígito 0 quando o resto é 0 ou 1, e toda chave montada passa na conferência", () => {
     const digitos = new Set<string>();
     for (let numero = 1; numero <= 60; numero += 1) {
-      const chave = chaveDoCte({ uf: "SP", emissao: new Date("2026-10-10T12:00:00Z"), cnpj: "11222333000181", serie: 1, numero, codigo: "12345678" });
+      const chave = chaveDoCte({ uf: "SP", emissao: new Date("2026-10-10T12:00:00Z"), cnpj: "99000108000141", serie: 1, numero, codigo: "12345678" });
       expect(chave).toHaveLength(44);
       expect(chaveValida(chave)).toBe(true);
       digitos.add(chave[43]);
@@ -187,8 +187,8 @@ describe("chave de acesso do CT-e", () => {
     expect(cnpjValido("12ABC34501DE35")).toBe(true);
     expect(cnpjValido("12ABC34501DE36")).toBe(false);
     expect(cnpjValido("12abc34501de35")).toBe(false); // a rota tira a pontuação e põe em maiúsculas antes
-    expect(cnpjValido("11222333000181")).toBe(true);
-    expect(cnpjValido("11222333000182")).toBe(false);
+    expect(cnpjValido("99000108000141")).toBe(true);
+    expect(cnpjValido("99000108000142")).toBe(false);
     expect(cnpjValido("00000000000000")).toBe(false);
     expect(cnpjValido("12ABC34501DEA5")).toBe(false); // letra só nas 12 primeiras posições
 
@@ -200,11 +200,11 @@ describe("chave de acesso do CT-e", () => {
     expect(lerChaveDoCte(chave).cnpj).toBe("12ABC34501DE35");
     // Letra fora das posições do CNPJ não é chave.
     expect(chaveValida("3526101222233300018157001000000015148215937A")).toBe(false);
-    expect(chaveValida("A5261011222333000181570010000000151482159370")).toBe(false);
+    expect(chaveValida("A5261099000108000141570010000000151482159370")).toBe(false);
   });
 
   it("recusa parte fora do formato", () => {
-    const base = { uf: "SP", emissao: new Date(), cnpj: "11222333000181", serie: 1, numero: 1, codigo: "12345678" };
+    const base = { uf: "SP", emissao: new Date(), cnpj: "99000108000141", serie: 1, numero: 1, codigo: "12345678" };
     expect(() => chaveDoCte({ ...base, uf: "XX" })).toThrow(ChaveInvalida);
     expect(() => chaveDoCte({ ...base, cnpj: "123" })).toThrow(ChaveInvalida);
     expect(() => chaveDoCte({ ...base, serie: 1000 })).toThrow(ChaveInvalida);
@@ -254,7 +254,7 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
     );
     expect(xml).toContain("<vPrest><vTPrest>850.50</vTPrest><vRec>850.50</vRec><Comp><xNome>Frete peso</xNome><vComp>700.00</vComp></Comp><Comp><xNome>Pedágio</xNome><vComp>150.50</vComp></Comp></vPrest>");
     expect(xml).toContain("<indIEToma>1</indIEToma><toma3><toma>0</toma></toma3>");
-    expect(xml).toContain("<infDoc><infNFe><chave>35261045543915000181550010000012341000012341</chave></infNFe></infDoc>");
+    expect(xml).toContain("<infDoc><infNFe><chave>35261099000303000171550010000012341000012341</chave></infNFe></infDoc>");
     expect(xml).toContain('<infModal versaoModal="4.00"><rodo><RNTRC>12345678</RNTRC></rodo></infModal>');
     expect(xml).toContain("<infCarga><vCarga>32500.90</vCarga><proPred>Peças automotivas</proPred><infQ><cUnid>01</cUnid><tpMed>PESO BRUTO</tpMed><qCarga>1250.5000</qCarga></infQ><infQ><cUnid>03</cUnid><tpMed>VOLUMES</tpMed><qCarga>12.0000</qCarga></infQ></infCarga>");
     expect(xml).toContain("<xObs>Veiculo placa ABC1D23. Motorista João da Silva.</xObs>");
@@ -404,7 +404,7 @@ describe("montagem do CT-e, validada no esquema oficial (cte_v4.00.xsd)", () => 
       dadosDeExemplo({
         emitente: { ...EMITENTE, ambiente: "PRODUCAO", fantasia: null, telefone: null },
         enderecoDoQrCode: "https://nfe.fazenda.sp.gov.br/CTeConsulta/qrCode",
-        chavesDeNfe: ["35261045543915000181550010000012341000012341", "35261045543915000181550010000012351000012357", "35261045543915000181550010000012341000012341"],
+        chavesDeNfe: ["35261099000303000171550010000012341000012341", "35261099000303000171550010000012351000012357", "35261099000303000171550010000012341000012341"],
         remetente: { ...REMETENTE, ie: "ISENTO", nome: "Aço & Cia – “Matriz” <SP> 🚚" },
         contribuinte: "2",
         componentes: [{ nome: "Frete peso", valor: 10 }],
@@ -668,7 +668,7 @@ describe("correções da revisão contra o MOC 4.00 e as Notas Técnicas", () =>
   });
 
   it("a configuração valida o par do IBS/CBS, o CFOP de transporte e a redução da base", () => {
-    const formulario = { cnpj: "11.222.333/0001-81", ie: "123456789012", razaoSocial: "Transportadora de Teste Ltda", logradouro: "Rua das Flores", numero: "120", bairro: "Centro", cidade: "Mirassol", uf: "SP", cep: "15130000", rntrc: "12345678", regime: "3", serie: "1", proximoNumero: "1", ambiente: "HOMOLOGACAO", cfopDentro: "5353", cfopFora: "6353", icms: "00", aliquota: "12", ibsCbsCst: "000", ibsCbsClasse: "000001" };
+    const formulario = { cnpj: "99.000.108/0001-41", ie: "123456789012", razaoSocial: "Transportadora de Teste Ltda", logradouro: "Rua das Flores", numero: "120", bairro: "Centro", cidade: "Mirassol", uf: "SP", cep: "15130000", rntrc: "12345678", regime: "3", serie: "1", proximoNumero: "1", ambiente: "HOMOLOGACAO", cfopDentro: "5353", cfopFora: "6353", icms: "00", aliquota: "12", ibsCbsCst: "000", ibsCbsClasse: "000001" };
     const erro = (trocas: Record<string, string>) => dadosFiscaisSchema.safeParse({ ...formulario, ...trocas }).error?.issues[0]?.message;
     expect(erro({})).toBeUndefined();
     expect(erro({ ibsCbsCst: "400", ibsCbsClasse: "400001" })).toBe(IBSCBS_CST_400);
@@ -718,7 +718,7 @@ describe("correções da revisão contra o MOC 4.00 e as Notas Técnicas", () =>
     expect(responsavelTecnico({ ...variaveis, RESPTEC_EMAIL: "sem-arroba" })).toBeNull();
     expect(responsavelTecnico({ ...variaveis, RESPTEC_FONE: "12345" })).toBeNull();
     expect(responsavelTecnico({ ...variaveis, RESPTEC_FONE: "5517300010001" })).toBeNull();
-    expect(responsavelTecnicoDoXml(null)).toBe("");
+    expect(responsavelTecnicoDoXml(null, "35261099000108000141570010000000151482159370")).toBe("");
   });
 
   it("infRespTec: com os dados o grupo fecha o infCte e passa no esquema; sem eles o CT-e vai sem o grupo", async () => {
@@ -792,7 +792,7 @@ describe("assinatura digital (XMLDSig, RSA-SHA1, C14N, enveloped)", () => {
   });
 
   it("não confere contra o certificado de outra empresa, nem sem assinatura", () => {
-    const outro = certificadoDeTeste({ cnpj: "45543915000181" });
+    const outro = certificadoDeTeste({ cnpj: "99000303000171" });
     expect(assinaturaConfere(assinado().xml, outro.certificadoPem)).toBe(false);
     expect(assinaturaConfere(montarCte(dadosDeExemplo()).xml, lido.titularPem)).toBe(false);
   });
@@ -804,7 +804,7 @@ describe("assinatura digital (XMLDSig, RSA-SHA1, C14N, enveloped)", () => {
     const xml = assinarXml(evento.xml, ALVO_DO_EVENTO, { chavePem: lido.chavePem, certificadoPem: lido.titularPem });
     expect(await errosNoEsquema(xml, "eventoCTe_v4.00.xsd")).toEqual([]);
     expect(assinaturaConfere(xml, lido.titularPem)).toBe(true);
-    expect(xml).toContain(`<infEvento Id="ID110111${chave}001"><cOrgao>35</cOrgao><tpAmb>2</tpAmb><CNPJ>11222333000181</CNPJ><chCTe>${chave}</chCTe><dhEvento>2026-10-11T09:00:00-03:00</dhEvento><tpEvento>110111</tpEvento><nSeqEvento>1</nSeqEvento>`);
+    expect(xml).toContain(`<infEvento Id="ID110111${chave}001"><cOrgao>35</cOrgao><tpAmb>2</tpAmb><CNPJ>99000108000141</CNPJ><chCTe>${chave}</chCTe><dhEvento>2026-10-11T09:00:00-03:00</dhEvento><tpEvento>110111</tpEvento><nSeqEvento>1</nSeqEvento>`);
     expect(xml).toContain(`<Reference URI="#ID110111${chave}001">`);
 
     // O detalhe do evento tem esquema próprio.
@@ -819,14 +819,14 @@ describe("assinatura digital (XMLDSig, RSA-SHA1, C14N, enveloped)", () => {
 describe("certificado A1", () => {
   it("abre o .pfx com a senha e lê titular, CNPJ, validade e tipo", () => {
     expect(lido.titular).toBe("TRANSPORTADORA DE TESTE LTDA");
-    expect(lido.cnpj).toBe("11222333000181");
+    expect(lido.cnpj).toBe("99000108000141");
     expect(lido.a1).toBe(true);
     expect(lido.validoAte.getTime()).toBeGreaterThan(Date.now());
     expect(lido.chavePem).toContain("PRIVATE KEY");
     expect(lido.titularPem).toContain("BEGIN CERTIFICATE");
-    expect(conferirCertificado(lido, "11222333000181")).toBe("MESMO_CNPJ");
+    expect(conferirCertificado(lido, "99000108000141")).toBe("MESMO_CNPJ");
     // Filial da mesma empresa (mesma raiz de 8 dígitos): o MOC aceita.
-    expect(conferirCertificado(lido, "11222333000262")).toBe("MESMA_EMPRESA");
+    expect(conferirCertificado(lido, "99000108000222")).toBe("MESMA_EMPRESA");
   });
 
   it("senha errada, arquivo que não é certificado e arquivo sem a chave privada", () => {
@@ -844,7 +844,7 @@ describe("certificado A1", () => {
   });
 
   it("recusa certificado de outro CNPJ, vencido, ainda não válido, sem CNPJ e que não é A1", () => {
-    expect(() => conferirCertificado(lido, "45543915000181")).toThrow(DE_OUTRO_CNPJ);
+    expect(() => conferirCertificado(lido, "99000303000171")).toThrow(DE_OUTRO_CNPJ);
 
     const vencido = certificadoDeTeste({ validoDe: new Date(Date.now() - 400 * 86_400_000), validoAte: new Date(Date.now() - 86_400_000) });
     expect(() => conferirCertificado(lerCertificado(vencido.pfx, vencido.senha), vencido.cnpj)).toThrow(VENCIDO);
@@ -855,7 +855,7 @@ describe("certificado A1", () => {
     const pessoaFisica = certificadoDeTeste({ comCnpj: false, nome: "JOAO DA SILVA:39053344705" });
     const lidoDaPessoa = lerCertificado(pessoaFisica.pfx, pessoaFisica.senha);
     expect(lidoDaPessoa.cnpj).toBeNull();
-    expect(() => conferirCertificado(lidoDaPessoa, "11222333000181")).toThrow(NAO_E_ECNPJ);
+    expect(() => conferirCertificado(lidoDaPessoa, "99000108000141")).toThrow(NAO_E_ECNPJ);
 
     const a3 = certificadoDeTeste({ tipo: 3 });
     expect(() => conferirCertificado(lerCertificado(a3.pfx, a3.senha), a3.cnpj)).toThrow(NAO_E_A1);
@@ -872,8 +872,8 @@ describe("certificado A1", () => {
   });
 
   it("sem o otherName, aceita o CNPJ escrito depois dos dois-pontos do nome comum", () => {
-    const peloNome = certificadoDeTeste({ comCnpj: false, nome: "EMPRESA ANTIGA LTDA:11222333000181" });
-    expect(lerCertificado(peloNome.pfx, peloNome.senha).cnpj).toBe("11222333000181");
+    const peloNome = certificadoDeTeste({ comCnpj: false, nome: "EMPRESA ANTIGA LTDA:99000108000141" });
+    expect(lerCertificado(peloNome.pfx, peloNome.senha).cnpj).toBe("99000108000141");
   });
 
   it("o envio do certificado é validado antes de abrir o arquivo", () => {
@@ -889,7 +889,7 @@ describe("certificado A1", () => {
 
 describe("dados fiscais do emitente", () => {
   const formulario = {
-    cnpj: "11.222.333/0001-81",
+    cnpj: "99.000.108/0001-41",
     ie: "123.456.789.012",
     razaoSocial: " Transportadora de Teste Ltda ",
     fantasia: "",
@@ -935,12 +935,12 @@ describe("dados fiscais do emitente", () => {
 
   it("aceita o formulário, tira a máscara e converte os números", () => {
     const lidoDoFormulario = dadosFiscaisSchema.parse(formulario);
-    expect(lidoDoFormulario).toMatchObject({ cnpj: "11222333000181", ie: "123456789012", razaoSocial: "Transportadora de Teste Ltda", fantasia: null, cep: "15130000", telefone: "1732421000", serie: 1, proximoNumero: 1, aliquota: 12 });
+    expect(lidoDoFormulario).toMatchObject({ cnpj: "99000108000141", ie: "123456789012", razaoSocial: "Transportadora de Teste Ltda", fantasia: null, cep: "15130000", telefone: "1732421000", serie: 1, proximoNumero: 1, aliquota: 12 });
     expect(dadosFiscaisSchema.parse({ ...formulario, aliquota: "7,5", telefone: "" })).toMatchObject({ aliquota: 7.5, telefone: null });
   });
 
   it.each([
-    [{ cnpj: "11.222.333/0001-82" }, "CNPJ válido"],
+    [{ cnpj: "99.000.108/0001-42" }, "CNPJ válido"],
     [{ cnpj: "123" }, "CNPJ válido"],
     [{ ie: "1" }, "inscrição estadual"],
     [{ razaoSocial: "x" }, "razão social"],
@@ -1279,7 +1279,7 @@ describe("da carga aos dados do CT-e", () => {
     destination: "Belo Horizonte - MG",
     volumes: 12,
     weight: 1250.5,
-    invoiceKey: "35261045543915000181550010000012341000012341",
+    invoiceKey: "35261099000303000171550010000012341000012341",
     invoiceValue: 32500.9,
     freightValue: 850.5,
     freightDetails: { tabela: "Padrão", composicao: [{ rotulo: "Frete peso", valor: 700 }, { rotulo: "Pedágio", valor: 150.5 }], avisos: [] },
@@ -1287,8 +1287,8 @@ describe("da carga aos dados do CT-e", () => {
     deliveryNumber: null,
     deliveryDistrict: null,
     deliveryZip: null,
-    client: { companyName: "Indústria Remetente S/A", tradeName: "Remetente", cnpj: "45543915000181", ie: "110.042.490.114", email: null, phone: null, address: null },
-    notas: [{ accessKey: "35261045543915000181550010000012341000012341", xml: nfe() }],
+    client: { companyName: "Indústria Remetente S/A", tradeName: "Remetente", cnpj: "99000303000171", ie: "110.042.490.114", email: null, phone: null, address: null },
+    notas: [{ accessKey: "35261099000303000171550010000012341000012341", xml: nfe() }],
     destinatarios: [],
     viagem: { placa: "ABC1D23", motorista: "João da Silva" },
     ...trocas,
@@ -1304,10 +1304,10 @@ describe("da carga aos dados do CT-e", () => {
     const dados = preparo.dados!;
     expect(dados.tomador).toEqual({ papel: "REMETENTE" });
     expect(dados.contribuinte).toBe("1");
-    expect(dados.remetente).toMatchObject({ documento: "45543915000181", ie: "110042490114", nome: "Indústria Remetente S/A", telefone: "1733334444" });
+    expect(dados.remetente).toMatchObject({ documento: "99000303000171", ie: "110042490114", nome: "Indústria Remetente S/A", telefone: "1733334444" });
     // O município vem da tabela (nome oficial), com o código IBGE.
     expect(dados.remetente.endereco).toMatchObject({ logradouro: "Av. Brasil", numero: "1500", bairro: "Distrito Industrial", codigoMunicipio: "3549805", municipio: "São José do Rio Preto", uf: "SP", cep: "15035000" });
-    expect(dados.destinatario).toMatchObject({ documento: "07526557000100", ie: "0623079040081" });
+    expect(dados.destinatario).toMatchObject({ documento: "99000703000187", ie: "0623079040081" });
     expect(dados.destinatario.endereco).toMatchObject({ complemento: "Loja 2", codigoMunicipio: "3106200", uf: "MG" });
     expect(dados.inicio).toEqual({ codigoMunicipio: "3549805", municipio: "São José do Rio Preto", uf: "SP" });
     expect(dados.fim).toEqual({ codigoMunicipio: "3106200", municipio: "Belo Horizonte", uf: "MG" });
@@ -1315,10 +1315,10 @@ describe("da carga aos dados do CT-e", () => {
     expect(dados.componentes).toEqual([{ nome: "Frete peso", valor: 700 }, { nome: "Pedágio", valor: 150.5 }]);
     expect(dados.valorDaCarga).toBe(32500.9);
     expect(dados.produto).toBe("Rolamento de esferas 6204");
-    expect(dados.chavesDeNfe).toEqual(["35261045543915000181550010000012341000012341"]);
+    expect(dados.chavesDeNfe).toEqual(["35261099000303000171550010000012341000012341"]);
     expect(dados.observacao).toBe("Veiculo placa ABC1D23. Motorista João da Silva.");
     expect(preparo.resumo).toMatchObject({ cfop: "6353", origem: "São José do Rio Preto - SP", destino: "Belo Horizonte - MG", icms: { situacao: "00", grupo: "ICMS00", base: 850.5, aliquota: 12, valor: 102.06, retido: false } });
-    expect(preparo.resumo?.tomador).toEqual({ papel: "REMETENTE", nome: "Indústria Remetente S/A", documento: "45.543.915/0001-81", contribuinte: "1" });
+    expect(preparo.resumo?.tomador).toEqual({ papel: "REMETENTE", nome: "Indústria Remetente S/A", documento: "99.000.303/0001-71", contribuinte: "1" });
     expect(preparo.avisos.join(" ")).toContain("Em homologação");
     expect(preparo.resumo?.ibsCbs).toEqual({ cst: "000", classe: "000001", base: 748.44, ibs: 0.75, cbs: 6.74 });
 
@@ -1338,7 +1338,7 @@ describe("da carga aos dados do CT-e", () => {
   });
 
   it("cliente pagador que é o destinatário da nota: tomador destinatário, sem IE vai como não contribuinte", () => {
-    const semIe = { client: { companyName: "Comércio Destinatário Ltda", tradeName: null, cnpj: "07526557000100", ie: null, email: null, phone: null, address: null }, notas: [{ accessKey: "35261045543915000181550010000012341000012341", xml: nfe({ destIe: "" }) }] };
+    const semIe = { client: { companyName: "Comércio Destinatário Ltda", tradeName: null, cnpj: "99000703000187", ie: null, email: null, phone: null, address: null }, notas: [{ accessKey: "35261099000303000171550010000012341000012341", xml: nfe({ destIe: "" }) }] };
     // Dentro do estado (a prestação termina em SP): emite, com o aviso.
     const preparo = preparar(carga({ ...semIe, destination: "Mirassol - SP" }));
     expect(preparo.pendencias).toEqual([]);
@@ -1375,7 +1375,7 @@ describe("da carga aos dados do CT-e", () => {
   });
 
   it("sem NF-e: só emite quando o sistema sabe quem são remetente e destinatário (cadastro e destinatário frequente)", async () => {
-    const cliente = { companyName: "Indústria Remetente S/A", tradeName: "Remetente", cnpj: "45543915000181", ie: "110042490114", email: null, phone: null, address: "Av. Brasil, 1500 - Distrito Industrial, São José do Rio Preto - SP, CEP 15035-000" };
+    const cliente = { companyName: "Indústria Remetente S/A", tradeName: "Remetente", cnpj: "99000303000171", ie: "110042490114", email: null, phone: null, address: "Av. Brasil, 1500 - Distrito Industrial, São José do Rio Preto - SP, CEP 15035-000" };
     const semNota = carga({
       notas: [],
       invoiceKey: null,
@@ -1412,10 +1412,10 @@ describe("da carga aos dados do CT-e", () => {
   });
 
   it("a chave digitada na carga vale como NF-e quando é mesmo de NF-e (modelo 55)", () => {
-    const comChaveDigitada = preparar(carga({ invoiceKey: "3526 1045 5439 1500 0181 5500 1000 0012 3510 0001 2357" }));
-    expect(comChaveDigitada.dados?.chavesDeNfe).toEqual(["35261045543915000181550010000012341000012341", "35261045543915000181550010000012351000012357"]);
+    const comChaveDigitada = preparar(carga({ invoiceKey: "3526 1099 0003 0300 0171 5500 1000 0012 3510 0001 2357" }));
+    expect(comChaveDigitada.dados?.chavesDeNfe).toEqual(["35261099000303000171550010000012341000012341", "35261099000303000171550010000012351000012357"]);
     // Chave de CT-e (modelo 57) digitada no lugar da chave da nota não entra.
-    expect(preparar(carga({ invoiceKey: "43181203527568000153570010002211211062211212" })).dados?.chavesDeNfe).toEqual(["35261045543915000181550010000012341000012341"]);
+    expect(preparar(carga({ invoiceKey: "43181203527568000153570010002211211062211212" })).dados?.chavesDeNfe).toEqual(["35261099000303000171550010000012341000012341"]);
   });
 
   it("o que falta vira pendência com a frase de onde resolver", () => {
@@ -1423,7 +1423,7 @@ describe("da carga aos dados do CT-e", () => {
     expect(preparar(carga({ invoiceValue: null })).pendencias[0]).toContain("valor da mercadoria");
     expect(preparar(carga({ origin: "Lugar Nenhum" })).pendencias[0]).toContain('A origem "Lugar Nenhum" não foi encontrada');
     expect(preparar(carga({ destination: "" })).pendencias[0]).toContain("O destino");
-    expect(preparar(carga({ notas: [{ accessKey: "35261045543915000181550010000012341000012341", xml: "<NFe><infNFe/></NFe>" }] })).pendencias).toHaveLength(2);
+    expect(preparar(carga({ notas: [{ accessKey: "35261099000303000171550010000012341000012341", xml: "<NFe><infNFe/></NFe>" }] })).pendencias).toHaveLength(2);
     const semEmitente = prepararCte(carga(), null, null, municipioDoTexto);
     expect(semEmitente).toEqual({ dados: null, pendencias: [SEM_EMITENTE], avisos: [], resumo: null });
   });
@@ -1463,7 +1463,7 @@ describe("da carga aos dados do CT-e", () => {
 
     // Dentro do estado a redução vale sem a confirmação.
     const semNota = { notas: [], invoiceKey: null, sender: "REMETENTE", receiver: "Maria da Silva", destination: "Mirassol - SP", deliveryStreet: "Rua Um", deliveryDistrict: "Vila Nova", deliveryZip: "15130000" };
-    const cliente = { companyName: "Indústria Remetente S/A", tradeName: "Remetente", cnpj: "45543915000181", ie: "110042490114", email: null, phone: null, address: "Av. Brasil, 1500 - Distrito Industrial, São José do Rio Preto - SP, CEP 15035-000" };
+    const cliente = { companyName: "Indústria Remetente S/A", tradeName: "Remetente", cnpj: "99000303000171", ie: "110042490114", email: null, phone: null, address: "Av. Brasil, 1500 - Distrito Industrial, São José do Rio Preto - SP, CEP 15035-000" };
     const interna = preparar(carga({ ...semNota, client: cliente, destinatarios: [{ name: "maria da silva", document: "390.533.447-05", address: null }] }), vinte);
     expect(interna.pendencias).toEqual([]);
     expect(interna.resumo?.icms).toMatchObject({ grupo: "ICMS20", base: 680.4, aliquota: 12 });
@@ -1493,7 +1493,7 @@ describe("da carga aos dados do CT-e", () => {
 
   it("o município da nota escrito fora do padrão ainda vale pelo código IBGE que a nota traz", () => {
     const xml = nfe().replace("<xMun>Belo Horizonte</xMun>", "<xMun>B HORIZONTE</xMun>");
-    const preparo = preparar(carga({ notas: [{ accessKey: "35261045543915000181550010000012341000012341", xml }] }));
+    const preparo = preparar(carga({ notas: [{ accessKey: "35261099000303000171550010000012341000012341", xml }] }));
     expect(preparo.dados?.destinatario.endereco).toMatchObject({ codigoMunicipio: "3106200", municipio: "B HORIZONTE", uf: "MG" });
   });
 });

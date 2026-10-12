@@ -234,20 +234,46 @@ export const DAMDFE_DESLIGADO = "A geração de DAMDFE não está ligada neste s
 export const DAMDFE_RECUSADO = "O serviço fiscal não conseguiu gerar o DAMDFE deste MDF-e.";
 export const DAMDFE_SEM_PROTOCOLO = "O serviço fiscal não reconheceu o protocolo de autorização deste MDF-e: o DAMDFE não foi gerado.";
 
-/** Nome do arquivo no download. O de homologação diz no nome que não tem valor fiscal. */
-export const nomeDoArquivoDamdfe = (chave: string, homologacao: boolean) =>
-  `${chave.replace(/[^0-9A-Za-z]/g, "")}-damdfe${homologacao ? "-HOMOLOGACAO-SEM-VALOR-FISCAL" : ""}.pdf`;
+export const DAMDFE_DE_OUTRO_DOCUMENTO = "O serviço fiscal devolveu o DAMDFE de outro documento: ele não foi entregue.";
+
+/** Nome do arquivo no download. O de homologação diz no nome que não tem valor fiscal; o de contingência, que é de contingência. */
+export const nomeDoArquivoDamdfe = (chave: string, homologacao: boolean, contingencia = false) =>
+  `${chave.replace(/[^0-9A-Za-z]/g, "")}-damdfe${contingencia ? "-CONTINGENCIA" : ""}${homologacao ? "-HOMOLOGACAO-SEM-VALOR-FISCAL" : ""}.pdf`;
+
+/** A chave de acesso que o serviço diz ter lido do XML (`chave_acesso`), ou `null`. */
+function chaveNoResultado(resultado: unknown): string | null {
+  if (!ehObjeto(resultado)) return null;
+  const estruturado = ehObjeto(resultado.structuredContent) ? resultado.structuredContent : null;
+  const texto = textoDoResultado(resultado);
+  const doTexto = texto ? lerJson(texto) : null;
+  const dados = estruturado ?? (ehObjeto(doTexto) ? doTexto : null);
+  return typeof dados?.chave_acesso === "string" ? dados.chave_acesso : null;
+}
 
 /**
  * Gera o DAMDFE (PDF) do arquivo de um MDF-e autorizado (`mdfeProc`) no serviço
  * fiscal (ferramenta `gerar_damdfe`, mesma forma do `gerar_dacte`). O PDF só é
  * devolvido quando o serviço confirma que o XML traz o protocolo de
  * autorização: este sistema não entrega DAMDFE de MDF-e sem protocolo.
+ *
+ * A ÚNICA EXCEÇÃO é o MDF-e emitido em contingência off-line (`contingencia`,
+ * com a chave dele): o DAMDFE sai do XML assinado, sem protocolo, porque é ele
+ * que acompanha a carga até a transmissão (MOC do MDF-e 3.00b, Visão Geral,
+ * item 11.1). Aqui se confere que a chave é mesmo de contingência (`tpEmis` 2,
+ * posição 35) e que o serviço leu essa chave. Quem imprime "EMISSÃO EM
+ * CONTINGÊNCIA" e o prazo de 168 horas é o serviço fiscal, a partir do `tpEmis`
+ * do XML (conferido à mão em 12/10/2026 com um XML de exemplo).
  */
-export async function gerarDamdfe(xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<Buffer> {
+export async function gerarDamdfe(xml: string, opcoes: { tempoLimiteMs?: number; contingencia?: { chave: string } } = {}): Promise<Buffer> {
   try {
+    const { contingencia } = opcoes;
+    if (contingencia && contingencia.chave[34] !== "2") throw new FiscalMcpError("ferramenta", DAMDFE_SEM_PROTOCOLO, "chave que não é de contingência");
     const resultado = await chamarFerramenta("gerar_damdfe", xml, opcoes);
     const pdf = pdfDoResultado(resultado);
+    if (contingencia) {
+      if (chaveNoResultado(resultado) !== contingencia.chave) throw new FiscalMcpError("ferramenta", DAMDFE_DE_OUTRO_DOCUMENTO, "chave_acesso diferente da chave do MDF-e");
+      return pdf;
+    }
     if (!autorizadoNoResultado(resultado)) throw new FiscalMcpError("ferramenta", DAMDFE_SEM_PROTOCOLO, "autorizado diferente de true");
     return pdf;
   } catch (erro) {
@@ -258,8 +284,8 @@ export async function gerarDamdfe(xml: string, opcoes: { tempoLimiteMs?: number 
 }
 
 /** A resposta da rota de DAMDFE: o PDF como anexo, ou o erro em JSON com o status do motivo. */
-export const respostaDoDamdfe = (chave: string, xml: string, homologacao: boolean): Promise<Response> =>
-  respostaDoDocumento("DAMDFE", () => gerarDamdfe(xml), nomeDoArquivoDamdfe(chave, homologacao));
+export const respostaDoDamdfe = (chave: string, xml: string, homologacao: boolean, contingencia = false): Promise<Response> =>
+  respostaDoDocumento("DAMDFE", () => gerarDamdfe(xml, contingencia ? { contingencia: { chave } } : {}), nomeDoArquivoDamdfe(chave, homologacao, contingencia));
 
 /**
  * A conversa com o serviço: abre a sessão, chama a ferramenta com o XML e

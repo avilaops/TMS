@@ -5,7 +5,7 @@ import { codigoDoAmbiente } from "@/lib/cte/enderecos";
 import type { EnderecoDoCte } from "@/lib/cte/montar";
 import { responsavelTecnicoDoXml, type ResponsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { centavos, decimal, digitos, escapar, grupo, tag, textoDoXml } from "@/lib/cte/texto";
-import { MODELO_DO_MDFE, chaveDoMdfe } from "@/lib/mdfe/chave";
+import { MODELO_DO_MDFE, TIPO_DE_EMISSAO_EM_CONTINGENCIA, chaveDoMdfe } from "@/lib/mdfe/chave";
 
 /**
  * Monta o XML do MDF-e (modelo 58, modal rodoviário, leiaute 3.00), ainda sem
@@ -19,15 +19,22 @@ import { MODELO_DO_MDFE, chaveDoMdfe } from "@/lib/mdfe/chave";
  * `TMDFe` e `mdfeModalRodoviario_v3.00.xsd`); os testes validam o resultado
  * contra esses esquemas.
  *
- * O que este MDF-e é, sempre: emissão normal (`tpEmis` 1), pelo aplicativo do
- * contribuinte (`procEmi` 0), modal rodoviário (`modal` 1), emitente com CNPJ.
+ * O que este MDF-e é, sempre: pelo aplicativo do contribuinte (`procEmi` 0),
+ * modal rodoviário (`modal` 1), emitente com CNPJ. A emissão é normal (`tpEmis`
+ * 1) ou, quando quem chama pede (`contingencia`), em contingência off-line
+ * (`tpEmis` 2).
  *
- * O que NÃO é montado: contingência, emitente pessoa física, CT-e globalizado
- * (`tpEmit` 3), produtos perigosos (`peri`), unidades de transporte e de carga
- * (`infUnidTransp`), autorizados ao XML (`autXML`), responsável técnico
- * (`infRespTec`: a regra F120 é facultativa e "a critério da UF") e o MDF-e
- * referenciado do modal aquaviário. O MDF-e 3.00 não tem grupo de IBS/CBS: a
- * Reforma Tributária não mudou este leiaute até o pacote de 25/04/2026.
+ * CONTINGÊNCIA OFF-LINE (MOC do MDF-e 3.00b, Visão Geral, itens 9.2.2 e 11):
+ * muda o `tpEmis`, a chave de acesso (que leva o tipo de emissão na posição 35)
+ * e o QR Code, que ganha o parâmetro `sign`: a chave de acesso assinada (RSA
+ * SHA-1, Base64) com o certificado que assina o MDF-e (regras F117 e F119,
+ * rejeições 482 e 496). O resto do documento é igual.
+ *
+ * O que NÃO é montado: emitente pessoa física, CT-e globalizado (`tpEmit` 3),
+ * produtos perigosos (`peri`), unidades de transporte e de carga
+ * (`infUnidTransp`), autorizados ao XML (`autXML`) e o MDF-e referenciado do
+ * modal aquaviário. O MDF-e 3.00 não tem grupo de IBS/CBS: a Reforma
+ * Tributária não mudou este leiaute até o pacote de 25/04/2026.
  */
 
 export const NAMESPACE_DO_MDFE = "http://www.portalfiscal.inf.br/mdfe";
@@ -193,6 +200,13 @@ export type DadosDoMdfe = {
   enderecoDoQrCode: string;
   /** A desenvolvedora do sistema (`infRespTec`, depois de `infAdic` no esquema). Nulo ou ausente: o MDF-e vai sem o grupo. */
   responsavelTecnico?: ResponsavelTecnico | null;
+  /**
+   * Emissão em contingência off-line (`tpEmis` 2). `assinar` devolve a
+   * assinatura RSA-SHA1, em Base64, da chave de acesso, feita com o certificado
+   * que assina o MDF-e: é o parâmetro `sign` do QR Code. Nulo ou ausente:
+   * emissão normal.
+   */
+  contingencia?: { assinar: (chave: string) => string } | null;
 };
 
 export type MdfeMontado = { xml: string; chave: string; id: string; tipoDeTransportador: "1" | "2" | null; documentos: number };
@@ -373,14 +387,20 @@ function produtoDoXml(produto: ProdutoDoMdfe | null | undefined): string {
   return grupo("prodPred", tag("tpCarga", produto.tipoDeCarga) + tag("xProd", textoDoXml(produto.descricao, 120) || "DIVERSOS") + tag("NCM", digitos(produto.ncm)) + lotacao);
 }
 
-/** A URL do QR Code (MOC, Visão Geral, item 9.2.1, emissão normal): endereço + `?chMDFe=<chave>&tpAmb=<ambiente>`. */
-export const urlDoQrCode = (endereco: string, chave: string, ambiente: Ambiente) => `${endereco}?chMDFe=${chave}&tpAmb=${codigoDoAmbiente(ambiente)}`;
+/**
+ * A URL do QR Code (MOC, Visão Geral, item 9.2): endereço +
+ * `?chMDFe=<chave>&tpAmb=<ambiente>` na emissão normal (9.2.1) e, na
+ * contingência off-line (9.2.2), mais `&sign=<assinatura da chave>`.
+ */
+export const urlDoQrCode = (endereco: string, chave: string, ambiente: Ambiente, assinaturaDaChave: string | null = null) =>
+  `${endereco}?chMDFe=${chave}&tpAmb=${codigoDoAmbiente(ambiente)}${assinaturaDaChave ? `&sign=${assinaturaDaChave}` : ""}`;
 
 /** Monta o MDF-e. Dado fora do formato é erro de programação: quem chama já conferiu (src/lib/mdfe/preparar.ts). */
 export function montarMdfe(dados: DadosDoMdfe): MdfeMontado {
   const { emitente } = dados;
   const ambiente = emitente.ambiente;
-  const chave = chaveDoMdfe({ uf: emitente.endereco.uf, emissao: dados.emissao, cnpj: emitente.cnpj, serie: emitente.serie, numero: dados.numero, codigo: dados.codigo });
+  const tipoDeEmissao = dados.contingencia ? TIPO_DE_EMISSAO_EM_CONTINGENCIA : TIPO_DE_EMISSAO_NORMAL;
+  const chave = chaveDoMdfe({ uf: emitente.endereco.uf, emissao: dados.emissao, cnpj: emitente.cnpj, serie: emitente.serie, numero: dados.numero, codigo: dados.codigo, tipoDeEmissao });
   const id = `MDFe${chave}`;
   const tpTransp = tipoDeTransportador(dados.rodo.tracao.proprietario);
   const doCte = emitente.tipo === "1";
@@ -399,7 +419,7 @@ export function montarMdfe(dados: DadosDoMdfe): MdfeMontado {
       tag("cDV", chave.slice(43)),
       tag("modal", "1"),
       tag("dhEmi", dataHoraDoXml(dados.emissao, emitente.endereco.uf)),
-      tag("tpEmis", TIPO_DE_EMISSAO_NORMAL),
+      tag("tpEmis", tipoDeEmissao),
       tag("procEmi", "0"),
       tag("verProc", VERSAO_DO_EMISSOR),
       tag("UFIni", dados.ufDeInicio),
@@ -462,12 +482,13 @@ export function montarMdfe(dados: DadosDoMdfe): MdfeMontado {
       tot,
       (dados.lacres ?? []).map((lacre) => grupo("lacres", tag("nLacre", textoDoXml(lacre, 60)))).join(""),
       grupo("infAdic", tag("infCpl", textoDoXml(dados.observacao, 5000))),
-      responsavelTecnicoDoXml(dados.responsavelTecnico),
+      responsavelTecnicoDoXml(dados.responsavelTecnico, chave),
     ].join(""),
     ` versao="${VERSAO_DO_MDFE}" Id="${id}"`,
   );
 
-  const infMDFeSupl = grupo("infMDFeSupl", `<qrCodMDFe>${escapar(urlDoQrCode(dados.enderecoDoQrCode, chave, ambiente))}</qrCodMDFe>`);
+  const assinaturaDaChave = dados.contingencia ? dados.contingencia.assinar(chave) : null;
+  const infMDFeSupl = grupo("infMDFeSupl", `<qrCodMDFe>${escapar(urlDoQrCode(dados.enderecoDoQrCode, chave, ambiente, assinaturaDaChave))}</qrCodMDFe>`);
 
   return { xml: `<MDFe xmlns="${NAMESPACE_DO_MDFE}">${infMDFe}${infMDFeSupl}</MDFe>`, chave, id, tipoDeTransportador: tpTransp, documentos };
 }
@@ -485,6 +506,8 @@ export const TIPO_DO_EVENTO = {
   ENCERRAMENTO: "110112",
   INCLUSAO_DE_CONDUTOR: "110114",
   INCLUSAO_DE_DFE: "110115",
+  PAGAMENTO_DA_OPERACAO: "110116",
+  ALTERACAO_DO_PAGAMENTO: "110118",
 } as const;
 export type TipoDoEvento = (typeof TIPO_DO_EVENTO)[keyof typeof TIPO_DO_EVENTO];
 
@@ -578,6 +601,51 @@ export function montarInclusaoDeDfe(
           .join(""),
       ].join(""),
     ),
+  );
+}
+
+/** `qtdViagens` e `nroViagem` do evento de pagamento: 5 dígitos no esquema (`[0-9]{5}`). */
+const cincoDigitos = (numero: number) => String(Math.min(99_999, Math.max(0, Math.trunc(numero)))).padStart(5, "0");
+
+/**
+ * Pagamento da operação de transporte (110116; MOC, Visão Geral, item 6.5, e
+ * `evPagtoOperMDFe_v3.00.xsd`): informa, depois da emissão, o pagamento do TAC
+ * agregado "a ocorrer no final do período conforme a relação de viagens
+ * realizadas". O grupo `infPag` tem o mesmo leiaute do MDF-e. Sequência sempre
+ * 1 (regra K01, rejeição 636). A SEFAZ só o aceita em MDF-e cujo veículo de
+ * tração tem proprietário TAC agregado (`tpProp` 0: regra K06, rejeição 723).
+ */
+export function montarPagamentoDaOperacao(
+  dados: BaseDoEvento & { protocolo: string; viagens: { quantidade: number; numero: number }; pagamentos: readonly PagamentoDoMdfe[] },
+): EventoMontado {
+  return montarEvento(
+    dados,
+    TIPO_DO_EVENTO.PAGAMENTO_DA_OPERACAO,
+    1,
+    grupo(
+      "evPagtoOperMDFe",
+      [
+        tag("descEvento", "Pagamento Operacao MDF-e"),
+        tag("nProt", dados.protocolo),
+        grupo("infViagens", tag("qtdViagens", cincoDigitos(dados.viagens.quantidade)) + tag("nroViagem", cincoDigitos(dados.viagens.numero))),
+        dados.pagamentos.map(pagamentoDoXml).join(""),
+      ].join(""),
+    ),
+  );
+}
+
+/**
+ * Alteração do pagamento do serviço de transporte (110118; MOC, Visão Geral,
+ * item 6.7, e `evAlteracaoPagtoServMDFe_v3.00.xsd`): troca os dados do
+ * pagamento "em relação a um contratante". Um `infPag` por evento, sequência
+ * de 1 a 99 (regra K01).
+ */
+export function montarAlteracaoDoPagamento(dados: BaseDoEvento & { sequencia: number; protocolo: string; pagamento: PagamentoDoMdfe }): EventoMontado {
+  return montarEvento(
+    dados,
+    TIPO_DO_EVENTO.ALTERACAO_DO_PAGAMENTO,
+    dados.sequencia,
+    grupo("evAlteracaoPagtoServMDFe", tag("descEvento", "Alteracao Pagamento Servico MDFe") + tag("nProt", dados.protocolo) + pagamentoDoXml(dados.pagamento)),
   );
 }
 

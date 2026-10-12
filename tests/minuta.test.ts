@@ -57,7 +57,7 @@ const cargaBase = (dados: Partial<CargaDaMinuta> = {}): CargaDaMinuta => ({
   cteKey: null,
   cteNumber: null,
   cteStatus: "PENDING",
-  client: { companyName: "Serilon Brasil Ltda", tradeName: "Serilon", cnpj: "11222333000181", address: null, paymentCondition: null },
+  client: { companyName: "Serilon Brasil Ltda", tradeName: "Serilon", cnpj: "99000108000141", address: null, paymentCondition: null },
   driver: null,
   manifest: null,
   fiscalDocuments: [],
@@ -69,7 +69,7 @@ const nota = (dados: Partial<CargaDaMinuta["fiscalDocuments"][number]> = {}): Ca
   series: 1,
   accessKey: CHAVE_NF,
   issuerName: "Serilon Brasil",
-  issuerTaxId: "11222333000181",
+  issuerTaxId: "99000108000141",
   issuerAddress: "Av. Industrial, 500 - Distrito",
   recipientName: "Mercado Bom Preço",
   recipientTaxId: "52998224725",
@@ -85,7 +85,7 @@ describe("minuta de despacho: montagem", () => {
       empresa: EMPRESA,
       codigo: "1234567890",
       emitidaEm: "2026-10-10T17:32:00.000Z",
-      pagador: { nome: "Serilon Brasil Ltda", documento: "11222333000181", endereco: null },
+      pagador: { nome: "Serilon Brasil Ltda", documento: "99000108000141", endereco: null },
       remetente: { nome: "Serilon Brasil", documento: null, endereco: null, cidade: "São José do Rio Preto - SP" },
       destinatario: { nome: "Mercado Bom Preço", documento: null, endereco: null, cidade: "Mirassol - SP" },
       carga: { volumes: 3, peso: 120.5, cubagem: null, valorDaMercadoria: null },
@@ -113,14 +113,14 @@ describe("minuta de despacho: montagem", () => {
       cteKey: CHAVE_CTE,
       cteNumber: 77,
       cteStatus: "ISSUED",
-      client: { companyName: "Serilon Brasil Ltda", tradeName: "Serilon", cnpj: "11222333000181", address: "Av. Industrial, 500", paymentCondition: "28 dias" },
+      client: { companyName: "Serilon Brasil Ltda", tradeName: "Serilon", cnpj: "99000108000141", address: "Av. Industrial, 500", paymentCondition: "28 dias" },
       driver: { user: { name: "Motorista da carga" } },
       manifest: { id: "ab12cd34-0000-4000-8000-000000000000", driver: { user: { name: "José da Viagem" } }, vehicle: { plate: "ABC1D23", model: "VW Delivery" } },
       fiscalDocuments: [nota()],
     });
 
-    expect(minuta.pagador).toEqual({ nome: "Serilon Brasil Ltda", documento: "11222333000181", endereco: "Av. Industrial, 500" });
-    expect(minuta.remetente).toEqual({ nome: "Serilon Brasil", documento: "11222333000181", endereco: "Av. Industrial, 500 - Distrito", cidade: "São José do Rio Preto - SP" });
+    expect(minuta.pagador).toEqual({ nome: "Serilon Brasil Ltda", documento: "99000108000141", endereco: "Av. Industrial, 500" });
+    expect(minuta.remetente).toEqual({ nome: "Serilon Brasil", documento: "99000108000141", endereco: "Av. Industrial, 500 - Distrito", cidade: "São José do Rio Preto - SP" });
     // O endereço da entrega vale mais que o da nota.
     expect(minuta.destinatario).toEqual({ nome: "Mercado Bom Preço", documento: "52998224725", endereco: "Rua das Flores, 120 - Centro, Mirassol - SP, 15130-000", cidade: "Mirassol - SP" });
     expect(minuta.carga).toEqual({ volumes: 3, peso: 120.5, cubagem: 1.25, valorDaMercadoria: 9876.5 });
@@ -182,7 +182,7 @@ describe("minuta de despacho: montagem", () => {
 
     // Maiúsculas e espaços não separam o mesmo nome; sem endereço de entrega, vale o da nota.
     const igual = montar({ fiscalDocuments: [nota({ issuerName: " SERILON BRASIL ", recipientName: "mercado bom preço" })] });
-    expect(igual.remetente.documento).toBe("11222333000181");
+    expect(igual.remetente.documento).toBe("99000108000141");
     expect(igual.destinatario).toMatchObject({ documento: "52998224725", endereco: "Rua da Nota, 9 - Centro" });
   });
 

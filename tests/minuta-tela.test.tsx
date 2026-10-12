@@ -49,16 +49,16 @@ afterEach(async () => {
 });
 
 const RASTREIO = "1234567890";
-const CHAVE_NF = "35261011222333000181550010000001231000001239";
-const CHAVE_CTE = "35261011222333000181570010000000771000000775";
+const CHAVE_NF = "35261099000108000141550010000001231000001239";
+const CHAVE_CTE = "35261099000108000141570010000000771000000775";
 const SIMBOLO = "data:image/png;base64,iVBORw0KGgo=";
 
 const completa: Minuta = {
   empresa: { name: "Transportes Avila", logo: SIMBOLO },
   codigo: RASTREIO,
   emitidaEm: "2026-10-10T17:32:00.000Z",
-  pagador: { nome: "Serilon Brasil Ltda", documento: "11222333000181", endereco: "Av. Industrial, 500" },
-  remetente: { nome: "Serilon Brasil", documento: "11222333000181", endereco: "Av. Industrial, 500 - Distrito", cidade: "São José do Rio Preto - SP" },
+  pagador: { nome: "Serilon Brasil Ltda", documento: "99000108000141", endereco: "Av. Industrial, 500" },
+  remetente: { nome: "Serilon Brasil", documento: "99000108000141", endereco: "Av. Industrial, 500 - Distrito", cidade: "São José do Rio Preto - SP" },
   destinatario: { nome: "Mercado Bom Preço", documento: "52998224725", endereco: "Rua das Flores, 120 - Centro, Mirassol - SP, 15130-000", cidade: "Mirassol - SP" },
   carga: { volumes: 3, peso: 120.5, cubagem: 1.25, valorDaMercadoria: 9876.5 },
   notas: [{ numero: "123/1", chave: CHAVE_NF }],
@@ -73,7 +73,7 @@ const minima: Minuta = {
   empresa: { name: "Transportes Avila", logo: null },
   codigo: null,
   emitidaEm: "2026-10-10T17:32:00.000Z",
-  pagador: { nome: "Serilon Brasil Ltda", documento: "11222333000181", endereco: null },
+  pagador: { nome: "Serilon Brasil Ltda", documento: "99000108000141", endereco: null },
   remetente: { nome: "Serilon Brasil", documento: null, endereco: null, cidade: "São José do Rio Preto - SP" },
   destinatario: { nome: "Mercado Bom Preço", documento: null, endereco: null, cidade: "Mirassol - SP" },
   carga: { volumes: 3, peso: 120.5, cubagem: null, valorDaMercadoria: null },
@@ -120,12 +120,12 @@ describe("tela da minuta de despacho", () => {
     const barras = [...svg.querySelectorAll('rect[fill="#000"]')].map((r) => ({ x: Number(r.getAttribute("x")), largura: Number(r.getAttribute("width")) }));
     expect(barras).toEqual(esperado.barras);
 
-    for (const texto of ["Serilon Brasil", "11.222.333/0001-81", "Av. Industrial, 500 - Distrito", "São José do Rio Preto - SP"]) expect(secao(tela, "remetente")!.textContent, texto).toContain(texto);
+    for (const texto of ["Serilon Brasil", "99.000.108/0001-41", "Av. Industrial, 500 - Distrito", "São José do Rio Preto - SP"]) expect(secao(tela, "remetente")!.textContent, texto).toContain(texto);
     for (const texto of ["Mercado Bom Preço", "529.982.247-25", "Rua das Flores, 120 - Centro, Mirassol - SP, 15130-000"]) expect(secao(tela, "destinatario")!.textContent, texto).toContain(texto);
-    for (const texto of ["Cliente pagador", "Serilon Brasil Ltda", "11.222.333/0001-81", "Av. Industrial, 500"]) expect(secao(tela, "pagador")!.textContent, texto).toContain(texto);
+    for (const texto of ["Cliente pagador", "Serilon Brasil Ltda", "99.000.108/0001-41", "Av. Industrial, 500"]) expect(secao(tela, "pagador")!.textContent, texto).toContain(texto);
 
     const carga = secao(tela, "carga")!.textContent!;
-    for (const texto of ["Volumes3", "120,5 kg", "1,25 m³", "NF-e 123/1:", "3526 1011 2223 3300 0181 5500 1000 0001 2310 0000 1239"]) expect(carga, texto).toContain(texto);
+    for (const texto of ["Volumes3", "120,5 kg", "1,25 m³", "NF-e 123/1:", "3526 1099 0001 0800 0141 5500 1000 0001 2310 0000 1239"]) expect(carga, texto).toContain(texto);
     expect(carga).toMatch(/R\$\s9\.876,50/);
 
     const frete = secao(tela, "frete")!.textContent!;
@@ -135,7 +135,7 @@ describe("tela da minuta de despacho", () => {
     expect(secao(tela, "frete")!.querySelectorAll("[data-composicao] li")).toHaveLength(2);
 
     for (const texto of ["#AB12CD", "ABC1D23 · VW Delivery", "José da Viagem"]) expect(secao(tela, "viagem")!.textContent, texto).toContain(texto);
-    for (const texto of ["Nº 77:", "3526 1011 2223 3300 0181 5700 1000 0000 7710 0000 0775"]) expect(secao(tela, "cte")!.textContent, texto).toContain(texto);
+    for (const texto of ["Nº 77:", "3526 1099 0001 0800 0141 5700 1000 0000 7710 0000 0775"]) expect(secao(tela, "cte")!.textContent, texto).toContain(texto);
     expect(secao(tela, "observacoes")!.textContent).toContain("Procurar o João na doca 2");
 
     // Assinaturas: remetente, motorista e recebedor; o recebedor escreve nome, documento, data e hora.
@@ -168,6 +168,53 @@ describe("tela da minuta de despacho", () => {
     vi.stubGlobal("print", print);
     await clicar(imprimir);
     expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it("carga com muitas NF-e e observação longa (mais de uma folha): a quebra não corta quadro nem linha de nota, e assinaturas e rodapé ficam juntos", async () => {
+    // 60 notas e uma observação de 40 linhas não cabem numa A4.
+    const notas = Array.from({ length: 60 }, (_, i) => ({ numero: `${1000 + i}/1`, chave: `3526109900010800014155001${String(1000 + i).padStart(9, "0")}1${String(1000 + i).padStart(8, "0")}0` }));
+    const observacoes = Array.from({ length: 40 }, (_, i) => `Linha ${i + 1} da observação: entregar na doca indicada pelo recebedor.`).join("\n");
+    const tela = await abrir({ body: { ...completa, notas, observacoes } });
+    const folha = tela.querySelector("[data-minuta]")!;
+
+    // Tudo foi para a folha: nenhuma nota some.
+    expect(folha.querySelectorAll("[data-nota]")).toHaveLength(60);
+    expect(secao(tela, "carga")!.querySelectorAll("[data-nota]")).toHaveLength(60);
+    expect(secao(tela, "observacoes")!.textContent).toContain("Linha 40 da observação");
+
+    const estilo = tela.querySelector("style")!.textContent!;
+    // Quadro curto não se parte.
+    expect(estilo).toContain("[data-minuta] section { break-inside: avoid; page-break-inside: avoid; }");
+    // Os dois que podem passar de uma folha quebram, mas entre linhas: cada nota fica inteira, e o título não fica sozinho no pé da folha.
+    expect(estilo).toContain('[data-minuta] section[data-secao="carga"], [data-minuta] section[data-secao="observacoes"] { break-inside: auto; page-break-inside: auto; orphans: 3; widows: 3; }');
+    expect(estilo).toContain("[data-minuta] [data-nota], [data-minuta] [data-campos], [data-minuta] [data-composicao] li { break-inside: avoid; page-break-inside: avoid; }");
+    expect(estilo).toContain("[data-minuta] h2 { break-after: avoid; page-break-after: avoid; }");
+    // A regra geral vem antes da exceção, que só assim vale.
+    expect(estilo.indexOf("[data-minuta] section { break-inside: avoid")).toBeLessThan(estilo.indexOf('section[data-secao="carga"]'));
+    // Os campos da carga (volumes, peso...) são um bloco só, que a regra acima mantém inteiro.
+    expect(secao(tela, "carga")!.querySelector("[data-campos]")!.textContent).toMatch(/^Volumes3Peso/);
+
+    // Assinaturas e rodapé: um bloco só, que não se parte, no fim da folha.
+    expect(estilo).toContain("[data-minuta] [data-fecho] { break-inside: avoid; page-break-inside: avoid; }");
+    const fecho = folha.querySelector("[data-fecho]")!;
+    expect(fecho.querySelector('[data-secao="assinaturas"]')).not.toBeNull();
+    expect(fecho.querySelector("footer[data-aviso]")).not.toBeNull();
+    expect(fecho.querySelectorAll("[data-assinatura]")).toHaveLength(3);
+    expect(folha.lastElementChild).toBe(fecho);
+    expect(fecho.contains(secao(tela, "carga"))).toBe(false);
+
+    // Cabeçalho mínimo (empresa e número) nas folhas de continuação, só com CSS; a primeira folha já tem o cabeçalho completo.
+    expect(estilo).toContain(`@page { @top-right { content: "Transportes Avila · Minuta de despacho nº ${RASTREIO} · continuação"; font-size: 8pt; color: #000; } }`);
+    expect(estilo).toContain("@page :first { @top-right { content: none; } }");
+    expect(estilo).toContain("size: A4 portrait");
+  });
+
+  it("o cabeçalho de continuação não deixa o nome da empresa quebrar a regra de CSS; sem código de rastreio, vai sem número", async () => {
+    const tela = await abrir({ body: { ...minima, empresa: { name: 'Trans "Rápida" \\ <b>Ltda</b> {x}\n& Filhos', logo: null } } });
+    const estilo = tela.querySelector("style")!.textContent!;
+    expect(estilo).toContain('@page { @top-right { content: "Trans Rápida bLtda/b x & Filhos · Minuta de despacho · continuação"; font-size: 8pt; color: #000; } }');
+    // A folha continua mostrando o nome como ele é.
+    expect(tela.querySelector("[data-empresa]")!.textContent).toBe('Trans "Rápida" \\ <b>Ltda</b> {x}\n& Filhos');
   });
 
   it("carga mínima e perfil sem frete: seções sem dado não aparecem, campo vazio fica em branco, e nenhum valor de frete", async () => {

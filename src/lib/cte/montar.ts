@@ -576,7 +576,7 @@ export function montarCte(dados: DadosDoCte): CteMontado {
 
   const infCte = grupo(
     "infCte",
-    [ide, compl, emit, participanteDoXml("rem", "enderReme", dados.remetente, ambiente), participanteDoXml("dest", "enderDest", dados.destinatario, ambiente), vPrest, imp, infCTeNorm, responsavelTecnicoDoXml(dados.responsavelTecnico)].join(""),
+    [ide, compl, emit, participanteDoXml("rem", "enderReme", dados.remetente, ambiente), participanteDoXml("dest", "enderDest", dados.destinatario, ambiente), vPrest, imp, infCTeNorm, responsavelTecnicoDoXml(dados.responsavelTecnico, chave)].join(""),
     ` versao="${VERSAO_DO_CTE}" Id="${id}"`,
   );
 

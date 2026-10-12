@@ -20,8 +20,9 @@ export async function GET() {
         createdAt: true,
         vehicle: { select: { plate: true, model: true } },
         // O MDF-e da viagem, só para o motorista ler na fiscalização: chave e situação. Sem XML.
+        // O emitido em contingência entra: é com ele (e com o DAMDFE impresso) que o veículo roda até a transmissão.
         mdfes: {
-          where: { status: { in: ['AUTHORIZED', 'CLOSED', 'CANCELLED'] } },
+          where: { status: { in: ['AUTHORIZED', 'CLOSED', 'CANCELLED', 'CONTINGENCY'] } },
           orderBy: { number: 'asc' },
           select: { id: true, number: true, accessKey: true, status: true, environment: true, unloadState: true },
         },

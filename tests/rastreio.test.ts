@@ -26,7 +26,7 @@ suite("GET /api/rastreio", () => {
   let GET: typeof import("../src/app/api/rastreio/route").GET;
   let resetRateLimit: typeof import("../src/lib/rate-limit").resetRateLimit;
 
-  const CNPJ_A = "11222333000181";
+  const CNPJ_A = "99000108000141";
   const CNPJ_B = "44555666000172";
   const CODIGO_A = "9184726350";
   const CODIGO_ZEROS = "0000000123";
@@ -168,7 +168,7 @@ suite("GET /api/rastreio", () => {
     });
 
     it("CNPJ formatado continua funcionando", async () => {
-      const { status, body } = await consultar({ cnpj: "11.222.333/0001-81", codigo: CODIGO_A });
+      const { status, body } = await consultar({ cnpj: "99.000.108/0001-41", codigo: CODIGO_A });
       expect(status).toBe(200);
       expect(body).toHaveLength(1);
     });

@@ -69,7 +69,9 @@ afterEach(async () => {
   estado.papel = "OPERATION";
 });
 
-const CHAVE = "35261011222333000181580010000000071482159371";
+const CHAVE = "35261099000108000141580010000000071482159371";
+/** A mesma, com o tipo de emissão 2 (contingência) na posição 35 e o dígito refeito. */
+const CHAVE_DE_CONTINGENCIA = "35261099000108000141580010000000072482159370";
 
 const emitido = (extra: Partial<MdfeEmitido> = {}): MdfeEmitido => ({
   id: "m1",
@@ -87,6 +89,9 @@ const emitido = (extra: Partial<MdfeEmitido> = {}): MdfeEmitido => ({
   cStat: 100,
   motivo: "Autorizado o uso do MDF-e",
   protocolo: "935260000000001",
+  emitidoEm: new Date().toISOString(),
+  contingencia: false,
+  transmitirAte: null,
   autorizadoEm: new Date().toISOString(),
   encerradoEm: null,
   canceladoEm: null,
@@ -119,7 +124,7 @@ const resumo: ResumoDoMdfe = {
   lotacao: false,
 };
 
-const SEGURO_PADRAO = { responsavel: "1" as const, documento: null, seguradora: "Seguradora de Teste S/A", cnpjDaSeguradora: "61198164000160", apolice: "AP-1", averbacoes: [] };
+const SEGURO_PADRAO = { responsavel: "1" as const, documento: null, seguradora: "Seguradora de Teste S/A", cnpjDaSeguradora: "99000502000180", apolice: "AP-1", averbacoes: [] };
 
 const conferencia = (extra: Partial<ConferenciaDoMdfe> = {}): ConferenciaDoMdfe => ({
   ufDeDescarga: "MG",
@@ -147,16 +152,16 @@ describe("formulário do MDF-e (ida e volta)", () => {
       {
         ...FORMULARIO_EM_BRANCO,
         ciot: "123456789012",
-        ciotDocumento: "11.222.333/0001-81",
+        ciotDocumento: "99.000.108/0001-41",
         seguradora: "Seguradora X",
-        cnpjDaSeguradora: "61198164000160",
+        cnpjDaSeguradora: "99000502000180",
         apolice: "AP-1",
         averbacoes: "AV-1, AV-2",
         produto: "Rolamentos",
         ncm: "84821010",
         cepDeCarregamento: "15035-000",
         cepDeDescarregamento: "30160-011",
-        pagador: "45543915000181",
+        pagador: "99000303000171",
         valorDoFrete: "3000",
         aPrazo: true,
         adiantamento: "1000",
@@ -164,7 +169,7 @@ describe("formulário do MDF-e (ida e volta)", () => {
         conta: "banco",
         banco: "001",
         agencia: "1234",
-        valePedagioFornecedor: "61198164000160",
+        valePedagioFornecedor: "99000502000180",
         valePedagioValor: "150,50",
         valePedagioCategoria: "04",
         reboque1: "r1",
@@ -173,12 +178,12 @@ describe("formulário do MDF-e (ida e volta)", () => {
       false,
     );
     expect(entradas).toMatchObject({
-      ciots: [{ codigo: "123456789012", documento: "11.222.333/0001-81" }],
+      ciots: [{ codigo: "123456789012", documento: "99.000.108/0001-41" }],
       seguro: { responsavel: "1", documento: null, seguradora: "Seguradora X", averbacoes: ["AV-1", "AV-2"] },
       produto: { tipoDeCarga: "05", descricao: "Rolamentos", ncm: "84821010" },
       lotacao: { cepDeCarregamento: "15035-000", cepDeDescarregamento: "30160-011" },
-      pagamento: { documento: "45543915000181", valor: "3000", aPrazo: true, adiantamento: "1000", parcelas: [{ vencimento: "2026-11-10", valor: 2000 }], conta: { banco: "001", agencia: "1234" } },
-      valePedagio: { categoria: "04", cnpjDoFornecedor: "61198164000160", valor: "150,50" },
+      pagamento: { documento: "99000303000171", valor: "3000", aPrazo: true, adiantamento: "1000", parcelas: [{ vencimento: "2026-11-10", valor: 2000 }], conta: { banco: "001", agencia: "1234" } },
+      valePedagio: { categoria: "04", cnpjDoFornecedor: "99000502000180", valor: "150,50" },
       reboques: ["r1"],
       lacres: ["L1", "L2"],
     });
@@ -187,10 +192,10 @@ describe("formulário do MDF-e (ida e volta)", () => {
   it("reabre com o que a conferência devolveu", () => {
     const form = formularioDasEntradas({
       percurso: ["PR", "SC"],
-      ciots: [{ codigo: "123456789012", documento: "11222333000181" }],
+      ciots: [{ codigo: "123456789012", documento: "99000108000141" }],
       seguro: { ...SEGURO_PADRAO, averbacoes: ["AV-1"] },
       produto: { tipoDeCarga: "03", descricao: "Carne", ncm: "0201" },
-      pagamento: { nome: null, documento: "45543915000181", valor: 850.5, aPrazo: false, conta: { pix: "chave" } },
+      pagamento: { nome: null, documento: "99000303000171", valor: 850.5, aPrazo: false, conta: { pix: "chave" } },
       reboques: ["r1"],
     });
     expect(form).toMatchObject({ percurso: "PR, SC", ciot: "123456789012", seguradora: "Seguradora de Teste S/A", averbacoes: "AV-1", tipoDeCarga: "03", produto: "Carne", valorDoFrete: "850,5", conta: "pix", pix: "chave", reboque1: "r1" });
@@ -249,7 +254,7 @@ describe("aba MDF-e da viagem", () => {
     expect(mg.querySelector('[data-campo="cepDeCarregamento"]')).toBeNull();
     await digitar(campo("ciot"), "123456789012");
     // O campo não perde o foco nem o que foi digitado ao digitar o seguinte.
-    await digitar(campo("ciotDocumento"), "11222333000181");
+    await digitar(campo("ciotDocumento"), "99000108000141");
     expect(campo("ciot").value).toBe("123456789012");
     await digitar(campo("averbacoes"), "AV-0001");
 
@@ -259,7 +264,7 @@ describe("aba MDF-e da viagem", () => {
     expect(conferido.body).toMatchObject({
       manifestId: "v1",
       ufDeDescarga: "MG",
-      entradas: { ciots: [{ codigo: "123456789012", documento: "11222333000181" }], seguro: { seguradora: "Seguradora de Teste S/A", averbacoes: ["AV-0001"] }, produto: { descricao: "Peças automotivas" } },
+      entradas: { ciots: [{ codigo: "123456789012", documento: "99000108000141" }], seguro: { seguradora: "Seguradora de Teste S/A", averbacoes: ["AV-0001"] }, produto: { descricao: "Peças automotivas" } },
     });
     // O percurso não foi mexido: não vai (o servidor infere).
     expect((conferido.body!.entradas as Record<string, unknown>).percurso).toBeUndefined();
@@ -320,6 +325,51 @@ describe("aba MDF-e da viagem", () => {
     const negada = await montar(<MdfeDaViagem manifestId="v1" podeAlterar={false} />);
     await ate(() => expect(negada.querySelector('[role="alert"]')).not.toBeNull());
     expect(negada.textContent).toContain("Seu perfil não tem acesso aos documentos fiscais.");
+  });
+
+  it("contingência: só é oferecida depois de a SEFAZ não responder, pede confirmação, e o MDF-e aparece 'a transmitir', nunca 'autorizado'", async () => {
+    const emContingencia = () =>
+      emitido({ situacao: "CONTINGENCY", chave: CHAVE_DE_CONTINGENCIA, contingencia: true, cStat: null, motivo: null, protocolo: null, autorizadoEm: null, emitidoEm: "2026-10-10T14:30:00.000Z", transmitirAte: "2026-10-17T14:30:00.000Z" });
+    let emitida = false;
+    const pedidos = api({
+      [VIAGEM]: () => ({ body: daViagem({ documentos: [emitida ? conferencia({ pendencias: ["Esta viagem tem MDF-e emitido em contingência para esta UF neste ambiente: transmita-o à SEFAZ."], mdfe: emContingencia() }) : conferencia()] }) }),
+      "POST /api/fiscal/mdfe/emissao": (corpo) => {
+        if (!corpo?.contingencia) return { status: 504, body: { error: "A SEFAZ não respondeu no tempo limite. A consulta de MDF-e não encerrados é feita antes de emitir: nada foi enviado. Tente de novo." } };
+        emitida = true;
+        return { body: { mdfe: emContingencia(), autorizado: false, mensagem: "MDF-e nº 7 emitido em contingência em homologação (sem valor fiscal): ainda NÃO está autorizado. Imprima o DAMDFE." } };
+      },
+    });
+    const tela = await montar(<MdfeDaViagem manifestId="v1" podeAlterar />);
+    await ate(() => expect(tela.querySelector('[data-documento="MG"]')).not.toBeNull());
+    const mg = tela.querySelector<HTMLElement>('[data-documento="MG"]')!;
+    // Antes de tentar emitir, a contingência nem aparece.
+    expect(mg.querySelector("[data-oferta-de-contingencia]")).toBeNull();
+
+    await clicar(mg.querySelector("[data-emitir]")!);
+    await ate(() => expect(mg.querySelector('[role="alert"]')).not.toBeNull());
+    const oferta = mg.querySelector<HTMLElement>("[data-oferta-de-contingencia]")!;
+    expect(oferta.textContent).toContain("o MDF-e sai sem autorização");
+    expect(oferta.textContent).toContain("transmitido em até 168 horas");
+    const botao = oferta.querySelector<HTMLButtonElement>("[data-contingencia-emitir]")!;
+    // Sem a confirmação o botão não liga: a contingência é escolha de quem emite.
+    expect(botao.disabled).toBe(true);
+    await clicar(oferta.querySelector('[data-campo="confirmaContingencia"]')!);
+    expect(botao.disabled).toBe(false);
+    await clicar(botao);
+    await ate(() => expect(mg.querySelector('[data-resultado="contingencia"]')).not.toBeNull());
+    expect(pedidos.filter((pedido) => pedido.method === "POST").map((pedido) => pedido.body?.contingencia)).toEqual([undefined, true]);
+    expect(pedidos.find((pedido) => pedido.body?.contingencia === true)).toMatchObject({ url: "/api/fiscal/mdfe/emissao", body: { manifestId: "v1", ufDeDescarga: "MG" } });
+
+    await ate(() => expect(mg.querySelector('[data-mdfe="CONTINGENCY"]')).not.toBeNull());
+    expect(mg.querySelector("[data-mdfe]")!.textContent).toBe("Contingência nº 7, a transmitir (homologação)");
+    expect(mg.querySelector("[data-prazo]")!.textContent).toMatch(/^Emitido em contingência, sem autorização da SEFAZ\. /);
+    expect(mg.textContent).toContain("3526 1099 0001 0800 0141 5800 1000 0000 0724 8215 9370");
+    // O que existe para ele: o DAMDFE de contingência e transmitir. Nada de XML autorizado, encerrar ou cancelar.
+    expect(mg.querySelector("[data-damdfe]")).not.toBeNull();
+    expect(mg.querySelector('[data-acao="transmitir"]')!.textContent).toBe("Transmitir à SEFAZ");
+    for (const acao of ["xml", "encerrar", "cancelar", "condutor", "pagamento"]) expect(mg.querySelector(`[data-acao="${acao}"]`), acao).toBeNull();
+    expect(mg.querySelector("[data-emitir]")).toBeNull();
+    expect(mg.textContent).not.toMatch(/Autorizado nº/);
   });
 });
 
@@ -429,7 +479,7 @@ describe("tela de MDF-e (lista)", () => {
       "/api/fiscal/mdfe/situacao": PRONTA,
       "/api/fiscal/mdfe/configuracao": SEM_CONFIGURACAO,
       "/api/fiscal/mdfe/status-servico": { body: { ambiente: "HOMOLOGACAO", autorizador: "SVRS", emOperacao: true, cStat: 107, motivo: "Serviço em Operação" } },
-      "/api/fiscal/mdfe/nao-encerrados": { body: { ambiente: "HOMOLOGACAO", cStat: 111, motivo: "MDF-e não encerrados localizados", mdfes: [{ chave: CHAVE, protocolo: "935260000000001", mdfe: { id: "m1", numero: 7, viagem: "A1B2C3", placa: "ABC1D23", ufDeFim: "MG", autorizadoEm: null } }, { chave: "35261011222333000181580010000000991000000995", protocolo: "935260000000099", mdfe: null }] } },
+      "/api/fiscal/mdfe/nao-encerrados": { body: { ambiente: "HOMOLOGACAO", cStat: 111, motivo: "MDF-e não encerrados localizados", mdfes: [{ chave: CHAVE, protocolo: "935260000000001", mdfe: { id: "m1", numero: 7, viagem: "A1B2C3", placa: "ABC1D23", ufDeFim: "MG", autorizadoEm: null } }, { chave: "35261099000108000141580010000000991000000995", protocolo: "935260000000099", mdfe: null }] } },
       "POST /api/fiscal/mdfe/emissao/m1/condutor": { body: emitido({ eventos: [{ id: "e2", tipo: "110114", sequencia: 1, protocolo: "935260000000003", registradoEm: new Date().toISOString(), descricao: "Condutor incluído: Maria de Souza" }] }) },
     });
     const tela = await montar(<MdfePage />);
@@ -454,6 +504,132 @@ describe("tela de MDF-e (lista)", () => {
     expect(pedidos.find((pedido) => pedido.method === "POST")).toMatchObject({ url: "/api/fiscal/mdfe/emissao/m1/condutor", body: { nome: "Maria de Souza", cpf: "111.444.777-35" } });
   });
 
+  it("MDF-e em contingência na lista: o prazo, a última resposta e transmitir; rejeitado continua em contingência, e só vira autorizado com o que a rota devolve", async () => {
+    const pendente = (extra: Partial<MdfeEmitido> = {}) =>
+      emitido({ situacao: "CONTINGENCY", chave: CHAVE_DE_CONTINGENCIA, contingencia: true, cStat: null, motivo: null, protocolo: null, autorizadoEm: null, emitidoEm: "2026-10-10T14:30:00.000Z", transmitirAte: "2026-10-17T14:30:00.000Z", ...extra });
+    let situacao: "pendente" | "rejeitado" | "autorizado" = "pendente";
+    const rejeitado = () => pendente({ cStat: 611, motivo: "Rejeição: Existe MDFe não encerrado para esta placa" });
+    const autorizado = () => emitido({ chave: CHAVE_DE_CONTINGENCIA, contingencia: true });
+    const pedidos = api({
+      "/api/fiscal/mdfe": () => ({ body: [situacao === "autorizado" ? autorizado() : situacao === "rejeitado" ? rejeitado() : pendente()] }),
+      "/api/fiscal/mdfe/situacao": PRONTA,
+      "/api/fiscal/mdfe/configuracao": SEM_CONFIGURACAO,
+      "POST /api/fiscal/mdfe/emissao/m1/transmitir": () => {
+        if (situacao === "pendente") {
+          situacao = "rejeitado";
+          return { body: { mdfe: rejeitado(), autorizado: false, mensagem: "A SEFAZ rejeitou a transmissão do MDF-e: 611 - Rejeição: Existe MDFe não encerrado para esta placa. O MDF-e continua emitido em contingência, sem autorização." } };
+        }
+        situacao = "autorizado";
+        return { body: { mdfe: autorizado(), autorizado: true, mensagem: "MDF-e nº 7 (emitido em contingência) autorizado em homologação (sem valor fiscal). Protocolo 935260000000001." } };
+      },
+    });
+    const tela = await montar(<MdfePage />);
+    await ate(() => expect(tela.querySelector("tr[data-mdfe-id]")).not.toBeNull());
+    const linha = () => tela.querySelector<HTMLElement>('tr[data-mdfe-id="m1"]')!;
+    expect(linha().querySelector("[data-mdfe]")!.textContent).toBe("Contingência nº 7, a transmitir (homologação)");
+    expect(linha().querySelector("[data-mdfe]")!.getAttribute("title")).toBe("Emitido em contingência, a transmitir");
+    // O prazo de 168 horas: 10/10 às 11:30 de Brasília + 7 dias. Já passou ou não, a frase diz o dia.
+    expect(linha().querySelector("[data-prazo]")!.textContent).toMatch(/17\/10\/2026,? 11:30/);
+    expect(linha().querySelector("[data-em-aberto]")).toBeNull();
+    expect(linha().querySelector('[data-acao="xml"]')).toBeNull();
+
+    await clicar(linha().querySelector('[data-acao="transmitir"]')!);
+    await ate(() => expect(linha().querySelector('[data-transmissao="nao-autorizado"]')).not.toBeNull());
+    expect(linha().querySelector("[data-transmissao]")!.textContent).toContain("611 - Rejeição: Existe MDFe não encerrado para esta placa");
+    await ate(() => expect(linha().querySelector("[data-ultima-transmissao]")).not.toBeNull());
+    expect(linha().querySelector("[data-ultima-transmissao]")!.textContent).toBe("Última transmissão: 611 - Rejeição: Existe MDFe não encerrado para esta placa");
+    // Continua em contingência: a tela não promove nada por conta própria.
+    expect(linha().querySelector("[data-mdfe]")!.getAttribute("data-mdfe")).toBe("CONTINGENCY");
+
+    await clicar(linha().querySelector('[data-acao="transmitir"]')!);
+    await ate(() => expect(linha().querySelector('[data-mdfe="AUTHORIZED"]')).not.toBeNull());
+    expect(linha().querySelector("[data-mdfe]")!.textContent).toBe("Autorizado nº 7 (homologação)");
+    expect(linha().querySelector('[data-acao="xml"]')).not.toBeNull();
+    expect(linha().querySelector('[data-acao="transmitir"]')).toBeNull();
+    expect(pedidos.filter((pedido) => pedido.method === "POST").map((pedido) => pedido.url)).toEqual(["/api/fiscal/mdfe/emissao/m1/transmitir", "/api/fiscal/mdfe/emissao/m1/transmitir"]);
+  });
+
+  it("pagamento: a janela diz em uma linha quando o evento se aplica; informa (110116) e, com ele já registrado, altera (110118), também no MDF-e encerrado", async () => {
+    const eventoDePagamento = { id: "e3", tipo: "110116", sequencia: 1, protocolo: "935260000000004", registradoEm: new Date().toISOString(), descricao: "Pagamento informado: R$ 1.850,75, viagem 2 de 4" };
+    let informado = false;
+    const pedidos = api({
+      "/api/fiscal/mdfe": () => ({ body: [informado ? emitido({ situacao: "CLOSED", encerradoEm: new Date().toISOString(), eventos: [eventoDePagamento] }) : emitido()] }),
+      "/api/fiscal/mdfe/situacao": PRONTA,
+      "/api/fiscal/mdfe/configuracao": SEM_CONFIGURACAO,
+      "POST /api/fiscal/mdfe/emissao/m1/pagamento": (corpo) => {
+        if (corpo?.viagens && (corpo.viagens as { numero: string }).numero === "9") return { status: 409, body: { error: "O evento de pagamento só vale para MDF-e cujo veículo de tração é de TAC agregado (proprietário cadastrado no veículo com esse tipo): a SEFAZ rejeita os demais (723)." } };
+        informado = true;
+        return { body: emitido({ eventos: [eventoDePagamento] }) };
+      },
+      "PUT /api/fiscal/mdfe/emissao/m1/pagamento": { body: emitido({ situacao: "CLOSED", eventos: [eventoDePagamento, { ...eventoDePagamento, id: "e4", tipo: "110118", descricao: "Pagamento alterado: R$ 2.000,00" }] }) },
+    });
+    const tela = await montar(<MdfePage />);
+    await ate(() => expect(tela.querySelector("tr[data-mdfe-id]")).not.toBeNull());
+
+    await clicar(tela.querySelector('[data-acao="pagamento"]')!);
+    let dialogo = tela.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialogo.getAttribute("aria-label")).toBe("Informar pagamento do MDF-e");
+    expect(dialogo.querySelector("[data-quando]")!.textContent).toBe(
+      "Só para veículo de TAC agregado, quando o frete é pago depois, no fim do período (MOC do MDF-e, item 6.5): quem informou o pagamento na emissão não precisa deste evento.",
+    );
+    const botao = porTexto(dialogo, "button", "Informar o pagamento na SEFAZ")[0] as HTMLButtonElement;
+    expect(botao.disabled).toBe(true);
+    const campo = (nome: string) => dialogo.querySelector<HTMLInputElement>(`[data-campo="${nome}"]`)!;
+    await digitar(campo("quantidade"), "4");
+    await digitar(campo("numero"), "9");
+    await digitar(campo("pagador"), "99.000.108/0001-41");
+    await digitar(campo("valorDoFrete"), "1850,75");
+    await digitar(campo("pix"), "52998224725");
+    expect(botao.disabled).toBe(false);
+    // A recusa da rota (veículo que não é de TAC agregado) aparece na janela, que continua aberta.
+    await enviar(dialogo.querySelector("form")!);
+    await ate(() => expect(dialogo.querySelector('[role="alert"]')).not.toBeNull());
+    expect(dialogo.querySelector('[role="alert"]')!.textContent).toContain("TAC agregado");
+
+    await digitar(campo("numero"), "2");
+    await enviar(dialogo.querySelector("form")!);
+    await ate(() => expect(tela.querySelector('[role="dialog"]')).toBeNull());
+    expect(pedidos.filter((pedido) => pedido.method === "POST").at(-1)).toMatchObject({
+      url: "/api/fiscal/mdfe/emissao/m1/pagamento",
+      body: { viagens: { quantidade: "4", numero: "2" }, pagamento: { documento: "99.000.108/0001-41", valor: "1850,75", aPrazo: false, conta: { pix: "52998224725" } } },
+    });
+
+    // Agora o MDF-e está encerrado e já tem o pagamento: a ação continua, e passa a ser a alteração.
+    await ate(() => expect(tela.querySelector('tr[data-mdfe-id="m1"] [data-mdfe="CLOSED"]')).not.toBeNull());
+    expect(tela.querySelector("[data-eventos]")!.textContent).toContain("Pagamento informado: R$ 1.850,75, viagem 2 de 4");
+    expect(tela.querySelector('[data-acao="encerrar"]')).toBeNull();
+    await clicar(tela.querySelector('[data-acao="pagamento"]')!);
+    dialogo = tela.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialogo.getAttribute("aria-label")).toBe("Alterar pagamento do MDF-e");
+    expect(dialogo.querySelector("[data-quando]")!.textContent).toBe("Para corrigir os dados do pagamento do frete já informado à SEFAZ para um contratante (MOC do MDF-e, item 6.7).");
+    expect(dialogo.querySelector('[data-campo="quantidade"]')).toBeNull();
+    await digitar(campo("pagador"), "99000108000141");
+    await digitar(campo("valorDoFrete"), "2000");
+    await digitar(campo("pix"), "52998224725");
+    await enviar(dialogo.querySelector("form")!);
+    await ate(() => expect(tela.querySelector('[role="dialog"]')).toBeNull());
+    expect(pedidos.find((pedido) => pedido.method === "PUT")).toMatchObject({ url: "/api/fiscal/mdfe/emissao/m1/pagamento", body: { pagamento: { documento: "99000108000141", valor: "2000", aPrazo: false, conta: { pix: "52998224725" } } } });
+    expect((pedidos.find((pedido) => pedido.method === "PUT")!.body as Record<string, unknown>).viagens).toBeUndefined();
+  });
+
+  it("quem só lê o fiscal não vê transmitir nem pagamento", async () => {
+    estado.papel = "EXPEDITION";
+    api({
+      "/api/fiscal/mdfe": {
+        body: [emitido(), emitido({ id: "m2", numero: 8, situacao: "CONTINGENCY", chave: CHAVE_DE_CONTINGENCIA, contingencia: true, protocolo: null, autorizadoEm: null, cStat: null, motivo: null, transmitirAte: "2026-10-17T14:30:00.000Z" })],
+      },
+      "/api/fiscal/mdfe/situacao": PRONTA,
+      "/api/fiscal/mdfe/configuracao": SEM_CONFIGURACAO,
+    });
+    const tela = await montar(<MdfePage />);
+    await ate(() => expect(tela.querySelectorAll("tr[data-mdfe-id]")).toHaveLength(2));
+    expect(tela.querySelector('[data-acao="pagamento"]')).toBeNull();
+    expect(tela.querySelector('[data-acao="transmitir"]')).toBeNull();
+    // O DAMDFE de contingência e o prazo continuam visíveis para quem lê.
+    expect(tela.querySelector('tr[data-mdfe-id="m2"] [data-damdfe]')).not.toBeNull();
+    expect(tela.querySelector('tr[data-mdfe-id="m2"] [data-prazo]')).not.toBeNull();
+  });
+
   it("configuração (só para o administrador): abre com o que está gravado e salva série, tipo de emitente e seguro", async () => {
     estado.papel = "ADMIN";
     const gravada = { disponivel: true, ambiente: "HOMOLOGACAO", serie: 1, proximoNumero: 8, tipoDeEmitente: "1", seguradora: null, cnpjDaSeguradora: null, apolice: null };
@@ -461,7 +637,7 @@ describe("tela de MDF-e (lista)", () => {
       "/api/fiscal/mdfe": { body: [] },
       "/api/fiscal/mdfe/situacao": PRONTA,
       "/api/fiscal/mdfe/configuracao": { body: gravada },
-      "PUT /api/fiscal/mdfe/configuracao": (body) => ({ body: { ...gravada, seguradora: body?.seguradora, cnpjDaSeguradora: "61198164000160", apolice: body?.apolice } }),
+      "PUT /api/fiscal/mdfe/configuracao": (body) => ({ body: { ...gravada, seguradora: body?.seguradora, cnpjDaSeguradora: "99000502000180", apolice: body?.apolice } }),
     });
     const tela = await montar(<MdfePage />);
     await ate(() => expect(tela.querySelector("[data-configuracao-do-mdfe]")).not.toBeNull());
@@ -470,11 +646,11 @@ describe("tela de MDF-e (lista)", () => {
     await clicar(secao.querySelector("[data-abrir-configuracao]")!);
     expect(secao.querySelector<HTMLInputElement>('[data-campo="proximoNumero"]')!.value).toBe("8");
     await digitar(secao.querySelector<HTMLInputElement>('[data-campo="seguradora"]')!, "Seguradora X");
-    await digitar(secao.querySelector<HTMLInputElement>('[data-campo="cnpjDaSeguradora"]')!, "61.198.164/0001-60");
+    await digitar(secao.querySelector<HTMLInputElement>('[data-campo="cnpjDaSeguradora"]')!, "99.000.502/0001-80");
     await digitar(secao.querySelector<HTMLInputElement>('[data-campo="apolice"]')!, "AP-9");
     await enviar(secao.querySelector("form")!);
     await ate(() => expect(secao.querySelector('[role="status"]')).not.toBeNull());
     expect(secao.querySelector('[role="status"]')!.textContent).toBe("Configuração salva.");
-    expect(pedidos.find((pedido) => pedido.method === "PUT")?.body).toEqual({ serie: "1", proximoNumero: "8", tipoDeEmitente: "1", seguradora: "Seguradora X", cnpjDaSeguradora: "61.198.164/0001-60", apolice: "AP-9" });
+    expect(pedidos.find((pedido) => pedido.method === "PUT")?.body).toEqual({ serie: "1", proximoNumero: "8", tipoDeEmitente: "1", seguradora: "Seguradora X", cnpjDaSeguradora: "99.000.502/0001-80", apolice: "AP-9" });
   });
 });
