@@ -194,10 +194,15 @@ export async function ativarPush(area: Area, chave: string, userId: string): Pro
     inscricao = await registro.pushManager.subscribe(opcoes);
   } catch {
     // Inscrição antiga feita com outra chave do servidor: sai e entra de novo.
-    const antiga = await registro.pushManager.getSubscription();
+    // O navegador responde em inglês ("Error retrieving push subscription."): a tela mostra a nossa frase.
+    const antiga = await registro.pushManager.getSubscription().catch(() => null);
     if (!antiga) throw new Error(ERRO_AO_ATIVAR);
-    await antiga.unsubscribe();
-    inscricao = await registro.pushManager.subscribe(opcoes);
+    try {
+      await antiga.unsubscribe();
+      inscricao = await registro.pushManager.subscribe(opcoes);
+    } catch {
+      throw new Error(ERRO_AO_ATIVAR);
+    }
   }
 
   await gravarNoServidor(inscricao);
