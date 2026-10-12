@@ -289,6 +289,11 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
           {campo("contato", "Contato", { opcional: true, maximo: 60 })}
           {campo("email", "E-mail", { opcional: true, maximo: 60 })}
           {campo("rntrc", "RNTRC")}
+          {/* A série e o próximo número do CT-e dividem a linha do RNTRC: assim a parte do ICMS cabe na tela do celular. */}
+          <div className="grid grid-cols-2 gap-x-2 min-w-0">
+            {campo("serie", "Série CT-e", { numerico: true })}
+            {campo("proximoNumero", "Próximo nº", { numerico: true })}
+          </div>
         </div>
 
         <div className={`${visivel("endereco")}${GRADE}`}>
@@ -304,8 +309,6 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
         <div className={`${visivel("tributos")}${GRADE}`}>
           {escolha("regime", "Regime (CRT)", Object.entries(REGIMES))}
           {escolha("ambiente", "Ambiente", Object.entries(ROTULO_DO_AMBIENTE))}
-          {campo("serie", "Série do CT-e", { numerico: true })}
-          {campo("proximoNumero", "Próximo número", { numerico: true })}
           {escolha("cfopDentro", "CFOP no estado", cfops("5"))}
           {escolha("cfopFora", "CFOP fora do estado", cfops("6"))}
           {escolha(
@@ -343,7 +346,7 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
           )}
           {indoParaProducao && (
             <label data-confirmar-producao className="block space-y-1 min-w-0 col-span-2">
-              <span className="text-xs md:text-sm font-medium text-amber-800">Produção emite CT-e com valor fiscal. Para confirmar, digite o CNPJ do emitente:</span>
+              <span className="text-[11px] leading-tight md:text-sm font-medium text-amber-800">Produção emite CT-e com valor fiscal. Para confirmar, digite o CNPJ do emitente:</span>
               <input required data-campo="confirmacaoDoCnpj" value={form.confirmacaoDoCnpj} onChange={(e) => setForm((atual) => ({ ...atual, confirmacaoDoCnpj: e.target.value }))} className={INPUT} />
             </label>
           )}
