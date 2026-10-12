@@ -893,15 +893,16 @@ export default function CtePage() {
               <p>Nenhuma carga alocada em viagem, em rota ou entregue.</p>
             </div>
           ) : (
-            <table className="block md:table w-full text-sm">
+            <table className="block md:table md:table-fixed w-full text-sm">
+              {/* Largura fixa no computador: as colunas dividem o cartão e o texto longo corta com reticências, em vez de empurrar "Ações" para fora dele. */}
               <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Carga</th>
-                  <th className="px-4 py-3 font-medium">Remetente e destinatário</th>
-                  <th className="px-4 py-3 font-medium">Rota</th>
-                  <th className="px-4 py-3 font-medium">Mercadoria e frete</th>
-                  <th className="px-4 py-3 font-medium">CT-e</th>
-                  <th className="px-4 py-3 font-medium">Ações</th>
+                  <th className="px-4 py-3 font-medium md:w-[13%]">Carga</th>
+                  <th className="px-4 py-3 font-medium md:w-[18%]">Remetente e destinatário</th>
+                  <th className="px-4 py-3 font-medium md:w-[14%]">Rota</th>
+                  <th className="px-4 py-3 font-medium md:w-[13%]">Mercadoria e frete</th>
+                  <th className="px-4 py-3 font-medium md:w-[19%]">CT-e</th>
+                  <th className="px-4 py-3 font-medium md:w-[23%]">Ações</th>
                 </tr>
               </thead>
               <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
@@ -943,7 +944,7 @@ export default function CtePage() {
                           </>
                         ) : emitido ? (
                           <>
-                            <span data-cte={emitido.situacao} className={`inline-block text-xs px-2.5 py-1 rounded-full whitespace-nowrap ${COR_DO_SELO[emitido.situacao]}`}>
+                            <span data-cte={emitido.situacao} className={`inline-block text-xs px-2.5 py-1 rounded-full whitespace-nowrap md:whitespace-normal ${COR_DO_SELO[emitido.situacao]}`}>
                               {seloDoCte(emitido)}
                             </span>
                             {emitido.situacao === "REJECTED" && (
