@@ -27,7 +27,7 @@ import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL } from "../deposito/comum";
 /**
  * Empresa → Fiscal: os dados do emitente de CT-e e o certificado digital A1.
  *
- * No celular a seção tem quatro partes (Emitente, Endereço, Tributos e Certificado), para
+ * No celular a seção tem cinco partes (Emitente, Endereço, ICMS, IBS/CBS e Certificado), para
  * cada uma caber na tela; no computador fica tudo aberto. Os dados são um
  * formulário só, salvo de uma vez. O certificado é enviado à parte: o arquivo e
  * a senha saem da tela assim que são guardados, e a tela só mostra o titular, o
@@ -44,7 +44,7 @@ import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL } from "../deposito/comum";
 
 const FALHA_AO_SALVAR = "Não foi possível salvar.";
 
-type Parte = "emitente" | "endereco" | "tributos" | "certificado";
+type Parte = "emitente" | "endereco" | "tributos" | "ibscbs" | "certificado";
 type Formulario = Record<string, string>;
 
 const EM_BRANCO: Formulario = {
@@ -248,12 +248,13 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
         <p className="text-sm text-gray-500 mt-0.5">Dados do emitente, tributos e o certificado digital A1 que assina e transmite o CT-e.</p>
       </div>
 
-      <div role="tablist" aria-label="Parte do fiscal" className="md:hidden grid grid-cols-4 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+      <div role="tablist" aria-label="Parte do fiscal" className="md:hidden grid grid-cols-5 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
         {(
           [
             ["emitente", "Emitente"],
             ["endereco", "Endereço"],
-            ["tributos", "Tributos"],
+            ["tributos", "ICMS"],
+            ["ibscbs", "IBS/CBS"],
             ["certificado", "Certificado"],
           ] as const
         ).map(([chave, rotulo]) => (
@@ -264,7 +265,7 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
             aria-selected={parte === chave}
             data-parte-fiscal={chave}
             onClick={() => setParte(chave)}
-            className={`py-1 rounded-lg text-xs font-semibold ${parte === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+            className={`py-1 rounded-lg text-[11px] font-semibold ${parte === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
           >
             {rotulo}
           </button>
@@ -340,6 +341,15 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
               </span>
             </label>
           )}
+          {indoParaProducao && (
+            <label data-confirmar-producao className="block space-y-1 min-w-0 col-span-2">
+              <span className="text-xs md:text-sm font-medium text-amber-800">Produção emite CT-e com valor fiscal. Para confirmar, digite o CNPJ do emitente:</span>
+              <input required data-campo="confirmacaoDoCnpj" value={form.confirmacaoDoCnpj} onChange={(e) => setForm((atual) => ({ ...atual, confirmacaoDoCnpj: e.target.value }))} className={INPUT} />
+            </label>
+          )}
+        </div>
+
+        <div className={`${visivel("ibscbs")}${GRADE}`}>
           {escolha("ibsCbsCst", "IBS/CBS: CST", [["", simples ? "Sem o grupo" : "Escolha"], ...csts], (cst) => ({ ibsCbsClasse: classesDoCst(cst)[0]?.[0] ?? "" }))}
           {escolha("ibsCbsClasse", "Classificação (cClassTrib)", classes)}
           {problemaDoPar && (
@@ -354,12 +364,6 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
             {campo("pis", "PIS (%)", { numerico: true })}
             {campo("cofins", "COFINS (%)", { numerico: true })}
           </div>
-          {indoParaProducao && (
-            <label data-confirmar-producao className="block space-y-1 min-w-0 col-span-2">
-              <span className="text-xs md:text-sm font-medium text-amber-800">Produção emite CT-e com valor fiscal. Para confirmar, digite o CNPJ do emitente:</span>
-              <input required data-campo="confirmacaoDoCnpj" value={form.confirmacaoDoCnpj} onChange={(e) => setForm((atual) => ({ ...atual, confirmacaoDoCnpj: e.target.value }))} className={INPUT} />
-            </label>
-          )}
         </div>
 
         <button type="submit" disabled={ocupado} className={`${BOTAO_AZUL} w-full md:w-auto`}>
