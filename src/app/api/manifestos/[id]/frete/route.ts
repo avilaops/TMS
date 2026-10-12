@@ -20,6 +20,8 @@ import {
   valoresDoContrato,
 } from '@/lib/frete-contratado';
 import { VIAGEM_DO_FRETE_SELECT, contratoComContas } from '@/lib/frete-contratado-db';
+import { CONTRATO_TEM_DOCUMENTOS } from '@/lib/subcontratacao';
+import { lerSubcontratacao } from '@/lib/subcontratacao-db';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
 import { TRIP_NOT_FOUND, codigoDaViagem } from '@/lib/viagem';
 import { escolher, nadaMudou, origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
@@ -37,6 +39,8 @@ const recusa = (err: unknown) => {
  * forma de cálculo sugere hoje; o que a viagem tem para essa sugestão (frete
  * das cargas, km e entregas); o parceiro dono do veículo; e os parceiros que
  * podem ser escolhidos à mão. É dinheiro: só quem lê o frete contratado.
+ * Em contrato com transportadora, `subcontratacao` diz quantos documentos dela
+ * estão registrados e as cargas ainda sem CT-e dela (o aviso de quem vai quitar).
  */
 export async function GET(_req: Request, { params }: Contexto) {
   const { error } = await requireStaff({ pode: 'freteContratadoVer' });
@@ -62,11 +66,16 @@ export async function GET(_req: Request, { params }: Contexto) {
 
     const base = baseDaViagem(viagem);
     const doVeiculo = viagem.vehicle.carrier;
+    // Contrato com transportadora: o que a subcontratada já entregou de documento (src/lib/subcontratacao.ts).
+    const subcontratacao = contrato ? await lerSubcontratacao(prisma, manifestId) : null;
     return NextResponse.json({
       viagem: { id: viagem.id, status: viagem.status, ...base },
       parceiroDoVeiculo: doVeiculo ? { id: doVeiculo.id, name: doVeiculo.name } : null,
       contrato: contrato ? contratoComContas(contrato, base) : null,
       parceiros,
+      subcontratacao: subcontratacao?.parceiro
+        ? { ctes: subcontratacao.cargas.reduce((soma, carga) => soma + carga.ctes.length, 0), mdfes: subcontratacao.mdfes.length, semCte: subcontratacao.semCte }
+        : null,
     });
   } catch (error) {
     console.error('Erro ao ler o frete contratado da viagem:', error);
@@ -110,6 +119,10 @@ export async function PUT(req: Request, { params }: Contexto) {
 
       const pagamentos = atual?.payments ?? [];
       if (atual && pagamentos.length > 0 && atual.carrierId !== parceiro.id) throw new Refusal(CARRIER_LOCKED_BY_PAYMENTS, 409);
+      // Os documentos da subcontratada têm o CNPJ dela na chave: não passam para outro parceiro.
+      if (atual && atual.carrierId !== parceiro.id && (await tx.subcontractDocument.count({ where: { contractId: atual.id } })) > 0) {
+        throw new Refusal(CONTRATO_TEM_DOCUMENTOS, 409);
+      }
 
       const pago = totalPago(pagamentos);
       const { liquido } = valoresDoContrato(data);

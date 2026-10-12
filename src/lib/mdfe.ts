@@ -666,6 +666,12 @@ export type FaltasParaSair = {
   ctes: { id: string; codigo: string }[];
   /** A viagem exige MDF-e e alguma UF de descarregamento não tem um autorizado. */
   mdfe: FaltaDeMdfe | null;
+  /**
+   * Só quando falta MDF-e e o veículo da viagem é de uma transportadora
+   * subcontratada: o nome dela. A chave do MDF-e dela, registrada no contrato
+   * de frete, cobre a UF no lugar do MDF-e desta empresa (src/lib/subcontratacao.ts).
+   */
+  subcontratada?: string;
 };
 
 export type CargaNaSaida = { id: string; codigo: string; ufDeOrigem: string | null; ufDeDestino: string | null; mesmoMunicipio: boolean; cteAutorizado: boolean };
@@ -680,15 +686,29 @@ export type CargaNaSaida = { id: string; codigo: string; ufDeOrigem: string | nu
  * manda "emiti-lo em contingência Off-line, imprimir o DAMDFE e depois de
  * superado o problema técnico, transmitir", e avisa que a rejeição posterior
  * acontece quando "a carga já está em circulação no trânsito".
+ *
+ * Em viagem feita no veículo de uma transportadora subcontratada
+ * (`subcontratada`, o nome dela), `ufsComMdfe` traz também as UF cobertas pela
+ * chave do MDF-e DELA: na subcontratação o MDF-e é emitido só por quem
+ * gerencia o transporte (Ajuste SINIEF 21/10, cláusula terceira, § 6º), e pode
+ * ser ela. O CT-e desta empresa continua exigido de cada carga.
  */
-export function faltasParaSair(cargas: readonly CargaNaSaida[], tipoDeEmitente: TipoDeEmitente, ufsDeDescarga: readonly string[], ufsComMdfe: readonly string[]): FaltasParaSair {
+export function faltasParaSair(
+  cargas: readonly CargaNaSaida[],
+  tipoDeEmitente: TipoDeEmitente,
+  ufsDeDescarga: readonly string[],
+  ufsComMdfe: readonly string[],
+  subcontratada: string | null = null,
+): FaltasParaSair {
   const exigencia = exigenciaDeMdfe(cargas);
   const semMdfe = ufsDeDescarga.filter((uf) => !ufsComMdfe.includes(uf));
   // Sem UF conhecida, o que dá para exigir é que a viagem tenha algum MDF-e.
   const falta = semMdfe.length > 0 || (ufsDeDescarga.length === 0 && ufsComMdfe.length === 0);
+  const mdfe = exigencia !== "nenhuma" && falta ? { exigencia, ufs: semMdfe } : null;
   return {
     ctes: tipoDeEmitente === "1" ? cargas.filter((carga) => !carga.mesmoMunicipio && !carga.cteAutorizado).map(({ id, codigo }) => ({ id, codigo })) : [],
-    mdfe: exigencia !== "nenhuma" && falta ? { exigencia, ufs: semMdfe } : null,
+    mdfe,
+    ...(mdfe && subcontratada ? { subcontratada } : {}),
   };
 }
 
@@ -700,12 +720,17 @@ const emLista = (itens: readonly string[]) => (itens.length <= 1 ? itens.join(""
 /** O MDF-e que falta, em poucas palavras: "MDF-e com descarga em MG e RJ" ou, sem UF conhecida, "MDF-e da viagem". */
 export const rotuloDaFaltaDeMdfe = (falta: FaltaDeMdfe) => (falta.ufs.length > 0 ? `MDF-e com descarga em ${emLista(falta.ufs)}` : "MDF-e da viagem");
 
+/** O complemento da frase do bloqueio da saída quando o veículo é da transportadora subcontratada. */
+export const comoASubcontratadaLibera = (parceiro: string) =>
+  ` O veículo é da transportadora ${parceiro}: se é ela quem emite o MDF-e, registre a chave dele na aba MDF-e da viagem (Ajuste SINIEF 21/10, cláusula terceira, § 6º).`;
+
 /** A frase do bloqueio da saída (resposta 409 de liberar a saída). */
 export function fraseDoBloqueioDaSaida(faltas: FaltasParaSair): string {
   const partes: string[] = [];
   if (faltas.ctes.length > 0) partes.push(`CT-e autorizado de ${faltas.ctes.length === 1 ? "1 carga" : `${faltas.ctes.length} cargas`} (${faltas.ctes.map((carga) => carga.codigo).join(", ")})`);
   if (faltas.mdfe) partes.push(`${rotuloDaFaltaDeMdfe(faltas.mdfe)} autorizado`);
-  return `A saída não foi liberada. Falta: ${partes.join(" e ")}. Os documentos têm de estar autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).`;
+  const daSubcontratada = faltas.subcontratada ? comoASubcontratadaLibera(faltas.subcontratada) : "";
+  return `A saída não foi liberada. Falta: ${partes.join(" e ")}. Os documentos têm de estar autorizados antes de o veículo sair (Ajustes SINIEF 09/07 e 21/10).${daSubcontratada}`;
 }
 
 /**

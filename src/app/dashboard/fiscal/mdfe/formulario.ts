@@ -1,3 +1,4 @@
+import type { SugestaoParaOMdfe } from "@/lib/frete-contratado";
 import type { EntradasDoMdfe } from "@/lib/mdfe";
 
 /**
@@ -132,6 +133,31 @@ export function formularioDasEntradas(entradas: EntradasDoMdfe): FormularioDoMdf
     reboque2: entradas.reboques?.[1] ?? "",
     lacres: (entradas.lacres ?? []).join(", "),
   };
+}
+
+/**
+ * O que o contrato de frete da viagem sugere para os campos do pagamento do
+ * frete, já como texto de campo. A tela mostra como exemplo (o campo continua
+ * em branco e nada vai para a rota) e só copia para o formulário quando a
+ * pessoa aceita (`aplicarSugestao`). O vencimento do saldo não vem do contrato:
+ * continua com quem emite.
+ */
+export function camposDaSugestao(sugestao: SugestaoParaOMdfe): Pick<FormularioDoMdfe, "pagador" | "pagadorNome" | "valorDoFrete" | "aPrazo" | "adiantamento" | "pix"> {
+  return {
+    pagador: sugestao.pagador?.documento ?? "",
+    pagadorNome: (sugestao.pagador?.nome ?? "").slice(0, 60),
+    valorDoFrete: numero(sugestao.valor),
+    aPrazo: sugestao.aPrazo,
+    // À vista não leva adiantamento (regra F63 do MOC, rejeição 739).
+    adiantamento: sugestao.aPrazo && sugestao.adiantamento > 0 ? numero(sugestao.adiantamento) : "",
+    pix: sugestao.pix ?? "",
+  };
+}
+
+/** O formulário com a sugestão do contrato aceita. Sem chave Pix na sugestão, a conta fica como estava. */
+export function aplicarSugestao(form: FormularioDoMdfe, sugestao: SugestaoParaOMdfe): FormularioDoMdfe {
+  const { pix, ...campos } = camposDaSugestao(sugestao);
+  return { ...form, ...campos, ...(pix ? { conta: "pix" as const, pix } : {}) };
 }
 
 /** Só o pagamento do frete, como a rota do evento de pagamento o recebe. `null`: nem quem paga nem o valor foram informados. */

@@ -103,6 +103,7 @@ DECLARE
     "TripExpense": ["manifestId", "Manifest", "createdById", "User", "reviewedById", "User", "fuelingId", "Fueling", "transactionId", "FinancialTransaction"],
     "FreightContract": ["manifestId", "Manifest", "carrierId", "Carrier"],
     "FreightPayment": ["contractId", "FreightContract", "transactionId", "FinancialTransaction"],
+    "SubcontractDocument": ["contractId", "FreightContract", "collectionId", "Collection", "createdById", "User"],
     "Notification": ["userId", "User"],
     "PushSubscription": ["userId", "User"],
     "BankStatementLine": ["transactionId", "FinancialTransaction"],

@@ -227,8 +227,10 @@ describe("recibo de frete", () => {
       ],
       pago: 950,
       saldo: 0,
+      subcontratacao: null,
     };
     const tela = await montar(<FolhaDoRecibo recibo={recibo} />);
+    expect(tela.querySelector('[data-secao="subcontratacao"]')).toBeNull();
 
     expect(tela.querySelector("h1")?.textContent).toBe("RECIBO DE PAGAMENTO DE FRETE");
     expect(tela.querySelector("[data-empresa]")?.textContent).toBe("Transportadora de Teste");

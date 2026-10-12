@@ -162,7 +162,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Custos detalhados de frota e checklists.
 - [x] Atendimento e ocorrências.
 - [x] Equipe: ajudantes, ausências, adiantamentos e produtividade.
-- [x] Parceiros de transporte (agregados e terceiros) e frete contratado por viagem: contrato, adiantamento, saldo, recibo e fechamento por parceiro. Falta: cálculo de retenções, RPA, CIOT/PEF, piso mínimo da ANTT e subcontratação no CT-e.
+- [x] Parceiros de transporte (agregados e terceiros) e frete contratado por viagem: contrato, adiantamento, saldo, recibo e fechamento por parceiro. A conferência do MDF-e sugere o pagamento do frete a partir do contrato (só para quem lê o frete contratado). Falta: cálculo de retenções, RPA, CIOT/PEF e piso mínimo da ANTT.
 - [x] Portal do cliente: cotação, destinatários, exportação e tabela de frete.
 
 ### Fase 4: Fiscal e Automações
@@ -173,7 +173,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] MDF-e: contingência off-line (emissão, DAMDFE de contingência e transmissão posterior), eventos de pagamento do frete (110116 e 110118) e revisão do retorno da SEFAZ contra o manual; CT-e e MDF-e: código de segurança do responsável técnico (opcional).
 - [x] CT-e: carta de correção (110110), comprovante de entrega na SEFAZ e o cancelamento dele (110180 e 110181), emissão pela SVC (contingência) e "Conferir na SEFAZ" (situação e eventos pela chave). Nada disso foi exercitado contra a SEFAZ de verdade.
 - [x] CT-e de subcontratação, redespacho e redespacho intermediário (quando outra transportadora contrata esta): tipo de serviço, CT-e anterior, expedidor e recebedor na carga, na conferência, no XML e na minuta de despacho. Carta de correção e comprovante de entrega de CT-e autorizado pela SVC passam a ir para a SEFAZ de origem. Validado no esquema oficial; nada foi enviado à SEFAZ.
-- [ ] Subcontratar outra transportadora (emitir o CT-e próprio e receber o CT-e de subcontratação dela): depende do cadastro de parceiros de transporte.
+- [x] Subcontratar outra transportadora: o CT-e próprio continua sendo o de sempre, e o contrato de frete da viagem guarda as chaves do CT-e de subcontratação dela (por carga) e do MDF-e dela (por UF de descarga); a chave do MDF-e dela libera a saída no lugar do MDF-e próprio quando o veículo é dela (Ajuste SINIEF 21/10, cláusula terceira, § 6º). Falta: importar o XML dela, conferir a chave na SEFAZ, CT-e complementar, substituição e anulação. A regra de cada UF (dispensa do CT-e da subcontratada, ICMS) é com o contador.
 - [ ] Primeira autorização real de CT-e e de MDF-e em homologação e liberação para produção (precisa do certificado A1 e do credenciamento da transportadora na SEFAZ).
 - [x] Auditoria de ações.
 - [x] Notificações no sistema (sininho), por push no navegador e por WhatsApp via n8n.

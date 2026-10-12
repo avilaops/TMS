@@ -41,6 +41,8 @@ export interface Veiculo {
   model: string;
   type: string;
   status: string;
+  /** O parceiro de transporte dono do veículo, quando há (src/lib/parceiros.ts). */
+  carrierId?: string | null;
 }
 
 export interface Manifesto {

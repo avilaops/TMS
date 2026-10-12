@@ -254,6 +254,54 @@ export function custoParaAViagem(contrato: (ValoresGravados & { status: string }
   return valoresDoContrato(contrato).custo;
 }
 
+/* ------------------- Sugestão para o pagamento do frete no MDF-e ---------------- */
+
+/**
+ * O que o contrato de frete sugere para o grupo de pagamento do MDF-e
+ * (`infPag`). É só sugestão: a tela mostra e a pessoa aceita ou não; nada
+ * daqui entra no XML sozinho. É dinheiro: só quem lê o frete contratado recebe
+ * (`GET /api/manifestos/[id]/frete/sugestao-mdfe`).
+ */
+export type SugestaoParaOMdfe = {
+  /** O parceiro contratado: quem recebe o frete. */
+  contratado: { nome: string; documento: string };
+  /** Quem paga o frete: o emitente fiscal da empresa. `null` sem emitente cadastrado. */
+  pagador: { nome: string; documento: string } | null;
+  /** O valor do contrato (`vContrato`): bruto + acréscimos − descontos. As retenções fazem parte dele. */
+  valor: number;
+  /** A soma dos adiantamentos já registrados (`vAdiant`). */
+  adiantamento: number;
+  /** A prazo (`indPag` 1): há adiantamento ou ainda falta pagar. À vista só com tudo pago de uma vez. */
+  aPrazo: boolean;
+  /** A forma do último pagamento registrado, ou `null` sem pagamento. */
+  forma: string | null;
+  /** A chave Pix do parceiro, quando ela cabe no campo do MDF-e (2 a 60 letras). */
+  pix: string | null;
+};
+
+/**
+ * A sugestão do contrato para o pagamento do frete no MDF-e, ou `null` quando
+ * não há o que sugerir (sem contrato, contrato cancelado ou sem valor).
+ */
+export function sugestaoParaOMdfe(
+  contrato: (ValoresGravados & { status: string; payments: readonly (PagamentoGravado & { method: string })[]; carrier: { name: string; taxId: string; pixKey: string | null } }) | null | undefined,
+  pagador: { nome: string; documento: string } | null,
+): SugestaoParaOMdfe | null {
+  if (!contrato || contrato.status === "CANCELADO") return null;
+  const { valores, pago, adiantado } = contasDoContrato(contrato);
+  if (valores.custo <= 0) return null;
+  const pix = contrato.carrier.pixKey?.trim() ?? "";
+  return {
+    contratado: { nome: contrato.carrier.name, documento: contrato.carrier.taxId },
+    pagador,
+    valor: valores.custo,
+    adiantamento: adiantado,
+    aPrazo: adiantado > 0 || pago < valores.liquido,
+    forma: contrato.payments.length > 0 ? contrato.payments[contrato.payments.length - 1].method : null,
+    pix: pix.length >= 2 && pix.length <= 60 ? pix : null,
+  };
+}
+
 /* ---------------------------- Fechamento por parceiro -------------------------- */
 
 export type ContratoDoPeriodo = ValoresGravados & {
@@ -385,6 +433,12 @@ export type ReciboDeFrete = {
   pagamentos: { id: string; kind: string; date: string; amount: number; method: string; notes: string | null }[];
   pago: number;
   saldo: number;
+  /**
+   * Contrato com transportadora: os documentos que ela emitiu para a viagem
+   * (src/lib/subcontratacao.ts), o CT-e por carga e o MDF-e por UF de
+   * descarregamento. `null` com agregado, autônomo ou veículo próprio.
+   */
+  subcontratacao: { documentos: { id: string; tipo: string; chave: string; data: string; carga: string | null; uf: string | null }[]; cargasSemCte: string[] } | null;
 };
 
 /** As cidades sem repetir, na ordem em que aparecem: origens e destinos do recibo. */

@@ -435,6 +435,12 @@ export default function ManifestosPage() {
                         )}
                       </p>
                     )}
+                    {/* Veículo de transportadora subcontratada: o MDF-e pode ser dela, e a chave se registra na mesma aba. */}
+                    {bloqueio.faltas.mdfe && bloqueio.faltas.subcontratada && (
+                      <p data-falta="mdfe-da-subcontratada">
+                        O veículo é da transportadora {bloqueio.faltas.subcontratada}: se é ela quem emite o MDF-e, registre a chave dele na aba MDF-e.
+                      </p>
+                    )}
                   </div>
                 )}
 

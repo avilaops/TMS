@@ -52,6 +52,8 @@ export const ACOES = {
   "frete-contratado.cancelar": "Frete contratado cancelado",
   "frete-contratado.pagar": "Pagamento de frete contratado registrado",
   "frete-contratado.estornar": "Pagamento de frete contratado excluído",
+  "subcontratacao.registrar": "Documento da subcontratada registrado",
+  "subcontratacao.excluir": "Documento da subcontratada excluído",
   "veiculo.criar": "Veículo criado",
   "veiculo.alterar": "Veículo alterado",
   "manutencao.registrar": "Manutenção registrada",

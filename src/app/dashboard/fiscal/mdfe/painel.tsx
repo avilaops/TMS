@@ -28,7 +28,8 @@ import { UFS } from "@/lib/roteiro";
 import { BotaoDanfe } from "@/components/fiscal/botao-danfe";
 import { BOTAO_AZUL, BOTAO_CLARO, INPUT, LABEL, erroDe, quando } from "../../deposito/comum";
 import { chaveEmBlocos } from "../comum";
-import { FORMULARIO_EM_BRANCO, entradasDoFormulario, formularioDasEntradas, pagamentoDoFormulario, type FormularioDoMdfe } from "./formulario";
+import { rotuloDaFormaDePagamento, type SugestaoParaOMdfe } from "@/lib/frete-contratado";
+import { FORMULARIO_EM_BRANCO, aplicarSugestao, camposDaSugestao, entradasDoFormulario, formularioDasEntradas, pagamentoDoFormulario, type FormularioDoMdfe } from "./formulario";
 
 /**
  * O MDF-e na tela: a aba "MDF-e" da viagem (conferir, informar o que falta e
@@ -541,12 +542,15 @@ function Documento({
   inicial,
   viagem,
   podeAlterar,
+  sugestao,
   aoMudar,
 }: {
   manifestId: string;
   inicial: ConferenciaDoMdfe;
   viagem: Pick<MdfesDaViagem, "damdfe" | "reboques" | "ambiente">;
   podeAlterar: boolean;
+  /** O que o contrato de frete sugere para o pagamento; `null` para quem não lê o frete contratado ou sem contrato. */
+  sugestao: SugestaoParaOMdfe | null;
   aoMudar: () => void;
 }) {
   const [conferencia, setConferencia] = useState(inicial);
@@ -630,12 +634,22 @@ function Documento({
     }
   };
 
-  const campo = (nome: keyof FormularioDoMdfe, rotulo: string, opcoes: { largo?: boolean; numerico?: boolean; tipo?: string } = {}) => (
+  // `exemplo`: o que o contrato de frete sugere para o campo. Aparece apagado no campo vazio e não vai para a rota.
+  const campo = (nome: keyof FormularioDoMdfe, rotulo: string, opcoes: { largo?: boolean; numerico?: boolean; tipo?: string; exemplo?: string } = {}) => (
     <label className={`block space-y-0.5 min-w-0 ${opcoes.largo ? "col-span-2" : ""}`}>
       <span className={LABEL}>{rotulo}</span>
-      <input data-campo={nome} type={opcoes.tipo} inputMode={opcoes.numerico ? "decimal" : undefined} value={String(form[nome])} onChange={(e) => mudar(nome, e.target.value)} className={INPUT} />
+      <input
+        data-campo={nome}
+        type={opcoes.tipo}
+        inputMode={opcoes.numerico ? "decimal" : undefined}
+        placeholder={opcoes.exemplo || undefined}
+        value={String(form[nome])}
+        onChange={(e) => mudar(nome, e.target.value)}
+        className={INPUT}
+      />
     </label>
   );
+  const sugerido = sugestao ? camposDaSugestao(sugestao) : null;
   const escolha = (nome: keyof FormularioDoMdfe, rotulo: string, opcoes: readonly (readonly [string, string])[], largo = false) => (
     <label className={`block space-y-0.5 min-w-0 ${largo ? "col-span-2" : ""}`}>
       <span className={LABEL}>{rotulo}</span>
@@ -774,14 +788,25 @@ function Documento({
                   </Grupo>
 
                   <Grupo titulo={resumo?.lotacao ? "Pagamento do frete (obrigatório na carga lotação)" : "Pagamento do frete (opcional)"}>
-                    {campo("pagador", "CPF/CNPJ de quem paga")}
-                    {campo("valorDoFrete", "Valor do contrato (R$)", { numerico: true })}
+                    {/* Só para quem lê o frete contratado: o que o contrato da viagem sugere. Os campos seguem em branco até a pessoa aceitar. */}
+                    {sugestao && sugerido && (
+                      <p data-sugestao-do-contrato className="col-span-2 text-[11px] leading-tight text-gray-600 dark:text-gray-400">
+                        Sugestão do contrato de frete com {sugestao.contratado.nome}: {formatCurrency(sugestao.valor)}
+                        {sugestao.adiantamento > 0 ? `, adiantamento pago de ${formatCurrency(sugestao.adiantamento)}` : ""}, {sugestao.aPrazo ? "a prazo" : "à vista"}
+                        {sugestao.forma ? `, por ${rotuloDaFormaDePagamento(sugestao.forma)}` : ""}.
+                        <button type="button" data-usar-sugestao onClick={() => setForm((atual) => aplicarSugestao(atual, sugestao))} className="ml-2 font-semibold text-blue-700 dark:text-blue-400 underline">
+                          Usar a sugestão
+                        </button>
+                      </p>
+                    )}
+                    {campo("pagador", "CPF/CNPJ de quem paga", { exemplo: sugerido?.pagador })}
+                    {campo("valorDoFrete", "Valor do contrato (R$)", { numerico: true, exemplo: sugerido?.valorDoFrete })}
                     {escolha("conta", "Recebe por", [
                       ["pix", "Pix"],
                       ["banco", "Banco e agência"],
                       ["ipef", "Instituição de pagamento"],
                     ])}
-                    {form.conta === "pix" && campo("pix", "Chave Pix")}
+                    {form.conta === "pix" && campo("pix", "Chave Pix", { exemplo: sugerido?.pix })}
                     {form.conta === "banco" && campo("banco", "Banco (código)", { numerico: true })}
                     {form.conta === "banco" && campo("agencia", "Agência", { numerico: true })}
                     {form.conta === "ipef" && campo("cnpjDaIpef", "CNPJ da instituição")}
@@ -789,7 +814,7 @@ function Documento({
                       <input type="checkbox" data-campo="aPrazo" checked={form.aPrazo} onChange={(e) => mudar("aPrazo", e.target.checked)} />
                       <span>Pagamento a prazo</span>
                     </label>
-                    {form.aPrazo && campo("adiantamento", "Adiantamento (R$)", { numerico: true })}
+                    {form.aPrazo && campo("adiantamento", "Adiantamento (R$)", { numerico: true, exemplo: sugerido?.adiantamento })}
                     {form.aPrazo && campo("vencimento", "Vencimento do saldo", { tipo: "date" })}
                   </Grupo>
 
@@ -849,9 +874,34 @@ function Documento({
  * A aba "MDF-e" da viagem: um documento por UF de descarregamento. Carrega
  * sozinha; quem não lê o fiscal vê só o aviso de acesso.
  */
-export function MdfeDaViagem({ manifestId, podeAlterar }: { manifestId: string; podeAlterar: boolean }) {
+export function MdfeDaViagem({
+  manifestId,
+  podeAlterar,
+  veFrete = false,
+}: {
+  manifestId: string;
+  podeAlterar: boolean;
+  /** O perfil lê o frete contratado (capacidade `freteContratadoVer`): o pagamento do frete vem com a sugestão do contrato. */
+  veFrete?: boolean;
+}) {
   const [dados, setDados] = useState<MdfesDaViagem | { erro: string } | null>(null);
   const [volta, setVolta] = useState(0);
+  const [sugestao, setSugestao] = useState<SugestaoParaOMdfe | null>(null);
+
+  // Quem não lê o frete contratado nem pergunta: a rota recusaria (403), e os campos ficam em branco como sempre.
+  useEffect(() => {
+    if (!veFrete) return;
+    let ativo = true;
+    fetch(`/api/manifestos/${encodeURIComponent(manifestId)}/frete/sugestao-mdfe`)
+      .then(async (res) => (res.ok ? ((await res.json()) as { sugestao: SugestaoParaOMdfe | null }).sugestao : null))
+      .catch(() => null)
+      .then((lida) => {
+        if (ativo) setSugestao(lida);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [manifestId, veFrete]);
 
   useEffect(() => {
     let ativo = true;
@@ -904,7 +954,7 @@ export function MdfeDaViagem({ manifestId, podeAlterar }: { manifestId: string; 
       )}
       {dados.documentos.length === 0 && <p className="py-6 text-sm text-center text-gray-500">A viagem ainda não tem carga com destino reconhecido.</p>}
       {dados.documentos.map((documento) => (
-        <Documento key={documento.ufDeDescarga} manifestId={manifestId} inicial={documento} viagem={dados} podeAlterar={podeAlterar} aoMudar={() => setVolta((atual) => atual + 1)} />
+        <Documento key={documento.ufDeDescarga} manifestId={manifestId} inicial={documento} viagem={dados} podeAlterar={podeAlterar} sugestao={veFrete ? sugestao : null} aoMudar={() => setVolta((atual) => atual + 1)} />
       ))}
     </div>
   );

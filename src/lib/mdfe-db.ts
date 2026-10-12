@@ -76,6 +76,7 @@ import { prepararMdfe, ufsDeDescarga, type CargaDaViagem, type PreparoDoMdfe, ty
 import { CSTAT, REJEICOES_POR_NAO_ENCERRADO, consultarMdfe, consultarNaoEncerrados, decidirMdfe as decidir, enviarEvento, enviarMdfe, statusDoServico, type DestinoDoMdfe } from "@/lib/mdfe/sefaz";
 import { municipioDoTexto } from "@/lib/municipios";
 import { proprietarioDoParceiro } from "@/lib/parceiros";
+import { TIPO_DA_SUBCONTRATADA, ufsComMdfeDaSubcontratada, viagemSubcontratada } from "@/lib/subcontratacao";
 import { responsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { avisarEquipe, avisoDeMdfe, avisoDeMdfeEmAberto } from "@/lib/notificacoes";
 import { sistema } from "@/lib/prisma";
@@ -366,7 +367,7 @@ const VEICULO_SELECT = {
   ownerState: true,
   ownerType: true,
   // O parceiro de transporte dono do veículo: com ele, o proprietário do MDF-e sai do cadastro dele.
-  carrier: { select: { name: true, taxId: true, rntrc: true, ie: true, state: true, type: true } },
+  carrier: { select: { id: true, name: true, taxId: true, rntrc: true, ie: true, state: true, type: true } },
 } as const;
 
 type LinhaDoVeiculo = Prisma.VehicleGetPayload<{ select: typeof VEICULO_SELECT }>;
@@ -450,7 +451,7 @@ function viagemDaLinha(linha: LinhaDaViagem, ambiente: Ambiente): ViagemDoMdfe {
   };
 }
 
-type LeituraDb = Pick<Tx, "manifest" | "fiscalIssuer" | "vehicle" | "mdfe">;
+type LeituraDb = Pick<Tx, "manifest" | "fiscalIssuer" | "vehicle" | "mdfe" | "freightContract">;
 
 type Lido = {
   linha: LinhaDaViagem;
@@ -549,7 +550,37 @@ export async function conferirMdfe(empresa: Empresa, manifestId: string, ufDeDes
   return conferencia(empresa.db, await lerViagem(empresa.db, empresa.id, manifestId), ufDeDescarga, entradas);
 }
 
-type Saida = { emitente: EmitenteDoMdfe | null; ambiente: Ambiente; faltas: FaltasParaSair };
+type Saida = {
+  emitente: EmitenteDoMdfe | null;
+  ambiente: Ambiente;
+  faltas: FaltasParaSair;
+  /** As UF de descarregamento das cargas que saem do município. */
+  ufs: string[];
+  /** As UF cobertas por MDF-e de produção desta empresa. */
+  ufsComMdfeProprio: string[];
+  /** As UF cobertas por MDF-e da transportadora subcontratada, registrado no contrato de frete. */
+  ufsComMdfeDaSubcontratada: string[];
+  /** As cargas que saem do município: são as que têm CT-e. */
+  cargasComCte: Set<string>;
+};
+
+/**
+ * O MDF-e da transportadora subcontratada que vale para a saída: só quando o
+ * veículo da viagem é de um parceiro do tipo transportadora e o contrato de
+ * frete, valendo, é com ela (`viagemSubcontratada`). Aí o MDF-e é de quem
+ * gerencia o transporte (Ajuste SINIEF 21/10, cláusula terceira, § 6º), e a
+ * chave do MDF-e dela, registrada no contrato, cobre a UF no lugar do MDF-e
+ * desta empresa. Com TAC agregado ou independente nada muda: `ufs` vem vazio.
+ */
+async function mdfeDaSubcontratada(db: LeituraDb, manifestId: string, veiculo: LinhaDoVeiculo): Promise<{ parceiro: string | null; ufs: string[] }> {
+  if (veiculo.carrier?.type !== TIPO_DA_SUBCONTRATADA) return { parceiro: null, ufs: [] };
+  const contrato = await db.freightContract.findUnique({
+    where: { manifestId },
+    select: { status: true, carrierId: true, carrier: { select: { type: true, name: true } }, subcontractDocuments: { where: { kind: "MDFE" }, select: { kind: true, unloadState: true } } },
+  });
+  if (!contrato || !viagemSubcontratada(veiculo, contrato)) return { parceiro: null, ufs: [] };
+  return { parceiro: contrato.carrier.name, ufs: ufsComMdfeDaSubcontratada(contrato.subcontractDocuments) };
+}
 
 /**
  * O que falta de documento fiscal para a viagem sair, lido uma vez só para o
@@ -562,6 +593,10 @@ type Saida = { emitente: EmitenteDoMdfe | null; ambiente: Ambiente; faltas: Falt
  *
  * Vale como CT-e da carga o de produção: o autorizado por este sistema ou o
  * registrado à mão (os dois deixam a carga com `cteStatus` "ISSUED").
+ *
+ * Em viagem feita no veículo de uma transportadora subcontratada, a UF também
+ * fica coberta pela chave do MDF-e dela (`mdfeDaSubcontratada`). O CT-e desta
+ * empresa continua exigido de cada carga.
  */
 async function lerSaida(db: LeituraDb, manifestId: string): Promise<Saida | null> {
   const dona = await db.manifest.findUnique({ where: { id: manifestId }, select: { tenantId: true } });
@@ -583,8 +618,27 @@ async function lerSaida(db: LeituraDb, manifestId: string): Promise<Saida | null
   const municipais = new Set(cargas.filter((carga) => carga.mesmoMunicipio).map((carga) => carga.id));
   const ufs = ufsDeDescarga({ cargas: lido.viagem.cargas.filter((carga) => !municipais.has(carga.id)) }, tipo, municipioDoTexto);
   const autorizados = await db.mdfe.findMany({ where: { manifestId, environment: PRODUCAO, status: { in: [...COBRE_A_VIAGEM] } }, select: { unloadState: true }, distinct: ["unloadState"] });
-  const comMdfe = autorizados.map((mdfe) => mdfe.unloadState);
-  return { emitente: lido.emitente, ambiente: lido.ambiente, faltas: faltasParaSair(cargas, tipo, ufs, comMdfe) };
+  const proprios = autorizados.map((mdfe) => mdfe.unloadState);
+  const subcontratada = await mdfeDaSubcontratada(db, manifestId, lido.linha.vehicle);
+  return {
+    emitente: lido.emitente,
+    ambiente: lido.ambiente,
+    faltas: faltasParaSair(cargas, tipo, ufs, [...proprios, ...subcontratada.ufs], subcontratada.parceiro),
+    ufs,
+    ufsComMdfeProprio: proprios,
+    ufsComMdfeDaSubcontratada: subcontratada.ufs,
+    cargasComCte: new Set(cargas.filter((carga) => !carga.mesmoMunicipio).map((carga) => carga.id)),
+  };
+}
+
+/**
+ * O que a tela da subcontratação precisa saber dos MDF-e da viagem: as UF de
+ * descarregamento, as que já têm MDF-e de produção desta empresa e as cargas
+ * que saem do município (as que têm CT-e). `null`: a viagem não existe.
+ */
+export async function descargasDaViagem(db: LeituraDb, manifestId: string): Promise<Pick<Saida, "ufs" | "ufsComMdfeProprio" | "cargasComCte"> | null> {
+  const saida = await lerSaida(db, manifestId);
+  return saida ? { ufs: saida.ufs, ufsComMdfeProprio: saida.ufsComMdfeProprio, cargasComCte: saida.cargasComCte } : null;
 }
 
 /**

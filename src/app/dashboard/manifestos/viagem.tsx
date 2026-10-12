@@ -24,6 +24,7 @@ import type { MapaDaViagem } from "@/lib/mapa";
 import { MapaDaViagemNaTela } from "@/components/mapa/mapa-da-viagem";
 import { MdfeDaViagem } from "../fiscal/mdfe/painel";
 import { FreteDaViagem } from "./frete";
+import { DocumentosDaSubcontratada } from "./subcontratacao";
 import type { Manifesto } from "./carregar";
 
 /**
@@ -119,6 +120,7 @@ export function TelaDaViagem({
   onChange: () => void;
 }) {
   const [aba, setAba] = useState<Aba>(abaInicial === "MDF-e" && veFiscal ? "MDF-e" : "Dados");
+  const [subcontratadaAberta, setSubcontratadaAberta] = useState(false);
   // Viagem cancelada não recebe MDF-e: a aba some.
   const abas: Aba[] = [
     "Dados",
@@ -161,7 +163,10 @@ export function TelaDaViagem({
               role="tab"
               aria-selected={aba === nome}
               data-aba={nome}
-              onClick={() => setAba(nome)}
+              onClick={() => {
+                setSubcontratadaAberta(false);
+                setAba(nome);
+              }}
               // Com seis abas (administrador, viagem finalizada) a letra diminui no celular para todas caberem na linha.
               className={`py-1.5 rounded-lg ${abas.length > 5 ? "text-xs md:text-sm" : "text-sm"} font-semibold ${aba === nome ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
             >
@@ -174,8 +179,15 @@ export function TelaDaViagem({
           {aba === "Dados" && <Dados manifesto={manifesto} onChange={onChange} />}
           {aba === "Rota" && <Rota manifesto={manifesto} podeSugerir={alteraViagem} onChange={onChange} />}
           {aba === "Despesas" && <Despesas manifesto={manifesto} admin={aprovaDespesa} />}
-          {aba === "MDF-e" && <MdfeDaViagem manifestId={manifesto.id} podeAlterar={emiteFiscal} />}
-          {aba === "Frete" && <FreteDaViagem manifestId={manifesto.id} podeAlterar={alteraFrete} />}
+          {aba === "MDF-e" && (
+            <div className="space-y-3">
+              {/* Veículo de parceiro: se ele é uma transportadora subcontratada, o MDF-e pode ser dela (a chave libera a saída). */}
+              {manifesto.vehicle?.carrierId && <DocumentosDaSubcontratada manifestId={manifesto.id} podeAlterar={emiteFiscal} recolhido aoAlternar={setSubcontratadaAberta} />}
+              {/* Com os documentos da subcontratada abertos, o MDF-e próprio sai da frente: uma parte por vez no celular. */}
+              {!subcontratadaAberta && <MdfeDaViagem manifestId={manifesto.id} podeAlterar={emiteFiscal} veFrete={veFrete} />}
+            </div>
+          )}
+          {aba === "Frete" && <FreteDaViagem manifestId={manifesto.id} podeAlterar={alteraFrete} veFiscal={veFiscal} alteraFiscal={emiteFiscal} />}
           {aba === "Acerto" && <AcertoDaViagemFinalizada manifestId={manifesto.id} />}
         </div>
       </div>

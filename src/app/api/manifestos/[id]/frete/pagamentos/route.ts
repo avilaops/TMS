@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { transacao } from '@/lib/prisma';
+import prisma, { transacao } from '@/lib/prisma';
+import { avisoDeCargasSemCte } from '@/lib/subcontratacao';
+import { lerSubcontratacao } from '@/lib/subcontratacao-db';
 import { requireStaff } from '@/lib/staff';
 import { Refusal } from '@/lib/cadastros';
 import { diaDoVencimento } from '@/lib/financeiro';
@@ -49,6 +51,10 @@ class PedeConfirmacao extends Error {
  * o líquido (`pagarAcima`) e quitar o contrato antes de a viagem ser
  * finalizada (`pagarAntesDeFinalizar`). A situação do contrato sai dos
  * pagamentos: adiantado enquanto falta, quitado quando o líquido foi pago.
+ *
+ * Quitar o contrato de uma transportadora com carga sem CT-e dela registrado
+ * não é bloqueado (a UF pode dispensar o CT-e da subcontratada): a resposta
+ * leva `aviso` com as cargas.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, error } = await requireStaff({ pode: 'freteContratado' });
@@ -129,7 +135,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return { pagamento, contrato: contratoComContas(atualizado, baseDaViagem(viagem)) };
     });
 
-    return NextResponse.json(resposta, { status: 201 });
+    // O pagamento já valeu. Se ele quitou o contrato de uma transportadora com carga sem CT-e dela, a resposta avisa (não bloqueia).
+    const subcontratacao = resposta.contrato.status === 'QUITADO' ? await lerSubcontratacao(prisma, manifestId).catch(() => null) : null;
+    return NextResponse.json({ ...resposta, aviso: subcontratacao ? avisoDeCargasSemCte(subcontratacao.semCte) : null }, { status: 201 });
   } catch (err) {
     if (err instanceof PedeConfirmacao) return NextResponse.json({ error: err.message, confirmar: err.confirmar }, { status: 409 });
     if (err instanceof Refusal || err instanceof ManifestError) return NextResponse.json({ error: err.message }, { status: err.status });

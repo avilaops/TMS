@@ -135,9 +135,11 @@ describe("tela de CT-e: eventos, SVC e conferência", () => {
     // O envio sem resposta pode ser conferido na SEFAZ sem reenviar nada.
     expect(acoes("c5")).toEqual(["conferir", "sefaz", "registrar"]);
     // Rótulos curtos, num contêiner que quebra a linha: a linha não estoura a largura do celular.
-    const contem = tela.querySelector('tr[data-carga="c2"] [data-acao="entrega"]')!.parentElement!;
+    // As principais ficam à vista; as outras, no menu "Mais" (o desenho do menu é testado em tests/subcontratacao-tela.test.tsx).
+    const contem = tela.querySelector('tr[data-carga="c2"] [data-acoes]')!;
     expect(contem.className).toContain("flex-wrap");
-    expect([...contem.children].map((no) => no.textContent)).toEqual(["Baixar XML", "Corrigir", "Entrega na SEFAZ", "Conferir na SEFAZ", "Cancelar"]);
+    expect([...contem.children].map((no) => (no.matches("[data-mais]") ? "Mais" : no.textContent))).toEqual(["Baixar XML", "Corrigir", "Mais"]);
+    expect([...contem.querySelectorAll("[data-mais] [data-acao]")].map((no) => no.textContent)).toEqual(["Entrega na SEFAZ", "Conferir na SEFAZ", "Cancelar"]);
   });
 
   it("Corrigir: mostra as cartas registradas, barra o campo proibido antes de enviar e manda as correções", async () => {

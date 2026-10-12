@@ -11,6 +11,7 @@ import {
   rotuloDoPagamento,
   type ReciboDeFrete,
 } from "@/lib/frete-contratado";
+import { chaveEmBlocos } from "@/lib/minuta";
 import { rotuloDoTipo } from "@/lib/parceiros";
 
 /**
@@ -172,6 +173,30 @@ export function FolhaDoRecibo({ recibo }: { recibo: ReciboDeFrete }) {
           <Linha rotulo={recibo.saldo < 0 ? "Pago a mais" : "Saldo a pagar"} valor={Math.abs(recibo.saldo)} forte />
         </ul>
       </section>
+
+      {/* Só em contrato com transportadora: os documentos que ela emitiu para a viagem. */}
+      {recibo.subcontratacao && (
+        <section data-secao="subcontratacao" className={SECAO}>
+          <h2 className={TITULO_DA_SECAO}>Documentos da subcontratada</h2>
+          {recibo.subcontratacao.documentos.length === 0 ? (
+            <p className="text-xs leading-snug">Nenhum CT-e ou MDF-e da subcontratada registrado.</p>
+          ) : (
+            <ul>
+              {recibo.subcontratacao.documentos.map((documento) => (
+                <li key={documento.id} data-documento={documento.chave} className="border-t border-dotted border-gray-400 text-xs leading-snug">
+                  {documento.tipo === "MDFE" ? `MDF-e · descarga em ${documento.uf}` : `CT-e · carga ${documento.carga}`} · {formatCalendarDate(documento.data)}
+                  <span className="block font-mono text-[10px] break-all">{chaveEmBlocos(documento.chave)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {recibo.subcontratacao.cargasSemCte.length > 0 && (
+            <p data-sem-cte className="text-[10px] text-gray-700 leading-tight mt-1">
+              Sem CT-e da subcontratada: {recibo.subcontratacao.cargasSemCte.join(", ")}.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* O fecho da folha: na impressão, as assinaturas e o rodapé nunca ficam em folhas diferentes. */}
       <div data-fecho className="space-y-2">

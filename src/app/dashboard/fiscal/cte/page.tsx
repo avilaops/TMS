@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Loader2, X } from "lucide-react";
 import { COLLECTION_STATUS, formatCurrency, formatWeight, statusBadge } from "@/lib/format";
@@ -804,6 +804,43 @@ const COR_DO_SELO: Record<CteEmitido["situacao"], string> = {
   DRAFT: "bg-amber-100 text-amber-800",
 };
 
+/**
+ * O menu "Mais" de uma linha: as ações menos usadas do CT-e (entrega na SEFAZ,
+ * conferir na SEFAZ, cancelar, registrar de fora). É um `<details>`: as ações
+ * continuam no documento, o teclado abre e fecha sem código, e escolher uma
+ * ação ou clicar fora fecha. No computador abre por cima da tabela; no celular
+ * abre dentro do cartão, empurrando o que vem depois.
+ */
+function MenuMais({ children }: { children: ReactNode }) {
+  const menu = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const fecharSeFora = (evento: MouseEvent) => {
+      const atual = menu.current;
+      if (atual?.open && evento.target instanceof Node && !atual.contains(evento.target)) atual.open = false;
+    };
+    document.addEventListener("click", fecharSeFora);
+    return () => document.removeEventListener("click", fecharSeFora);
+  }, []);
+
+  return (
+    <details ref={menu} data-mais className="relative">
+      <summary className="list-none cursor-pointer select-none whitespace-nowrap text-gray-700 dark:text-gray-300 hover:underline [&::-webkit-details-marker]:hidden">
+        Mais <span aria-hidden>▾</span>
+      </summary>
+      <div
+        data-mais-acoes
+        onClick={() => {
+          if (menu.current) menu.current.open = false;
+        }}
+        className="mt-1 flex flex-col items-start gap-1.5 md:absolute md:right-0 md:z-20 md:min-w-44 md:gap-2 md:rounded-xl md:border md:border-gray-200 md:bg-white md:p-3 md:shadow-lg dark:md:border-gray-700 dark:md:bg-gray-900"
+      >
+        {children}
+      </div>
+    </details>
+  );
+}
+
 /** O painel aberto. `cte`: o CT-e de que ele trata, quando não é o da linha (`aResolver`). */
 type Aberto = { tipo: "registro" | "conferencia" | "cancelamento" | "correcao" | "entrega" | "sefaz"; carga: CargaParaCte; cte?: CteEmitido };
 
@@ -886,7 +923,8 @@ export default function CtePage() {
       )}
 
       {cargas && (
-        <div className={`${CARD} overflow-hidden`}>
+        // No computador o cartão não corta o que passa dele: o menu "Mais" da última linha abre para fora.
+        <div className={`${CARD} overflow-hidden md:overflow-visible`}>
           {cargas.length === 0 ? (
             <div className="p-10 text-center text-gray-500">
               <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
@@ -894,15 +932,19 @@ export default function CtePage() {
             </div>
           ) : (
             <table className="block md:table md:table-fixed w-full text-sm">
-              {/* Largura fixa no computador: as colunas dividem o cartão e o texto longo corta com reticências, em vez de empurrar "Ações" para fora dele. */}
+              {/*
+                Largura fixa no computador: as colunas dividem o cartão e o texto longo corta com reticências (com o texto
+                inteiro na dica), em vez de empurrar "Ações" para fora dele. "Ações" mostra as principais em duas linhas e
+                guarda o resto no menu "Mais": a largura que sobrou foi para "Remetente e destinatário" e "Rota".
+              */}
               <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
                 <tr>
-                  <th className="px-4 py-3 font-medium md:w-[13%]">Carga</th>
-                  <th className="px-4 py-3 font-medium md:w-[18%]">Remetente e destinatário</th>
-                  <th className="px-4 py-3 font-medium md:w-[14%]">Rota</th>
+                  <th className="px-4 py-3 font-medium md:w-[13%] md:rounded-tl-2xl">Carga</th>
+                  <th className="px-4 py-3 font-medium md:w-[19%]">Remetente e destinatário</th>
+                  <th className="px-4 py-3 font-medium md:w-[15%]">Rota</th>
                   <th className="px-4 py-3 font-medium md:w-[13%]">Mercadoria e frete</th>
                   <th className="px-4 py-3 font-medium md:w-[19%]">CT-e</th>
-                  <th className="px-4 py-3 font-medium md:w-[23%]">Ações</th>
+                  <th className="px-4 py-3 font-medium md:w-[21%] md:rounded-tr-2xl">Ações</th>
                 </tr>
               </thead>
               <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
@@ -917,18 +959,29 @@ export default function CtePage() {
                   return (
                     <tr key={carga.id} data-carga={carga.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
                       <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3">
-                        <p className="font-medium text-gray-900 dark:text-white truncate">{carga.client.tradeName || carga.client.companyName}</p>
+                        <p className="font-medium text-gray-900 dark:text-white truncate" title={carga.client.tradeName || carga.client.companyName}>
+                          {carga.client.tradeName || carga.client.companyName}
+                        </p>
                         <p className="text-xs text-gray-500">
                           <span className="font-mono">{carga.trackingCode ?? "sem código"}</span> · {selo.label} · {carga.volumes} vol · {formatWeight(carga.weight)}
                         </p>
                       </td>
                       <td data-rotulo="Remetente e destinatário" className={`col-span-2 min-w-0 md:table-cell md:px-4 md:py-3 text-gray-700 dark:text-gray-300 ${ROTULO}`}>
-                        <span className="block truncate">{carga.sender}</span>
-                        <span className="block truncate">{carga.receiver}</span>
+                        <span className="block truncate" title={carga.sender}>
+                          {carga.sender}
+                        </span>
+                        <span className="block truncate" title={carga.receiver}>
+                          {carga.receiver}
+                        </span>
                       </td>
+                      {/* No celular a rota quebra a linha em vez de cortar (a dica não aparece no toque); no computador corta, com a dica. */}
                       <td data-rotulo="Rota" className={`min-w-0 md:table-cell md:px-4 md:py-3 text-gray-700 dark:text-gray-300 ${ROTULO}`}>
-                        <span className="block truncate">{carga.origin}</span>
-                        <span className="block truncate">{carga.destination}</span>
+                        <span className="block break-words md:truncate" title={carga.origin}>
+                          {carga.origin}
+                        </span>
+                        <span className="block break-words md:truncate" title={carga.destination}>
+                          {carga.destination}
+                        </span>
                       </td>
                       <td data-rotulo="Mercadoria e frete" className={`min-w-0 md:table-cell md:px-4 md:py-3 text-gray-700 dark:text-gray-300 ${ROTULO}`}>
                         <span className="block">{formatCurrency(carga.invoiceValue)}</span>
@@ -976,45 +1029,52 @@ export default function CtePage() {
                         )}
                       </td>
                       <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-3">
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
+                        {/* As principais ficam à vista (nenhuma quebra no meio da palavra); o resto vai para o menu "Mais". */}
+                        <div data-acoes className="flex flex-wrap items-start gap-x-3 gap-y-1 text-sm font-medium">
                           {!registradoDeFora && emitido?.situacao !== "AUTHORIZED" && (
-                            <button type="button" data-acao="conferir" onClick={() => setAberto({ tipo: "conferencia", carga })} className="text-blue-600 hover:underline">
+                            <button type="button" data-acao="conferir" onClick={() => setAberto({ tipo: "conferencia", carga })} className="whitespace-nowrap text-blue-600 hover:underline">
                               Conferir e emitir
                             </button>
                           )}
                           {temXml && (
-                            <a data-acao="xml" href={`/api/fiscal/cte/emissao/${emitido.id}/xml`} className="text-blue-600 hover:underline">
+                            <a data-acao="xml" href={`/api/fiscal/cte/emissao/${emitido.id}/xml`} className="whitespace-nowrap text-blue-600 hover:underline">
                               Baixar XML
                             </a>
                           )}
-                          {emitido?.situacao === "AUTHORIZED" && situacao?.dacte && (
-                            <BotaoDanfe documento="dacte" endereco={`/api/fiscal/cte/emissao/${emitido.id}/dacte`} className="text-blue-600" />
-                          )}
                           {emitido?.situacao === "AUTHORIZED" && (
-                            <button type="button" data-acao="corrigir" onClick={() => setAberto({ tipo: "correcao", carga })} className="text-blue-600 hover:underline">
+                            <button type="button" data-acao="corrigir" onClick={() => setAberto({ tipo: "correcao", carga })} className="whitespace-nowrap text-blue-600 hover:underline">
                               Corrigir
                             </button>
                           )}
-                          {emitido?.situacao === "AUTHORIZED" && carga.comprovanteAceito && (
-                            <button type="button" data-acao="entrega" onClick={() => setAberto({ tipo: "entrega", carga })} className="text-blue-600 hover:underline">
-                              Entrega na SEFAZ
-                            </button>
+                          {emitido?.situacao === "AUTHORIZED" && situacao?.dacte && (
+                            <BotaoDanfe documento="dacte" endereco={`/api/fiscal/cte/emissao/${emitido.id}/dacte`} className="whitespace-nowrap text-blue-600" />
                           )}
-                          {emitido && !registradoDeFora && conferivel(emitido) && (
-                            <button type="button" data-acao="sefaz" onClick={() => setAberto({ tipo: "sefaz", carga })} className="text-blue-600 hover:underline">
-                              Conferir na SEFAZ
-                            </button>
-                          )}
-                          {emitido?.situacao === "AUTHORIZED" && (
-                            <button type="button" data-acao="cancelar" onClick={() => setAberto({ tipo: "cancelamento", carga })} className="text-red-600 hover:underline">
-                              Cancelar
-                            </button>
-                          )}
-                          {emitido?.situacao !== "AUTHORIZED" && (
-                            <button type="button" data-acao="registrar" onClick={() => setAberto({ tipo: "registro", carga })} className="text-gray-600 dark:text-gray-300 hover:underline">
-                              {registradoDeFora ? "Alterar registro" : "Registrar CT-e de fora"}
-                            </button>
-                          )}
+                          {(() => {
+                            const secundarias = [
+                              emitido?.situacao === "AUTHORIZED" && carga.comprovanteAceito && (
+                                <button key="entrega" type="button" data-acao="entrega" onClick={() => setAberto({ tipo: "entrega", carga })} className="whitespace-nowrap text-blue-600 hover:underline">
+                                  Entrega na SEFAZ
+                                </button>
+                              ),
+                              emitido && !registradoDeFora && conferivel(emitido) && (
+                                <button key="sefaz" type="button" data-acao="sefaz" onClick={() => setAberto({ tipo: "sefaz", carga })} className="whitespace-nowrap text-blue-600 hover:underline">
+                                  Conferir na SEFAZ
+                                </button>
+                              ),
+                              emitido?.situacao === "AUTHORIZED" && (
+                                <button key="cancelar" type="button" data-acao="cancelar" onClick={() => setAberto({ tipo: "cancelamento", carga })} className="whitespace-nowrap text-red-600 hover:underline">
+                                  Cancelar
+                                </button>
+                              ),
+                              emitido?.situacao !== "AUTHORIZED" && (
+                                <button key="registrar" type="button" data-acao="registrar" onClick={() => setAberto({ tipo: "registro", carga })} className="text-left text-gray-600 dark:text-gray-300 hover:underline">
+                                  {registradoDeFora ? "Alterar registro" : "Registrar CT-e de fora"}
+                                </button>
+                              ),
+                            ].filter(Boolean);
+                            // Uma ação só não justifica menu: fica à vista, ao lado das principais.
+                            return secundarias.length > 1 ? <MenuMais>{secundarias}</MenuMais> : secundarias;
+                          })()}
                         </div>
                       </td>
                     </tr>

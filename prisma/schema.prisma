@@ -94,6 +94,7 @@ model Tenant {
   carriers           Carrier[]
   freightContracts   FreightContract[]
   freightPayments    FreightPayment[]
+  subcontractDocuments SubcontractDocument[]
   clientReceivers    ClientReceiver[]
   notifications      Notification[]
   pushSubscriptions  PushSubscription[]
@@ -152,6 +153,7 @@ model User {
   mdfesIssued          Mdfe[]
   mdfeEventsCreated    MdfeEvent[]
   cteEventsCreated     CteEvent[]
+  subcontractDocumentsCreated SubcontractDocument[]
 
   @@index([clientId])
 
@@ -511,6 +513,7 @@ model Collection {
   warehouseReceipt WarehouseReceipt?
   fiscalDocuments FiscalDocument[]
   ctes        Cte[]
+  subcontractDocuments SubcontractDocument[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -976,6 +979,7 @@ model FreightContract {
   manifest   Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
   carrier    Carrier  @relation(fields: [carrierId], references: [id], onDelete: Restrict)
   payments   FreightPayment[]
+  subcontractDocuments SubcontractDocument[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -1005,6 +1009,33 @@ model FreightPayment {
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
   @@index([contractId])
+}
+
+// Documento fiscal que a transportadora subcontratada emitiu para a viagem: o
+// CT-e de subcontratação dela (um ou mais por carga) e o MDF-e dela (um por UF
+// de descarregamento). Só a chave e a data: nada daqui é emitido por este
+// sistema (src/lib/subcontratacao.ts).
+model SubcontractDocument {
+  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String   @id @default(uuid())
+  contractId   String
+  kind         String   // CTE, MDFE
+  accessKey    String   // 44 posições, com o CNPJ do parceiro
+  collectionId String?  // CTE: a carga que o CT-e do subcontratado cobre
+  unloadState  String?  // MDFE: a UF de descarregamento
+  issuedAt     DateTime // dia da emissão, gravado à meia-noite UTC
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  // Relations
+  contract   FreightContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  collection Collection?     @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  createdBy  User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([contractId])
+  @@index([collectionId])
 }
 
 model ProofOfDelivery {

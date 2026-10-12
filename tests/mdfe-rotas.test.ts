@@ -39,6 +39,7 @@ import {
 } from "../src/lib/mdfe";
 import { usarSefazDeTesteDoMdfe } from "../src/lib/mdfe/sefaz";
 import { chaveValida } from "../src/lib/nfe";
+import { SEM_CONTRATO_COM_TRANSPORTADORA } from "../src/lib/subcontratacao";
 import { EMPRESA_OUTRA, EMPRESA_PADRAO } from "./empresas-de-teste";
 import { REMETENTE, certificadoDeTeste, dadosDeExemplo, impressaoDigital, type CertificadoDeTeste } from "./cte-apoio";
 import { chaveDeExemplo, detalheDoEvento, errosNoEsquemaDoMdfe, modalDoXml, subirSefazDoMdfe, type SefazDoMdfe } from "./mdfe-apoio";
@@ -128,6 +129,7 @@ suite("rotas da emissão de MDF-e", () => {
   let transmitirRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/transmitir/route");
   let pagamentoRota: typeof import("../src/app/api/fiscal/mdfe/emissao/[id]/pagamento/route");
   let liberarRota: typeof import("../src/app/api/manifestos/[id]/liberar/route");
+  let subcontratacaoRota: typeof import("../src/app/api/manifestos/[id]/subcontratacao/route");
   let eventos: typeof import("../src/lib/eventos");
 
   const sessao = vi.mocked(getServerSession);
@@ -375,7 +377,8 @@ suite("rotas da emissão de MDF-e", () => {
     transmitirRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/transmitir/route");
     pagamentoRota = await import("../src/app/api/fiscal/mdfe/emissao/[id]/pagamento/route");
     liberarRota = await import("../src/app/api/manifestos/[id]/liberar/route");
-    eventos = await import("../src/lib/eventos");
+    subcontratacaoRota = await import("../src/app/api/manifestos/[id]/subcontratacao/route");
+    eventos =await import("../src/lib/eventos");
     await limpar();
 
     const outra = banco.paraEmpresa(EMPRESA_OUTRA.id).db;
@@ -1663,6 +1666,108 @@ suite("rotas da emissão de MDF-e", () => {
       expect(liberada.status).toBe(200);
       expect(liberada.corpo).toMatchObject({ success: true, aviso: null });
       expect(await situacao(viagem.id)).toEqual(EM_ROTA);
+    });
+
+    describe("viagem no veículo de parceiro (Ajuste SINIEF 21/10, cláusula terceira, § 6º)", () => {
+      const CNPJ_DA_SUBCONTRATADA = "99777333000199";
+      /** Um parceiro, o veículo dele e a viagem em montagem (MG e RJ) com o contrato de frete, como a montagem a deixa. */
+      const comParceiro = async (tipo: "TRANSPORTADORA" | "TAC_AGREGADO", destinos: (keyof typeof DESTINOS)[] = ["MG", "RJ"]) => {
+        const parceiro = await banco.default.carrier.create({
+          data: { type: tipo, name: `${PREFIXO}${tipo === "TRANSPORTADORA" ? "Subcontratada Ltda" : "Agregado"}`, taxId: tipo === "TRANSPORTADORA" ? CNPJ_DA_SUBCONTRATADA : "11144477735", rntrc: "87654321", state: "SP" },
+          select: { id: true, name: true },
+        });
+        const veiculo = await novoVeiculo({ carrierId: parceiro.id });
+        const viagem = await novaViagem(destinos, { status: "ASSEMBLING", ambienteDoCte: "PRODUCAO", veiculoId: veiculo.id });
+        await autorizarCtes(viagem);
+        const contrato = await banco.default.freightContract.create({ data: { manifestId: viagem.id, carrierId: parceiro.id, calcMode: "FIXO", calcBase: 1000, grossAmount: 1000 }, select: { id: true } });
+        return { parceiro, viagem, contrato };
+      };
+      const registrar = async (manifestId: string, corpo: Record<string, unknown>, perfil: Perfil = "OPERATION") => {
+        entrarComo(perfil);
+        return lida<Corpo>(await subcontratacaoRota.POST(req("POST", { kind: "MDFE", issuedAt: "2026-10-05", ...corpo }), ctx(manifestId)));
+      };
+      const mdfeDela = (numero: number) => chaveDeExemplo("58", numero, "35", CNPJ_DA_SUBCONTRATADA);
+
+      it("transportadora: sem MDF-e nenhum a saída é bloqueada e a frase diz que vale a chave do MDF-e dela", async () => {
+        await emProducao();
+        const { parceiro, viagem } = await comParceiro("TRANSPORTADORA");
+        const resposta = await sair(viagem.id);
+        expect(resposta.status).toBe(409);
+        expect(resposta.corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG", "RJ"] }, subcontratada: parceiro.name });
+        expect(resposta.corpo.error).toBe(fraseDoBloqueioDaSaida(resposta.corpo.faltas!));
+        expect(resposta.corpo.error).toContain(`O veículo é da transportadora ${parceiro.name}: se é ela quem emite o MDF-e, registre a chave dele`);
+        expect(await situacao(viagem.id)).toEqual(EM_MONTAGEM);
+      });
+
+      it("transportadora: a chave do MDF-e dela cobre a UF no lugar do meu; falta UF, continua bloqueada; com todas, libera sem MDF-e meu", async () => {
+        await emProducao();
+        const { parceiro, viagem, contrato } = await comParceiro("TRANSPORTADORA");
+
+        // Só a UF de MG: o RJ continua sem MDF-e de ninguém.
+        expect((await registrar(viagem.id, { accessKey: mdfeDela(501), unloadState: "MG" })).status).toBe(201);
+        const soMg = await sair(viagem.id);
+        expect(soMg.status).toBe(409);
+        expect(soMg.corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["RJ"] }, subcontratada: parceiro.name });
+
+        // Com a chave do MDF-e dela para o RJ também, não falta nada, e esta empresa não emitiu MDF-e nenhum.
+        expect((await registrar(viagem.id, { accessKey: mdfeDela(502), unloadState: "RJ" })).status).toBe(201);
+        expect(await mdfeDb.documentosDaSaida(banco.default, viagem.id)).toEqual({ faltas: { ctes: [], mdfe: null }, bloqueia: false });
+        expect(await banco.sistema.mdfe.count({ where: { manifestId: viagem.id } })).toBe(0);
+
+        const liberada = await sair(viagem.id);
+        expect(liberada.status).toBe(200);
+        expect(liberada.corpo).toMatchObject({ success: true, aviso: null });
+        expect(await situacao(viagem.id)).toEqual(EM_ROTA);
+        // O registro que liberou a saída está na trilha, com quem registrou.
+        const registros = await trilha("subcontratacao.registrar");
+        expect(registros).toHaveLength(2);
+        expect(registros[0]).toMatchObject({ entityId: contrato.id, userId: ids.OPERATION, after: { kind: "MDFE", accessKey: mdfeDela(501), unloadState: "MG" } });
+      });
+
+      it("transportadora: o MEU CT-e de cada carga continua exigido, mesmo com o MDF-e dela registrado", async () => {
+        await emProducao();
+        const { viagem } = await comParceiro("TRANSPORTADORA", ["MG"]);
+        expect((await registrar(viagem.id, { accessKey: mdfeDela(511), unloadState: "MG" })).status).toBe(201);
+        await banco.sistema.collection.update({ where: { id: viagem.cargas[0].id }, data: { cteKey: null, cteNumber: null, cteStatus: null } });
+        const resposta = await sair(viagem.id);
+        expect(resposta.status).toBe(409);
+        expect(resposta.corpo.faltas).toMatchObject({ ctes: [{ id: viagem.cargas[0].id }], mdfe: null });
+        expect(resposta.corpo.faltas?.subcontratada).toBeUndefined();
+        expect(await situacao(viagem.id)).toEqual(EM_MONTAGEM);
+      });
+
+      it("transportadora: contrato cancelado, ou de outro parceiro, não vale: a chave registrada deixa de cobrir a UF", async () => {
+        await emProducao();
+        const { viagem, contrato } = await comParceiro("TRANSPORTADORA", ["MG"]);
+        expect((await registrar(viagem.id, { accessKey: mdfeDela(521), unloadState: "MG" })).status).toBe(201);
+        expect((await mdfeDb.documentosDaSaida(banco.default, viagem.id)).bloqueia).toBe(false);
+
+        await banco.sistema.freightContract.update({ where: { id: contrato.id }, data: { status: "CANCELADO" } });
+        expect(await mdfeDb.documentosDaSaida(banco.default, viagem.id)).toEqual({ faltas: { ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG"] } }, bloqueia: true });
+        expect((await sair(viagem.id)).status).toBe(409);
+      });
+
+      it("TAC agregado: nada muda. A chave de MDF-e de terceiro não é aceita e a saída continua pedindo o MEU MDF-e, que sai com o parceiro como proprietário", async () => {
+        await emProducao();
+        const { viagem } = await comParceiro("TAC_AGREGADO", ["MG", "UDI"]);
+        const recusada = await registrar(viagem.id, { accessKey: mdfeDela(531), unloadState: "MG" });
+        expect(recusada.status).toBe(409);
+        expect(recusada.corpo.error).toBe(SEM_CONTRATO_COM_TRANSPORTADORA);
+
+        const bloqueada = await sair(viagem.id);
+        expect(bloqueada.status).toBe(409);
+        expect(bloqueada.corpo.faltas).toEqual({ ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG"] } });
+        expect(bloqueada.corpo.error).not.toContain("O veículo é da transportadora");
+
+        const emitido = await emitir(viagem.id, "MG", { ...ENTRADAS, ciots: [{ codigo: "123456789012", documento: "11144477735" }] });
+        expect(emitido.corpo.autorizado, emitido.corpo.mensagem ?? emitido.corpo.error).toBe(true);
+        expect(emitido.corpo).toMatchObject({ autorizado: true, mdfe: { ambiente: "PRODUCAO", situacao: "AUTHORIZED" } });
+        const [gravado] = await mdfesDe(viagem.id);
+        expect(gravado.xmlSent).toContain("<prop><CPF>11144477735</CPF>");
+        expect(gravado.xmlSent).toContain("<tpProp>0</tpProp>");
+        expect((await sair(viagem.id)).status).toBe(200);
+        expect(await situacao(viagem.id)).toEqual(EM_ROTA);
+      });
     });
 
     it("carga própria (tipo de emitente 2) em produção: não exige CT-e, só o MDF-e", async () => {

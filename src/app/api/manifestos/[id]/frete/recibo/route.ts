@@ -3,6 +3,7 @@ import prisma, { empresaAtual } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { CONTRACT_NOT_FOUND, CONTRACT_SELECT, cidadesSemRepetir, contasDoContrato, type ReciboDeFrete } from '@/lib/frete-contratado';
 import { ORDEM_DAS_CARGAS } from '@/lib/manifestos-db';
+import { lerSubcontratacao } from '@/lib/subcontratacao-db';
 import { TRIP_NOT_FOUND, codigoDaViagem, finalizadaEm } from '@/lib/viagem';
 
 /**
@@ -43,6 +44,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!empresa) return NextResponse.json({ error: 'Empresa não encontrada.' }, { status: 404 });
 
     const { valores, pago, saldo } = contasDoContrato(contrato);
+    const subcontratacao = await lerSubcontratacao(prisma, manifestId);
     const recibo: ReciboDeFrete = {
       empresa,
       emitidoEm: new Date().toISOString(),
@@ -84,6 +86,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       })),
       pago,
       saldo,
+      subcontratacao: subcontratacao?.parceiro
+        ? {
+            documentos: [
+              ...subcontratacao.cargas.flatMap((carga) => carga.ctes.map((cte) => ({ id: `${cte.id}:${carga.id}`, tipo: cte.kind, chave: cte.accessKey, data: cte.issuedAt, carga: carga.codigo, uf: null }))),
+              ...subcontratacao.mdfes.map((mdfe) => ({ id: mdfe.id, tipo: mdfe.kind, chave: mdfe.accessKey, data: mdfe.issuedAt, carga: null, uf: mdfe.unloadState })),
+            ],
+            cargasSemCte: subcontratacao.semCte.map((carga) => carga.codigo),
+          }
+        : null,
     };
     return NextResponse.json(recibo);
   } catch (error) {

@@ -109,6 +109,29 @@ describe("Manifestos: saída bloqueada por falta de CT-e ou de MDF-e", () => {
     expect(quadro.querySelector("[data-atalho]")).toBeNull();
   });
 
+  it("veículo de transportadora subcontratada: o quadro diz que vale a chave do MDF-e dela; sem subcontratada a linha não existe", async () => {
+    vi.stubGlobal("confirm", () => true);
+    vi.stubGlobal("alert", vi.fn());
+    api({ status: 409, body: { error: "x", faltas: { ctes: [], mdfe: { exigencia: "interestadual", ufs: ["MG"] }, subcontratada: "Transportes Subcontratada" } satisfies FaltasParaSair } });
+    const tela = await montar(<ManifestosPage />);
+    await ate(() => expect(porTexto(tela, "button", "Liberar saída")).toHaveLength(1));
+    await liberar(tela);
+    await ate(() => expect(tela.querySelector("[data-saida-bloqueada]")).not.toBeNull());
+    const quadro = tela.querySelector<HTMLElement>("[data-saida-bloqueada]")!;
+    expect(quadro.querySelector('[data-falta="mdfe"]')!.textContent).toContain("MDF-e com descarga em MG");
+    expect(quadro.querySelector('[data-falta="mdfe-da-subcontratada"]')!.textContent).toBe(
+      "O veículo é da transportadora Transportes Subcontratada: se é ela quem emite o MDF-e, registre a chave dele na aba MDF-e.",
+    );
+    await desmontarTudo();
+
+    api({ status: 409, body: { error: "x", faltas: FALTAS } });
+    const semSubcontratada = await montar(<ManifestosPage />);
+    await ate(() => expect(porTexto(semSubcontratada, "button", "Liberar saída")).toHaveLength(1));
+    await liberar(semSubcontratada);
+    await ate(() => expect(semSubcontratada.querySelector("[data-saida-bloqueada]")).not.toBeNull());
+    expect(semSubcontratada.querySelector('[data-falta="mdfe-da-subcontratada"]')).toBeNull();
+  });
+
   it("homologação ou empresa sem emitente: a saída é liberada e o aviso continua sendo um alerta; outro 409 também", async () => {
     const alerta = vi.fn();
     vi.stubGlobal("confirm", () => true);

@@ -221,6 +221,13 @@ const temEndereco = (form: typeof EMPTY_FORM) => Boolean(form.deliveryStreet || 
 const temPedido = (form: typeof EMPTY_FORM) =>
   Boolean(form.pickupDate || form.pickupFrom || form.pickupTo || form.cubicMeters || form.pickupNotes) || form.priority !== "NORMAL";
 
+// Os blocos opcionais do formulário. No celular cada um abre como uma etapa própria, em tela cheia.
+const TITULO_DA_ETAPA = { pedido: "Janela, prioridade e cubagem", endereco: "Endereço da entrega", redespacho: "Redespacho / subcontratação" } as const;
+type Etapa = keyof typeof TITULO_DA_ETAPA;
+
+/** A tela é de celular? Sem `matchMedia` (testes, navegador antigo) vale o desenho do computador. */
+const noCelular = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
+
 const CAMPO_DO_PEDIDO =
   "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
 const ROTULO_DO_PEDIDO = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
@@ -257,6 +264,21 @@ export default function ColetasPage() {
   // Redespacho e subcontratação: fechado por padrão. No celular, expedidor e recebedor são abas (uma parte por vez).
   const [redespachoAberto, setRedespachoAberto] = useState(false);
   const [parteAberta, setParteAberta] = useState<PrefixoDaParte>("shipper");
+  // No celular, o bloco aberto vira uma etapa em tela cheia: o resto do formulário sai da frente até "Concluir".
+  // No computador a etapa não muda nada (as classes `md:` mostram tudo) e o bloco abre e fecha no lugar.
+  const [etapa, setEtapa] = useState<Etapa | null>(null);
+  const alternarBloco = (nome: Etapa, aberto: boolean, abrir: (aberto: boolean) => void) => {
+    if (noCelular()) {
+      abrir(true);
+      setEtapa(nome);
+    } else {
+      abrir(!aberto);
+    }
+  };
+  // Fora da etapa aberta, o que é do formulário principal some no celular.
+  const foraDaEtapa = etapa ? "hidden md:block" : "";
+  const blocoDaEtapa = (nome: Etapa) => (etapa && etapa !== nome ? "hidden md:block" : "");
+  const botaoDoBloco = (nome: Etapa) => `${etapa === nome ? "hidden md:flex" : "flex"} w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300`;
 
   // A tela já nasce com `isLoading` ligado: a primeira carga só busca.
   const loadData = () =>
@@ -291,6 +313,7 @@ export default function ColetasPage() {
     setEnderecoAberto(false);
     setRedespachoAberto(false);
     setParteAberta("shipper");
+    setEtapa(null);
   };
 
   const openEdit = (coleta: Coleta) => {
@@ -618,7 +641,11 @@ export default function ColetasPage() {
         <div className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center md:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-gray-900 md:rounded-2xl w-full max-w-4xl md:max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-100 dark:border-gray-800">
             <div className="sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md p-3 md:p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
-              <h2 className="text-base md:text-xl font-bold font-outfit text-gray-900 dark:text-white">{editingId ? "Editar Minuta" : "Emitir Nova Minuta"}</h2>
+              <h2 data-titulo-do-formulario className="text-base md:text-xl font-bold font-outfit text-gray-900 dark:text-white">
+                {/* No celular, com um bloco aberto, o título é o da etapa. */}
+                {etapa && <span className="md:hidden">{TITULO_DA_ETAPA[etapa]}</span>}
+                <span className={etapa ? "hidden md:inline" : ""}>{editingId ? "Editar Minuta" : "Emitir Nova Minuta"}</span>
+              </h2>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 ✕
               </button>
@@ -626,7 +653,7 @@ export default function ColetasPage() {
             
             <div className="p-3 md:p-6 space-y-2 md:space-y-6">
               {/* Cliente */}
-              <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+              <div className={`space-y-0.5 md:space-y-1.5 min-w-0 ${foraDaEtapa}`}>
                 <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Cliente (Pagador) *</label>
                 <select 
                   value={formData.clientId}
@@ -645,7 +672,7 @@ export default function ColetasPage() {
               </div>
 
               {/* Remetente & Destinatário */}
-              <div className="grid grid-cols-2 gap-2 md:gap-6">
+              <div className={`${etapa ? "hidden md:grid" : "grid"} grid-cols-2 gap-2 md:gap-6`}>
                 <div className="min-w-0 space-y-1.5 md:space-y-4 p-2 md:p-4 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
                   <h3 className="font-medium text-sm text-gray-900 dark:text-white flex items-center">
                     <MapPin className="w-4 h-4 mr-2 text-blue-500" /> Origem
@@ -702,7 +729,7 @@ export default function ColetasPage() {
               </div>
 
               {/* Mercadoria & Notas */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4">
+              <div className={`${etapa ? "hidden md:grid" : "grid"} grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4`}>
                 <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Volumes *</label>
                   <input
@@ -746,7 +773,7 @@ export default function ColetasPage() {
 
               {/* Frete: só na edição. Na criação ele sai da tabela de frete. */}
               {editingId && (
-                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                <div className={`space-y-0.5 md:space-y-1.5 min-w-0 ${foraDaEtapa}`}>
                   <label htmlFor="coleta-frete" className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Frete (R$)</label>
                   <input
                     id="coleta-frete"
@@ -761,20 +788,21 @@ export default function ColetasPage() {
                 </div>
               )}
 
-              {/* Pedido de coleta: opcional e recolhido, para o formulário caber na tela do celular. */}
-              <div className="rounded-xl border border-gray-100 dark:border-gray-800">
+              {/* Pedido de coleta: opcional e recolhido, para o formulário caber na tela do celular (lá, aberto, é uma etapa em tela cheia). */}
+              <div data-bloco="pedido" className={`rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("pedido")}`}>
                 <button
                   type="button"
                   aria-expanded={pedidoAberto}
                   data-secao="pedido"
-                  onClick={() => setPedidoAberto((aberto) => !aberto)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+                  onClick={() => alternarBloco("pedido", pedidoAberto, setPedidoAberto)}
+                  className={botaoDoBloco("pedido")}
                 >
                   <span>Janela, prioridade e cubagem (opcional)</span>
-                  <span aria-hidden className="text-gray-400">{pedidoAberto ? "−" : "+"}</span>
+                  <span aria-hidden className="hidden md:inline text-gray-400">{pedidoAberto ? "−" : "+"}</span>
+                  <span aria-hidden className="md:hidden text-gray-400">{pedidoAberto ? "editar ›" : "›"}</span>
                 </button>
                 {pedidoAberto && (
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3">
+                  <div data-conteudo-do-bloco="pedido" className={`${etapa === "pedido" ? "grid pt-3 md:pt-0" : "hidden md:grid"} grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3`}>
                     <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                       <label htmlFor="coleta-data" className={ROTULO_DO_PEDIDO}>Data da coleta</label>
                       <input id="coleta-data" type="date" value={formData.pickupDate} onChange={(e) => setFormData({...formData, pickupDate: e.target.value})} className={CAMPO_DO_PEDIDO} />
@@ -808,19 +836,20 @@ export default function ColetasPage() {
               </div>
 
               {/* Endereço da entrega: opcional e recolhido. Com ele a ordem das entregas e o mapa usam o ponto do endereço, não o centro da cidade. */}
-              <div className="rounded-xl border border-gray-100 dark:border-gray-800">
+              <div data-bloco="endereco" className={`rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("endereco")}`}>
                 <button
                   type="button"
                   aria-expanded={enderecoAberto}
                   data-secao="endereco"
-                  onClick={() => setEnderecoAberto((aberto) => !aberto)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+                  onClick={() => alternarBloco("endereco", enderecoAberto, setEnderecoAberto)}
+                  className={botaoDoBloco("endereco")}
                 >
                   <span>Endereço da entrega (opcional)</span>
-                  <span aria-hidden className="text-gray-400">{enderecoAberto ? "−" : "+"}</span>
+                  <span aria-hidden className="hidden md:inline text-gray-400">{enderecoAberto ? "−" : "+"}</span>
+                  <span aria-hidden className="md:hidden text-gray-400">{enderecoAberto ? "editar ›" : "›"}</span>
                 </button>
                 {enderecoAberto && (
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3">
+                  <div data-conteudo-do-bloco="endereco" className={`${etapa === "endereco" ? "grid pt-3 md:pt-0" : "hidden md:grid"} grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3`}>
                     <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                       <label htmlFor="coleta-rua" className={ROTULO_DO_PEDIDO}>Logradouro</label>
                       <input id="coleta-rua" type="text" maxLength={200} value={formData.deliveryStreet} onChange={(e) => setFormData({...formData, deliveryStreet: e.target.value})} placeholder="Rua das Flores" className={CAMPO_DO_PEDIDO} />
@@ -842,19 +871,20 @@ export default function ColetasPage() {
               </div>
 
               {/* Redespacho e subcontratação: opcional e recolhido. O que cada tipo exige é cobrado na conferência do CT-e. */}
-              <div className="rounded-xl border border-gray-100 dark:border-gray-800">
+              <div data-bloco="redespacho" className={`rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("redespacho")}`}>
                 <button
                   type="button"
                   aria-expanded={redespachoAberto}
                   data-secao="redespacho"
-                  onClick={() => setRedespachoAberto((aberto) => !aberto)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+                  onClick={() => alternarBloco("redespacho", redespachoAberto, setRedespachoAberto)}
+                  className={botaoDoBloco("redespacho")}
                 >
                   <span>Redespacho / subcontratação{formData.serviceType !== "NORMAL" ? `: ${ROTULO_DO_SERVICO[tipoDeServico(formData.serviceType)]}` : " (opcional)"}</span>
-                  <span aria-hidden className="text-gray-400">{redespachoAberto ? "−" : "+"}</span>
+                  <span aria-hidden className="hidden md:inline text-gray-400">{redespachoAberto ? "−" : "+"}</span>
+                  <span aria-hidden className="md:hidden text-gray-400">{redespachoAberto ? "editar ›" : "›"}</span>
                 </button>
                 {redespachoAberto && (
-                  <div className="px-3 pb-3 space-y-2">
+                  <div data-conteudo-do-bloco="redespacho" className={`${etapa === "redespacho" ? "pt-3 md:pt-0" : "hidden md:block"} px-3 pb-3 space-y-2`}>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
                       <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                         <label htmlFor="coleta-servico" className={ROTULO_DO_PEDIDO}>Tipo de serviço</label>
@@ -869,7 +899,7 @@ export default function ColetasPage() {
                         <input id="coleta-cte-anterior" type="text" maxLength={60} value={formData.previousCteKey} onChange={(e) => setFormData({...formData, previousCteKey: e.target.value})} placeholder="44 dígitos" className={`${CAMPO_DO_PEDIDO} text-xs`} />
                       </div>
                     </div>
-                    <p data-exigencia className="text-xs text-gray-500 dark:text-gray-400">
+                    <p data-exigencia className="text-[11px] leading-tight md:text-xs text-gray-500 dark:text-gray-400">
                       {EXIGENCIA_DO_SERVICO[tipoDeServico(formData.serviceType)]} {QUEM_DECIDE_O_SERVICO}
                     </p>
 
@@ -923,7 +953,7 @@ export default function ColetasPage() {
               </div>
 
               {/* Motorista Alocado */}
-              <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+              <div className={`space-y-0.5 md:space-y-1.5 min-w-0 ${foraDaEtapa}`}>
                 <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Alocar Motorista (Opcional)</label>
                 <select 
                   value={formData.driverId}
@@ -939,7 +969,15 @@ export default function ColetasPage() {
 
             </div>
             
-            <div className="p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3 sticky bottom-0">
+            {/* Só no celular, dentro de uma etapa: volta ao formulário com o que foi digitado guardado. Salvar é lá. */}
+            {etapa && (
+              <div className="md:hidden p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end sticky bottom-0">
+                <button type="button" data-concluir-etapa onClick={() => setEtapa(null)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium">
+                  Concluir
+                </button>
+              </div>
+            )}
+            <div className={`${etapa ? "hidden md:flex" : "flex"} p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 justify-end space-x-3 sticky bottom-0`}>
               <button 
                 onClick={closeModal}
                 className="px-4 py-2 md:px-6 md:py-2.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium"

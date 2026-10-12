@@ -147,6 +147,9 @@ suite("permissões das rotas internas", () => {
   let viagemFretePagamentos: typeof import("../src/app/api/manifestos/[id]/frete/pagamentos/route");
   let viagemFretePagamento: typeof import("../src/app/api/manifestos/[id]/frete/pagamentos/[registroId]/route");
   let viagemFreteRecibo: typeof import("../src/app/api/manifestos/[id]/frete/recibo/route");
+  let viagemFreteSugestao: typeof import("../src/app/api/manifestos/[id]/frete/sugestao-mdfe/route");
+  let viagemSubcontratacao: typeof import("../src/app/api/manifestos/[id]/subcontratacao/route");
+  let viagemSubcontratacaoDocumento: typeof import("../src/app/api/manifestos/[id]/subcontratacao/[documentoId]/route");
   let viagemDados: typeof import("../src/app/api/manifestos/[id]/dados/route");
   let viagemOrdem: typeof import("../src/app/api/manifestos/[id]/ordem/route");
   let viagemRoteiro: typeof import("../src/app/api/manifestos/[id]/roteiro/route");
@@ -310,6 +313,9 @@ suite("permissões das rotas internas", () => {
     viagemFretePagamentos = await import("../src/app/api/manifestos/[id]/frete/pagamentos/route");
     viagemFretePagamento = await import("../src/app/api/manifestos/[id]/frete/pagamentos/[registroId]/route");
     viagemFreteRecibo = await import("../src/app/api/manifestos/[id]/frete/recibo/route");
+    viagemFreteSugestao = await import("../src/app/api/manifestos/[id]/frete/sugestao-mdfe/route");
+    viagemSubcontratacao = await import("../src/app/api/manifestos/[id]/subcontratacao/route");
+    viagemSubcontratacaoDocumento = await import("../src/app/api/manifestos/[id]/subcontratacao/[documentoId]/route");
     viagemDados = await import("../src/app/api/manifestos/[id]/dados/route");
     viagemOrdem = await import("../src/app/api/manifestos/[id]/ordem/route");
     viagemRoteiro = await import("../src/app/api/manifestos/[id]/roteiro/route");
@@ -464,6 +470,9 @@ suite("permissões das rotas internas", () => {
       ["GET /api/manifestos/[id]/despesas", () => viagemDespesas.GET(req(), ctx(semId))],
       ["POST /api/manifestos/[id]/despesas", () => viagemDespesas.POST(req("POST", { type: "TOLL", amount: "10", date: "2026-01-10" }), ctx(semId))],
       ["DELETE /api/manifestos/[id]/despesas/[despesaId]", () => viagemDespesa.DELETE(req("DELETE"), despesaDaViagem)],
+      ["GET /api/manifestos/[id]/subcontratacao", () => viagemSubcontratacao.GET(req(), ctx(semId))],
+      ["POST /api/manifestos/[id]/subcontratacao", () => viagemSubcontratacao.POST(req("POST", { kind: "MDFE" }), ctx(semId))],
+      ["DELETE /api/manifestos/[id]/subcontratacao/[documentoId]", () => viagemSubcontratacaoDocumento.DELETE(req("DELETE"), { params: Promise.resolve({ id: semId, documentoId: semId }) })],
     ];
 
     rotasAdmin = [
@@ -520,6 +529,7 @@ suite("permissões das rotas internas", () => {
       ["POST /api/manifestos/[id]/frete/pagamentos", () => viagemFretePagamentos.POST(req("POST", { kind: "SALDO", date: "2026-01-10", amount: "1", method: "PIX" }), ctx(semId))],
       ["DELETE /api/manifestos/[id]/frete/pagamentos/[registroId]", () => viagemFretePagamento.DELETE(req("DELETE"), registro)],
       ["GET /api/manifestos/[id]/frete/recibo", () => viagemFreteRecibo.GET(req(), ctx(semId))],
+      ["GET /api/manifestos/[id]/frete/sugestao-mdfe", () => viagemFreteSugestao.GET(req(), ctx(semId))],
       ["PATCH /api/manifestos/[id]/despesas/[despesaId]", () => viagemDespesa.PATCH(req("PATCH", { action: "aprovar" }), despesaDaViagem)],
       ["GET /api/manifestos/[id]/acerto", () => viagemAcerto.GET(req(), ctx(semId))],
     ];

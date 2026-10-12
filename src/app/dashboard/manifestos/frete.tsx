@@ -21,6 +21,8 @@ import {
   type FormaDeCalculo,
   type ValoresDoContrato,
 } from "@/lib/frete-contratado";
+import { avisoDeCargasSemCte } from "@/lib/subcontratacao";
+import { DocumentosDaSubcontratada } from "./subcontratacao";
 
 /**
  * A aba Frete da tela da viagem: o contrato de frete com o parceiro dono do
@@ -78,9 +80,11 @@ type Frete = {
   parceiroDoVeiculo: { id: string; name: string } | null;
   contrato: Contrato | null;
   parceiros: Parceiro[];
+  /** Contrato com transportadora: os documentos dela já registrados e as cargas ainda sem CT-e dela. */
+  subcontratacao?: { ctes: number; mdfes: number; semCte: { id: string; codigo: string }[] } | null;
 };
 
-type Parte = "resumo" | "valores" | "pagar";
+type Parte = "resumo" | "valores" | "pagar" | "documentos";
 
 const CAMPOS_DE_VALOR = [
   ["grossAmount", "Valor bruto (R$)"],
@@ -131,9 +135,24 @@ const json = (method: string, corpo?: unknown): RequestInit => ({
   body: corpo === undefined ? undefined : JSON.stringify(corpo),
 });
 
-export function FreteDaViagem({ manifestId, podeAlterar }: { manifestId: string; /** O perfil grava contrato e pagamento (capacidade `freteContratado`). */ podeAlterar: boolean }) {
+export function FreteDaViagem({
+  manifestId,
+  podeAlterar,
+  veFiscal = false,
+  alteraFiscal = false,
+}: {
+  manifestId: string;
+  /** O perfil grava contrato e pagamento (capacidade `freteContratado`). */
+  podeAlterar: boolean;
+  /** O perfil lê o fiscal (capacidade `fiscalVer`): abre os documentos da subcontratada. */
+  veFiscal?: boolean;
+  /** O perfil registra documento fiscal (capacidade `fiscal`): registra e exclui documento da subcontratada. */
+  alteraFiscal?: boolean;
+}) {
   const [frete, setFrete] = useState<Frete | null>(null);
   const [erro, setErro] = useState("");
+  // O aviso que veio com o último pagamento (quitou com carga sem CT-e da subcontratada): não é erro.
+  const [nota, setNota] = useState("");
   const [parte, setParte] = useState<Parte>("resumo");
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [form, setForm] = useState<FormDoContrato>(() => formDoContrato(null, null));
@@ -254,6 +273,8 @@ export function FreteDaViagem({ manifestId, podeAlterar }: { manifestId: string;
       for (let tentativa = 0; tentativa < 3; tentativa += 1) {
         const res = await fetch(`${base}/pagamentos`, json("POST", { ...pagamento, ...confirmacoes }));
         if (res.ok) {
+          const registrado = (await res.json().catch(() => null)) as { aviso?: string | null } | null;
+          setNota(typeof registrado?.aviso === "string" ? registrado.aviso : "");
           await ler();
           setPagamento((atual) => ({ ...atual, amount: "", notes: "" }));
           setParte("resumo");
@@ -289,8 +310,25 @@ export function FreteDaViagem({ manifestId, podeAlterar }: { manifestId: string;
     }
   };
 
+  // "Usar o valor sugerido": grava o contrato como está, só com o bruto que a forma de cálculo dá hoje. Nada muda sozinho.
+  const usarSugerido = async () => {
+    if (!contrato || contrato.sugerido === null) return;
+    setOcupado("sugerido");
+    setErro("");
+    try {
+      const res = await fetch(base, json("PUT", { ...formDoContrato(contrato, null), grossAmount: String(contrato.sugerido) }));
+      if (res.ok) await ler();
+      else setErro(await mensagemDeErro(res, "Erro ao gravar o frete contratado."));
+    } catch {
+      setErro("Erro ao gravar o frete contratado.");
+    } finally {
+      setOcupado(null);
+    }
+  };
+
   const abrirPagamento = (kind: "ADIANTAMENTO" | "SALDO") => {
     setErro("");
+    setNota("");
     // O saldo já vem com o que falta pagar.
     setPagamento((atual) => ({ ...atual, kind, amount: kind === "SALDO" && contrato && contrato.saldo > 0 ? paraCampo(contrato.saldo) : "" }));
     setParte("pagar");
@@ -397,9 +435,29 @@ export function FreteDaViagem({ manifestId, podeAlterar }: { manifestId: string;
     );
   }
 
+  /* ------------------------- Documentos da subcontratada ------------------------ */
+
+  const subcontratacao = frete.subcontratacao ?? null;
+
+  if (parte === "documentos") {
+    return (
+      <div data-frete="documentos" className="space-y-2">
+        <DocumentosDaSubcontratada manifestId={manifestId} podeAlterar={alteraFiscal} aoMudar={() => void ler()} />
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setParte("resumo")} className={BOTAO_CLARO}>
+            Voltar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   /* ---------------------------------- Pagamento --------------------------------- */
 
   if (parte === "pagar") {
+    // Este pagamento quita o contrato? É quando a falta do CT-e da subcontratada é avisada (não bloqueia).
+    const quita = (doCampo(pagamento.amount) ?? 0) > 0 && contrato.pago + (doCampo(pagamento.amount) ?? 0) >= contrato.valores.liquido;
+    const semCte = quita ? avisoDeCargasSemCte(subcontratacao?.semCte ?? []) : null;
     return (
       <form onSubmit={pagar} data-frete="pagar" className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-3">
         <p className="col-span-2 text-sm text-gray-700 dark:text-gray-300">
@@ -444,6 +502,11 @@ export function FreteDaViagem({ manifestId, podeAlterar }: { manifestId: string;
         <p className="col-span-2 text-[11px] leading-tight text-gray-500">
           O pagamento lança a despesa no Financeiro (categoria Frete contratado). Sem marcar acima, ela fica a pagar, vencendo nesta data.
         </p>
+        {semCte && (
+          <p role="note" data-aviso-sem-cte className="col-span-2 text-[11px] leading-tight text-amber-700 dark:text-amber-400">
+            {semCte}
+          </p>
+        )}
         {aviso && <div className="col-span-2">{aviso}</div>}
         <div className="col-span-2 flex justify-end gap-2">
           <button
@@ -519,6 +582,32 @@ export function FreteDaViagem({ manifestId, podeAlterar }: { manifestId: string;
       {ativo && contrato.sugerido !== null && contrato.sugerido !== contrato.grossAmount && (
         <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400" data-sugerido-diferente>
           A forma de cálculo dá {formatCurrency(contrato.sugerido)} hoje; o bruto gravado é {formatCurrency(contrato.grossAmount)}.
+          {/* O valor nunca muda sozinho: quem paga aceita o sugerido (por km, ele só existe depois do hodômetro de retorno). */}
+          {escreve && (
+            <button type="button" data-usar-sugerido disabled={ocupado !== null} onClick={usarSugerido} className="ml-2 font-semibold text-blue-700 dark:text-blue-400 underline disabled:opacity-50">
+              {ocupado === "sugerido" ? "Gravando…" : "Usar o valor sugerido"}
+            </button>
+          )}
+        </p>
+      )}
+
+      {subcontratacao && (
+        <p data-documentos-da-subcontratada className="flex flex-wrap items-center gap-x-2 text-[11px] leading-tight text-gray-600 dark:text-gray-400">
+          <span className={subcontratacao.semCte.length > 0 ? "text-amber-700 dark:text-amber-400" : ""}>
+            Subcontratada: {subcontratacao.ctes} CT-e e {subcontratacao.mdfes} MDF-e dela registrados
+            {subcontratacao.semCte.length > 0 ? ` · sem CT-e dela: ${subcontratacao.semCte.map((carga) => carga.codigo).join(", ")}` : ""}
+          </span>
+          {veFiscal && (
+            <button type="button" data-abrir-documentos onClick={() => setParte("documentos")} className="font-semibold text-blue-700 dark:text-blue-400 underline">
+              Documentos
+            </button>
+          )}
+        </p>
+      )}
+
+      {nota && (
+        <p role="note" data-aviso-do-pagamento className="text-[11px] leading-tight text-amber-700 dark:text-amber-400">
+          {nota}
         </p>
       )}
 
