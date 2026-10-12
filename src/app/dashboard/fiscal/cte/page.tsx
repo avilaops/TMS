@@ -6,14 +6,25 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Loader2, X } from "lu
 import { COLLECTION_STATUS, formatCurrency, formatWeight, statusBadge } from "@/lib/format";
 import {
   CST_DO_IBSCBS,
+  JUSTIFICATIVA_DA_SVC_MAXIMA,
+  JUSTIFICATIVA_DA_SVC_MINIMA,
   JUSTIFICATIVA_MAXIMA,
   JUSTIFICATIVA_MINIMA,
+  MAXIMO_DE_CORRECOES_POR_CARTA,
+  QUANDO_REGISTRAR_A_ENTREGA,
   ROTULO_DO_AMBIENTE,
+  ROTULO_DO_EVENTO_DO_CTE,
   SITUACOES_DO_ICMS,
+  TIPO_DO_EVENTO_DO_CTE,
+  campoProibidoNaCarta,
   dentroDoPrazoDeCancelamento,
+  fraseDoCampoProibido,
   seloDoCte,
   type ConferenciaDoCte,
+  type ConferenciaNaSefaz,
   type CteEmitido,
+  type EventoDoCte,
+  type EventosDoCte,
   type ResultadoDaEmissao,
   type ResumoDoCte,
   type SituacaoDaEmissao,
@@ -27,9 +38,11 @@ import { Negado, chaveEmBlocos } from "../comum";
 
 /**
  * CT-e: as cargas alocadas numa viagem (antes da saída), em rota ou entregues, com a situação do CT-e
- * de cada uma. Daqui se confere e se emite o CT-e pela SEFAZ, se baixa o XML
- * autorizado e se cancela. O registro manual de um CT-e emitido em outro
- * sistema continua existindo.
+ * de cada uma. Daqui se confere e se emite o CT-e pela SEFAZ (ou, quando ela
+ * não responde, pela SVC), se baixa o XML autorizado, se corrige por carta de
+ * correção, se registra a entrega, se confere a situação na SEFAZ e se
+ * cancela. O registro manual de um CT-e emitido em outro sistema continua
+ * existindo.
  *
  * A tela nunca diz "autorizado" por conta própria: mostra o que a rota
  * devolveu, e a rota só devolve autorizado com o protocolo da SEFAZ.
@@ -104,6 +117,9 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
   const [erro, setErro] = useState("");
   const [emitindo, setEmitindo] = useState(false);
   const [resultado, setResultado] = useState<{ autorizado: boolean; mensagem: string } | null>(null);
+  // A emissão pela SVC é um pedido explícito: a pessoa abre o bloco e escreve a justificativa.
+  const [pelaSvc, setPelaSvc] = useState(false);
+  const [justificativa, setJustificativa] = useState("");
 
   const aplicar = (lida: ConferenciaDoCte | { erro: string }) => {
     if ("erro" in lida) setErro(lida.erro);
@@ -120,12 +136,12 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
     };
   }, [carga.id]);
 
-  const emitir = async () => {
+  const emitir = async (svc: { justificativa: string } | null = null) => {
     setEmitindo(true);
     setErro("");
     setResultado(null);
     try {
-      const res = await fetch("/api/fiscal/cte/emissao", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collectionId: carga.id }) });
+      const res = await fetch("/api/fiscal/cte/emissao", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(svc ? { collectionId: carga.id, svc } : { collectionId: carga.id }) });
       if (!res.ok) setErro(await erroDe(res, FALHA_NA_EMISSAO));
       else {
         const corpo = (await res.json()) as ResultadoDaEmissao;
@@ -144,6 +160,8 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
   const cte = conferencia?.cte ?? null;
   const emHomologacao = resumo?.ambiente === "HOMOLOGACAO";
   const podeEmitir = conferencia !== null && conferencia.pendencias.length === 0;
+  const svc = conferencia?.svc?.oferecida ? conferencia.svc.nome : null;
+  const justificativaServe = justificativa.trim().length >= JUSTIFICATIVA_DA_SVC_MINIMA;
 
   return (
     <div className={MOLDURA} role="dialog" aria-modal="true" aria-label="Conferir e emitir CT-e">
@@ -226,11 +244,34 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
             </ul>
           )}
         </div>
-        <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800">
-          <button type="button" data-emitir disabled={!podeEmitir || emitindo} onClick={() => void emitir()} className={`${BOTAO_AZUL} w-full`}>
-            {emitindo && <Loader2 className="w-4 h-4 animate-spin" />}
-            {emitindo ? "Transmitindo à SEFAZ…" : emHomologacao ? "Emitir em homologação" : "Emitir"}
-          </button>
+        <div className="px-4 py-3 space-y-2 border-t border-gray-100 dark:border-gray-800">
+          {svc && pelaSvc && (
+            <label data-svc className="block">
+              <span className={LABEL}>
+                Por que a contingência ({JUSTIFICATIVA_DA_SVC_MINIMA} a {JUSTIFICATIVA_DA_SVC_MAXIMA} letras)
+              </span>
+              <textarea rows={2} maxLength={JUSTIFICATIVA_DA_SVC_MAXIMA} value={justificativa} onChange={(e) => setJustificativa(e.target.value)} className={`${INPUT} resize-none`} />
+              <span className="block mt-1 text-[11px] leading-tight text-gray-500">
+                A {svc} só autoriza quando a SEFAZ do seu estado a aciona. O CT-e sai com número novo; o envio anterior é conferido depois.
+              </span>
+            </label>
+          )}
+          {svc && pelaSvc ? (
+            <button type="button" data-emitir-svc disabled={!podeEmitir || emitindo || !justificativaServe} onClick={() => void emitir({ justificativa })} className={`${BOTAO_AZUL} w-full`}>
+              {emitindo && <Loader2 className="w-4 h-4 animate-spin" />}
+              {emitindo ? `Transmitindo à ${svc}…` : `Emitir pela ${svc}`}
+            </button>
+          ) : (
+            <button type="button" data-emitir disabled={!podeEmitir || emitindo} onClick={() => void emitir()} className={`${BOTAO_AZUL} w-full`}>
+              {emitindo && <Loader2 className="w-4 h-4 animate-spin" />}
+              {emitindo ? "Transmitindo à SEFAZ…" : emHomologacao ? "Emitir em homologação" : "Emitir"}
+            </button>
+          )}
+          {svc && (
+            <button type="button" data-alternar-svc disabled={emitindo} onClick={() => setPelaSvc((atual) => !atual)} className="block w-full text-xs font-medium text-center text-blue-600 hover:underline disabled:opacity-60">
+              {pelaSvc ? "Voltar à emissão normal" : `A SEFAZ não responde? Emitir pela ${svc} (contingência)`}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -295,6 +336,302 @@ function Cancelamento({ carga, cte, aoFechar, aoMudar }: { carga: CargaParaCte; 
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/* ------------------------- Eventos: correção, entrega, conferência ---------------------- */
+
+const FALHA_NOS_EVENTOS = "Não foi possível ler os eventos do CT-e.";
+const DIA_E_HORA = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+const diaEHora = (instante: string | null) => (instante ? DIA_E_HORA.format(new Date(instante)) : "");
+
+async function buscarEventos(cteId: string): Promise<EventosDoCte | { erro: string }> {
+  try {
+    const res = await fetch(`/api/fiscal/cte/emissao/${cteId}/eventos`);
+    if (!res.ok) return { erro: await erroDe(res, FALHA_NOS_EVENTOS) };
+    return (await res.json()) as EventosDoCte;
+  } catch {
+    return { erro: FALHA_NOS_EVENTOS };
+  }
+}
+
+/** Os eventos que a SEFAZ registrou, um por linha: o que é, quando, o protocolo e o que disse. */
+function ListaDeEventos({ eventos, vazio }: { eventos: EventoDoCte[]; vazio?: string }) {
+  if (eventos.length === 0) return vazio ? <p className="text-xs text-gray-500">{vazio}</p> : null;
+  return (
+    <ul data-eventos className="text-xs border border-gray-200 divide-y divide-gray-100 rounded-lg dark:border-gray-700 dark:divide-gray-800">
+      {eventos.map((evento) => (
+        <li key={evento.id} data-evento={evento.tipo} className="px-3 py-1.5 min-w-0">
+          <span className="font-medium text-gray-900 dark:text-white">
+            {ROTULO_DO_EVENTO_DO_CTE[evento.tipo] ?? `Evento ${evento.tipo}`} nº {evento.sequencia}
+          </span>
+          {evento.canceladoEm && <span className="text-red-700"> (cancelado)</span>}
+          <span className="text-gray-500">
+            {" "}
+            · {diaEHora(evento.registradoEm)}
+            {evento.protocolo ? ` · prot. ${evento.protocolo}` : ""}
+          </span>
+          <span className="block text-gray-600 break-words dark:text-gray-400">{evento.descricao}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const Erro = ({ texto }: { texto: string }) =>
+  texto ? (
+    <p role="alert" className="px-3 py-2 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50">
+      {texto}
+    </p>
+  ) : null;
+
+const Carregando = () => (
+  <div className="flex justify-center py-6" role="status" aria-label="Carregando">
+    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+  </div>
+);
+
+/** Lê os eventos do CT-e ao abrir o painel. */
+function useEventos(cteId: string) {
+  const [dados, setDados] = useState<EventosDoCte | null>(null);
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    let ativo = true;
+    buscarEventos(cteId).then((lidos) => {
+      if (!ativo) return;
+      if ("erro" in lidos) setErro(lidos.erro);
+      else setDados(lidos);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [cteId]);
+  return { dados, setDados, erro, setErro };
+}
+
+/** O campo do item da lista: o mesmo campo de sempre, estreito, ao lado do valor. */
+const INPUT_CURTO = INPUT.replace("w-full", "w-16 shrink-0");
+
+type Correcao = { grupo: string; campo: string; valor: string; item: string };
+const CORRECAO_VAZIA: Correcao = { grupo: "", campo: "", valor: "", item: "" };
+
+/** Carta de correção: as cartas já registradas e o formulário da próxima (grupo, campo e valor novo de cada correção). */
+function CartaDeCorrecao({ carga, cte, aoFechar }: { carga: CargaParaCte; cte: CteEmitido; aoFechar: () => void }) {
+  const { dados, setDados, erro, setErro } = useEventos(cte.id);
+  const [correcoes, setCorrecoes] = useState<Correcao[]>([CORRECAO_VAZIA]);
+  const [enviando, setEnviando] = useState(false);
+  const [registrada, setRegistrada] = useState(false);
+
+  const mudar = (indice: number, campo: keyof Correcao, valor: string) => setCorrecoes((atuais) => atuais.map((correcao, i) => (i === indice ? { ...correcao, [campo]: valor } : correcao)));
+  const proibida = correcoes.find((correcao) => correcao.grupo.trim() !== "" && correcao.campo.trim() !== "" && campoProibidoNaCarta(correcao.grupo, correcao.campo));
+  const completa = correcoes.every((correcao) => correcao.grupo.trim() !== "" && correcao.campo.trim() !== "" && correcao.valor.trim() !== "");
+
+  const enviar = async () => {
+    setEnviando(true);
+    setErro("");
+    setRegistrada(false);
+    try {
+      const res = await fetch(`/api/fiscal/cte/emissao/${cte.id}/correcao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ correcoes }) });
+      if (!res.ok) return setErro(await erroDe(res, "Não foi possível registrar a carta de correção."));
+      setDados((await res.json()) as EventosDoCte);
+      setCorrecoes([CORRECAO_VAZIA]);
+      setRegistrada(true);
+    } catch {
+      setErro("Não foi possível falar com o servidor. Confira na SEFAZ antes de tentar de novo.");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const cartas = dados?.eventos.filter((evento) => evento.tipo === TIPO_DO_EVENTO_DO_CTE.CARTA_DE_CORRECAO) ?? [];
+
+  return (
+    <div className={MOLDURA} role="dialog" aria-modal="true" aria-label="Carta de correção do CT-e">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void enviar();
+        }}
+        className={JANELA}
+      >
+        <Cabecalho titulo={`Corrigir CT-e nº ${cte.numero}`} carga={carga} aoFechar={aoFechar} />
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          <p className="text-[11px] leading-tight text-gray-600 dark:text-gray-400">
+            A carta não corrige valor do imposto ou da prestação, quem é o emitente, o tomador, o remetente ou o destinatário, nem a data de emissão. Com carta registrada, o CT-e não pode mais ser cancelado.
+          </p>
+          {registrada && (
+            <p data-resultado="registrada" role="status" className="flex items-start gap-2 px-3 py-2 text-sm border rounded-lg text-emerald-800 border-emerald-200 bg-emerald-50">
+              <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>Carta de correção registrada pela SEFAZ.</span>
+            </p>
+          )}
+          <Erro texto={erro} />
+          {proibida && <Erro texto={fraseDoCampoProibido(proibida.grupo.trim(), proibida.campo.trim())} />}
+
+          {correcoes.map((correcao, indice) => (
+            <fieldset key={indice} data-correcao={indice} className="grid grid-cols-2 gap-x-3 gap-y-2">
+              <label className="block min-w-0">
+                <span className={LABEL}>Grupo (ex.: compl)</span>
+                <input required maxLength={20} autoCapitalize="none" value={correcao.grupo} onChange={(e) => mudar(indice, "grupo", e.target.value)} className={`${INPUT} font-mono`} />
+              </label>
+              <label className="block min-w-0">
+                <span className={LABEL}>Campo (ex.: xObs)</span>
+                <input required maxLength={20} autoCapitalize="none" value={correcao.campo} onChange={(e) => mudar(indice, "campo", e.target.value)} className={`${INPUT} font-mono`} />
+              </label>
+              <label className="block min-w-0 col-span-2">
+                <span className="flex items-center justify-between gap-2">
+                  <span className={LABEL}>Valor novo</span>
+                  {correcoes.length > 1 && (
+                    <button type="button" data-remover-correcao onClick={() => setCorrecoes((atuais) => atuais.filter((_, i) => i !== indice))} className="text-xs text-red-600 hover:underline">
+                      Remover
+                    </button>
+                  )}
+                </span>
+                <span className="flex gap-2">
+                  <input required maxLength={500} value={correcao.valor} onChange={(e) => mudar(indice, "valor", e.target.value)} className={INPUT} />
+                  {/* Só quando o campo está numa lista (o 2º `infQ`, por exemplo): a posição, de 1 a 99. */}
+                  <input inputMode="numeric" maxLength={2} placeholder="item" aria-label="Item da lista (opcional)" value={correcao.item} onChange={(e) => mudar(indice, "item", e.target.value)} className={INPUT_CURTO} />
+                </span>
+              </label>
+            </fieldset>
+          ))}
+          {correcoes.length < MAXIMO_DE_CORRECOES_POR_CARTA && (
+            <button type="button" data-mais-correcao onClick={() => setCorrecoes((atuais) => [...atuais, CORRECAO_VAZIA])} className="text-xs font-medium text-blue-600 hover:underline">
+              + outra correção na mesma carta
+            </button>
+          )}
+
+          {!dados && !erro && <Carregando />}
+          {dados && <ListaDeEventos eventos={cartas} vazio="Nenhuma carta de correção registrada para este CT-e." />}
+        </div>
+        <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800">
+          <button type="submit" data-registrar-carta disabled={enviando || !completa || Boolean(proibida)} className={`${BOTAO_AZUL} w-full`}>
+            {enviando && <Loader2 className="w-4 h-4 animate-spin" />}
+            {enviando ? "Enviando à SEFAZ…" : "Registrar carta na SEFAZ"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** Comprovante de entrega do CT-e na SEFAZ: registrar com o comprovante aprovado da carga, ou cancelar o que está registrado. */
+function EntregaNaSefaz({ carga, cte, aoFechar }: { carga: CargaParaCte; cte: CteEmitido; aoFechar: () => void }) {
+  const { dados, setDados, erro, setErro } = useEventos(cte.id);
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async (metodo: "POST" | "DELETE") => {
+    setEnviando(true);
+    setErro("");
+    try {
+      const res = await fetch(`/api/fiscal/cte/emissao/${cte.id}/entrega`, { method: metodo });
+      if (!res.ok) return setErro(await erroDe(res, "Não foi possível falar com a SEFAZ."));
+      setDados((await res.json()) as EventosDoCte);
+    } catch {
+      setErro("Não foi possível falar com o servidor. Confira na SEFAZ antes de tentar de novo.");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const entrega = dados?.entrega ?? null;
+  const daEntrega = dados?.eventos.filter((evento) => evento.tipo === TIPO_DO_EVENTO_DO_CTE.COMPROVANTE_DE_ENTREGA || evento.tipo === TIPO_DO_EVENTO_DO_CTE.CANCELAMENTO_DO_COMPROVANTE) ?? [];
+
+  return (
+    <div className={MOLDURA} role="dialog" aria-modal="true" aria-label="Comprovante de entrega do CT-e na SEFAZ">
+      <div className={JANELA}>
+        <Cabecalho titulo={`Entrega do CT-e nº ${cte.numero}`} carga={carga} aoFechar={aoFechar} />
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          <p data-quando-registrar className="text-[11px] leading-tight text-gray-600 dark:text-gray-400">
+            {QUANDO_REGISTRAR_A_ENTREGA}
+          </p>
+          <Erro texto={erro} />
+          {!dados && !erro && <Carregando />}
+          {entrega && (
+            <dl data-entrega={entrega.situacao} className="grid grid-cols-2 gap-x-3 gap-y-2">
+              <Linha rotulo="Quem recebeu">{entrega.recebedor ?? "não informado"}</Linha>
+              <Linha rotulo="Entregue em">{diaEHora(entrega.entregueEm) || "não informado"}</Linha>
+              <Linha rotulo="Na SEFAZ">{entrega.situacao === "REGISTRADA" ? `Registrada · prot. ${entrega.protocolo ?? ""}` : "Não registrada"}</Linha>
+              <Linha rotulo="Imagem do hash">{entrega.imagem ?? "sem imagem"}</Linha>
+            </dl>
+          )}
+          {entrega?.motivo && (
+            <p data-impedimento className="px-3 py-2 text-xs text-amber-900 border border-amber-200 rounded-lg bg-amber-50">
+              {entrega.motivo}
+            </p>
+          )}
+          {dados && <ListaDeEventos eventos={daEntrega} />}
+        </div>
+        <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800">
+          {entrega?.situacao === "REGISTRADA" ? (
+            <button type="button" data-cancelar-entrega disabled={enviando} onClick={() => void enviar("DELETE")} className={`${BOTAO_CLARO} w-full`}>
+              {enviando && <Loader2 className="w-4 h-4 animate-spin" />}
+              Cancelar comprovante na SEFAZ
+            </button>
+          ) : (
+            <button type="button" data-registrar-entrega disabled={enviando || entrega?.situacao !== "DISPONIVEL"} onClick={() => void enviar("POST")} className={`${BOTAO_AZUL} w-full`}>
+              {enviando && <Loader2 className="w-4 h-4 animate-spin" />}
+              {enviando ? "Enviando à SEFAZ…" : "Registrar entrega na SEFAZ"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** "Conferir na SEFAZ": consulta pela chave ao abrir e mostra a situação que voltou e os eventos vinculados. */
+function ConferenciaNaSefazDoCte({ carga, cte, aoFechar, aoMudar }: { carga: CargaParaCte; cte: CteEmitido; aoFechar: () => void; aoMudar: () => void }) {
+  const [resultado, setResultado] = useState<ConferenciaNaSefaz | null>(null);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/fiscal/cte/emissao/${cte.id}/situacao`, { method: "POST" });
+        const lido = res.ok ? ((await res.json()) as ConferenciaNaSefaz) : null;
+        const falha = lido ? "" : await erroDe(res, "Não foi possível conferir o CT-e na SEFAZ.");
+        if (!ativo) return;
+        if (lido) setResultado(lido);
+        else setErro(falha);
+      } catch {
+        if (ativo) setErro("Não foi possível conferir o CT-e na SEFAZ.");
+      } finally {
+        // A consulta pode ter mudado a situação do CT-e: a lista é lida de novo.
+        if (ativo) aoMudar();
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+    // Só ao abrir: `aoMudar` troca a cada desenho da lista.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cte.id]);
+
+  return (
+    <div className={MOLDURA} role="dialog" aria-modal="true" aria-label="Conferir o CT-e na SEFAZ">
+      <div className={JANELA}>
+        <Cabecalho titulo={`CT-e nº ${cte.numero} na SEFAZ`} carga={carga} aoFechar={aoFechar} />
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          {!resultado && !erro && <Carregando />}
+          <Erro texto={erro} />
+          {resultado && (
+            <>
+              <p data-situacao-na-sefaz={resultado.cte.situacao} role="status" className="px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:bg-gray-950 dark:border-gray-700 dark:text-white">
+                {resultado.mensagem}
+              </p>
+              <ListaDeEventos eventos={resultado.eventos} vazio="Nenhum evento vinculado a este CT-e." />
+            </>
+          )}
+        </div>
+        <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800">
+          <button type="button" onClick={aoFechar} className={`${BOTAO_CLARO} w-full`}>
+            Fechar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -432,7 +769,11 @@ const COR_DO_SELO: Record<CteEmitido["situacao"], string> = {
   DRAFT: "bg-amber-100 text-amber-800",
 };
 
-type Aberto = { tipo: "registro" | "conferencia" | "cancelamento"; carga: CargaParaCte };
+/** O painel aberto. `cte`: o CT-e de que ele trata, quando não é o da linha (`aResolver`). */
+type Aberto = { tipo: "registro" | "conferencia" | "cancelamento" | "correcao" | "entrega" | "sefaz"; carga: CargaParaCte; cte?: CteEmitido };
+
+/** Dá para perguntar à SEFAZ por este CT-e? Só pelo que foi enviado: autorizado, cancelado ou sem resposta. */
+const conferivel = (cte: CteEmitido) => cte.situacao === "AUTHORIZED" || cte.situacao === "CANCELLED" || (cte.situacao === "DRAFT" && cte.semResposta);
 
 export default function CtePage() {
   const [dados, setDados] = useState<Dados | null>(null);
@@ -472,6 +813,14 @@ export default function CtePage() {
         : atual,
     );
     setAberto(null);
+  };
+
+  // O CT-e do painel aberto: o que a ação apontou ou o da linha.
+  const alvo = aberto ? (aberto.cte ?? aberto.carga.emitido ?? null) : null;
+  // A carta e o comprovante mudam o que a linha permite (o cancelamento, por exemplo): ao fechar, a lista é lida de novo.
+  const fecharERecarregar = () => {
+    setAberto(null);
+    void recarregar();
   };
 
   return (
@@ -567,6 +916,19 @@ export default function CtePage() {
                                 {emitido.cStat} - {emitido.motivo}
                               </span>
                             )}
+                            {(carga.aResolver ?? []).map((outro) => (
+                              <span key={outro.id} data-a-resolver={outro.id} className="block mt-1 text-[11px] leading-tight text-amber-800">
+                                {outro.situacao === "AUTHORIZED" ? `O CT-e nº ${outro.numero} também foi autorizado: cancele-o. ` : `O envio anterior (nº ${outro.numero}) ficou sem resposta. `}
+                                <button
+                                  type="button"
+                                  data-acao={outro.situacao === "AUTHORIZED" ? "cancelar-outro" : "conferir-outro"}
+                                  onClick={() => setAberto({ tipo: outro.situacao === "AUTHORIZED" ? "cancelamento" : "sefaz", carga, cte: outro })}
+                                  className="font-medium text-blue-600 hover:underline"
+                                >
+                                  {outro.situacao === "AUTHORIZED" ? `Cancelar o nº ${outro.numero}` : "Conferir na SEFAZ"}
+                                </button>
+                              </span>
+                            ))}
                           </>
                         ) : (
                           <>
@@ -592,6 +954,21 @@ export default function CtePage() {
                           {emitido?.situacao === "AUTHORIZED" && situacao?.dacte && (
                             <BotaoDanfe documento="dacte" endereco={`/api/fiscal/cte/emissao/${emitido.id}/dacte`} className="text-blue-600" />
                           )}
+                          {emitido?.situacao === "AUTHORIZED" && emitido.svc === null && (
+                            <button type="button" data-acao="corrigir" onClick={() => setAberto({ tipo: "correcao", carga })} className="text-blue-600 hover:underline">
+                              Corrigir
+                            </button>
+                          )}
+                          {emitido?.situacao === "AUTHORIZED" && emitido.svc === null && carga.comprovanteAceito && (
+                            <button type="button" data-acao="entrega" onClick={() => setAberto({ tipo: "entrega", carga })} className="text-blue-600 hover:underline">
+                              Entrega na SEFAZ
+                            </button>
+                          )}
+                          {emitido && !registradoDeFora && conferivel(emitido) && (
+                            <button type="button" data-acao="sefaz" onClick={() => setAberto({ tipo: "sefaz", carga })} className="text-blue-600 hover:underline">
+                              Conferir na SEFAZ
+                            </button>
+                          )}
                           {emitido?.situacao === "AUTHORIZED" && (
                             <button type="button" data-acao="cancelar" onClick={() => setAberto({ tipo: "cancelamento", carga })} className="text-red-600 hover:underline">
                               Cancelar
@@ -615,9 +992,10 @@ export default function CtePage() {
 
       {aberto?.tipo === "registro" && <Registro key={aberto.carga.id} carga={aberto.carga} aoFechar={() => setAberto(null)} aoGravar={aoGravar} />}
       {aberto?.tipo === "conferencia" && <Conferencia key={aberto.carga.id} carga={aberto.carga} aoFechar={() => setAberto(null)} aoMudar={() => void recarregar()} />}
-      {aberto?.tipo === "cancelamento" && aberto.carga.emitido && (
-        <Cancelamento key={aberto.carga.id} carga={aberto.carga} cte={aberto.carga.emitido} aoFechar={() => setAberto(null)} aoMudar={() => void recarregar()} />
-      )}
+      {aberto?.tipo === "cancelamento" && alvo && <Cancelamento key={alvo.id} carga={aberto.carga} cte={alvo} aoFechar={() => setAberto(null)} aoMudar={() => void recarregar()} />}
+      {aberto?.tipo === "correcao" && alvo && <CartaDeCorrecao key={alvo.id} carga={aberto.carga} cte={alvo} aoFechar={fecharERecarregar} />}
+      {aberto?.tipo === "entrega" && alvo && <EntregaNaSefaz key={alvo.id} carga={aberto.carga} cte={alvo} aoFechar={fecharERecarregar} />}
+      {aberto?.tipo === "sefaz" && alvo && <ConferenciaNaSefazDoCte key={alvo.id} carga={aberto.carga} cte={alvo} aoFechar={() => setAberto(null)} aoMudar={() => void recarregar()} />}
     </div>
   );
 }

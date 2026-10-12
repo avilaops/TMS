@@ -107,6 +107,7 @@ const emitido = (extra: Partial<CteEmitido> = {}): CteEmitido => ({
   canceladoEm: null,
   semResposta: false,
   atualizadoEm: new Date().toISOString(),
+  svc: null,
   ...extra,
 });
 
@@ -130,7 +131,7 @@ const resumo: ResumoDoCte = {
   chavesDeNfe: ["35261099444333000181550010000012341123456780"],
 };
 
-const conferencia = (extra: Partial<ConferenciaDoCte> = {}): ConferenciaDoCte => ({ pronta: true, pendencias: [], avisos: ["Em homologação, a SEFAZ exige que o nome do remetente e do destinatário seja a frase dela."], resumo, cte: null, ...extra });
+const conferencia = (extra: Partial<ConferenciaDoCte> = {}): ConferenciaDoCte => ({ pronta: true, pendencias: [], avisos: ["Em homologação, a SEFAZ exige que o nome do remetente e do destinatário seja a frase dela."], resumo, cte: null, svc: { nome: "SVC-RS", oferecida: false }, ...extra });
 
 const PRONTA = { body: { pronta: true, ambiente: "HOMOLOGACAO", faltas: [], dacte: true } };
 const CONFERIR = "/api/fiscal/cte/emissao?collectionId=c1";

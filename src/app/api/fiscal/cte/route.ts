@@ -15,18 +15,22 @@ import {
 } from '@/lib/nfe';
 import { nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 import { EMITIDO_PELO_SISTEMA } from '@/lib/cte';
-import { CTE_DA_CARGA, paraATela } from '@/lib/cte-db';
+import { CTE_DA_CARGA, ctesDaCarga } from '@/lib/cte-db';
 
 // A lista das cargas que pedem CT-e e o registro manual de um CT-e emitido em
 // outro sistema. A emissão pela SEFAZ está em /api/fiscal/cte/emissao; aqui
 // nada é enviado.
 
-const CARGA_COM_CTE_SELECT = { ...CARGA_PARA_CTE_SELECT, ...CTE_DA_CARGA } as const;
+const CARGA_COM_CTE_SELECT = { ...CARGA_PARA_CTE_SELECT, ...CTE_DA_CARGA, proof: { select: { status: true } } } as const;
 
 type CargaLida = Prisma.CollectionGetPayload<{ select: typeof CARGA_COM_CTE_SELECT }>;
 
-/** A carga como a tela a recebe: no lugar da lista de CT-e, só o mais recente (`emitido`). */
-const paraALista = ({ ctes, ...carga }: CargaLida) => ({ ...carga, emitido: ctes[0] ? paraATela(ctes[0]) : null });
+/**
+ * A carga como a tela a recebe: no lugar da lista de CT-e, o CT-e da carga
+ * (`emitido`) e os que pedem providência (`aResolver`); do comprovante de
+ * entrega, só se há um aprovado.
+ */
+const paraALista = ({ ctes, proof, ...carga }: CargaLida) => ({ ...carga, ...ctesDaCarga(ctes, carga.cteKey), comprovanteAceito: proof?.status === 'APPROVED' });
 
 const MAXIMO_NA_LISTA = 200;
 

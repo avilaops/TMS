@@ -4,32 +4,57 @@ import { Refusal } from "@/lib/cadastros";
 import { registrarAuditoria, registrarAuditoriaDepois, type Origem, type QualquerAtor } from "@/lib/auditoria";
 import { CifraError, cifraLigada, cifrar, decifrar } from "@/lib/cifra";
 import type { Empresa } from "@/lib/cobranca-gateway-db";
+import { comoDataUrl } from "@/lib/comprovantes";
 import {
+  CANCELAMENTO_COM_CARTA,
+  CANCELAMENTO_COM_ENTREGA,
   CARGA_NAO_ENCONTRADA,
   CERTIFICADO_ILEGIVEL,
   CNPJ_COM_OUTRO_CERTIFICADO,
   CTE_NAO_ENCONTRADO,
   EMISSAO_EM_ANDAMENTO,
+  ENTREGA_JA_REGISTRADA,
   FISCAL_INDISPONIVEL,
   FORA_DO_PRAZO,
   JA_AUTORIZADO,
   JA_REGISTRADO_DE_FORA,
+  LIMITE_DE_CARTAS,
+  MAXIMO_DE_CARTAS,
+  MAXIMO_DE_COMPROVANTES,
   MUNICIPIO_DESCONHECIDO,
   ONDE_CONFIGURAR,
   PRODUCAO_PEDE_CONFIRMACAO,
+  RECEBEDOR_INCOMPLETO,
+  ROTULO_DO_EVENTO_DO_CTE,
+  SEM_COMPROVANTE_ACEITO,
   SEM_DADOS_FISCAIS,
   SEM_EMITENTE_CADASTRADO,
+  SEM_ENTREGA_REGISTRADA,
+  SEM_IMAGEM_NO_COMPROVANTE,
   SO_AUTORIZADO_CANCELA,
+  SO_AUTORIZADO_RECEBE_EVENTO,
   SO_AUTORIZADO_TEM_DACTE,
   SO_AUTORIZADO_TEM_XML,
   SO_CARGA_QUE_SAIU,
+  SO_ENVIADO_SE_CONFERE,
+  SVC_NAO_OFERECIDA,
+  SVC_NAO_RECEBE_ESTE_EVENTO,
+  TIPO_DO_EVENTO_DO_CTE,
   dentroDoPrazoDeCancelamento,
+  fraseDaSvcInativa,
+  resumoDaCarta,
+  svcOferecida,
   type Ambiente,
   type CertificadoDaEmpresa,
   type ConferenciaDoCte,
+  type ConferenciaNaSefaz,
+  type CorrecaoDaCarta,
   type CteEmitido,
   type DadosFiscais,
   type DadosFiscaisDoFormulario,
+  type EntregaDoCte,
+  type EventoDoCte,
+  type EventosDoCte,
   type FiscalDaEmpresa,
   type Regime,
   type ResultadoDaEmissao,
@@ -40,7 +65,9 @@ import {
 } from "@/lib/cte";
 import { ALVO_DO_CTE, ALVO_DO_EVENTO, assinarXml, resumoDaAssinatura } from "@/lib/cte/assinar";
 import { CertificadoError, VENCIDO, conferenciaDoCnpj, conferirCertificado, lerCertificado } from "@/lib/cte/certificado";
-import { enderecosDaUf } from "@/lib/cte/enderecos";
+import { svcDaChave, type Svc } from "@/lib/cte/chave";
+import { enderecosDaUf, svcDaUf } from "@/lib/cte/enderecos";
+import { hashDaEntrega, montarCancelamentoDoComprovante, montarCartaDeCorrecao, montarComprovanteDeEntrega, montarProcEventoCte, type EventoMontado } from "@/lib/cte/eventos";
 import { TIPO_DO_CANCELAMENTO, montarCancelamento, montarCte, montarProcCte, type EmitenteDoCte } from "@/lib/cte/montar";
 import { prepararCte, type CargaDoCte, type Preparo } from "@/lib/cte/preparar";
 import { responsavelTecnico } from "@/lib/cte/responsavel-tecnico";
@@ -57,9 +84,13 @@ import {
   type Decisao,
   type Destino,
   type Esperado,
+  type EventoDaConsulta,
   type Protocolo,
+  type RespostaDaConsulta,
+  type RespostaDoEvento,
 } from "@/lib/cte/sefaz";
 import { SefazError, type Credencial } from "@/lib/cte/soap";
+import { textoDoXml } from "@/lib/cte/texto";
 import { danfeLigado } from "@/lib/fiscal-mcp";
 import { municipioDoTexto } from "@/lib/municipios";
 import { cargaRecebeCte } from "@/lib/nfe";
@@ -497,11 +528,32 @@ export function paraATela(cte: LinhaDoCte): CteEmitido {
     canceladoEm: cte.cancelledAt?.toISOString() ?? null,
     semResposta: cte.unanswered,
     atualizadoEm: cte.updatedAt.toISOString(),
+    svc: svcDaChave(cte.accessKey),
   };
 }
 
-/** O CT-e mais recente de cada carga da lista (o que a tela mostra no selo). */
-export const CTE_DA_CARGA = { ctes: { select: CTE_SELECT, orderBy: { updatedAt: "desc" }, take: 1 } } as const;
+/** Os CT-e mais recentes de cada carga da lista: deles saem o do selo e os que pedem providência (`ctesDaCarga`). */
+export const CTE_DA_CARGA = { ctes: { select: CTE_SELECT, orderBy: { updatedAt: "desc" }, take: 8 } } as const;
+
+/**
+ * Dos CT-e de uma carga, o que a lista mostra:
+ * - `emitido`: o CT-e da carga. É o autorizado que a carga aponta (`cteKey`, em
+ *   produção); senão o autorizado pela SVC; senão outro autorizado; senão o mais
+ *   recente.
+ * - `aResolver`: os outros que pedem uma providência de quem emite. O envio
+ *   normal que ficou sem resposta e foi coberto por um CT-e da SVC, e o CT-e
+ *   normal que a SEFAZ de origem autorizou depois disso (o que o MOC 4.00,
+ *   Visão Geral, item 11.5.3, manda cancelar "imediatamente após o retorno à
+ *   operação normal").
+ * `linhas` vem da mais recente para a mais antiga.
+ */
+export function ctesDaCarga(linhas: readonly LinhaDoCte[], cteKey: string | null): { emitido: CteEmitido | null; aResolver: CteEmitido[] } {
+  const autorizados = linhas.filter((linha) => linha.status === "AUTHORIZED");
+  const principal =
+    autorizados.find((linha) => linha.accessKey === cteKey) ?? autorizados.find((linha) => svcDaChave(linha.accessKey) !== null) ?? autorizados[0] ?? linhas[0] ?? null;
+  const aResolver = linhas.filter((linha) => linha !== principal && (linha.status === "AUTHORIZED" || (linha.status === "DRAFT" && linha.unanswered)));
+  return { emitido: principal && paraATela(principal), aResolver: aResolver.map(paraATela) };
+}
 
 const CARGA_SELECT = {
   id: true,
@@ -619,13 +671,40 @@ export async function conferirCte(empresa: Empresa, collectionId: string): Promi
   // O número que o reenvio de um rejeitado mantém; senão, o próximo da série.
   const mantem = ultimo && (ultimo.status === "DRAFT" || ultimo.status === "REJECTED") && !ultimo.numberBurned && emitente && ultimo.series === emitente.serie;
   const numeroPrevisto = mantem ? ultimo.number : emitente ? await proximoNumero(empresa.db, emitente.ambiente, emitente.serie) : 0;
+  const svc = emitente ? svcDaUf(emitente.endereco.uf) : null;
   return {
     pronta: emitente !== null && faltasDoCertificado(certificado).length === 0,
     pendencias,
     avisos: preparo.avisos,
     resumo: preparo.resumo && { ...preparo.resumo, numeroPrevisto },
     cte: ultimo && paraATela(ultimo),
+    svc: svc && emitente ? { nome: svc, oferecida: svcCabe(await pendentesDaCarga(empresa.db, collectionId, emitente.ambiente)) } : null,
   };
+}
+
+/* ----------------------------- SVC (contingência) ------------------------------ */
+
+const PENDENTE_SELECT = { id: true, status: true, series: true, number: true, accessKey: true, xmlSent: true, sendingAt: true, unanswered: true, numberBurned: true, statusCode: true, statusReason: true } as const;
+type Pendente = Prisma.CteGetPayload<{ select: typeof PENDENTE_SELECT }>;
+
+/** Os CT-e da carga que ainda não se resolveram (rascunho ou rejeitado), do mais novo para o mais antigo. */
+async function pendentesDaCarga(db: Pick<Tx, "cte">, collectionId: string, ambiente: Ambiente): Promise<Pendente[]> {
+  return db.cte.findMany({ where: { collectionId, environment: ambiente, status: { in: ["DRAFT", "REJECTED"] } }, orderBy: { createdAt: "desc" }, take: 20, select: PENDENTE_SELECT });
+}
+
+const semRespostaNormal = (linha: Pendente) => linha.status === "DRAFT" && linha.unanswered && svcDaChave(linha.accessKey) === null;
+
+/**
+ * A emissão pela SVC cabe para esta carga? Depois de uma emissão normal que não
+ * se resolveu (`svcOferecida`), ou para insistir num CT-e que já foi mandado à
+ * SVC (rejeitado por ela, ou sem resposta dela).
+ */
+function svcCabe(pendentes: readonly Pendente[]): boolean {
+  return pendentes.some(
+    (linha) =>
+      svcDaChave(linha.accessKey) !== null ||
+      svcOferecida({ situacao: linha.status as SituacaoDoCte, semResposta: linha.unanswered, cStat: linha.statusCode, motivo: linha.statusReason, svc: null }),
+  );
 }
 
 /* ----------------------------------- Emissão ---------------------------------- */
@@ -659,7 +738,7 @@ type Preparado = {
  * travada. Se a carga tem um envio sem resposta, não monta nada: devolve o
  * mesmo XML, para a retomada.
  */
-async function prepararEnvio(empresa: Empresa, collectionId: string, credencial: CredencialDaEmpresa, quem: Quem): Promise<Preparado> {
+async function prepararEnvio(empresa: Empresa, collectionId: string, credencial: CredencialDaEmpresa, quem: Quem, svc: Svc | null = null): Promise<Preparado> {
   return empresa.transacao(async (tx) => {
     await travarNumeracao(tx, empresa.id);
     const { linha, emitente, preparo, pendencias } = await situacaoDaCarga(tx, empresa.id, collectionId);
@@ -668,22 +747,26 @@ async function prepararEnvio(empresa: Empresa, collectionId: string, credencial:
     const ambiente = emitente.ambiente;
     const carga = { id: linha.id, trackingCode: linha.trackingCode };
     const base = { ambiente, uf: emitente.endereco.uf, cnpj: emitente.cnpj, carga };
-    const pendente = await tx.cte.findFirst({
-      where: { collectionId, environment: ambiente, status: { in: ["DRAFT", "REJECTED"] } },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, status: true, series: true, number: true, accessKey: true, xmlSent: true, sendingAt: true, unanswered: true, numberBurned: true },
-    });
+    const pendentes = await pendentesDaCarga(tx, collectionId, ambiente);
     const agora = new Date();
-    if (pendente?.sendingAt && agora.getTime() - pendente.sendingAt.getTime() < ENVIO_EM_ANDAMENTO_MS) throw new Refusal(EMISSAO_EM_ANDAMENTO, 409);
+    if (pendentes.some((p) => p.sendingAt && agora.getTime() - p.sendingAt.getTime() < ENVIO_EM_ANDAMENTO_MS)) throw new Refusal(EMISSAO_EM_ANDAMENTO, 409);
 
-    if (pendente && pendente.status === "DRAFT" && pendente.unanswered) {
-      await tx.cte.update({ where: { id: pendente.id }, data: { sendingAt: agora }, select: { id: true } });
-      return { ...base, id: pendente.id, chave: pendente.accessKey, numero: pendente.number, xml: pendente.xmlSent, retomar: true };
+    // O envio sem resposta é retomado com o MESMO XML. Na emissão normal, o mais recente; na emissão pela SVC,
+    // só o que já tinha ido para a SVC: o envio NORMAL sem resposta não é reenviado a ela (é outro documento).
+    const semResposta = pendentes.filter((p) => p.status === "DRAFT" && p.unanswered);
+    const aRetomar = svc ? semResposta.find((p) => svcDaChave(p.accessKey) !== null) : semResposta[0];
+    if (aRetomar) {
+      await tx.cte.update({ where: { id: aRetomar.id }, data: { sendingAt: agora }, select: { id: true } });
+      return { ...base, id: aRetomar.id, chave: aRetomar.accessKey, numero: aRetomar.number, xml: aRetomar.xmlSent, retomar: true };
     }
+    // Pela SVC, a linha do envio normal sem resposta fica como está, à espera da conferência na SEFAZ de origem: o CT-e da SVC é outra linha.
+    const pendente = (svc ? pendentes.find((p) => !semRespostaNormal(p)) : pendentes[0]) ?? null;
 
     // Rejeição não consome o número: o reenvio da mesma carga usa o mesmo, salvo quando a SEFAZ disse que ele já foi usado.
+    // Trocar o tipo de emissão pede número novo: "é vedada a reutilização, em contingência, de número de CTe transmitido
+    // com tipo de emissão Normal" (MOC 4.00, Visão Geral, item 11.5.3).
     let numero: number;
-    if (pendente && !pendente.numberBurned && pendente.series === emitente.serie) {
+    if (pendente && !pendente.numberBurned && pendente.series === emitente.serie && svcDaChave(pendente.accessKey) === svc) {
       numero = pendente.number;
     } else {
       const numeracao = await tx.cteNumbering.findFirst({ where: { environment: ambiente, series: emitente.serie }, select: { id: true, nextNumber: true } });
@@ -692,7 +775,7 @@ async function prepararEnvio(empresa: Empresa, collectionId: string, credencial:
       else await tx.cteNumbering.create({ data: { environment: ambiente, series: emitente.serie, nextNumber: numero + 1 }, select: { id: true } });
     }
 
-    const montado = montarCte({ ...preparo.dados, numero, codigo: sortearCodigo(), emissao: agora });
+    const montado = montarCte({ ...preparo.dados, numero, codigo: sortearCodigo(), emissao: agora, svc });
     const xml = assinarXml(montado.xml, ALVO_DO_CTE, { chavePem: credencial.chavePem, certificadoPem: credencial.titularPem });
     const dados = {
       series: emitente.serie,
@@ -715,6 +798,80 @@ async function prepararEnvio(empresa: Empresa, collectionId: string, credencial:
   }, COM_FILA);
 }
 
+/** Com quem se fala sobre o CT-e desta chave: a SVC que o recebeu (`tpEmis` 7 ou 8) ou a autorizadora da UF. */
+const destinoDaChave = (uf: string, ambiente: Ambiente, credencial: CredencialDaEmpresa, chave: string): Destino => ({ uf, ambiente, credencial, svc: svcDaChave(chave) });
+
+/** Depois de autorizar pela SVC: lembra do envio normal que ficou sem resposta, se houver. */
+async function avisoDoEnvioPendente(empresa: Empresa, collectionId: string, ambiente: Ambiente): Promise<string> {
+  const orfao = (await pendentesDaCarga(empresa.db, collectionId, ambiente)).find(semRespostaNormal);
+  return orfao
+    ? ` O envio normal anterior (CT-e nº ${orfao.number}) continua sem resposta: quando a SEFAZ de origem voltar, use "Conferir na SEFAZ" nele. Se ela o tiver autorizado, ele precisa ser cancelado.`
+    : "";
+}
+
+/**
+ * O que se confere antes de emitir pela SVC (MOC do CT-e 4.00, Visão Geral,
+ * itens 11.2, 11.3.3 e 11.5.3), fora de transação. Devolve a SVC que atende a
+ * UF do emitente, ou recusa:
+ *
+ * 1. Só depois de uma emissão normal que não se resolveu (`svcCabe`).
+ * 2. A SVC precisa estar ATIVA para a UF: "o SVC depende de ativação da SEFAZ
+ *    de origem" (item 11.2, c). O status pedido à SVC responde 113 quando está
+ *    (regra M04); com 114 ou outro código, nada é emitido nem numerado.
+ * 3. O envio normal que ficou sem resposta é consultado, pela chave, na SEFAZ de
+ *    origem. Se ela o AUTORIZOU, ele é gravado e a emissão pela SVC é recusada:
+ *    a carga já tem CT-e. Se está cancelado lá, a linha vira "rejeitado".
+ *    Qualquer outra resposta, ou resposta nenhuma (é o caso esperado: a SEFAZ
+ *    de origem está fora do ar, e "a consulta sobre este CT-e somente poderá
+ *    ser direcionada à SEFAZ original quando esta restabelecer seu serviço",
+ *    item 4.5.6), NÃO impede a SVC: o envio fica "sem resposta", para ser
+ *    conferido depois (`conferirNaSefaz`), e cancelado se a SEFAZ de origem o
+ *    tiver autorizado (item 11.5.3). "Não consta" (217) também o deixa como
+ *    está: ele pode estar na fila da SEFAZ de origem.
+ */
+async function prepararSvc(empresa: Empresa, collectionId: string, credencial: CredencialDaEmpresa, quem: Quem): Promise<Svc> {
+  const doEmitente = await empresa.db.fiscalIssuer.findUnique({ where: { tenantId: empresa.id }, select: { cnpj: true, state: true, environment: true } });
+  if (!doEmitente) throw new Refusal(SEM_EMITENTE_CADASTRADO, 409);
+  const svc = svcDaUf(doEmitente.state);
+  if (!svc) throw new Refusal(`Não há SVC para a UF ${doEmitente.state}.`, 409);
+  const ambiente = ambienteDaLinha(doEmitente.environment);
+  const carga = await empresa.db.collection.findUnique({ where: { id: collectionId }, select: { id: true, trackingCode: true } });
+  if (!carga) throw new Refusal(CARGA_NAO_ENCONTRADA, 404);
+  const pendentes = await pendentesDaCarga(empresa.db, collectionId, ambiente);
+  if (!svcCabe(pendentes)) throw new Refusal(SVC_NAO_OFERECIDA, 409);
+
+  try {
+    const status = await statusDoServico({ uf: doEmitente.state, ambiente, credencial, svc });
+    if (!status.svcAtiva) throw new Refusal(fraseDaSvcInativa(svc, frase(status.cStat, status.motivo)), 409);
+  } catch (erro) {
+    if (erro instanceof SefazError) throw new Refusal(`${erro.message} Não foi possível saber se a ${svc} está ativa: nada foi emitido nem numerado.`, STATUS_DA_FALHA(erro));
+    throw erro;
+  }
+
+  const orfao = pendentes.find(semRespostaNormal);
+  if (!orfao) return svc;
+  let consulta: Decisao;
+  try {
+    consulta = decidir(await consultarCte({ uf: doEmitente.state, ambiente, credencial }, orfao.accessKey), { chave: orfao.accessKey, ambiente, resumo: resumoDaAssinatura(orfao.xmlSent) });
+  } catch (erro) {
+    // A SEFAZ de origem não responde: é para isto que a SVC existe. O envio fica "sem resposta".
+    if (erro instanceof SefazError) return svc;
+    throw erro;
+  }
+  if (consulta.tipo === "autorizado") {
+    const preparado: Preparado = { id: orfao.id, chave: orfao.accessKey, numero: orfao.number, xml: orfao.xmlSent, ambiente, uf: doEmitente.state, cnpj: doEmitente.cnpj, retomar: true, carga };
+    await gravarAutorizacao(empresa, preparado, consulta.protocolo, quem);
+    throw new Refusal(
+      `O envio normal anterior (CT-e nº ${orfao.number}) tinha sido autorizado pela SEFAZ (protocolo ${consulta.protocolo.numero}) e agora está gravado: a carga já tem CT-e. Nada foi emitido pela ${svc}.`,
+      409,
+    );
+  }
+  if (consulta.tipo === "finalizado") {
+    await gravarSemAutorizacao(empresa, orfao.id, { status: "REJECTED", statusCode: consulta.cStat, statusReason: consulta.motivo, unanswered: false, numberBurned: true });
+  }
+  return svc;
+}
+
 /** Quando há endereço de integração, põe o evento na fila, na mesma transação da mudança. */
 async function avisarIntegracao(tx: Tx, tipo: "cte.autorizado" | "cte.cancelado", cteId: string): Promise<void> {
   const webhook = await tx.webhook.findFirst({ select: { id: true } });
@@ -722,8 +879,19 @@ async function avisarIntegracao(tx: Tx, tipo: "cte.autorizado" | "cte.cancelado"
   await tx.outboxEvent.create({ data: { type: tipo, payload: { cteId } }, select: { id: true } });
 }
 
-/** Grava a autorização: só chega aqui com o protocolo que a SEFAZ devolveu. */
-async function gravarAutorizacao(empresa: Empresa, preparado: Preparado, protocolo: Protocolo & { numero: string }, quem: Quem): Promise<LinhaDoCte> {
+/** A frase que fica no CT-e normal que a SEFAZ de origem autorizou depois de a carga já ter o CT-e da SVC. */
+const fraseDoSubstituido = (numeroDoOutro: number) =>
+  `Autorizado pela SEFAZ de origem, mas a carga já tem o CT-e nº ${numeroDoOutro}: este precisa ser CANCELADO (MOC 4.00, Visão Geral, item 11.5.3).`;
+
+/**
+ * Grava a autorização: só chega aqui com o protocolo que a SEFAZ devolveu.
+ *
+ * `substituidoPor`: a carga já tem outro CT-e autorizado (o da SVC), e este é o
+ * envio normal que tinha ficado sem resposta e que a SEFAZ de origem acabou
+ * autorizando. Ele é gravado como autorizado (é o que ele é na SEFAZ), mas NÃO
+ * vira o CT-e da carga: fica com a frase que manda cancelar.
+ */
+async function gravarAutorizacao(empresa: Empresa, preparado: Preparado, protocolo: Protocolo & { numero: string }, quem: Quem, substituidoPor: number | null = null): Promise<LinhaDoCte> {
   return empresa.transacao(async (tx) => {
     const gravado = await tx.cte.update({
       where: { id: preparado.id },
@@ -732,7 +900,7 @@ async function gravarAutorizacao(empresa: Empresa, preparado: Preparado, protoco
         protocol: protocolo.numero,
         xmlReturn: montarProcCte(preparado.xml, protocolo.xml),
         statusCode: protocolo.cStat,
-        statusReason: protocolo.motivo.slice(0, MOTIVO_MAXIMO),
+        statusReason: (substituidoPor === null ? protocolo.motivo : fraseDoSubstituido(substituidoPor)).slice(0, MOTIVO_MAXIMO),
         authorizedAt: protocolo.recebidoEm ?? new Date(),
         sendingAt: null,
         unanswered: false,
@@ -740,16 +908,17 @@ async function gravarAutorizacao(empresa: Empresa, preparado: Preparado, protoco
       select: CTE_SELECT,
     });
     // Só o CT-e de produção tem valor fiscal: é ele que passa a ser o CT-e da carga.
-    if (preparado.ambiente === PRODUCAO) {
+    if (preparado.ambiente === PRODUCAO && substituidoPor === null) {
       await tx.collection.update({ where: { id: preparado.carga.id }, data: { cteKey: preparado.chave, cteNumber: preparado.numero, cteStatus: "ISSUED" }, select: { id: true } });
     }
     const emHomologacao = preparado.ambiente === PRODUCAO ? "" : " em homologação (sem valor fiscal)";
+    const pelaSvc = svcDaChave(preparado.chave);
     await registrarAuditoria(tx, {
       ...quem,
       acao: "cte.emitir",
       entidade: "cte",
       entidadeId: preparado.id,
-      resumo: `CT-e nº ${preparado.numero} autorizado${emHomologacao} para a carga ${preparado.carga.trackingCode ?? ""}`,
+      resumo: `CT-e nº ${preparado.numero} autorizado${pelaSvc ? ` pela ${pelaSvc}` : ""}${emHomologacao} para a carga ${preparado.carga.trackingCode ?? ""}${substituidoPor === null ? "" : ` (a cancelar: a carga já tem o CT-e nº ${substituidoPor})`}`,
       depois: { number: preparado.numero, accessKey: preparado.chave, environment: preparado.ambiente, protocol: protocolo.numero, collectionId: preparado.carga.id },
     });
     await avisarEquipe(tx, "fiscalVer", avisoDeCte("autorizado", { numero: preparado.numero, ambiente: preparado.ambiente, carga: preparado.carga.trackingCode }), quem.ator.id);
@@ -780,11 +949,24 @@ const SEM_RESPOSTA = "O CT-e ficou sem resposta: emitir de novo começa consulta
  *   SEFAZ pela chave antes de reenviar o MESMO XML.
  * Falha de rede vira `Refusal` 502/504, com o CT-e intocado ou marcado "sem resposta".
  */
-export async function emitirCte(empresa: Empresa, collectionId: string, quem: Quem): Promise<ResultadoDaEmissao> {
+export async function emitirCte(empresa: Empresa, collectionId: string, quem: Quem, opcoes: { svc?: { justificativa: string } | null } = {}): Promise<ResultadoDaEmissao> {
   const credencial = await credencialDaEmpresa(empresa);
-  const preparado = await prepararEnvio(empresa, collectionId, credencial, quem);
-  const destino: Destino = { uf: preparado.uf, ambiente: preparado.ambiente, credencial };
+  const svc = opcoes.svc ? await prepararSvc(empresa, collectionId, credencial, quem) : null;
+  const preparado = await prepararEnvio(empresa, collectionId, credencial, quem, svc);
+  // Com quem se fala sai da chave do documento que vai ser enviado: a retomada de um CT-e da SVC volta à SVC.
+  const destino = destinoDaChave(preparado.uf, preparado.ambiente, credencial, preparado.chave);
   const esperado: Esperado = { chave: preparado.chave, ambiente: preparado.ambiente, resumo: resumoDaAssinatura(preparado.xml) };
+  if (svc && opcoes.svc && !preparado.retomar) {
+    // A justificativa não vai no XML (regra G008 do Anexo I): fica aqui, com quem pediu a contingência e quando.
+    await registrarAuditoriaDepois(empresa.db, {
+      ...quem,
+      acao: "cte.contingencia",
+      entidade: "cte",
+      entidadeId: preparado.id,
+      resumo: `CT-e nº ${preparado.numero} da carga ${preparado.carga.trackingCode ?? ""} enviado à ${svc} (contingência)`,
+      depois: { number: preparado.numero, accessKey: preparado.chave, environment: preparado.ambiente, svc, justificativa: opcoes.svc.justificativa, collectionId: preparado.carga.id },
+    });
+  }
 
   let decisao: Decisao;
   try {
@@ -821,7 +1003,9 @@ export async function emitirCte(empresa: Empresa, collectionId: string, quem: Qu
   if (decisao.tipo === "autorizado") {
     const cte = await gravarAutorizacao(empresa, preparado, decisao.protocolo, quem);
     const onde = preparado.ambiente === PRODUCAO ? "" : " em homologação (sem valor fiscal)";
-    return resultado(cte, true, `CT-e nº ${preparado.numero} autorizado${onde}. Protocolo ${decisao.protocolo.numero}.`);
+    const pelaSvc = destino.svc ? ` pela ${destino.svc}` : "";
+    const pendente = destino.svc ? await avisoDoEnvioPendente(empresa, collectionId, preparado.ambiente) : "";
+    return resultado(cte, true, `CT-e nº ${preparado.numero} autorizado${pelaSvc}${onde}. Protocolo ${decisao.protocolo.numero}.${pendente}`);
   }
 
   if (decisao.tipo === "incoerente") {
@@ -884,12 +1068,23 @@ export async function cancelarCte(empresa: Empresa, cteId: string, justificativa
   if (!cte) throw new Refusal(CTE_NAO_ENCONTRADO, 404);
   if (cte.status !== "AUTHORIZED" || !cte.protocol) throw new Refusal(SO_AUTORIZADO_CANCELA, 409);
   if (!dentroDoPrazoDeCancelamento(cte.authorizedAt)) throw new Refusal(FORA_DO_PRAZO, 409);
+  // O que a SEFAZ recusaria (MOC 4.00, Visão Geral, item 6.2.1): carta de correção associada (regra O14, 523) e comprovante de entrega em vigor (regra Q16, 862).
+  const impedem = await empresa.db.cteEvent.findMany({
+    where: { cteId, OR: [{ type: TIPO_DO_EVENTO_DO_CTE.CARTA_DE_CORRECAO }, { type: TIPO_DO_EVENTO_DO_CTE.COMPROVANTE_DE_ENTREGA, cancelledAt: null }] },
+    select: { type: true },
+    take: 50,
+  });
+  if (impedem.some((evento) => evento.type === TIPO_DO_EVENTO_DO_CTE.COMPROVANTE_DE_ENTREGA)) throw new Refusal(CANCELAMENTO_COM_ENTREGA, 409);
+  if (impedem.length > 0) throw new Refusal(CANCELAMENTO_COM_CARTA, 409);
 
   const doEmitente = await empresa.db.fiscalIssuer.findUnique({ where: { tenantId: empresa.id }, select: { cnpj: true, state: true } });
   if (!doEmitente) throw new Refusal(SEM_EMITENTE_CADASTRADO, 409);
   const credencial = await credencialDaEmpresa(empresa);
   const ambiente = ambienteDaLinha(cte.environment);
-  const destino: Destino = { uf: doEmitente.state, ambiente, credencial };
+  // O CT-e autorizado pela SVC é cancelado NA SVC: "os pedidos de cancelamento na modalidade SVC somente poderão afetar
+  // documentos autorizados em contingência pela correspondente SVC" (MOC 4.00, Visão Geral, item 6.2.1), e ela recebe evento
+  // mesmo desativada (regra C09, observação).
+  const destino = destinoDaChave(doEmitente.state, ambiente, credencial, cte.accessKey);
 
   const evento = montarCancelamento({ chave: cte.accessKey, cnpj: doEmitente.cnpj, ambiente, protocolo: cte.protocol, justificativa, quando: new Date() });
   const assinado = assinarXml(evento.xml, ALVO_DO_EVENTO, { chavePem: credencial.chavePem, certificadoPem: credencial.titularPem });
@@ -897,8 +1092,9 @@ export async function cancelarCte(empresa: Empresa, cteId: string, justificativa
   let protocolo: string | null;
   let quando: Date;
   let retorno: string;
+  let resposta: RespostaDoEvento;
   try {
-    const resposta = await enviarEvento(destino, assinado);
+    resposta = await enviarEvento(destino, assinado);
     if (eventoRegistrado(resposta, { chave: cte.accessKey, tipo: TIPO_DO_CANCELAMENTO })) {
       protocolo = resposta.protocolo;
       quando = resposta.registradoEm ?? new Date();
@@ -928,6 +1124,26 @@ export async function cancelarCte(empresa: Empresa, cteId: string, justificativa
       data: { status: "CANCELLED", cancelledAt: quando, cancelProtocol: protocolo, cancelReason: justificativa, cancelXml: `${assinado}${retorno}` },
       select: CTE_SELECT,
     });
+    // O evento registrado também vai para a tabela dos eventos do CT-e, como os outros (as colunas `cancel*` continuam valendo).
+    const jaTem = await tx.cteEvent.findFirst({ where: { cteId: cte.id, type: TIPO_DO_CANCELAMENTO, sequence: 1 }, select: { id: true } });
+    if (!jaTem) {
+      await tx.cteEvent.create({
+        data: {
+          cteId: cte.id,
+          type: TIPO_DO_CANCELAMENTO,
+          sequence: 1,
+          xmlSent: assinado,
+          xmlReturn: retorno ? montarProcEventoCte(assinado, retorno) : "",
+          protocol: protocolo,
+          statusCode: resposta.cStat,
+          statusReason: resposta.motivo.slice(0, MOTIVO_MAXIMO),
+          registeredAt: quando,
+          details: { descricao: `Cancelado: ${justificativa}`.slice(0, 200) },
+          createdById: quem.ator.id,
+        },
+        select: { id: true },
+      });
+    }
     // O CT-e da carga só muda se for este mesmo (o de produção).
     await tx.collection.updateMany({ where: { id: cte.collectionId, cteKey: cte.accessKey }, data: { cteStatus: "CANCELLED" } });
     await registrarAuditoria(tx, {
@@ -944,6 +1160,518 @@ export async function cancelarCte(empresa: Empresa, cteId: string, justificativa
     return atualizado;
   });
   return paraATela(gravado);
+}
+
+/* ------------------------------- Eventos do CT-e ------------------------------- */
+
+const EVENTO_SELECT = { id: true, type: true, sequence: true, protocol: true, registeredAt: true, details: true, cancelledAt: true } as const;
+type LinhaDoEvento = Prisma.CteEventGetPayload<{ select: typeof EVENTO_SELECT }>;
+type Detalhes = { descricao?: unknown; deFora?: unknown; recebedor?: unknown; entregueEm?: unknown } | null;
+
+function eventoParaATela(evento: LinhaDoEvento): EventoDoCte {
+  const detalhes = evento.details as Detalhes;
+  return {
+    id: evento.id,
+    tipo: evento.type,
+    sequencia: evento.sequence,
+    protocolo: evento.protocol,
+    registradoEm: evento.registeredAt.toISOString(),
+    descricao: typeof detalhes?.descricao === "string" ? detalhes.descricao : (ROTULO_DO_EVENTO_DO_CTE[evento.type] ?? evento.type),
+    canceladoEm: evento.cancelledAt?.toISOString() ?? null,
+    deFora: detalhes?.deFora === true,
+  };
+}
+
+const ALVO_SELECT = {
+  ...CTE_SELECT,
+  collectionId: true,
+  issuedAt: true,
+  xmlSent: true,
+  cancelProtocol: true,
+  cancelReason: true,
+  collection: { select: { trackingCode: true } },
+} as const;
+type Alvo = Prisma.CteGetPayload<{ select: typeof ALVO_SELECT }>;
+
+type LeituraDeEventos = Pick<Tx, "cte" | "cteEvent" | "proofOfDelivery">;
+
+/** A imagem do comprovante que entra no `hashEntrega`, em Base64, e o nome dela para a tela. */
+type ImagemDaEntrega = { base64: string; nome: string };
+
+const IMAGEM_DO_TIPO: Record<string, string> = { CANHOTO: "foto do canhoto", ENTREGA: "foto da entrega" };
+
+/** O texto Base64 de uma imagem guardada como data URL (ou já só em Base64, nos comprovantes antigos). */
+const base64DaImagem = (valor: string) => {
+  const dataUrl = comoDataUrl(valor);
+  return dataUrl.slice(dataUrl.indexOf(",") + 1);
+};
+
+type ComprovanteAceito = { id: string; nome: string; documento: string; entregueEm: Date; latitude: number | null; longitude: number | null; imagem: ImagemDaEntrega | null };
+
+/**
+ * O comprovante de entrega APROVADO da carga, com a imagem que prova a entrega.
+ * A ordem de escolha da imagem: a foto do canhoto assinado (a mais antiga das
+ * que valem hoje), a foto da entrega, a foto do comprovante antigo e, por
+ * último, a assinatura colhida na tela. Foto de avaria e de fachada não servem.
+ * A hora da entrega é a da baixa do motorista (quando o comprovante foi criado).
+ */
+async function comprovanteAceito(db: LeituraDeEventos, collectionId: string): Promise<ComprovanteAceito | null> {
+  const comprovante = await db.proofOfDelivery.findFirst({
+    where: { collectionId, status: "APPROVED" },
+    select: {
+      id: true,
+      receiverName: true,
+      receiverDoc: true,
+      latitude: true,
+      longitude: true,
+      createdAt: true,
+      photoBase64: true,
+      signatureBase64: true,
+      photos: { where: { replacedAt: null, kind: { in: ["CANHOTO", "ENTREGA"] } }, select: { kind: true, dataUrl: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 10 },
+    },
+  });
+  if (!comprovante) return null;
+  const foto = comprovante.photos.find((f) => f.kind === "CANHOTO") ?? comprovante.photos.find((f) => f.kind === "ENTREGA");
+  const imagem: ImagemDaEntrega | null = foto
+    ? { base64: base64DaImagem(foto.dataUrl), nome: IMAGEM_DO_TIPO[foto.kind] }
+    : comprovante.photoBase64
+      ? { base64: base64DaImagem(comprovante.photoBase64), nome: IMAGEM_DO_TIPO.ENTREGA }
+      : comprovante.signatureBase64
+        ? { base64: base64DaImagem(comprovante.signatureBase64), nome: "assinatura" }
+        : null;
+  return {
+    id: comprovante.id,
+    nome: textoDoXml(comprovante.receiverName, 60),
+    documento: textoDoXml(comprovante.receiverDoc, 20),
+    entregueEm: comprovante.createdAt,
+    latitude: comprovante.latitude,
+    longitude: comprovante.longitude,
+    imagem: imagem && imagem.base64 !== "" ? imagem : null,
+  };
+}
+
+/** O comprovante de entrega em vigor na SEFAZ (registrado e não cancelado), se houver. */
+const entregaEmVigor = (eventos: readonly LinhaDoEvento[]) => eventos.filter((evento) => evento.type === TIPO_DO_EVENTO_DO_CTE.COMPROVANTE_DE_ENTREGA && evento.cancelledAt === null).at(-1) ?? null;
+
+/** O que impede o registro da entrega deste CT-e, ou `null` quando dá para registrar. */
+function impedimentoDaEntrega(cte: Pick<Alvo, "status" | "protocol" | "accessKey" | "issuedAt">, comprovante: ComprovanteAceito | null): string | null {
+  if (cte.status !== "AUTHORIZED" || !cte.protocol) return SO_AUTORIZADO_RECEBE_EVENTO;
+  if (svcDaChave(cte.accessKey)) return SVC_NAO_RECEBE_ESTE_EVENTO;
+  if (!comprovante) return SEM_COMPROVANTE_ACEITO;
+  if (!comprovante.imagem) return SEM_IMAGEM_NO_COMPROVANTE;
+  if (comprovante.nome.length < 2 || comprovante.documento.length < 2) return RECEBEDOR_INCOMPLETO;
+  // Regra O06 (rejeição 872): a entrega não pode ser anterior à emissão do CT-e.
+  if (comprovante.entregueEm.getTime() < cte.issuedAt.getTime()) return ENTREGA_ANTES_DA_EMISSAO;
+  return null;
+}
+
+const ENTREGA_ANTES_DA_EMISSAO = "A entrega foi registrada antes da emissão deste CT-e: a SEFAZ rejeita o comprovante (872).";
+
+async function lerEventos(db: LeituraDeEventos, cte: Alvo): Promise<{ linhas: LinhaDoEvento[]; eventos: EventoDoCte[] }> {
+  const linhas = await db.cteEvent.findMany({ where: { cteId: cte.id }, select: EVENTO_SELECT, orderBy: [{ registeredAt: "asc" }, { createdAt: "asc" }], take: 500 });
+  const eventos = linhas.map(eventoParaATela);
+  // O cancelamento anterior à tabela de eventos só existe nas colunas do CT-e: aparece na lista do mesmo jeito.
+  if (cte.cancelledAt && !linhas.some((linha) => linha.type === TIPO_DO_CANCELAMENTO)) {
+    eventos.push({
+      id: `cancelamento-${cte.id}`,
+      tipo: TIPO_DO_CANCELAMENTO,
+      sequencia: 1,
+      protocolo: cte.cancelProtocol,
+      registradoEm: cte.cancelledAt.toISOString(),
+      descricao: `Cancelado${cte.cancelReason ? `: ${cte.cancelReason}` : ""}`.slice(0, 200),
+      canceladoEm: null,
+      deFora: false,
+    });
+  }
+  return { linhas, eventos };
+}
+
+/** Os eventos registrados de um CT-e e a situação do comprovante de entrega dele: é o que os painéis "Corrigir" e "Entrega" mostram. */
+export async function eventosDoCte(empresa: Empresa, cteId: string): Promise<EventosDoCte> {
+  const cte = await empresa.db.cte.findUnique({ where: { id: cteId }, select: ALVO_SELECT });
+  if (!cte) throw new Refusal(CTE_NAO_ENCONTRADO, 404);
+  const { linhas, eventos } = await lerEventos(empresa.db, cte);
+  const emVigor = entregaEmVigor(linhas);
+  const comprovante = await comprovanteAceito(empresa.db, cte.collectionId);
+  const doComprovante = { recebedor: comprovante?.nome || null, entregueEm: comprovante?.entregueEm.toISOString() ?? null, imagem: comprovante?.imagem?.nome ?? null };
+  let entrega: EntregaDoCte;
+  if (emVigor) {
+    const detalhes = emVigor.details as Detalhes;
+    entrega = {
+      situacao: "REGISTRADA",
+      motivo: null,
+      recebedor: typeof detalhes?.recebedor === "string" ? detalhes.recebedor : doComprovante.recebedor,
+      entregueEm: typeof detalhes?.entregueEm === "string" ? detalhes.entregueEm : doComprovante.entregueEm,
+      imagem: doComprovante.imagem,
+      protocolo: emVigor.protocol,
+    };
+  } else {
+    const motivo = impedimentoDaEntrega(cte, comprovante);
+    entrega = { situacao: motivo ? "INDISPONIVEL" : "DISPONIVEL", motivo, ...doComprovante, protocolo: null };
+  }
+  return { cte: paraATela(cte), eventos, entrega };
+}
+
+type EnvioDeEvento = { alvo: Alvo; ambiente: Ambiente; cnpj: string; destino: Destino; credencial: CredencialDaEmpresa; protocolo: string };
+
+/**
+ * Lê o CT-e e o que é preciso para assinar e enviar um evento dele (carta de
+ * correção, comprovante de entrega e o cancelamento do comprovante). Só o
+ * CT-e autorizado, e não o que a SVC autorizou (`SVC_NAO_RECEBE_ESTE_EVENTO`).
+ */
+async function prepararEvento(empresa: Empresa, cteId: string): Promise<EnvioDeEvento> {
+  const alvo = await empresa.db.cte.findUnique({ where: { id: cteId }, select: ALVO_SELECT });
+  if (!alvo) throw new Refusal(CTE_NAO_ENCONTRADO, 404);
+  if (alvo.status !== "AUTHORIZED" || !alvo.protocol) throw new Refusal(SO_AUTORIZADO_RECEBE_EVENTO, 409);
+  if (svcDaChave(alvo.accessKey)) throw new Refusal(SVC_NAO_RECEBE_ESTE_EVENTO, 409);
+  const doEmitente = await empresa.db.fiscalIssuer.findUnique({ where: { tenantId: empresa.id }, select: { cnpj: true, state: true } });
+  if (!doEmitente) throw new Refusal(SEM_EMITENTE_CADASTRADO, 409);
+  const credencial = await credencialDaEmpresa(empresa);
+  const ambiente = ambienteDaLinha(alvo.environment);
+  return { alvo, ambiente, cnpj: doEmitente.cnpj, destino: { uf: doEmitente.state, ambiente, credencial }, credencial, protocolo: alvo.protocol };
+}
+
+/** A próxima sequência (`nSeqEvento`) de um tipo de evento para o CT-e: conta também os eventos que vieram pela consulta. */
+async function proximaSequencia(empresa: Empresa, cteId: string, tipo: string): Promise<number> {
+  const ultimo = await empresa.db.cteEvent.findFirst({ where: { cteId, type: tipo }, orderBy: { sequence: "desc" }, select: { sequence: true } });
+  return (ultimo?.sequence ?? 0) + 1;
+}
+
+type Registro = { protocolo: string | null; quando: Date; cStat: number; motivo: string; xmlEnviado: string; xmlDoRetorno: string };
+
+/** Rejeição 631 (MOC 4.00, Visão Geral, item 5.1.5, regra N16): já há um evento deste tipo com esta sequência. */
+const CSTAT_DUPLICIDADE_DE_EVENTO = 631;
+
+/**
+ * Assina e envia um evento que NÃO muda a situação do CT-e (carta de correção,
+ * comprovante de entrega, cancelamento do comprovante). É o desenho do MDF-e
+ * (`enviarERegistrar`, em src/lib/mdfe-db.ts):
+ *
+ * - 135, com protocolo, para a chave e o tipo enviados: registrado.
+ * - 134 (MOC 4.00, Visão Geral, item 5.1.7): o evento ficou VINCULADO ao CT-e,
+ *   com alerta sobre a situação do documento. Vale como registro.
+ * - 136: guardado SEM vínculo (o CT-e não existe lá). Não vale: `Refusal` 409
+ *   dizendo que o evento ficou guardado na SEFAZ.
+ * - 631: a SEFAZ já tem um evento deste tipo com esta sequência (uma resposta
+ *   anterior se perdeu, ou ele foi registrado por fora). O sistema NÃO presume
+ *   que é o mesmo conteúdo: manda conferir na SEFAZ, que traz o evento.
+ * - Qualquer outra resposta é recusa: `Refusal` 409 com o motivo da SEFAZ.
+ * - Sem resposta: nada é gravado, e a frase manda conferir antes de repetir.
+ */
+async function enviarERegistrar(envio: EnvioDeEvento, evento: EventoMontado, oQue: string): Promise<Registro> {
+  const assinado = assinarXml(evento.xml, ALVO_DO_EVENTO, { chavePem: envio.credencial.chavePem, certificadoPem: envio.credencial.titularPem });
+  try {
+    const resposta = await enviarEvento(envio.destino, assinado);
+    const esperado = { chave: envio.alvo.accessKey, tipo: evento.tipo };
+    const vinculado = eventoRegistrado(resposta, esperado) || (eventoGuardadoComRessalva(resposta, esperado) && resposta.cStat === CSTAT.EVENTO_REGISTRADO_COM_ALERTA);
+    if (vinculado) return { protocolo: resposta.protocolo, quando: resposta.registradoEm ?? new Date(), cStat: resposta.cStat, motivo: resposta.motivo.slice(0, MOTIVO_MAXIMO), xmlEnviado: assinado, xmlDoRetorno: resposta.xml };
+    if (eventoGuardadoComRessalva(resposta, esperado)) throw new Refusal(fraseDoEventoComRessalva(oQue, resposta), 409);
+    if (resposta.cStat === CSTAT_DUPLICIDADE_DE_EVENTO) {
+      throw new Refusal(`A SEFAZ já tem um evento deste tipo com a sequência ${evento.sequencia} para este CT-e (${frase(resposta.cStat, resposta.motivo)}). Use "Conferir na SEFAZ" para trazer os eventos registrados e tente de novo.`, 409);
+    }
+    throw new Refusal(`A SEFAZ recusou ${oQue}: ${frase(resposta.cStat, resposta.motivo)}.`, 409);
+  } catch (erro) {
+    if (erro instanceof SefazError) {
+      const proximo = erro.incerto ? ' Antes de tentar de novo, use "Conferir na SEFAZ": o evento pode ter sido registrado.' : " Nada foi registrado: tente de novo.";
+      throw new Refusal(`${erro.message}${proximo}`, STATUS_DA_FALHA(erro));
+    }
+    throw erro;
+  }
+}
+
+/** A linha do evento registrado: o procEventoCTe (evento assinado + retorno) e o protocolo. */
+const linhaDoEvento = (cteId: string, evento: EventoMontado, registro: Registro, detalhes: Prisma.InputJsonObject, autor: string | null) => ({
+  cteId,
+  type: evento.tipo,
+  sequence: evento.sequencia,
+  xmlSent: registro.xmlEnviado,
+  xmlReturn: registro.xmlDoRetorno ? montarProcEventoCte(registro.xmlEnviado, registro.xmlDoRetorno) : "",
+  protocol: registro.protocolo,
+  statusCode: registro.cStat,
+  statusReason: registro.motivo,
+  registeredAt: registro.quando,
+  details: detalhes,
+  createdById: autor,
+});
+
+const doCte = (alvo: Alvo) => `CT-e nº ${alvo.number} da carga ${alvo.collection.trackingCode ?? ""}`;
+
+/**
+ * Carta de correção eletrônica (evento 110110; MOC 4.00, Visão Geral, item 6.4).
+ * As correções já chegam sem os campos proibidos (`cartaDeCorrecaoSchema`). A
+ * sequência é a próxima deste CT-e, até 20 (regra O01). Só fica registrada com
+ * o retorno da SEFAZ.
+ */
+export async function corrigirCte(empresa: Empresa, cteId: string, correcoes: readonly CorrecaoDaCarta[], quem: Quem): Promise<EventosDoCte> {
+  const envio = await prepararEvento(empresa, cteId);
+  const { alvo } = envio;
+  const sequencia = await proximaSequencia(empresa, cteId, TIPO_DO_EVENTO_DO_CTE.CARTA_DE_CORRECAO);
+  if (sequencia > MAXIMO_DE_CARTAS) throw new Refusal(LIMITE_DE_CARTAS, 409);
+
+  const evento = montarCartaDeCorrecao({ chave: alvo.accessKey, cnpj: envio.cnpj, ambiente: envio.ambiente, quando: new Date(), sequencia, correcoes });
+  const registro = await enviarERegistrar(envio, evento, "a carta de correção");
+  const resumo = resumoDaCarta(correcoes);
+
+  await empresa.transacao(async (tx) => {
+    await tx.cteEvent.create({ data: linhaDoEvento(alvo.id, evento, registro, { descricao: resumo, correcoes: correcoes.map((c) => ({ grupo: c.grupo, campo: c.campo, valor: c.valor, item: c.item ?? null })) }, quem.ator.id), select: { id: true } });
+    await registrarAuditoria(tx, {
+      ...quem,
+      acao: "cte.corrigir",
+      entidade: "cte",
+      entidadeId: alvo.id,
+      resumo: `Carta de correção nº ${sequencia} registrada para o ${doCte(alvo)}`,
+      depois: { sequence: sequencia, protocol: registro.protocolo, correcoes: resumo },
+    });
+  });
+  return eventosDoCte(empresa, cteId);
+}
+
+const DIA_E_HORA = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/** As chaves das NF-e que o CT-e transporta, lidas do XML que foi autorizado: são as que o comprovante pode relacionar (regra O17, rejeição 864). */
+const chavesDeNfeDoCte = (xml: string) => [...xml.matchAll(/<infNFe><chave>(\d{44})<\/chave>/g)].map((achado) => achado[1]);
+
+/**
+ * Registra na SEFAZ o comprovante de entrega do CT-e (evento 110180; MOC 4.00,
+ * Visão Geral, item 6.8), com o que o comprovante APROVADO da carga tem: quem
+ * recebeu, quando, a posição (se houver) e o hash da imagem. É ação de quem tem
+ * a capacidade `fiscal`: nada aqui é enviado sozinho.
+ *
+ * Um comprovante por CT-e (regra O08, rejeição 870): com um em vigor, o pedido
+ * é recusado antes de ir à SEFAZ.
+ *
+ * Na auditoria vai o nome de quem recebeu; documento, posição, imagem e hash
+ * não (como no resto do módulo de comprovantes).
+ */
+export async function registrarEntrega(empresa: Empresa, cteId: string, quem: Quem): Promise<EventosDoCte> {
+  const envio = await prepararEvento(empresa, cteId);
+  const { alvo } = envio;
+  const { linhas } = await lerEventos(empresa.db, alvo);
+  if (entregaEmVigor(linhas)) throw new Refusal(ENTREGA_JA_REGISTRADA, 409);
+  const comprovante = await comprovanteAceito(empresa.db, alvo.collectionId);
+  const impedimento = impedimentoDaEntrega(alvo, comprovante);
+  if (impedimento || !comprovante?.imagem) throw new Refusal(impedimento ?? SEM_IMAGEM_NO_COMPROVANTE, 409);
+  const sequencia = await proximaSequencia(empresa, cteId, TIPO_DO_EVENTO_DO_CTE.COMPROVANTE_DE_ENTREGA);
+  if (sequencia > MAXIMO_DE_COMPROVANTES) throw new Refusal(`Este CT-e já tem ${MAXIMO_DE_COMPROVANTES} eventos de comprovante de entrega, o máximo que a SEFAZ aceita.`, 409);
+
+  const agora = new Date();
+  const evento = montarComprovanteDeEntrega({
+    chave: alvo.accessKey,
+    cnpj: envio.cnpj,
+    ambiente: envio.ambiente,
+    quando: agora,
+    sequencia,
+    protocolo: envio.protocolo,
+    entregueEm: comprovante.entregueEm,
+    documento: comprovante.documento,
+    nome: comprovante.nome,
+    latitude: comprovante.latitude,
+    longitude: comprovante.longitude,
+    hash: hashDaEntrega(alvo.accessKey, comprovante.imagem.base64),
+    hashEm: agora,
+    chavesDeNfe: chavesDeNfeDoCte(alvo.xmlSent),
+  });
+  const registro = await enviarERegistrar(envio, evento, "o comprovante de entrega");
+  const descricao = `Entregue a ${comprovante.nome} em ${DIA_E_HORA.format(comprovante.entregueEm)} (${comprovante.imagem.nome})`;
+
+  await empresa.transacao(async (tx) => {
+    await tx.cteEvent.create({
+      data: linhaDoEvento(alvo.id, evento, registro, { descricao, recebedor: comprovante.nome, entregueEm: comprovante.entregueEm.toISOString(), proofId: comprovante.id }, quem.ator.id),
+      select: { id: true },
+    });
+    await registrarAuditoria(tx, {
+      ...quem,
+      acao: "cte.entrega",
+      entidade: "cte",
+      entidadeId: alvo.id,
+      resumo: `Comprovante de entrega registrado na SEFAZ para o ${doCte(alvo)}`,
+      depois: { sequence: sequencia, protocol: registro.protocolo, recebedor: comprovante.nome },
+    });
+  });
+  return eventosDoCte(empresa, cteId);
+}
+
+/**
+ * Cancela o comprovante de entrega em vigor (evento 110181; MOC 4.00, Visão
+ * Geral, item 6.9), informando o protocolo do CT-e e o do evento de entrega
+ * (`nProtCE`). O comprovante só fica cancelado com o retorno da SEFAZ.
+ */
+export async function cancelarEntrega(empresa: Empresa, cteId: string, quem: Quem): Promise<EventosDoCte> {
+  const envio = await prepararEvento(empresa, cteId);
+  const { alvo } = envio;
+  const { linhas } = await lerEventos(empresa.db, alvo);
+  const emVigor = entregaEmVigor(linhas);
+  if (!emVigor?.protocol) throw new Refusal(SEM_ENTREGA_REGISTRADA, 409);
+  const sequencia = await proximaSequencia(empresa, cteId, TIPO_DO_EVENTO_DO_CTE.CANCELAMENTO_DO_COMPROVANTE);
+  if (sequencia > MAXIMO_DE_COMPROVANTES) throw new Refusal(`Este CT-e já tem ${MAXIMO_DE_COMPROVANTES} cancelamentos de comprovante de entrega, o máximo que a SEFAZ aceita.`, 409);
+
+  const evento = montarCancelamentoDoComprovante({ chave: alvo.accessKey, cnpj: envio.cnpj, ambiente: envio.ambiente, quando: new Date(), sequencia, protocolo: envio.protocolo, protocoloDoComprovante: emVigor.protocol });
+  const registro = await enviarERegistrar(envio, evento, "o cancelamento do comprovante de entrega");
+
+  await empresa.transacao(async (tx) => {
+    await tx.cteEvent.create({ data: linhaDoEvento(alvo.id, evento, registro, { descricao: `Cancelado o comprovante de entrega de protocolo ${emVigor.protocol}` }, quem.ator.id), select: { id: true } });
+    await tx.cteEvent.update({ where: { id: emVigor.id }, data: { cancelledAt: registro.quando }, select: { id: true } });
+    await registrarAuditoria(tx, {
+      ...quem,
+      acao: "cte.entrega.cancelar",
+      entidade: "cte",
+      entidadeId: alvo.id,
+      resumo: `Comprovante de entrega do ${doCte(alvo)} cancelado na SEFAZ`,
+      depois: { sequence: sequencia, protocol: registro.protocolo, protocoloDoComprovante: emVigor.protocol },
+    });
+  });
+  return eventosDoCte(empresa, cteId);
+}
+
+/* ----------------------------- Conferir na SEFAZ ------------------------------ */
+
+/**
+ * Grava os eventos que a consulta devolveu e o sistema não tinha (pelo tipo e
+ * pela sequência): entram com `xmlSent` vazio, o `procEventoCTe` em
+ * `xmlReturn` e a marca de que vieram de fora. O cancelamento de comprovante
+ * (110181) que veio assim marca como cancelado o comprovante que ele cita.
+ */
+async function gravarEventosDaConsulta(tx: Tx, cteId: string, eventos: readonly EventoDaConsulta[]): Promise<number> {
+  let novos = 0;
+  for (const evento of eventos) {
+    const existe = await tx.cteEvent.findFirst({ where: { cteId, type: evento.tipo, sequence: evento.sequencia }, select: { id: true } });
+    if (!existe) {
+      const rotulo = ROTULO_DO_EVENTO_DO_CTE[evento.tipo] ?? evento.descricao ?? `Evento ${evento.tipo}`;
+      await tx.cteEvent.create({
+        data: {
+          cteId,
+          type: evento.tipo,
+          sequence: evento.sequencia,
+          xmlSent: "",
+          xmlReturn: evento.xml,
+          protocol: evento.protocolo,
+          statusCode: evento.cStat,
+          statusReason: evento.motivo.slice(0, MOTIVO_MAXIMO),
+          registeredAt: evento.registradoEm ?? new Date(),
+          details: { descricao: `${rotulo} (registrado fora deste sistema)`, deFora: true },
+          createdById: null,
+        },
+        select: { id: true },
+      });
+      novos += 1;
+    }
+    if (evento.tipo === TIPO_DO_EVENTO_DO_CTE.CANCELAMENTO_DO_COMPROVANTE && evento.protocoloCancelado) {
+      await tx.cteEvent.updateMany({
+        where: { cteId, type: TIPO_DO_EVENTO_DO_CTE.COMPROVANTE_DE_ENTREGA, protocol: evento.protocoloCancelado, cancelledAt: null },
+        data: { cancelledAt: evento.registradoEm ?? new Date() },
+      });
+    }
+  }
+  return novos;
+}
+
+const CANCELADO_POR_FORA = "Cancelado fora deste sistema (situação lida na consulta à SEFAZ)";
+
+/**
+ * "Conferir na SEFAZ": consulta a situação do CT-e pela chave e atualiza o que
+ * este sistema tem (MOC 4.00, Visão Geral, item 4.5). QUEM DECIDE É O `cStat`
+ * DO TOPO da resposta (item 4.5.6): 100 = autorizado, 101 = cancelado. A
+ * denegação (110) não existe mais no CT-e 4.00 ("Eliminação da Denegação",
+ * histórico de alterações do manual): não é tratada.
+ *
+ * - CT-e autorizado aqui e cancelado lá (101): passa a cancelado, com o
+ *   protocolo do evento de cancelamento que a consulta trouxer.
+ * - CT-e que ficou "sem resposta": se a SEFAZ o autorizou, é gravado com o
+ *   protocolo. Quando a carga já tem outro CT-e autorizado (o da SVC), ele NÃO
+ *   vira o CT-e da carga: fica marcado para ser cancelado (item 11.5.3). Se
+ *   não consta (217) e a carga já tem o CT-e da SVC, vira "rejeitado" com o
+ *   número dado como usado; sem outro CT-e, continua "sem resposta" (emitir de
+ *   novo reenvia o mesmo XML).
+ * - Os eventos vinculados que a consulta devolve (`procEventoCTe`) e que o
+ *   sistema não tinha são gravados.
+ * - Qualquer outra resposta não muda nada: a frase diz o que a SEFAZ respondeu.
+ *
+ * O CT-e da SVC é consultado na SVC (item 4.5.6).
+ */
+export async function conferirNaSefaz(empresa: Empresa, cteId: string, quem: Quem): Promise<ConferenciaNaSefaz> {
+  const cte = await empresa.db.cte.findUnique({ where: { id: cteId }, select: ALVO_SELECT });
+  if (!cte) throw new Refusal(CTE_NAO_ENCONTRADO, 404);
+  const semResposta = cte.status === "DRAFT" && cte.unanswered;
+  if (!semResposta && cte.status !== "AUTHORIZED" && cte.status !== "CANCELLED") throw new Refusal(SO_ENVIADO_SE_CONFERE, 409);
+  const doEmitente = await empresa.db.fiscalIssuer.findUnique({ where: { tenantId: empresa.id }, select: { cnpj: true, state: true } });
+  if (!doEmitente) throw new Refusal(SEM_EMITENTE_CADASTRADO, 409);
+  const credencial = await credencialDaEmpresa(empresa);
+  const ambiente = ambienteDaLinha(cte.environment);
+
+  let resposta: RespostaDaConsulta;
+  try {
+    resposta = await consultarCte(destinoDaChave(doEmitente.state, ambiente, credencial, cte.accessKey), cte.accessKey);
+  } catch (erro) {
+    if (erro instanceof SefazError) throw new Refusal(`${erro.message} Nada mudou neste sistema: tente conferir de novo.`, STATUS_DA_FALHA(erro));
+    throw erro;
+  }
+  const lida = frase(resposta.cStat, resposta.motivo);
+  const devolver = async (mensagem: string, novos = 0): Promise<ConferenciaNaSefaz> => {
+    const atual = await empresa.db.cte.findUniqueOrThrow({ where: { id: cteId }, select: ALVO_SELECT });
+    return { cte: paraATela(atual), mensagem, eventos: (await lerEventos(empresa.db, atual)).eventos, novos };
+  };
+  const eventosNovos = (novos: number) => (novos > 0 ? ` ${novos} evento(s) que este sistema não tinha foram gravados.` : "");
+
+  if (semResposta) {
+    const decisao = decidir(resposta, { chave: cte.accessKey, ambiente, resumo: resumoDaAssinatura(cte.xmlSent) });
+    const outro = await empresa.db.cte.findFirst({ where: { collectionId: cte.collectionId, environment: cte.environment, status: "AUTHORIZED", id: { not: cte.id } }, select: { number: true } });
+    if (decisao.tipo === "autorizado") {
+      const preparado: Preparado = { id: cte.id, chave: cte.accessKey, numero: cte.number, xml: cte.xmlSent, ambiente, uf: doEmitente.state, cnpj: doEmitente.cnpj, retomar: true, carga: { id: cte.collectionId, trackingCode: cte.collection.trackingCode } };
+      await gravarAutorizacao(empresa, preparado, decisao.protocolo, quem, outro?.number ?? null);
+      const novos = await empresa.transacao((tx) => gravarEventosDaConsulta(tx, cte.id, resposta.eventos));
+      return devolver(
+        outro
+          ? `A SEFAZ tinha autorizado o CT-e nº ${cte.number} (protocolo ${decisao.protocolo.numero}), e a carga já tem o CT-e nº ${outro.number}: CANCELE o CT-e nº ${cte.number} (o prazo é de 7 dias da autorização).`
+          : `A SEFAZ tinha autorizado o CT-e nº ${cte.number}: ele está gravado, com o protocolo ${decisao.protocolo.numero}.${eventosNovos(novos)}`,
+        novos,
+      );
+    }
+    if (decisao.tipo === "finalizado" || (outro && decisao.tipo === "rejeitado" && decisao.cStat === CSTAT.NAO_CONSTA)) {
+      const motivo = decisao.tipo === "finalizado" ? decisao.motivo : `A SEFAZ não tem este envio (${frase(decisao.cStat, decisao.motivo)}). A carga ficou com o CT-e nº ${outro?.number ?? ""}.`;
+      await gravarSemAutorizacao(empresa, cte.id, { status: "REJECTED", statusCode: decisao.cStat, statusReason: motivo, unanswered: false, numberBurned: true });
+      return devolver(decisao.tipo === "finalizado" ? `A SEFAZ informa que o CT-e nº ${cte.number} já está ${decisao.situacao} lá (${lida}): ele não vale como autorizado.` : `A SEFAZ não tem o envio do CT-e nº ${cte.number} (${lida}): ele foi encerrado como rejeitado, e o número não será reutilizado.`);
+    }
+    if (decisao.tipo === "rejeitado" && decisao.cStat === CSTAT.NAO_CONSTA) return devolver(`A SEFAZ não tem o CT-e nº ${cte.number} (${lida}). Ele continua "sem resposta": emitir de novo reenvia o mesmo XML, sem duplicar.`);
+    return devolver(`A consulta não esclareceu a situação do CT-e nº ${cte.number}: ${decisao.tipo === "incoerente" ? decisao.motivo : lida}. Nada mudou.`);
+  }
+
+  if (resposta.cStat !== CSTAT.AUTORIZADO && resposta.cStat !== CSTAT.CANCELADO) return devolver(`A SEFAZ respondeu ${lida}. Nada mudou neste sistema.`);
+  // A resposta precisa ser deste CT-e: o protocolo de autorização que vem junto é o da chave consultada.
+  if (resposta.protocolo && resposta.protocolo.chave !== cte.accessKey) throw new Refusal("A consulta devolveu o protocolo de outra chave de acesso. Nada mudou neste sistema.", 502);
+
+  const canceladoLa = resposta.cStat === CSTAT.CANCELADO;
+  const cancelamento = resposta.eventos.find((evento) => evento.tipo === TIPO_DO_CANCELAMENTO) ?? null;
+  const novos = await empresa.transacao(async (tx) => {
+    const gravados = await gravarEventosDaConsulta(tx, cte.id, resposta.eventos);
+    if (canceladoLa && cte.status === "AUTHORIZED") {
+      await tx.cte.update({
+        where: { id: cte.id },
+        data: { status: "CANCELLED", cancelledAt: cancelamento?.registradoEm ?? new Date(), cancelProtocol: cancelamento?.protocolo ?? null, cancelReason: CANCELADO_POR_FORA, statusCode: resposta.cStat, statusReason: resposta.motivo.slice(0, MOTIVO_MAXIMO) },
+        select: { id: true },
+      });
+      await tx.collection.updateMany({ where: { id: cte.collectionId, cteKey: cte.accessKey }, data: { cteStatus: "CANCELLED" } });
+      await registrarAuditoria(tx, {
+        ...quem,
+        acao: "cte.conferir",
+        entidade: "cte",
+        entidadeId: cte.id,
+        resumo: `${doCte(cte)} está cancelado na SEFAZ (${lida}): situação atualizada pela consulta`,
+        antes: { status: "AUTHORIZED" },
+        depois: { status: "CANCELLED", cancelProtocol: cancelamento?.protocolo ?? null },
+      });
+      await avisarEquipe(tx, "fiscalVer", avisoDeCte("cancelado", { numero: cte.number, ambiente, carga: cte.collection.trackingCode }), quem.ator.id);
+      await avisarIntegracao(tx, "cte.cancelado", cte.id);
+    }
+    return gravados;
+  });
+
+  if (canceladoLa) return devolver(cte.status === "AUTHORIZED" ? `A SEFAZ informa que o CT-e nº ${cte.number} está CANCELADO (${lida}): a situação foi atualizada.${eventosNovos(novos)}` : `O CT-e nº ${cte.number} está cancelado na SEFAZ, como aqui (${lida}).${eventosNovos(novos)}`, novos);
+  return devolver(
+    cte.status === "CANCELLED"
+      ? `A SEFAZ informa que o CT-e nº ${cte.number} está AUTORIZADO (${lida}), e aqui ele consta cancelado: nada foi mudado. Confira o cancelamento.${eventosNovos(novos)}`
+      : `O CT-e nº ${cte.number} está autorizado na SEFAZ, como aqui (${lida}).${eventosNovos(novos)}`,
+    novos,
+  );
 }
 
 /* ------------------------------ XML e status do serviço ------------------------ */

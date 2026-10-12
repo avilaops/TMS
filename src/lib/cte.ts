@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { Svc } from "@/lib/cte/chave";
+import { textoDoXml } from "@/lib/cte/texto";
 import { UFS } from "@/lib/roteiro";
 
 /**
@@ -524,11 +526,13 @@ export type CteEmitido = {
   /** O envio ficou sem resposta: emitir de novo começa consultando a SEFAZ pela chave. */
   semResposta: boolean;
   atualizadoEm: string;
+  /** A SVC a que o CT-e foi enviado (o `tpEmis` 7 ou 8 da chave), ou `null` na emissão normal. */
+  svc: Svc | null;
 };
 
 /** A situação em uma frase curta, para o selo da lista. */
-export function seloDoCte(cte: Pick<CteEmitido, "situacao" | "ambiente" | "numero" | "semResposta">): string {
-  const sufixo = cte.ambiente === "HOMOLOGACAO" ? " (homologação)" : "";
+export function seloDoCte(cte: Pick<CteEmitido, "situacao" | "ambiente" | "numero" | "semResposta"> & { svc?: Svc | null }): string {
+  const sufixo = `${cte.svc ? `, ${cte.svc}` : ""}${cte.ambiente === "HOMOLOGACAO" ? " (homologação)" : ""}`;
   if (cte.situacao === "AUTHORIZED") return `Autorizado nº ${cte.numero}${sufixo}`;
   if (cte.situacao === "CANCELLED") return `Cancelado nº ${cte.numero}${sufixo}`;
   if (cte.situacao === "REJECTED") return `Rejeitado${sufixo}`;
@@ -591,11 +595,33 @@ export type ConferenciaDoCte = {
   resumo: ResumoDoCte | null;
   /** O CT-e que a carga já tem neste ambiente (o último), se houver. */
   cte: CteEmitido | null;
+  /** A SVC que atende a UF do emitente e se a emissão por ela é oferecida agora (`svcOferecida`). `null`: sem emitente. */
+  svc: { nome: Svc; oferecida: boolean } | null;
 };
 
 const CARGA_MESSAGE = "Informe a carga.";
 
-export const emitirSchema = z.object({ collectionId: z.string(CARGA_MESSAGE).trim().min(1, CARGA_MESSAGE).max(64, CARGA_MESSAGE) }, INVALIDO);
+/** Tamanho da justificativa da contingência: o do campo `xJust` do leiaute (15 a 256), que na SVC NÃO vai no XML (regra G008): fica na auditoria. */
+export const JUSTIFICATIVA_DA_SVC_MINIMA = 15;
+export const JUSTIFICATIVA_DA_SVC_MAXIMA = 256;
+const JUSTIFICATIVA_DA_SVC_MESSAGE = `A justificativa da contingência precisa ter de ${JUSTIFICATIVA_DA_SVC_MINIMA} a ${JUSTIFICATIVA_DA_SVC_MAXIMA} letras.`;
+
+/**
+ * O pedido de emissão. `svc` (com a justificativa) é o pedido EXPLÍCITO de
+ * emitir pela SVC: sem ele a emissão é a normal.
+ */
+export const emitirSchema = z.object(
+  {
+    collectionId: z.string(CARGA_MESSAGE).trim().min(1, CARGA_MESSAGE).max(64, CARGA_MESSAGE),
+    svc: z
+      .object(
+        { justificativa: z.string(JUSTIFICATIVA_DA_SVC_MESSAGE).trim().min(JUSTIFICATIVA_DA_SVC_MINIMA, JUSTIFICATIVA_DA_SVC_MESSAGE).max(JUSTIFICATIVA_DA_SVC_MAXIMA, JUSTIFICATIVA_DA_SVC_MESSAGE) },
+        JUSTIFICATIVA_DA_SVC_MESSAGE,
+      )
+      .nullish(),
+  },
+  INVALIDO,
+);
 
 /** O que a emissão devolve: o CT-e como ficou e a frase para a pessoa. */
 export type ResultadoDaEmissao = { cte: CteEmitido; autorizado: boolean; mensagem: string };
@@ -622,6 +648,225 @@ export function dentroDoPrazoDeCancelamento(autorizadoEm: string | Date | null, 
 }
 
 export const FORA_DO_PRAZO = "O prazo de cancelamento (7 dias da autorização) já passou.";
+
+/* ------------------------------- Eventos do CT-e ------------------------------- */
+
+/** Os eventos do emitente que este sistema envia (MOC 4.00, Visão Geral, item 3.7.1). */
+export const TIPO_DO_EVENTO_DO_CTE = {
+  CARTA_DE_CORRECAO: "110110",
+  CANCELAMENTO: "110111",
+  COMPROVANTE_DE_ENTREGA: "110180",
+  CANCELAMENTO_DO_COMPROVANTE: "110181",
+} as const;
+export type TipoDoEventoDoCte = (typeof TIPO_DO_EVENTO_DO_CTE)[keyof typeof TIPO_DO_EVENTO_DO_CTE];
+
+/** O nome de cada evento para a tela. Os do fisco (que só chegam pela consulta) vêm com a descrição que a SEFAZ deu. */
+export const ROTULO_DO_EVENTO_DO_CTE: Record<string, string> = {
+  [TIPO_DO_EVENTO_DO_CTE.CARTA_DE_CORRECAO]: "Carta de correção",
+  [TIPO_DO_EVENTO_DO_CTE.CANCELAMENTO]: "Cancelamento",
+  [TIPO_DO_EVENTO_DO_CTE.COMPROVANTE_DE_ENTREGA]: "Comprovante de entrega",
+  [TIPO_DO_EVENTO_DO_CTE.CANCELAMENTO_DO_COMPROVANTE]: "Cancelamento do comprovante de entrega",
+};
+
+/** Um evento que a SEFAZ registrou para o CT-e, como a tela o recebe. Sem XML. */
+export type EventoDoCte = {
+  id: string;
+  tipo: string;
+  sequencia: number;
+  protocolo: string | null;
+  registradoEm: string;
+  /** Uma frase do que o evento disse: "ide/retira: 0", "Entregue a Maria (RG 123)". */
+  descricao: string;
+  /** Só no comprovante de entrega: quando a SEFAZ registrou o cancelamento dele. */
+  canceladoEm: string | null;
+  /** O evento não saiu deste sistema: veio na consulta pela chave. */
+  deFora: boolean;
+};
+
+/* ------------------------------ Carta de correção ------------------------------ */
+
+/**
+ * O que a carta de correção NÃO pode corrigir no CT-e de carga (modelo 57).
+ *
+ * FONTE: MOC do CT-e 4.00, Visão Geral, item 13.1 ("Campos Impedidos de
+ * Alteração por Carta de Correção"), a que a regra O02 do item 6.4.1 remete
+ * (rejeição 681: "Informação não pode ser alterada por carta de correção").
+ * Lida em 12/10/2026. A tabela do manual escreve alguns nomes com outra caixa
+ * ("Mod", "Serie", "Toma", "Chave", "Versão"): a comparação ignora a caixa e os
+ * acentos. Os campos que o manual marca como de implementação facultativa pela
+ * SEFAZ (CNPJ, CPF e IE de remetente, destinatário e tomador) também estão
+ * aqui: o art. 58-B, II, do Convênio SINIEF 06/89 (transcrito no item 6.4 do
+ * manual e no `xCondUso` do evento) veda a correção de dado cadastral que
+ * implique mudança do emitente, tomador, remetente ou destinatário.
+ */
+export const CAMPOS_PROIBIDOS_NA_CARTA: Readonly<Record<string, readonly string[]>> = {
+  infCte: ["versao", "Id"],
+  ide: ["cUF", "cCT", "mod", "serie", "nCT", "tpEmis", "cDV", "tpAmb", "dhEmi", "modal"],
+  toma3: ["toma"],
+  toma4: ["CNPJ", "CPF", "IE"],
+  emit: ["CNPJ", "IE"],
+  rem: ["CNPJ", "CPF", "IE"],
+  dest: ["CNPJ", "CPF", "IE"],
+  vPrest: ["vTPrest"],
+  Comp: ["vComp"],
+  vPresComp: ["vTPrest"],
+  compComp: ["vComp"],
+  infNFe: ["chave"],
+  ICMS00: ["CST", "vBC", "pICMS", "vICMS"],
+  ICMS20: ["CST", "pRedBC", "vBC", "pICMS", "vICMS"],
+  ICMS45: ["CST"],
+  ICMS60: ["CST", "vBCSTRet", "vICMSSTRet", "pICMSSTRet", "vCred"],
+  ICMS90: ["CST", "pRedBC", "vBC", "pICMS", "vICMS", "vCred"],
+  ICMSOutraUF: ["CST", "pRedBCOutraUF", "vBCOutraUF", "pICMSOutraUF", "vICMSOutraUF"],
+  ICMSSN: ["indSN", "CST"],
+};
+
+/**
+ * Os grupos do IBS e da CBS (NT 2025.001 do CT-e), inteiros. NÃO estão na
+ * tabela do item 13.1, que é anterior à Reforma Tributária: entram pela letra
+ * do art. 58-B, I ("as variáveis que determinam o valor do imposto tais como:
+ * base de cálculo, alíquota..."), porque tudo neles é base, alíquota,
+ * classificação ou valor do imposto. É leitura deste sistema, mais restritiva
+ * que a tabela da SEFAZ.
+ */
+export const GRUPOS_DE_IMPOSTO_FORA_DA_CARTA: readonly string[] = ["IBSCBS", "gIBSCBS", "gIBSUF", "gIBSMun", "gCBS", "gRed"];
+
+const semCaixa = (texto: string) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+const PROIBIDOS = new Map(Object.entries(CAMPOS_PROIBIDOS_NA_CARTA).map(([grupo, campos]) => [semCaixa(grupo), new Set(campos.map(semCaixa))]));
+const GRUPOS_FORA = new Set(GRUPOS_DE_IMPOSTO_FORA_DA_CARTA.map(semCaixa));
+
+/** O campo não pode ser corrigido por carta de correção? Compara pelo nome do grupo e do campo, sem olhar caixa nem acento. */
+export function campoProibidoNaCarta(grupo: string, campo: string): boolean {
+  const doGrupo = semCaixa(grupo.trim());
+  const doCampo = semCaixa(campo.trim());
+  // O total do documento (`imp/vTotDFe`) repete o valor da prestação.
+  if (doGrupo === "imp" && doCampo === "vtotdfe") return true;
+  return GRUPOS_FORA.has(doGrupo) || (PROIBIDOS.get(doGrupo)?.has(doCampo) ?? false);
+}
+
+export const fraseDoCampoProibido = (grupo: string, campo: string) =>
+  `O campo ${grupo}/${campo} não pode ser corrigido por carta de correção (valor do imposto ou da prestação, dado que identifica o emitente, o tomador, o remetente ou o destinatário, ou a data de emissão). A SEFAZ rejeita (681).`;
+
+/** Máximo de cartas de correção por CT-e: o `nSeqEvento` vai de 1 a 20 (MOC 4.00, item 6.4.1, regra O01, rejeição 636). */
+export const MAXIMO_DE_CARTAS = 20;
+/** Limite DESTE sistema, não da norma (o esquema não limita o `infCorrecao`): o que cabe conferir numa tela. */
+export const MAXIMO_DE_CORRECOES_POR_CARTA = 20;
+
+const NOME_DO_XML_MESSAGE = "O grupo e o campo são os nomes das tags do XML do CT-e (ex.: grupo ide, campo retira): de 1 a 20 letras ou dígitos, sem espaço.";
+const VALOR_DA_CORRECAO_MESSAGE = "Informe o valor novo do campo (de 1 a 500 letras).";
+const ITEM_DA_CORRECAO_MESSAGE = "O item é a posição na lista, de 1 a 99. Deixe em branco quando o campo não está numa lista.";
+const CORRECOES_MESSAGE = `Informe de 1 a ${MAXIMO_DE_CORRECOES_POR_CARTA} correções.`;
+
+const nomeDoXml = z.string(NOME_DO_XML_MESSAGE).trim().regex(/^[A-Za-z][A-Za-z0-9_]{0,19}$/, NOME_DO_XML_MESSAGE);
+
+const correcaoSchema = z
+  .object(
+    {
+      grupo: nomeDoXml,
+      campo: nomeDoXml,
+      // O que o `TString` do XML não aceita (emoji, por exemplo) sai na montagem: sobrar nada é o mesmo que não informar.
+      valor: z
+        .string(VALOR_DA_CORRECAO_MESSAGE)
+        .trim()
+        .min(1, VALOR_DA_CORRECAO_MESSAGE)
+        .max(500, VALOR_DA_CORRECAO_MESSAGE)
+        .refine((valor) => textoDoXml(valor, 500) !== "", VALOR_DA_CORRECAO_MESSAGE),
+      // O esquema aceita o índice de 1 a 99 (regra O03, rejeição 522).
+      item: z.preprocess(
+        (valor) => (valor === undefined || valor === null || (typeof valor === "string" && valor.trim() === "") ? null : numeroDoFormulario(valor)),
+        z.number(ITEM_DA_CORRECAO_MESSAGE).int(ITEM_DA_CORRECAO_MESSAGE).min(1, ITEM_DA_CORRECAO_MESSAGE).max(99, ITEM_DA_CORRECAO_MESSAGE).nullable(),
+      ),
+    },
+    INVALIDO,
+  )
+  .superRefine((correcao, contexto) => {
+    if (campoProibidoNaCarta(correcao.grupo, correcao.campo)) contexto.addIssue({ code: "custom", message: fraseDoCampoProibido(correcao.grupo, correcao.campo), path: ["campo"] });
+  });
+
+export type CorrecaoDaCarta = z.infer<typeof correcaoSchema>;
+
+/** A carta de correção como a tela a envia: a lista de correções (grupo, campo, valor novo e, se for o caso, o item). */
+export const cartaDeCorrecaoSchema = z.object({ correcoes: z.array(correcaoSchema, CORRECOES_MESSAGE).min(1, CORRECOES_MESSAGE).max(MAXIMO_DE_CORRECOES_POR_CARTA, CORRECOES_MESSAGE) }, INVALIDO);
+
+/** As correções numa linha, para a lista de eventos: "ide/retira: 0; compl/xObs: Entregar no depósito 2". */
+export const resumoDaCarta = (correcoes: readonly Pick<CorrecaoDaCarta, "grupo" | "campo" | "valor" | "item">[]) =>
+  correcoes
+    .map((correcao) => `${correcao.grupo}/${correcao.campo}${correcao.item ? ` (item ${correcao.item})` : ""}: ${correcao.valor}`)
+    .join("; ")
+    .slice(0, 400);
+
+export const CANCELAMENTO_COM_CARTA = "Este CT-e tem carta de correção registrada: a SEFAZ não aceita mais o cancelamento dele (rejeição 523).";
+export const CANCELAMENTO_COM_ENTREGA = "Este CT-e tem comprovante de entrega registrado na SEFAZ: cancele o comprovante antes de cancelar o CT-e (rejeição 862).";
+export const SO_AUTORIZADO_RECEBE_EVENTO ="Só CT-e autorizado (e não cancelado) recebe este evento.";
+export const LIMITE_DE_CARTAS = `Este CT-e já tem ${MAXIMO_DE_CARTAS} cartas de correção, o máximo que a SEFAZ aceita.`;
+
+/* ----------------------------- Comprovante de entrega -------------------------- */
+
+/** Máximo de eventos de comprovante (e de cancelamento do comprovante) por CT-e: `nSeqEvento` de 1 a 999 (MOC 4.00, itens 6.8.1 e 6.9.1, regra O01). */
+export const MAXIMO_DE_COMPROVANTES = 999;
+
+/**
+ * A linha que a tela mostra sobre a obrigação do evento. O Ajuste SINIEF 09/07,
+ * que é onde ela estaria, não pôde ser lido na fonte oficial (o site do CONFAZ
+ * recusou a conexão em 10 e 12/10/2026): o sistema não afirma prazo nem
+ * obrigação. O que o MOC 4.00 diz (item 6.8) está na segunda frase.
+ */
+export const QUANDO_REGISTRAR_A_ENTREGA =
+  "Registre quando a legislação do seu estado ou o tomador exigir (confirme com o contador): o sistema não envia sozinho. A SEFAZ aceita um comprovante por CT-e e, com ele registrado, não aceita mais o cancelamento do CT-e.";
+
+export const SEM_COMPROVANTE_ACEITO = "A carga não tem comprovante de entrega aprovado na conferência (tela Comprovantes).";
+export const SEM_IMAGEM_NO_COMPROVANTE = "O comprovante aprovado não tem imagem (foto do canhoto, foto da entrega ou assinatura): sem ela não há como gerar o hash que o evento exige.";
+export const RECEBEDOR_INCOMPLETO = "O nome e o documento de quem recebeu precisam ter pelo menos 2 letras cada (o documento, até 20). Corrija o comprovante antes de registrar a entrega.";
+export const ENTREGA_JA_REGISTRADA = "Este CT-e já tem um comprovante de entrega registrado na SEFAZ. Para registrar outro, cancele o comprovante primeiro.";
+export const SEM_ENTREGA_REGISTRADA = "Este CT-e não tem comprovante de entrega registrado na SEFAZ por este sistema.";
+export const SVC_NAO_RECEBE_ESTE_EVENTO =
+  "Este CT-e foi autorizado pela SVC (contingência). A SVC só aceita o evento de cancelamento (MOC 4.00, regra N09, rejeição 530), e o manual não diz por onde os outros eventos de um CT-e da SVC devem entrar: este sistema não envia carta de correção nem comprovante de entrega para ele.";
+
+/** O que a tela mostra do comprovante de entrega do CT-e e se dá para registrar o evento. */
+export type EntregaDoCte = {
+  /** REGISTRADA: há comprovante registrado na SEFAZ (e não cancelado). DISPONIVEL: dá para registrar. INDISPONIVEL: `motivo` diz por quê. */
+  situacao: "REGISTRADA" | "DISPONIVEL" | "INDISPONIVEL";
+  motivo: string | null;
+  /** Quem recebeu e quando, do comprovante aprovado (ou do evento registrado). */
+  recebedor: string | null;
+  entregueEm: string | null;
+  /** Qual imagem do comprovante entra no hash: "foto do canhoto", "foto da entrega" ou "assinatura". */
+  imagem: string | null;
+  /** O protocolo do evento registrado. */
+  protocolo: string | null;
+};
+
+/** O que a rota dos eventos devolve: o CT-e, os eventos registrados e a situação do comprovante de entrega. */
+export type EventosDoCte = { cte: CteEmitido; eventos: EventoDoCte[]; entrega: EntregaDoCte };
+
+/** O que "Conferir na SEFAZ" devolve: o CT-e como ficou, a frase para a pessoa e os eventos (com os que a consulta trouxe). */
+export type ConferenciaNaSefaz = { cte: CteEmitido; mensagem: string; eventos: EventoDoCte[]; novos: number };
+
+export const SO_ENVIADO_SE_CONFERE = "Só se confere na SEFAZ o CT-e autorizado, cancelado ou que ficou sem resposta. Um CT-e rejeitado ou que não chegou a ser enviado não existe lá.";
+
+/* --------------------------------- SVC (contingência) --------------------------- */
+
+/** O nome de cada SVC por extenso. */
+export const ROTULO_DA_SVC: Record<Svc, string> = { "SVC-RS": "SVC-RS (Sefaz Virtual de Contingência do RS)", "SVC-SP": "SVC-SP (Sefaz Virtual de Contingência de SP)" };
+
+const CODIGOS_DE_SERVICO_PARADO: readonly number[] = [108, 109];
+
+/**
+ * A emissão pela SVC é oferecida para esta carga? Só depois de uma emissão
+ * normal que não se resolveu: ficou sem resposta, a autorizadora respondeu que
+ * está parada (108 ou 109) ou nem foi possível falar com ela (rascunho com o
+ * problema do envio e sem código da SEFAZ). É a tela e o servidor fazendo a
+ * mesma conta; quem diz se a SVC está mesmo ativa é o status dela (113).
+ */
+export function svcOferecida(cte: Pick<CteEmitido, "situacao" | "semResposta" | "cStat" | "motivo" | "svc"> | null): boolean {
+  if (!cte || cte.situacao !== "DRAFT" || cte.svc !== null) return false;
+  return cte.semResposta || (cte.cStat !== null && CODIGOS_DE_SERVICO_PARADO.includes(cte.cStat)) || (cte.cStat === null && cte.motivo !== null);
+}
+
+export const SVC_NAO_OFERECIDA = "A emissão pela SVC só vale depois de uma emissão normal que ficou sem resposta ou encontrou a autorizadora parada. Emita normalmente primeiro.";
+export const fraseDaSvcInativa = (svc: Svc, resposta: string) =>
+  `A ${svc} não está ativa para a sua UF (${resposta}): é a SEFAZ de origem que a aciona. Nada foi emitido nem numerado. Tente a emissão normal ou aguarde.`;
 
 /* ------------------------------ Status do serviço ------------------------------ */
 

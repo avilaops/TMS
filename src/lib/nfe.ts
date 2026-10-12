@@ -821,8 +821,12 @@ export type CargaParaCte = {
   cteStatus: string | null;
   updatedAt: string;
   client: { id: string; companyName: string; tradeName: string | null; cnpj: string };
-  /** O CT-e mais recente que ESTE sistema montou para a carga (src/lib/cte.ts), se houver. */
+  /** O CT-e da carga entre os que ESTE sistema montou (src/lib/cte-db.ts, `ctesDaCarga`), se houver. */
   emitido: CteEmitido | null;
+  /** Outros CT-e da carga que pedem providência: o envio normal que ficou sem resposta e foi coberto pela SVC, ou o que precisa ser cancelado. */
+  aResolver?: CteEmitido[];
+  /** A carga tem comprovante de entrega aprovado na conferência? É o que libera "Registrar entrega na SEFAZ". */
+  comprovanteAceito?: boolean;
 };
 
 /** Só há CT-e registrado quando a carga tem a chave e a situação diz emitido. */

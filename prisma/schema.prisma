@@ -107,6 +107,7 @@ model Tenant {
   mdfeNumberings     MdfeNumbering[]
   mdfes              Mdfe[]
   mdfeEvents         MdfeEvent[]
+  cteEvents          CteEvent[]
 }
 
 model User {
@@ -147,6 +148,7 @@ model User {
   ctesIssued           Cte[]
   mdfesIssued          Mdfe[]
   mdfeEventsCreated    MdfeEvent[]
+  cteEventsCreated     CteEvent[]
 
   @@index([clientId])
 
@@ -1719,6 +1721,7 @@ model Cte {
 
   collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Restrict)
   issuedBy     User?      @relation(fields: [issuedById], references: [id], onDelete: SetNull)
+  events       CteEvent[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -1726,6 +1729,42 @@ model Cte {
   @@unique([tenantId, environment, series, number])
   @@index([tenantId, collectionId])
   @@index([collectionId])
+}
+
+// Cada evento que a SEFAZ REGISTROU para um CT-e (carta de correção 110110,
+// cancelamento 110111, comprovante de entrega 110180 e o cancelamento dele,
+// 110181), no molde do `MdfeEvent`: o XML assinado que foi enviado, o retorno
+// e o protocolo. Evento recusado não vira linha. O evento que a consulta pela
+// chave devolveu e que o sistema não tinha (registrado por fora) entra com
+// `xmlSent` vazio e o `procEventoCTe` inteiro em `xmlReturn`.
+// O cancelamento do CT-e continua também nas colunas `cancel*` do `Cte`, que é
+// onde os cancelamentos anteriores a esta tabela estão.
+model CteEvent {
+  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String   @id @default(uuid())
+  cteId        String
+  type         String   // tpEvento
+  sequence     Int      // nSeqEvento
+  xmlSent      String   @db.Text
+  xmlReturn    String   @db.Text
+  protocol     String?  // nulo quando a SEFAZ só confirmou que o evento já estava lá
+  statusCode   Int
+  statusReason String
+  registeredAt DateTime
+  // O que o evento disse, para a tela: as correções da carta, quem recebeu a entrega...
+  details      Json?
+  // Só no comprovante de entrega (110180): quando a SEFAZ registrou o cancelamento dele (110181).
+  cancelledAt  DateTime?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  cte          Cte      @relation(fields: [cteId], references: [id], onDelete: Restrict)
+  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, cteId, type, sequence])
+  @@index([cteId])
 }
 
 // A numeração do MDF-e: o próximo número de cada série, por ambiente

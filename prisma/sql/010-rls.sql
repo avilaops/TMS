@@ -107,6 +107,7 @@ DECLARE
     "PaymentCharge": ["invoiceId", "Invoice"],
     "TripPosition": ["manifestId", "Manifest"],
     "Cte": ["collectionId", "Collection", "issuedById", "User"],
+    "CteEvent": ["cteId", "Cte", "createdById", "User"],
     "Mdfe": ["manifestId", "Manifest", "issuedById", "User"],
     "MdfeEvent": ["mdfeId", "Mdfe", "createdById", "User"],
     "SocialPost": ["articleId", "Article"],

@@ -211,6 +211,7 @@ suite("rotas da emissão de CT-e", () => {
     const { sistema } = banco;
     await sistema.outboxEvent.deleteMany({ where: DAS_EMPRESAS });
     await sistema.webhook.deleteMany({ where: DAS_EMPRESAS });
+    await sistema.cteEvent.deleteMany({ where: DAS_EMPRESAS });
     await sistema.cte.deleteMany({ where: DAS_EMPRESAS });
     await sistema.cteNumbering.deleteMany({ where: DAS_EMPRESAS });
     await sistema.fiscalIssuer.deleteMany({ where: DAS_EMPRESAS });

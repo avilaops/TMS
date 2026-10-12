@@ -170,6 +170,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] DACTE em PDF do CT-e autorizado, pelo serviço fiscal.
 - [x] Emissão de MDF-e implementada (montagem validada no esquema oficial, assinatura, transmissão, encerramento e cancelamento), em homologação.
 - [x] MDF-e: contingência off-line (emissão, DAMDFE de contingência e transmissão posterior), eventos de pagamento do frete (110116 e 110118) e revisão do retorno da SEFAZ contra o manual; CT-e e MDF-e: código de segurança do responsável técnico (opcional).
+- [x] CT-e: carta de correção (110110), comprovante de entrega na SEFAZ e o cancelamento dele (110180 e 110181), emissão pela SVC (contingência) e "Conferir na SEFAZ" (situação e eventos pela chave). Nada disso foi exercitado contra a SEFAZ de verdade.
 - [ ] Primeira autorização real de CT-e e de MDF-e em homologação e liberação para produção (precisa do certificado A1 e do credenciamento da transportadora na SEFAZ).
 - [x] Auditoria de ações.
 - [x] Notificações no sistema (sininho), por push no navegador e por WhatsApp via n8n.
@@ -178,6 +179,6 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Pix dinâmico e boleto com baixa automática pelo Mercado Pago (cada empresa liga a própria conta).
 - [x] Roteirização automática por cidade (ordem sugerida das entregas).
 - [x] Roteirização por endereço, mapa e GPS do motorista com OpenStreetMap (trânsito só pelo link do Google Maps).
-- [x] Comprovante de entrega: fotos por tipo, ressalva, devolução ao motorista e tentativa sem sucesso (perfis Livre, E-commerce e Carga B2B). Falta: evento fiscal de comprovante de entrega na SEFAZ, leitura automática do canhoto e fotos fora do banco.
+- [x] Comprovante de entrega: fotos por tipo, ressalva, devolução ao motorista e tentativa sem sucesso (perfis Livre, E-commerce e Carga B2B). O evento fiscal de comprovante de entrega do CT-e é registrado à mão, na tela de CT-e. Falta: leitura automática do canhoto e fotos fora do banco.
 - [x] Ordem das entregas, rota no mapa, despesas e resultado da viagem.
 - [x] Perfis de acesso: Diretoria, Financeiro, Comercial, Expedição e Conferência.

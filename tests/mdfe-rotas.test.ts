@@ -294,6 +294,7 @@ suite("rotas da emissão de MDF-e", () => {
     await sistema.mdfeEvent.deleteMany({ where: DAS_EMPRESAS });
     await sistema.mdfe.deleteMany({ where: DAS_EMPRESAS });
     await sistema.mdfeNumbering.deleteMany({ where: DAS_EMPRESAS });
+    await sistema.cteEvent.deleteMany({ where: DAS_EMPRESAS });
     await sistema.cte.deleteMany({ where: DAS_EMPRESAS });
     await sistema.cteNumbering.deleteMany({ where: DAS_EMPRESAS });
     await sistema.fiscalIssuer.deleteMany({ where: DAS_EMPRESAS });

@@ -18,6 +18,8 @@
  * antes de olhar a mensagem. Ver o README, seção "CT-e".
  */
 
+import type { Svc } from "@/lib/cte/chave";
+
 export type Ambiente = "HOMOLOGACAO" | "PRODUCAO";
 
 export type Servico = "status" | "consulta" | "evento" | "recepcao";
@@ -98,6 +100,31 @@ export function enderecosDaUf(uf: string, ambiente: Ambiente): (Enderecos & { au
   const autorizador = autorizadorDaUf(uf);
   return autorizador ? { ...ENDERECOS[autorizador][ambiente], autorizador } : null;
 }
+
+/**
+ * A SVC (Sistema Virtual de Contingência) que atende cada autorizador.
+ *
+ * FONTE: a mesma página do Portal do CT-e, bloco "Autorizadores de
+ * contingência", lida em 12/10/2026 (produção e homologação, mesmo texto):
+ * - "Estados que devem utilizar a SVC-SP: aqueles que autorizam na SVRS, MG, PR, RS";
+ * - "Estados que devem utilizar a SVC-RS: aqueles que autorizam na SVSP, MT, MS, SP".
+ * A página publica os endereços num bloco só para cada dupla: "Sefaz Virtual
+ * Rio Grande do Sul (SVRS) e Sefaz Virtual de Contingência do RS (SVC-RS)" e
+ * "Sefaz Virtual São Paulo (SVSP) e Sefaz Virtual de Contingência de SP
+ * (SVC-SP)". Ou seja: a SVC-RS atende nos endereços da SVRS, e a SVC-SP, nos da
+ * SVSP.
+ */
+const SVC_DO_AUTORIZADOR: Record<Autorizador, Svc> = { SVRS: "SVC-SP", MG: "SVC-SP", PR: "SVC-SP", RS: "SVC-SP", SVSP: "SVC-RS", MT: "SVC-RS", MS: "SVC-RS", SP: "SVC-RS" };
+const AUTORIZADOR_DA_SVC: Record<Svc, Autorizador> = { "SVC-RS": "SVRS", "SVC-SP": "SVSP" };
+
+/** A SVC que atende a UF do emitente, ou `null` para uma sigla que não é UF. */
+export function svcDaUf(uf: string): Svc | null {
+  const autorizador = autorizadorDaUf(uf);
+  return autorizador ? SVC_DO_AUTORIZADOR[autorizador] : null;
+}
+
+/** Os endereços dos serviços da SVC no ambiente (os do QR Code não são usados: o do CT-e continua o da UF do emitente). */
+export const enderecosDaSvc = (svc: Svc, ambiente: Ambiente): Record<Servico, string> => ENDERECOS[AUTORIZADOR_DA_SVC[svc]][ambiente];
 
 /** `tpAmb` do XML: 1 = produção, 2 = homologação. */
 export const codigoDoAmbiente = (ambiente: Ambiente) => (ambiente === "PRODUCAO" ? "1" : "2");

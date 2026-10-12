@@ -16,6 +16,10 @@ import { conferirCte, emitirCte } from '@/lib/cte-db';
  * `POST { collectionId }`: monta, assina e transmite. A resposta traz o CT-e
  * como ficou e a mensagem da SEFAZ; ele só volta "autorizado" com o protocolo
  * que a SEFAZ devolveu. Falha de rede é 502 ou 504, com a frase do que fazer.
+ *
+ * `POST { collectionId, svc: { justificativa } }`: o pedido explícito de emitir
+ * pela SVC (contingência), que só vale depois de uma emissão normal que não se
+ * resolveu e com a SVC ativa para a UF (`prepararSvc`, em src/lib/cte-db.ts).
  */
 export async function GET(req: Request) {
   const { error } = await requireStaff({ pode: 'fiscalVer' });
@@ -41,7 +45,7 @@ export async function POST(req: Request) {
   if (!dados.success) return NextResponse.json({ error: firstIssue(dados.error) }, { status: 400 });
 
   try {
-    return NextResponse.json(await emitirCte(await empresaDaSessao(), dados.data.collectionId, { ator: user, origem: origemDaRequisicao(req) }));
+    return NextResponse.json(await emitirCte(await empresaDaSessao(), dados.data.collectionId, { ator: user, origem: origemDaRequisicao(req) }, { svc: dados.data.svc ?? null }));
   } catch (erro) {
     if (erro instanceof Refusal) return NextResponse.json({ error: erro.message }, { status: erro.status });
     // Só a mensagem: o erro inteiro poderia carregar o XML ou a chave do certificado.

@@ -13,8 +13,22 @@ import { digitoDaChave } from "@/lib/nfe";
  */
 
 export const MODELO_DO_CTE = "57";
-/** Emissão normal: é a única que este sistema faz (sem contingência). */
+/** Emissão normal (`tpEmis` 1). */
 export const TIPO_DE_EMISSAO_NORMAL = "1";
+/**
+ * Autorização pela SVC, o Sistema Virtual de Contingência (`tpEmis` 7 = SVC-RS,
+ * 8 = SVC-SP: MOC 4.00, Anexo I, campo 14 do `ide`, e o `tpEmis` do esquema).
+ * O tipo de emissão faz parte da chave de acesso.
+ */
+export const TIPO_DE_EMISSAO_DA_SVC = { "SVC-RS": "7", "SVC-SP": "8" } as const;
+export type Svc = keyof typeof TIPO_DE_EMISSAO_DA_SVC;
+export type TipoDeEmissao = typeof TIPO_DE_EMISSAO_NORMAL | (typeof TIPO_DE_EMISSAO_DA_SVC)[Svc];
+
+/** A SVC que autorizou o CT-e desta chave (posição 35 da chave), ou `null` quando a emissão foi normal. */
+export function svcDaChave(chave: string): Svc | null {
+  const tipo = chave.slice(34, 35);
+  return tipo === TIPO_DE_EMISSAO_DA_SVC["SVC-RS"] ? "SVC-RS" : tipo === TIPO_DE_EMISSAO_DA_SVC["SVC-SP"] ? "SVC-SP" : null;
+}
 
 /** Código IBGE de cada UF, que abre a chave e vai em `ide/cUF`. */
 export const CODIGO_DA_UF: Record<string, string> = {
@@ -57,6 +71,8 @@ export type PartesDaChaveDoCte = {
   numero: number;
   /** Código numérico aleatório, 8 dígitos. */
   codigo: string;
+  /** `tpEmis`. Ausente: emissão normal. */
+  tipoDeEmissao?: TipoDeEmissao;
 };
 
 export class ChaveInvalida extends Error {}
@@ -123,7 +139,7 @@ export function chaveDoCte(partes: PartesDaChaveDoCte): string {
     MODELO_DO_CTE,
     String(partes.serie).padStart(3, "0"),
     String(partes.numero).padStart(9, "0"),
-    TIPO_DE_EMISSAO_NORMAL,
+    partes.tipoDeEmissao ?? TIPO_DE_EMISSAO_NORMAL,
     partes.codigo,
   ].join("");
   const digito = digitoDaChave(corpo);

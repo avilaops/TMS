@@ -64,6 +64,10 @@ suite("permissões das rotas internas", () => {
   let cteCancelar: typeof import("../src/app/api/fiscal/cte/emissao/[id]/cancelar/route");
   let cteStatus: typeof import("../src/app/api/fiscal/cte/status-servico/route");
   let cteSituacao: typeof import("../src/app/api/fiscal/cte/situacao/route");
+  let cteEventos: typeof import("../src/app/api/fiscal/cte/emissao/[id]/eventos/route");
+  let cteCorrecao: typeof import("../src/app/api/fiscal/cte/emissao/[id]/correcao/route");
+  let cteEntrega: typeof import("../src/app/api/fiscal/cte/emissao/[id]/entrega/route");
+  let cteConferir: typeof import("../src/app/api/fiscal/cte/emissao/[id]/situacao/route");
   let mdfeLista: typeof import("../src/app/api/fiscal/mdfe/route");
   let mdfeSituacao: typeof import("../src/app/api/fiscal/mdfe/situacao/route");
   let mdfeStatus: typeof import("../src/app/api/fiscal/mdfe/status-servico/route");
@@ -215,6 +219,10 @@ suite("permissões das rotas internas", () => {
     cteCancelar = await import("../src/app/api/fiscal/cte/emissao/[id]/cancelar/route");
     cteStatus = await import("../src/app/api/fiscal/cte/status-servico/route");
     cteSituacao = await import("../src/app/api/fiscal/cte/situacao/route");
+    cteEventos = await import("../src/app/api/fiscal/cte/emissao/[id]/eventos/route");
+    cteCorrecao = await import("../src/app/api/fiscal/cte/emissao/[id]/correcao/route");
+    cteEntrega = await import("../src/app/api/fiscal/cte/emissao/[id]/entrega/route");
+    cteConferir = await import("../src/app/api/fiscal/cte/emissao/[id]/situacao/route");
     mdfeLista = await import("../src/app/api/fiscal/mdfe/route");
     mdfeSituacao = await import("../src/app/api/fiscal/mdfe/situacao/route");
     mdfeStatus = await import("../src/app/api/fiscal/mdfe/status-servico/route");
@@ -340,6 +348,11 @@ suite("permissões das rotas internas", () => {
       ["POST /api/fiscal/cte/emissao/[id]/cancelar", () => cteCancelar.POST(req("POST", { justificativa: "Tentativa de quem não pode" }), ctx(semId))],
       ["GET /api/fiscal/cte/status-servico", () => cteStatus.GET()],
       ["GET /api/fiscal/cte/situacao", () => cteSituacao.GET()],
+      ["GET /api/fiscal/cte/emissao/[id]/eventos", () => cteEventos.GET(req(), ctx(semId))],
+      ["POST /api/fiscal/cte/emissao/[id]/correcao", () => cteCorrecao.POST(req("POST", { correcoes: [{ grupo: "compl", campo: "xObs", valor: "Tentativa de quem não pode" }] }), ctx(semId))],
+      ["POST /api/fiscal/cte/emissao/[id]/entrega", () => cteEntrega.POST(req("POST"), ctx(semId))],
+      ["DELETE /api/fiscal/cte/emissao/[id]/entrega", () => cteEntrega.DELETE(req("DELETE"), ctx(semId))],
+      ["POST /api/fiscal/cte/emissao/[id]/situacao", () => cteConferir.POST(req("POST"), ctx(semId))],
       ["GET /api/fiscal/mdfe", () => mdfeLista.GET(req())],
       ["GET /api/fiscal/mdfe/situacao", () => mdfeSituacao.GET()],
       ["GET /api/fiscal/mdfe/status-servico", () => mdfeStatus.GET()],

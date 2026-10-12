@@ -1,8 +1,8 @@
 import { gzipSync } from "node:zlib";
 import { XmlInvalido, campo, filho, lerXml, type No } from "@/lib/nfe";
 import type { Ambiente } from "@/lib/cte";
-import { CODIGO_DA_UF } from "@/lib/cte/chave";
-import { codigoDoAmbiente, enderecosDaUf, type Servico } from "@/lib/cte/enderecos";
+import { CODIGO_DA_UF, type Svc } from "@/lib/cte/chave";
+import { codigoDoAmbiente, enderecosDaSvc, enderecosDaUf, type Servico } from "@/lib/cte/enderecos";
 import { NAMESPACE_DO_CTE, VERSAO_DO_CTE } from "@/lib/cte/montar";
 import { SEFAZ_RESPOSTA_INVALIDA, SefazError, chamarSoap, type Credencial } from "@/lib/cte/soap";
 import { escapar } from "@/lib/cte/texto";
@@ -29,6 +29,7 @@ import { escapar } from "@/lib/cte/texto";
  * | 100 | Visão Geral, 4.2.6 e 4.5.6 | Autorizado o uso (a recepção e a consulta trazem o `protCTe`) |
  * | 101 | Visão Geral, 4.5.6 | Consulta: o CT-e está CANCELADO (o `protCTe` que vem junto é o da autorização) |
  * | 107, 108, 109 | Visão Geral, 4.6.5 e 4.6.6 (regras M02 e M03) e regras B03 e B04 | Serviço em operação, paralisado momentaneamente, paralisado sem previsão |
+ * | 113, 114 | Visão Geral, 4.6.5 (regras M04 e M05) e regra C09 | Status pedido à SVC: 113 = a SVC está em operação para a UF (a SEFAZ de origem a acionou); 114 = SVC desabilitada pela SEFAZ de origem |
  * | 134, 135, 136 | Visão Geral, 5.1.7 | Evento guardado: 135 vinculado ao CT-e; 134 vinculado, com alerta de que o CT-e não está "autorizado"; 136 guardado SEM vínculo (o CT-e não existe lá) |
  * | 204 | Anexo I, regra G158 | Duplicidade: este mesmo CT-e (mesma chave) já está autorizado |
  * | 217 | Visão Geral, regra L04 | Consulta: o CT-e não consta |
@@ -45,6 +46,8 @@ export const CSTAT = {
   EM_OPERACAO: 107,
   PARALISADO: 108,
   PARALISADO_SEM_PREVISAO: 109,
+  SVC_EM_OPERACAO: 113,
+  SVC_DESABILITADA: 114,
   EVENTO_REGISTRADO_COM_ALERTA: 134,
   EVENTO_REGISTRADO: 135,
   EVENTO_REGISTRADO_SEM_VINCULO: 136,
@@ -57,10 +60,16 @@ export const CSTAT = {
 /* --------------------------------- Para onde ---------------------------------- */
 
 export type Destino = {
+  /** A UF do emitente. */
   uf: string;
   ambiente: Ambiente;
   credencial: Credencial | null;
   tempoLimiteMs?: number;
+  /**
+   * A conversa é com a SVC que atende a UF, e não com a autorizadora dela
+   * (MOC 4.00, Visão Geral, item 11.3.3). Ausente: a autorizadora normal.
+   */
+  svc?: Svc | null;
 };
 
 type SefazDeTeste = { url: string; autoridades: readonly string[]; tempoLimiteMs?: number };
@@ -84,11 +93,13 @@ const SERVICOS: Record<Servico, { nome: string; metodo: string }> = {
 
 /** Chama o serviço e devolve a resposta inteira (o texto) e o `Body` já lido. */
 async function chamar(destino: Destino, servico: Servico, dados: string): Promise<{ resposta: string; corpo: No }> {
-  const enderecos = enderecosDaUf(destino.uf, destino.ambiente);
-  if (!enderecos) throw new SefazError("conexao", `Não há serviço de CT-e para a UF ${destino.uf}.`, false);
+  const daUf = enderecosDaUf(destino.uf, destino.ambiente);
+  if (!daUf) throw new SefazError("conexao", `Não há serviço de CT-e para a UF ${destino.uf}.`, false);
+  const enderecos = destino.svc ? enderecosDaSvc(destino.svc, destino.ambiente) : daUf;
   const { nome, metodo } = SERVICOS[servico];
   const resposta = await chamarSoap({
-    url: deTeste ? `${deTeste.url}/${nome}` : enderecos[servico],
+    // No servidor de teste a SVC atende num caminho próprio, para o teste saber com quem a emissão falou.
+    url: deTeste ? `${deTeste.url}/${destino.svc ? `${destino.svc}/` : ""}${nome}` : enderecos[servico],
     servico: nome,
     metodo,
     dados,
@@ -152,11 +163,24 @@ export function mensagemDeStatus(uf: string, ambiente: Ambiente): string {
   return `<consStatServCTe xmlns="${NAMESPACE_DO_CTE}" versao="${VERSAO_DO_CTE}"><tpAmb>${codigoDoAmbiente(ambiente)}</tpAmb><cUF>${CODIGO_DA_UF[uf]}</cUF><xServ>STATUS</xServ></consStatServCTe>`;
 }
 
-export type RespostaDeStatus = { cStat: number; motivo: string; emOperacao: boolean };
+export type RespostaDeStatus = {
+  cStat: number;
+  motivo: string;
+  emOperacao: boolean;
+  /**
+   * Só faz sentido no status pedido à SVC: ela está em operação PARA A UF
+   * consultada (113), isto é, a SEFAZ de origem a acionou. Com 114 ("SVC
+   * desabilitada pela SEFAZ de origem") ou qualquer outro código ela rejeita o
+   * CT-e (regra C09). MOC 4.00, Visão Geral, item 4.6.1 (campo HP04: "em caso
+   * de UF que autoriza em modo SVC o sistema irá responder com o status da
+   * ativação da SVC") e item 4.6.5 (regras M04 e M05).
+   */
+  svcAtiva: boolean;
+};
 
 export function lerStatus(corpo: No): RespostaDeStatus {
   const lido = situacao(achar(corpo, "retConsStatServCTe"));
-  return { ...lido, emOperacao: lido.cStat === CSTAT.EM_OPERACAO };
+  return { ...lido, emOperacao: lido.cStat === CSTAT.EM_OPERACAO, svcAtiva: lido.cStat === CSTAT.SVC_EM_OPERACAO };
 }
 
 export async function statusDoServico(destino: Destino): Promise<RespostaDeStatus> {
@@ -302,16 +326,90 @@ export function mensagemDeConsulta(chave: string, ambiente: Ambiente): string {
   return `<consSitCTe xmlns="${NAMESPACE_DO_CTE}" versao="${VERSAO_DO_CTE}"><tpAmb>${codigoDoAmbiente(ambiente)}</tpAmb><xServ>CONSULTAR</xServ><chCTe>${chave}</chCTe></consSitCTe>`;
 }
 
-/** A situação do CT-e na SEFAZ, com o protocolo quando ele está autorizado: tem a mesma forma da resposta da recepção. */
-export function lerConsulta(corpo: No, resposta: string): RespostaDaRecepcao {
-  const ret = achar(corpo, "retConsSitCTe");
-  const lido = situacao(ret);
-  return { ...lido, ambiente: ambienteDoCodigo(campo(ret, "tpAmb")), protocolo: lerProtocolo(filho(ret, "protCTe"), resposta) };
+/**
+ * Um evento vinculado ao CT-e, como a consulta pela chave o devolve
+ * (`procEventoCTe`: o evento e o retorno do registro; MOC 4.00, Visão Geral,
+ * item 4.5.2, campo GR09, e item 4.5.3).
+ */
+export type EventoDaConsulta = {
+  tipo: string;
+  sequencia: number;
+  /** Protocolo do registro do evento. */
+  protocolo: string | null;
+  cStat: number;
+  motivo: string;
+  registradoEm: Date | null;
+  /** A descrição que a SEFAZ dá ao evento (`xEvento`) ou, na falta, a do próprio evento (`descEvento`). */
+  descricao: string | null;
+  /** No cancelamento do comprovante de entrega (110181): o protocolo do comprovante que ele cancelou (`nProtCE`). */
+  protocoloCancelado: string | null;
+  /** O `procEventoCTe` como a SEFAZ devolveu. */
+  xml: string;
+};
+
+export type RespostaDaConsulta = RespostaDaRecepcao & { eventos: EventoDaConsulta[] };
+
+const EVENTO_BRUTO = /<procEventoCTe[\s>][\s\S]*?<\/procEventoCTe>/g;
+const QUINZE_DIGITOS = /^\d{15}$/;
+
+/**
+ * Os eventos da consulta que valem para a chave consultada: registrados e
+ * VINCULADOS ao CT-e (135, ou 134, vinculado com alerta), com tipo e sequência
+ * legíveis. O que vier de outra chave, sem vínculo (136) ou fora do formato é
+ * ignorado: nada entra no sistema por uma resposta que não fecha.
+ */
+function lerEventosDaConsulta(ret: No | undefined, resposta: string, chave: string): EventoDaConsulta[] {
+  const brutos = resposta.match(EVENTO_BRUTO) ?? [];
+  const eventos: EventoDaConsulta[] = [];
+  for (const [indice, proc] of (ret?.filhos.filter((f) => f.nome === "procEventoCTe") ?? []).entries()) {
+    const enviado = filho(filho(proc, "eventoCTe"), "infEvento");
+    const retorno = filho(filho(proc, "retEventoCTe"), "infEvento");
+    const cStat = numero(campo(retorno, "cStat"));
+    const tipo = campo(retorno, "tpEvento") ?? campo(enviado, "tpEvento");
+    const sequencia = numero(campo(retorno, "nSeqEvento") ?? campo(enviado, "nSeqEvento"));
+    const vinculado = cStat === CSTAT.EVENTO_REGISTRADO || cStat === CSTAT.EVENTO_REGISTRADO_COM_ALERTA;
+    if (!vinculado || tipo === null || !/^\d{6}$/.test(tipo) || sequencia === null || sequencia < 1) continue;
+    if ((campo(retorno, "chCTe") ?? campo(enviado, "chCTe")) !== chave) continue;
+    const protocolo = campo(retorno, "nProt");
+    const detalhe = filho(enviado, "detEvento")?.filhos[0];
+    const cancelado = campo(detalhe, "nProtCE");
+    eventos.push({
+      tipo,
+      sequencia,
+      protocolo: protocolo !== null && QUINZE_DIGITOS.test(protocolo) ? protocolo : null,
+      cStat,
+      motivo: campo(retorno, "xMotivo", 300) ?? "",
+      registradoEm: data(campo(retorno, "dhRegEvento")),
+      descricao: campo(retorno, "xEvento", 60) ?? campo(detalhe, "descEvento", 60),
+      protocoloCancelado: cancelado !== null && QUINZE_DIGITOS.test(cancelado) ? cancelado : null,
+      // Os trechos originais vêm na mesma ordem dos elementos lidos.
+      xml: brutos[indice] ?? "",
+    });
+  }
+  return eventos;
 }
 
-export async function consultarCte(destino: Destino, chave: string): Promise<RespostaDaRecepcao> {
+/** A situação do CT-e na SEFAZ, com o protocolo quando ele está autorizado (a mesma forma da resposta da recepção) e os eventos vinculados. */
+export function lerConsulta(corpo: No, resposta: string, chave: string | null = null): RespostaDaConsulta {
+  const ret = achar(corpo, "retConsSitCTe");
+  const lido = situacao(ret);
+  return {
+    ...lido,
+    ambiente: ambienteDoCodigo(campo(ret, "tpAmb")),
+    protocolo: lerProtocolo(filho(ret, "protCTe"), resposta),
+    eventos: chave === null ? [] : lerEventosDaConsulta(ret, resposta, chave),
+  };
+}
+
+/**
+ * Consulta a situação do CT-e pela chave. O CT-e autorizado pela SVC é
+ * consultado NA SVC (`destino.svc`): "os documentos autorizados na SVC poderão
+ * ser consultados diretamente neste ambiente a qualquer tempo", e ela só
+ * responde pelos que autorizou (MOC 4.00, Visão Geral, item 4.5.6).
+ */
+export async function consultarCte(destino: Destino, chave: string): Promise<RespostaDaConsulta> {
   const { resposta, corpo } = await chamar(destino, "consulta", mensagemDeConsulta(chave, destino.ambiente));
-  return lerConsulta(corpo, resposta);
+  return lerConsulta(corpo, resposta, chave);
 }
 
 /* ----------------------------------- Evento ----------------------------------- */

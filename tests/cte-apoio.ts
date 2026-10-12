@@ -327,7 +327,12 @@ export type ChamadaRecebida = {
   dados: string;
   /** Impressão digital (SHA-256) do certificado que o cliente apresentou, ou `null` sem certificado. */
   certificadoDoCliente: string | null;
+  /** A SVC a que a chamada foi feita ("SVC-RS" ou "SVC-SP"), ou `null` quando foi à autorizadora da UF. */
+  svc: string | null;
 };
+
+/** Um evento que a SEFAZ de mentira registrou para um CT-e: é o que a consulta pela chave devolve em `procEventoCTe`. */
+export type EventoRegistrado = { tipo: string; sequencia: number; protocolo: string; cStat: number; xml: string; canceladoPor?: string };
 
 export type SefazDeMentira = {
   url: string;
@@ -339,9 +344,21 @@ export type SefazDeMentira = {
   /** Quantas consultas ainda respondem "não consta" (217) mesmo para um CT-e autorizado: a consulta que chega antes de a autorização aparecer. */
   consultasCegas: number;
   chamadas: ChamadaRecebida[];
-  /** Chaves que este servidor já autorizou (a consulta responde por elas) e cancelou. */
-  autorizados: Map<string, { protocolo: string; resumo: string; recebidoEm: string; ambiente: string }>;
+  /** Chaves que este servidor já autorizou (a consulta responde por elas) e cancelou. `svc`: quem autorizou foi a SVC. */
+  autorizados: Map<string, { protocolo: string; resumo: string; recebidoEm: string; ambiente: string; svc?: boolean }>;
   cancelados: Set<string>;
+  /**
+   * A SVC (MOC 4.00, Visão Geral, itens 4.6.5 e 11.3.3): as chamadas que chegam
+   * pelo caminho `/SVC-RS/...` ou `/SVC-SP/...`. `svcAtiva`: a SEFAZ de origem a
+   * acionou (o status responde 113; senão 114, e ela rejeita o CT-e).
+   * `modoDaSvc`: como ela responde, à parte do `modo` da autorizadora da UF.
+   */
+  svcAtiva: boolean;
+  modoDaSvc: ModoDaSefaz;
+  /** Um serviço que responde de outro jeito (ex.: `{ CTeRecepcaoSincV4: "mudo" }`: o status responde, a recepção não). Vale para a UF e para a SVC. */
+  modoDe: Partial<Record<string, ModoDaSefaz>>;
+  /** Os eventos registrados, por chave do CT-e (carta de correção, comprovante de entrega, cancelamentos, e os "de fora"). */
+  eventos: Map<string, EventoRegistrado[]>;
   /**
    * O registro de evento responde com ressalva (MOC 4.00, Visão Geral, item
    * 5.1.7): 134 registra o cancelamento, com alerta; 136 guarda o evento SEM
@@ -360,6 +377,41 @@ const horario = () => `${new Date(Date.now() - 3 * 3_600_000).toISOString().slic
 
 let sequencial = 0;
 const novoProtocolo = () => `1352600${String(Date.now() % 100000).padStart(5, "0")}${String((sequencial += 1) % 1000).padStart(3, "0")}`;
+
+const NOME_DO_EVENTO: Record<string, string> = {
+  "110110": "Carta de Correção",
+  "110111": "Cancelamento",
+  "110180": "Comprovante de Entrega do CT-e",
+  "110181": "Cancelamento do Comprovante de Entrega do CT-e",
+  "310610": "MDF-e autorizado",
+};
+
+/** O `retEventoCTe` que a SEFAZ devolve no registro de um evento (MOC 4.00, Visão Geral, item 5.1.2). */
+const retornoDoEvento = (ambiente: string, chave: string, tipo: string, cStat: number, motivo: string, resto = "") =>
+  `<retEventoCTe xmlns="${NS}" versao="4.00"><infEvento><tpAmb>${ambiente}</tpAmb><verAplic>TESTE-1.0</verAplic><cOrgao>35</cOrgao><cStat>${cStat}</cStat><xMotivo>${motivo}</xMotivo><chCTe>${chave}</chCTe><tpEvento>${tipo}</tpEvento>${resto}</infEvento></retEventoCTe>`;
+
+/**
+ * Põe na SEFAZ de mentira um evento que NÃO saiu deste sistema (outro
+ * programa da transportadora, ou o fisco): a consulta pela chave passa a
+ * devolvê-lo. `detalhe` é o conteúdo do `detEvento`; `cancela` é o protocolo do
+ * comprovante de entrega que um 110181 cancela.
+ */
+export function registrarEventoDeFora(sefaz: SefazDeMentira, chave: string, evento: { tipo: string; sequencia: number; detalhe: string; cancela?: string }): string {
+  const protocolo = novoProtocolo();
+  const enviado = `<eventoCTe xmlns="${NS}" versao="4.00"><infEvento Id="ID${evento.tipo}${chave}${String(evento.sequencia).padStart(3, "0")}"><cOrgao>35</cOrgao><tpAmb>2</tpAmb><CNPJ>${chave.slice(6, 20)}</CNPJ><chCTe>${chave}</chCTe><dhEvento>${horario()}</dhEvento><tpEvento>${evento.tipo}</tpEvento><nSeqEvento>${evento.sequencia}</nSeqEvento><detEvento versaoEvento="4.00">${evento.detalhe}</detEvento></infEvento></eventoCTe>`;
+  const registro = `<xEvento>${NOME_DO_EVENTO[evento.tipo] ?? "Evento"}</xEvento><nSeqEvento>${evento.sequencia}</nSeqEvento><dhRegEvento>${horario()}</dhRegEvento><nProt>${protocolo}</nProt>`;
+  const registrados = sefaz.eventos.get(chave) ?? [];
+  if (evento.cancela) {
+    const alvo = registrados.find((registrado) => registrado.protocolo === evento.cancela);
+    if (alvo) alvo.canceladoPor = protocolo;
+  }
+  if (evento.tipo === "110111") sefaz.cancelados.add(chave);
+  sefaz.eventos.set(chave, [
+    ...registrados,
+    { tipo: evento.tipo, sequencia: evento.sequencia, protocolo, cStat: 135, xml: `<procEventoCTe xmlns="${NS}" versao="4.00">${enviado}${retornoDoEvento("2", chave, evento.tipo, 135, "Evento registrado e vinculado a CT-e", registro)}</procEventoCTe>` },
+  ]);
+  return protocolo;
+}
 
 function protocoloXml(chave: string, autorizado: { protocolo: string; resumo: string; recebidoEm: string; ambiente: string }, cStat = 100, motivo = "Autorizado o uso do CT-e") {
   return `<protCTe versao="4.00"><infProt Id="ID${autorizado.protocolo}"><tpAmb>${autorizado.ambiente}</tpAmb><verAplic>TESTE-1.0</verAplic><chCTe>${chave}</chCTe><dhRecbto>${autorizado.recebidoEm}</dhRecbto><nProt>${autorizado.protocolo}</nProt><digVal>${autorizado.resumo}</digVal><cStat>${cStat}</cStat><xMotivo>${motivo}</xMotivo></infProt></protCTe>`;
@@ -381,43 +433,61 @@ export async function subirSefazDeMentira(): Promise<SefazDeMentira> {
     chamadas: [],
     autorizados: new Map(),
     cancelados: new Set(),
+    svcAtiva: false,
+    modoDaSvc: "autorizar",
+    modoDe: {},
+    eventos: new Map(),
     eventoComRessalva: null,
     fechar: async () => undefined,
   };
 
-  const responder = (servico: string, dados: string): string | null => {
+  const responder = (servico: string, dados: string, modo: ModoDaSefaz, svc: string | null): string | null => {
     // O ambiente da resposta é o da mensagem recebida, como na SEFAZ.
     const ambiente = /<tpAmb>([12])<\/tpAmb>/.exec(dados)?.[1] ?? "2";
     const retorno = (raiz: string, cStat: number, motivo: string, resto = "") =>
       `<${raiz} xmlns="${NS}" versao="4.00"><tpAmb>${ambiente}</tpAmb><cUF>35</cUF><verAplic>TESTE-1.0</verAplic><cStat>${cStat}</cStat><xMotivo>${motivo}</xMotivo>${resto}</${raiz}>`;
 
     if (servico === "CTeStatusServicoV4") {
-      const parado = estado.modo === "parado";
+      const parado = modo === "parado";
+      // Regras M04 e M05: a SVC responde pelo status da ativação dela para a UF.
+      const [cStat, motivo] = parado
+        ? [108, "Serviço Paralisado Momentaneamente"]
+        : svc === null
+          ? [107, "Serviço em Operação"]
+          : estado.svcAtiva
+            ? [113, `Serviço ${svc} em operação. Desativação prevista para a UF em 13/10/26, às 18:00 horas`]
+            : [114, `${svc} desabilitada pela SEFAZ de Origem`];
       return envelope(
         servico,
         "cteStatusServicoCT",
-        `<retConsStatServCTe xmlns="${NS}" versao="4.00"><tpAmb>${ambiente}</tpAmb><verAplic>TESTE-1.0</verAplic><cStat>${parado ? 108 : 107}</cStat><xMotivo>${parado ? "Serviço Paralisado Momentaneamente" : "Serviço em Operação"}</xMotivo><cUF>35</cUF><dhRecbto>${horario()}</dhRecbto><tMed>1</tMed></retConsStatServCTe>`,
+        `<retConsStatServCTe xmlns="${NS}" versao="4.00"><tpAmb>${ambiente}</tpAmb><verAplic>TESTE-1.0</verAplic><cStat>${cStat}</cStat><xMotivo>${motivo}</xMotivo><cUF>35</cUF><dhRecbto>${horario()}</dhRecbto><tMed>1</tMed></retConsStatServCTe>`,
       );
     }
 
     if (servico === "CTeRecepcaoSincV4") {
       const chave = /Id="CTe([0-9A-Z]{44})"/.exec(dados)?.[1] ?? "";
       const resumo = /<DigestValue>([^<]+)<\/DigestValue>/.exec(dados)?.[1] ?? "";
-      if (estado.modo === "parado") return envelope(servico, "cteRecepcao", retorno("retCTe", 108, "Serviço Paralisado Momentaneamente"));
-      if (estado.modo === "rejeitar") return envelope(servico, "cteRecepcao", retorno("retCTe", 481, "Rejeição: IE deve ser informada para tomador Contribuinte"));
-      if (estado.modo === "numero-usado") {
+      const tpEmis = /<tpEmis>(\d)<\/tpEmis>/.exec(dados)?.[1] ?? "";
+      if (modo === "parado") return envelope(servico, "cteRecepcao", retorno("retCTe", 108, "Serviço Paralisado Momentaneamente"));
+      // Regras C09 (114), H007/G011 (515 e 516) e G008 (586) do MOC 4.00.
+      if (svc !== null && !estado.svcAtiva) return envelope(servico, "cteRecepcao", retorno("retCTe", 114, `${svc} desabilitada pela SEFAZ de Origem`));
+      if (svc === null && (tpEmis === "7" || tpEmis === "8")) return envelope(servico, "cteRecepcao", retorno("retCTe", 515, "Rejeição: O tpEmis informado só é válido na contingência SVC"));
+      if (svc !== null && tpEmis !== (svc === "SVC-RS" ? "7" : "8")) return envelope(servico, "cteRecepcao", retorno("retCTe", 516, `Rejeição: O tpEmis informado é incompatível com ${svc}`));
+      if (/<dhCont>|<xJust>/.test(dados)) return envelope(servico, "cteRecepcao", retorno("retCTe", 586, "Rejeição: Data e Justificativa de entrada em contingência não devem ser informadas para tipo de emissão diferente de FS-DA."));
+      if (modo === "rejeitar") return envelope(servico, "cteRecepcao", retorno("retCTe", 481, "Rejeição: IE deve ser informada para tomador Contribuinte"));
+      if (modo === "numero-usado") {
         return envelope(servico, "cteRecepcao", retorno("retCTe", 539, "Rejeição: Duplicidade de CTe, com diferença na Chave de Acesso [chCTe: 35261099000108000141570010000000011999999990]"));
       }
       // Regra G159 do Anexo I: o CT-e desta chave já foi cancelado.
       if (estado.cancelados.has(chave)) {
         return envelope(servico, "cteRecepcao", retorno("retCTe", 218, "Rejeição: CTe já está cancelado na base de dados da SEFAZ [nProt:135260000000002][dhCanc: 2026-10-10T10:00:00-03:00]"));
       }
-      if (estado.modo === "duplicidade" || estado.autorizados.has(chave)) {
+      if (modo === "duplicidade" || estado.autorizados.has(chave)) {
         return envelope(servico, "cteRecepcao", retorno("retCTe", 204, "Rejeição: Duplicidade de CTe [nProt:135260000000001][dhAut: 2026-10-10T10:00:00-03:00]"));
       }
-      if (estado.modo === "sem-protocolo") return envelope(servico, "cteRecepcao", retorno("retCTe", 100, "Autorizado o uso do CT-e"));
-      const autorizado = { protocolo: novoProtocolo(), resumo, recebidoEm: horario(), ambiente };
-      if (estado.modo === "outra-chave") {
+      if (modo === "sem-protocolo") return envelope(servico, "cteRecepcao", retorno("retCTe", 100, "Autorizado o uso do CT-e"));
+      const autorizado = { protocolo: novoProtocolo(), resumo, recebidoEm: horario(), ambiente, svc: svc !== null };
+      if (modo === "outra-chave") {
         return envelope(servico, "cteRecepcao", retorno("retCTe", 100, "Autorizado o uso do CT-e", protocoloXml(`${chave.slice(0, 43)}${(Number(chave[43]) + 1) % 10}`, autorizado)));
       }
       estado.autorizados.set(chave, autorizado);
@@ -431,27 +501,53 @@ export async function subirSefazDeMentira(): Promise<SefazDeMentira> {
         `<retConsSitCTe xmlns="${NS}" versao="4.00"><tpAmb>${ambiente}</tpAmb><verAplic>TESTE-1.0</verAplic><cStat>${cStat}</cStat><xMotivo>${motivo}</xMotivo><cUF>35</cUF>${resto}</retConsSitCTe>`;
       const cega = estado.consultasCegas > 0;
       if (cega) estado.consultasCegas -= 1;
-      if (!autorizado || cega) return envelope(servico, "cteConsultaCT", raiz(217, "Rejeição: CTe não consta na base de dados da SEFAZ"));
+      // MOC 4.00, Visão Geral, item 4.5.6: a SVC só responde pelos CT-e que ela autorizou, e a autorizadora da UF, pelos dela.
+      if (!autorizado || cega || Boolean(autorizado.svc) !== (svc !== null)) return envelope(servico, "cteConsultaCT", raiz(217, "Rejeição: CTe não consta na base de dados da SEFAZ"));
+      const eventos = (estado.eventos.get(chave) ?? []).map((registrado) => registrado.xml).join("");
       // Como na SEFAZ (MOC 4.00, Visão Geral, itens 4.5.2 e 4.5.6): a situação atual vai no topo, e o `protCTe` é sempre o da AUTORIZAÇÃO (cStat 100).
-      if (estado.cancelados.has(chave)) return envelope(servico, "cteConsultaCT", raiz(101, "Cancelamento de CT-e homologado", protocoloXml(chave, autorizado)));
-      return envelope(servico, "cteConsultaCT", raiz(100, "Autorizado o uso do CT-e", protocoloXml(chave, autorizado)));
+      if (estado.cancelados.has(chave)) return envelope(servico, "cteConsultaCT", raiz(101, "Cancelamento de CT-e homologado", protocoloXml(chave, autorizado) + eventos));
+      return envelope(servico, "cteConsultaCT", raiz(100, "Autorizado o uso do CT-e", protocoloXml(chave, autorizado) + eventos));
     }
 
     if (servico === "CTeRecepcaoEventoV4") {
       const chave = /<chCTe>([0-9A-Z]{44})<\/chCTe>/.exec(dados)?.[1] ?? "";
-      const evento = (cStat: number, motivo: string, resto = "") =>
-        `<retEventoCTe xmlns="${NS}" versao="4.00"><infEvento><tpAmb>${ambiente}</tpAmb><verAplic>TESTE-1.0</verAplic><cOrgao>35</cOrgao><cStat>${cStat}</cStat><xMotivo>${motivo}</xMotivo><chCTe>${chave}</chCTe><tpEvento>110111</tpEvento>${resto}</infEvento></retEventoCTe>`;
-      if (estado.modo === "rejeitar") return envelope(servico, "cteRecepcaoEvento", evento(220, "Rejeição: CTe autorizado há mais de 7 dias (168 horas)"));
-      if (!estado.autorizados.has(chave)) return envelope(servico, "cteRecepcaoEvento", evento(217, "Rejeição: CTe não consta na base de dados da SEFAZ"));
+      const tipo = /<tpEvento>(\d{6})<\/tpEvento>/.exec(dados)?.[1] ?? "110111";
+      const sequencia = Number(/<nSeqEvento>(\d{1,3})<\/nSeqEvento>/.exec(dados)?.[1] ?? "1");
+      const evento = (cStat: number, motivo: string, resto = "") => retornoDoEvento(ambiente, chave, tipo, cStat, motivo, resto);
+      const responderEvento = (cStat: number, motivo: string, resto = "") => envelope(servico, "cteRecepcaoEvento", evento(cStat, motivo, resto));
+      // Regra N09: a SVC só aceita o cancelamento.
+      if (svc !== null && tipo !== "110111") return responderEvento(530, "Rejeição: Se ambiente SVC, rejeitar eventos diferentes de EPEC, Liberação EPEC e Cancelamento");
+      if (modo === "rejeitar") return responderEvento(220, "Rejeição: CTe autorizado há mais de 7 dias (168 horas)");
+      const autorizado = estado.autorizados.get(chave);
+      if (!autorizado || Boolean(autorizado.svc) !== (svc !== null)) return responderEvento(217, "Rejeição: CTe não consta na base de dados da SEFAZ");
       if (estado.cancelados.has(chave)) {
-        return envelope(servico, "cteRecepcaoEvento", evento(218, "Rejeição: CTe já está cancelado na base de dados da SEFAZ [nProt:135260000000002][dhCanc: 2026-10-10T10:00:00-03:00]"));
+        return responderEvento(218, "Rejeição: CTe já está cancelado na base de dados da SEFAZ [nProt:135260000000002][dhCanc: 2026-10-10T10:00:00-03:00]");
       }
-      const registro = `<xEvento>Cancelamento</xEvento><nSeqEvento>1</nSeqEvento><dhRegEvento>${horario()}</dhRegEvento><nProt>${novoProtocolo()}</nProt>`;
+      const registrados = estado.eventos.get(chave) ?? [];
+      // Regra N16: mesmo tipo e mesma sequência para a chave.
+      const repetido = registrados.find((registrado) => registrado.tipo === tipo && registrado.sequencia === sequencia);
+      if (repetido) return responderEvento(631, `Rejeição: Duplicidade de evento [nProt:${repetido.protocolo}][dhRegEvento: 2026-10-10T10:00:00-03:00]`);
+      const emVigor = registrados.filter((registrado) => registrado.tipo === "110180" && !registrado.canceladoPor);
+      if (tipo === "110111") {
+        // Item 6.2.1 do MOC: regras O14 (523) e Q16 (862).
+        if (registrados.some((registrado) => registrado.tipo === "110110")) return responderEvento(523, "Rejeição: Vedado cancelamento quando existir evento Carta de Correção");
+        if (emVigor.length > 0) return responderEvento(862, "Rejeição: Vedado o cancelamento quando houver evento de Comprovante de Entrega associado");
+      }
+      // Item 6.8.1, regra O08 (870), e item 6.9.1, regra O03 (866).
+      if (tipo === "110180" && emVigor.length > 0) return responderEvento(870, "Rejeição: Não é permitido mais de um comprovante de entrega para CTe (exceto CTe Globalizado)");
+      const alvoDoCancelamento = tipo === "110181" ? emVigor.find((registrado) => registrado.protocolo === /<nProtCE>(\d{15})<\/nProtCE>/.exec(dados)?.[1]) : undefined;
+      if (tipo === "110181" && !alvoDoCancelamento) return responderEvento(866, "Rejeição: Protocolo do evento a ser cancelado não existe, não está associado ao CTe ou já está cancelado");
+
+      const protocolo = novoProtocolo();
+      const registro = `<xEvento>${NOME_DO_EVENTO[tipo] ?? "Evento"}</xEvento><nSeqEvento>${sequencia}</nSeqEvento><dhRegEvento>${horario()}</dhRegEvento><nProt>${protocolo}</nProt>`;
       // 136: o evento fica guardado, sem vínculo com o CT-e. Nada muda nele.
-      if (estado.eventoComRessalva === 136) return envelope(servico, "cteRecepcaoEvento", evento(136, "Evento registrado, mas não vinculado a CT-e", registro));
-      estado.cancelados.add(chave);
-      if (estado.eventoComRessalva === 134) return envelope(servico, "cteRecepcaoEvento", evento(134, "Evento registrado e vinculado ao CT-e com alerta para situação do documento", registro));
-      return envelope(servico, "cteRecepcaoEvento", evento(135, "Evento registrado e vinculado a CT-e", registro));
+      if (estado.eventoComRessalva === 136) return responderEvento(136, "Evento registrado, mas não vinculado a CT-e", registro);
+      const comAlerta = estado.eventoComRessalva === 134;
+      const [cStat, motivo] = comAlerta ? [134, "Evento registrado e vinculado ao CT-e com alerta para situação do documento"] : [135, "Evento registrado e vinculado a CT-e"];
+      if (tipo === "110111") estado.cancelados.add(chave);
+      if (alvoDoCancelamento) alvoDoCancelamento.canceladoPor = protocolo;
+      estado.eventos.set(chave, [...registrados, { tipo, sequencia, protocolo, cStat, xml: `<procEventoCTe xmlns="${NS}" versao="4.00">${dados}${evento(cStat, motivo, registro)}</procEventoCTe>` }]);
+      return responderEvento(cStat, motivo, registro);
     }
     return null;
   };
@@ -461,32 +557,34 @@ export async function subirSefazDeMentira(): Promise<SefazDeMentira> {
     req.on("data", (parte: Buffer) => partes.push(parte));
     req.on("end", () => {
       const corpo = Buffer.concat(partes).toString("utf8");
-      const servico = (req.url ?? "").split("/").pop() ?? "";
+      const caminho = (req.url ?? "").split("/");
+      const servico = caminho.pop() ?? "";
+      // A SVC atende num caminho próprio (src/lib/cte/sefaz.ts, `chamar`).
+      const svc = caminho.find((parte) => parte === "SVC-RS" || parte === "SVC-SP") ?? null;
+      const modo = estado.modoDe[servico] ?? (svc === null ? estado.modo : estado.modoDaSvc);
       const bruto = /<cteDadosMsg[^>]*>([\s\S]*)<\/cteDadosMsg>/.exec(corpo)?.[1] ?? "";
       const dados = servico === "CTeRecepcaoSincV4" ? gunzipSync(Buffer.from(bruto, "base64")).toString("utf8") : bruto;
       const doCliente = (req.socket as TLSSocket).getPeerCertificate();
       const certificadoDoCliente = doCliente?.raw ? createHash("sha256").update(doCliente.raw).digest("hex") : null;
-      estado.chamadas.push({ servico, acao: String(req.headers["content-type"] ?? ""), dados, certificadoDoCliente });
+      estado.chamadas.push({ servico, acao: String(req.headers["content-type"] ?? ""), dados, certificadoDoCliente, svc });
 
       if (!certificadoDoCliente) {
         res.writeHead(403, { "Content-Type": "text/html" }).end("<html><title>403 - Forbidden: Access is denied.</title></html>");
         return;
       }
-      if (estado.modo === "mudo") return; // nunca responde: o cliente desiste pelo tempo limite
-      if (estado.modo === "mudo-processando") {
+      if (modo === "mudo") return; // nunca responde: o cliente desiste pelo tempo limite
+      if (modo === "mudo-processando") {
         // Processa como se fosse autorizar, e a resposta se perde.
-        estado.modo = "autorizar";
-        responder(servico, dados);
-        estado.modo = "mudo-processando";
+        responder(servico, dados, "autorizar", svc);
         return;
       }
-      if (estado.modo === "fault") {
+      if (modo === "fault") {
         res.writeHead(500, { "Content-Type": "application/soap+xml; charset=utf-8" }).end(
           `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><soap:Fault><soap:Code><soap:Value>soap:Receiver</soap:Value></soap:Code><soap:Reason><soap:Text xml:lang="pt-BR">Falha no processamento da mensagem</soap:Text></soap:Reason></soap:Fault></soap:Body></soap:Envelope>`,
         );
         return;
       }
-      const resposta = responder(servico, dados);
+      const resposta = responder(servico, dados, modo, svc);
       const enviar = () => {
         if (resposta === null) res.writeHead(404).end();
         else res.writeHead(200, { "Content-Type": "application/soap+xml; charset=utf-8" }).end(resposta);

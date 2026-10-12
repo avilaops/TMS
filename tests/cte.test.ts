@@ -1124,7 +1124,7 @@ describe("cliente SOAP contra um servidor HTTPS local que imita a SEFAZ", () => 
   it("status do serviço: em operação, com o certificado do emitente apresentado na conexão", async () => {
     sefaz.modo = "autorizar";
     sefaz.chamadas.length = 0;
-    expect(await statusDoServico(destino)).toEqual({ cStat: 107, motivo: "Serviço em Operação", emOperacao: true });
+    expect(await statusDoServico(destino)).toEqual({ cStat: 107, motivo: "Serviço em Operação", emOperacao: true, svcAtiva: false });
     expect(sefaz.chamadas).toHaveLength(1);
     expect(sefaz.chamadas[0].servico).toBe("CTeStatusServicoV4");
     // Autenticação mútua: o servidor viu o certificado do emitente.
@@ -1135,7 +1135,7 @@ describe("cliente SOAP contra um servidor HTTPS local que imita a SEFAZ", () => 
 
   it("serviço paralisado: a resposta diz que não está em operação", async () => {
     sefaz.modo = "parado";
-    expect(await statusDoServico(destino)).toEqual({ cStat: 108, motivo: "Serviço Paralisado Momentaneamente", emOperacao: false });
+    expect(await statusDoServico(destino)).toEqual({ cStat: 108, motivo: "Serviço Paralisado Momentaneamente", emOperacao: false, svcAtiva: false });
   });
 
   it("sem certificado, o servidor recusa (403), como a SEFAZ", async () => {

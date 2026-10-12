@@ -9,7 +9,7 @@ import {
   type Regime,
   type SituacaoDoIcms,
 } from "@/lib/cte";
-import { CODIGO_DA_UF, MODELO_DO_CTE, TIPO_DE_EMISSAO_NORMAL, chaveDoCte, dataHoraDoEvento, dataHoraDoXml } from "@/lib/cte/chave";
+import { CODIGO_DA_UF, MODELO_DO_CTE, TIPO_DE_EMISSAO_DA_SVC, TIPO_DE_EMISSAO_NORMAL, chaveDoCte, dataHoraDoEvento, dataHoraDoXml, type Svc } from "@/lib/cte/chave";
 import { codigoDoAmbiente } from "@/lib/cte/enderecos";
 import { responsavelTecnicoDoXml, type ResponsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { centavos, decimal, digitos, escapar, grupo, tag, textoDoXml } from "@/lib/cte/texto";
@@ -26,8 +26,9 @@ import { centavos, decimal, digitos, escapar, grupo, tag, textoDoXml } from "@/l
  * validam o resultado contra o esquema oficial.
  *
  * O que este CT-e é, sempre: tipo normal (`tpCTe` 0), serviço normal
- * (`tpServ` 0), emissão normal (`tpEmis` 1), DACTE em retrato, sem expedidor
- * nem recebedor, sem contingência.
+ * (`tpServ` 0), DACTE em retrato, sem expedidor nem recebedor. A emissão é a
+ * normal (`tpEmis` 1) ou, a pedido de quem emite, pela SVC (`tpEmis` 7 ou 8):
+ * ver `DadosDoCte.svc`. Não há contingência off-line, EPEC nem FS-DA.
  *
  * IBS e CBS (Reforma Tributária do Consumo): o grupo `imp/IBSCBS` e o total
  * `imp/vTotDFe` vão quando a empresa tem o CST e a classificação tributária
@@ -151,6 +152,19 @@ export type DadosDoCte = {
   enderecoDoQrCode: string;
   /** A desenvolvedora do sistema (`infRespTec`). Nulo ou ausente: o CT-e vai sem o grupo. */
   responsavelTecnico?: ResponsavelTecnico | null;
+  /**
+   * Autorização pela SVC (Sistema Virtual de Contingência). Ausente: emissão normal.
+   *
+   * O que muda no documento é SÓ o `tpEmis` (7 = SVC-RS, 8 = SVC-SP) e, com ele,
+   * a chave de acesso, o `cDV`, o `Id` e o parâmetro `chCTe` do QR Code (MOC
+   * 4.00, Visão Geral, item 11.3.3: "geração de novo arquivo XML do CTe com a
+   * seguinte alteração: campo tpEmis alterado para 7 ou 8"). `dhCont` e `xJust`
+   * NÃO vão: a regra G008 do Anexo I (rejeição 586), mantida pela NT 2026.004
+   * (item 6), só os aceita na contingência off-line e no FS-DA. O QR Code não
+   * leva o parâmetro `sign` (regra G216, rejeição 854) e o endereço dele
+   * continua o da UF do emitente (regra G213: "site da UF").
+   */
+  svc?: Svc | null;
 };
 
 export type CteMontado = { xml: string; chave: string; id: string; cfop: string; icms: IcmsDoCte; ibsCbs: IbsCbsDoCte | null };
@@ -503,7 +517,8 @@ function documentosDoXml(dados: DadosDoCte): string {
 export function montarCte(dados: DadosDoCte): CteMontado {
   const { emitente } = dados;
   const ambiente = emitente.ambiente;
-  const chave = chaveDoCte({ uf: emitente.endereco.uf, emissao: dados.emissao, cnpj: emitente.cnpj, serie: emitente.serie, numero: dados.numero, codigo: dados.codigo });
+  const tipoDeEmissao = dados.svc ? TIPO_DE_EMISSAO_DA_SVC[dados.svc] : TIPO_DE_EMISSAO_NORMAL;
+  const chave = chaveDoCte({ uf: emitente.endereco.uf, emissao: dados.emissao, cnpj: emitente.cnpj, serie: emitente.serie, numero: dados.numero, codigo: dados.codigo, tipoDeEmissao });
   const id = `CTe${chave}`;
 
   const total = centavos(dados.valorDaPrestacao);
@@ -523,7 +538,7 @@ export function montarCte(dados: DadosDoCte): CteMontado {
       tag("nCT", String(dados.numero)),
       tag("dhEmi", dataHoraDoXml(dados.emissao, emitente.endereco.uf)),
       tag("tpImp", "1"),
-      tag("tpEmis", TIPO_DE_EMISSAO_NORMAL),
+      tag("tpEmis", tipoDeEmissao),
       tag("cDV", chave.slice(43)),
       tag("tpAmb", codigoDoAmbiente(ambiente)),
       tag("tpCTe", "0"),
