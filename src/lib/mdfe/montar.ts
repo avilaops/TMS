@@ -55,6 +55,9 @@ export type EmitenteDoMdfe = {
   fantasia?: string | null;
   endereco: EnderecoDoCte;
   telefone?: string | null;
+  /** Pessoa de contato e e-mail da empresa (responsável técnico, `infRespTec`). */
+  contato?: string | null;
+  email?: string | null;
   /** RNTRC do emitente, 8 dígitos. Vazio em carga própria sem registro na ANTT. */
   rntrc?: string | null;
   serie: number;

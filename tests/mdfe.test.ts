@@ -1013,7 +1013,7 @@ describe("correções da revisão: fuso da UF do emitente e responsável técnic
     expect((await errosNoEsquemaDoMdfe(errado, "mdfe_v3.00.xsd")).join(" ")).toMatch(/fone/);
   });
 
-  it("a conferência avisa quando o servidor não tem os dados do responsável técnico, e leva o grupo quando tem", () => {
+  it("a conferência avisa quando a empresa não tem os dados do responsável técnico, e leva o grupo quando tem", () => {
     const sem = prepararMdfe(viagem([carga(1), carga(2)]), "MG", ENTRADAS, contexto());
     expect(sem.pendencias).toEqual([]);
     expect(sem.avisos).toContain(semResponsavelTecnico("mdfe"));
@@ -1188,7 +1188,7 @@ describe("código de segurança do responsável técnico (idCSRT e hashCSRT)", (
   // Valores calculados fora deste código (Python, hashlib.sha1 + base64): Base64(SHA-1(CSRT + chave de acesso)).
   const CSRT = "G8063VRTNDMO886SFNK5LDUDEI24XJ22YIPO";
   const CHAVE_DO_MDFE = "35261099000108000141580010000000071482159371";
-  const variaveis = { RESPTEC_CNPJ: "99.888.777/0001-00", RESPTEC_CONTATO: "Suporte de Teste", RESPTEC_EMAIL: "suporte@desenvolvedora.example", RESPTEC_FONE: "(17) 3000-1000" };
+  const empresa = { cnpj: "99.888.777/0001-00", contato: "Suporte de Teste", email: "suporte@desenvolvedora.example", telefone: "(17) 3000-1000" };
 
   it("a conta do MOC: Base64 do SHA-1 de CSRT + chave de acesso, com 28 letras", () => {
     expect(hashDoCsrt(CSRT, CHAVE_DO_MDFE)).toBe("JB2UrIfg/B0t5CtWa3mf2cfX2tw=");
@@ -1205,15 +1205,15 @@ describe("código de segurança do responsável técnico (idCSRT e hashCSRT)", (
     expect(codigoDeSeguranca({ RESPTEC_CSRT_ID: "7", RESPTEC_CSRT: CSRT })?.hash(CHAVE_DO_MDFE)).toBe("JB2UrIfg/B0t5CtWa3mf2cfX2tw=");
 
     // Sem as variáveis do CSRT o responsável técnico é exatamente o de antes.
-    expect(responsavelTecnico(variaveis)).toEqual(RESPONSAVEL_TECNICO);
-    expect(responsavelTecnico({ ...variaveis, RESPTEC_CSRT_ID: "7" })).toEqual(RESPONSAVEL_TECNICO);
+    expect(responsavelTecnico(empresa, {})).toEqual(RESPONSAVEL_TECNICO);
+    expect(responsavelTecnico(empresa, { RESPTEC_CSRT_ID: "7" })).toEqual(RESPONSAVEL_TECNICO);
     expect(responsavelTecnicoDoXml(RESPONSAVEL_TECNICO, CHAVE_DO_MDFE)).not.toContain("CSRT");
     // Sem os dados do responsável técnico não há grupo, com ou sem CSRT.
-    expect(responsavelTecnico({ RESPTEC_CSRT_ID: "7", RESPTEC_CSRT: CSRT })).toBeNull();
+    expect(responsavelTecnico(null, { RESPTEC_CSRT_ID: "7", RESPTEC_CSRT: CSRT })).toBeNull();
   });
 
   it("o segredo não sai: nem no XML, nem quando o responsável técnico vira JSON ou texto", () => {
-    const comCsrt = responsavelTecnico({ ...variaveis, RESPTEC_CSRT_ID: "7", RESPTEC_CSRT: CSRT })!;
+    const comCsrt = responsavelTecnico(empresa, { RESPTEC_CSRT_ID: "7", RESPTEC_CSRT: CSRT })!;
     expect(comCsrt.csrt?.id).toBe("007");
     expect(JSON.stringify(comCsrt)).not.toContain(CSRT);
     expect(JSON.stringify(comCsrt)).toBe(JSON.stringify({ ...RESPONSAVEL_TECNICO, csrt: { id: "007" } }));
@@ -1226,7 +1226,7 @@ describe("código de segurança do responsável técnico (idCSRT e hashCSRT)", (
   });
 
   it("MDF-e com o código de segurança: o hash é o da chave do próprio documento, e o XML passa no esquema", async () => {
-    const comCsrt = responsavelTecnico({ ...variaveis, RESPTEC_CSRT_ID: "7", RESPTEC_CSRT: CSRT })!;
+    const comCsrt = responsavelTecnico(empresa, { RESPTEC_CSRT_ID: "7", RESPTEC_CSRT: CSRT })!;
     const dados = mdfeDeExemplo({ responsavelTecnico: comCsrt });
     const { xml, chave } = assinado(dados);
     expect(chave).toBe(CHAVE_DO_MDFE);
@@ -1240,7 +1240,7 @@ describe("código de segurança do responsável técnico (idCSRT e hashCSRT)", (
   });
 
   it("CT-e com o código de segurança: mesmo grupo, hash da chave do CT-e, e o XML passa no esquema", async () => {
-    const comCsrt = responsavelTecnico({ ...variaveis, RESPTEC_CSRT_ID: "12", RESPTEC_CSRT: CSRT })!;
+    const comCsrt = responsavelTecnico(empresa, { RESPTEC_CSRT_ID: "12", RESPTEC_CSRT: CSRT })!;
     const montado = montarCte(dadosDeExemplo({ responsavelTecnico: comCsrt }));
     const xml = assinarXml(montado.xml, ALVO_DO_CTE, chaveDeAssinatura());
     expect(await errosNoEsquema(xml, "cte_v4.00.xsd")).toEqual([]);

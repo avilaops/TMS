@@ -62,7 +62,7 @@ import {
   resolverIcms,
 } from "../src/lib/cte/montar";
 import { AVISO_DO_ICMS_DE_OUTRA_UF, AVISO_DO_ICMS_RETIDO, SEM_EMITENTE, prepararCte, type CargaDoCte } from "../src/lib/cte/preparar";
-import { VARIAVEIS_DO_RESPONSAVEL_TECNICO, responsavelTecnico, responsavelTecnicoDoXml, semResponsavelTecnico } from "../src/lib/cte/responsavel-tecnico";
+import { responsavelTecnico, responsavelTecnicoDoXml, semResponsavelTecnico } from "../src/lib/cte/responsavel-tecnico";
 import {
   CSTAT,
   compactar,
@@ -707,17 +707,23 @@ describe("correções da revisão contra o MOC 4.00 e as Notas Técnicas", () =>
     expect(Object.keys(EXPLICACAO_DO_ICMS).sort()).toEqual(Object.keys(SITUACOES_DO_ICMS).sort());
   });
 
-  it("responsável técnico: vem das variáveis RESPTEC_*; faltando ou fora do formato, não há grupo", () => {
-    const variaveis = { RESPTEC_CNPJ: "99.888.777/0001-00", RESPTEC_CONTATO: " Suporte de Teste ", RESPTEC_EMAIL: "suporte@desenvolvedora.example", RESPTEC_FONE: "(17) 3000-1000" };
-    expect(responsavelTecnico(variaveis)).toEqual(RESPONSAVEL_TECNICO);
-    expect(responsavelTecnico({})).toBeNull();
-    for (const nome of VARIAVEIS_DO_RESPONSAVEL_TECNICO) expect(responsavelTecnico({ ...variaveis, [nome]: "" }), nome).toBeNull();
-    expect(responsavelTecnico({ ...variaveis, RESPTEC_CNPJ: "99.888.777/0001-01" })).toBeNull();
-    expect(responsavelTecnico({ ...variaveis, RESPTEC_CNPJ: "00000000000000" })).toBeNull();
-    expect(responsavelTecnico({ ...variaveis, RESPTEC_CONTATO: "X" })).toBeNull();
-    expect(responsavelTecnico({ ...variaveis, RESPTEC_EMAIL: "sem-arroba" })).toBeNull();
-    expect(responsavelTecnico({ ...variaveis, RESPTEC_FONE: "12345" })).toBeNull();
-    expect(responsavelTecnico({ ...variaveis, RESPTEC_FONE: "5517300010001" })).toBeNull();
+  it("responsável técnico: vem do cadastro da empresa; faltando dado ou fora do formato, não há grupo", () => {
+    const empresa = { cnpj: "99.888.777/0001-00", contato: " Suporte de Teste ", email: "suporte@desenvolvedora.example", telefone: "(17) 3000-1000" };
+    expect(responsavelTecnico(empresa, {})).toEqual(RESPONSAVEL_TECNICO);
+    expect(responsavelTecnico(null, {})).toBeNull();
+    for (const campo of ["contato", "email", "telefone"] as const) {
+      expect(responsavelTecnico({ ...empresa, [campo]: "" }, {}), campo).toBeNull();
+      expect(responsavelTecnico({ ...empresa, [campo]: null }, {}), campo).toBeNull();
+    }
+    expect(responsavelTecnico({ ...empresa, cnpj: "99.888.777/0001-01" }, {})).toBeNull();
+    expect(responsavelTecnico({ ...empresa, cnpj: "00000000000000" }, {})).toBeNull();
+    expect(responsavelTecnico({ ...empresa, contato: "X" }, {})).toBeNull();
+    expect(responsavelTecnico({ ...empresa, email: "sem-arroba" }, {})).toBeNull();
+    expect(responsavelTecnico({ ...empresa, telefone: "12345" }, {})).toBeNull();
+    expect(responsavelTecnico({ ...empresa, telefone: "5517300010001" }, {})).toBeNull();
+    // O emitente dos testes não tem contato nem e-mail: sem grupo. Com eles, o grupo é o da própria empresa.
+    expect(responsavelTecnico(EMITENTE, {})).toBeNull();
+    expect(responsavelTecnico({ ...EMITENTE, contato: "Maria da Silva", email: "fiscal@transteste.example" }, {})).toEqual({ cnpj: EMITENTE.cnpj, contato: "Maria da Silva", email: "fiscal@transteste.example", telefone: "1732421000" });
     expect(responsavelTecnicoDoXml(null, "35261099000108000141570010000000151482159370")).toBe("");
   });
 

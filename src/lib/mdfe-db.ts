@@ -146,6 +146,8 @@ const EMITENTE_SELECT = {
   state: true,
   zip: true,
   phone: true,
+  contactName: true,
+  contactEmail: true,
   rntrc: true,
   environment: true,
   mdfeSeries: true,
@@ -172,6 +174,8 @@ function emitenteDaLinha(linha: LinhaDoEmitente): EmitenteDoMdfe {
     fantasia: linha.tradeName,
     endereco: { logradouro: linha.street, numero: linha.number, complemento: linha.complement, bairro: linha.district, codigoMunicipio: linha.cityCode, municipio: linha.cityName, uf: linha.state, cep: linha.zip },
     telefone: linha.phone,
+    contato: linha.contactName,
+    email: linha.contactEmail,
     rntrc: linha.rntrc,
     serie: linha.mdfeSeries,
     ambiente: ambienteDaLinha(linha.environment),
@@ -474,7 +478,7 @@ async function prepararUf(db: LeituraDb, lido: Lido, ufDeDescarga: string, entra
     seguroPadrao: lido.seguroPadrao,
     reboques: await lerReboques(db, entradas.reboques ?? []),
     enderecoDoQrCode: ENDERECO_DO_QR_CODE,
-    responsavelTecnico: responsavelTecnico(),
+    responsavelTecnico: responsavelTecnico(lido.emitente),
     achar: municipioDoTexto,
   });
   const daViagem = lido.linha.status === "CANCELLED" ? [VIAGEM_CANCELADA] : [];

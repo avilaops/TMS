@@ -240,7 +240,7 @@ export function dadosDeExemplo(trocas: Partial<DadosDoCte> = {}): DadosDoCte {
   };
 }
 
-/** Um responsável técnico de mentira, no formato do esquema (`TRespTec`). Os dados de verdade vêm das variáveis RESPTEC_*. */
+/** Um responsável técnico de mentira, no formato do esquema (`TRespTec`). Os dados de verdade vêm do cadastro da empresa. */
 export const RESPONSAVEL_TECNICO: ResponsavelTecnico = { cnpj: "99888777000100", contato: "Suporte de Teste", email: "suporte@desenvolvedora.example", telefone: "1730001000" };
 
 const MIRASSOL = { codigoMunicipio: "3530300", municipio: "Mirassol", uf: "SP" };

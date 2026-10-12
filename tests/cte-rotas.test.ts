@@ -76,6 +76,8 @@ const FORMULARIO = {
   uf: "SP",
   cep: "15130-000",
   telefone: "(17) 3242-1000",
+  contato: " Maria da Silva ",
+  email: "fiscal@transteste.example",
   rntrc: "12345678",
   regime: "3",
   serie: "1",
@@ -376,7 +378,7 @@ suite("rotas da emissão de CT-e", () => {
       const { status, corpo } = await salvarDados({ proximoNumero: "37" });
       expect(status).toBe(200);
       expect(corpo.certificado).toBeNull();
-      expect(corpo.dados).toMatchObject({ cnpj: CNPJ_DA_PADRAO, ie: "123456789012", codigoMunicipio: "3530300", cidade: "Mirassol", uf: "SP", cep: "15130000", telefone: "1732421000", serie: 1, proximoNumero: 37, ambiente: "HOMOLOGACAO", icms: "00", aliquota: 12, complemento: null });
+      expect(corpo.dados).toMatchObject({ cnpj: CNPJ_DA_PADRAO, ie: "123456789012", codigoMunicipio: "3530300", cidade: "Mirassol", uf: "SP", cep: "15130000", telefone: "1732421000", contato: "Maria da Silva", email: "fiscal@transteste.example", serie: 1, proximoNumero: 37, ambiente: "HOMOLOGACAO", icms: "00", aliquota: 12, complemento: null });
       expect(await numeracao()).toBe(37);
 
       entrarComo("ADMIN");

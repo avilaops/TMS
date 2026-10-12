@@ -1604,6 +1604,10 @@ model FiscalIssuer {
   state        String
   zip          String   // só dígitos
   phone        String?
+  // Quem responde pelo sistema na empresa: com o CNPJ e o telefone acima, forma
+  // o responsável técnico (infRespTec) do CT-e e do MDF-e.
+  contactName  String?
+  contactEmail String?
   rntrc        String
   taxRegime    String   // CRT: 1, 2, 3 ou 4
   cteSeries    Int      @default(1)

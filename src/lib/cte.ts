@@ -140,6 +140,7 @@ const CNPJ_MESSAGE = "Informe um CNPJ válido (14 posições, com os dígitos ve
 const IE_MESSAGE = "A inscrição estadual precisa ter de 2 a 14 dígitos.";
 const CEP_MESSAGE = "O CEP precisa ter 8 dígitos.";
 const FONE_MESSAGE = "O telefone precisa ter de 6 a 14 dígitos, com DDD.";
+const EMAIL_DO_CONTATO_MESSAGE = "Informe um e-mail válido, com até 60 letras.";
 const RNTRC_MESSAGE = "O RNTRC precisa ter 8 dígitos.";
 const SERIE_MESSAGE = "A série precisa ser um número de 0 a 999.";
 const NUMERO_MESSAGE = "O próximo número precisa ser um inteiro de 1 a 999999999.";
@@ -343,6 +344,8 @@ export const dadosFiscaisSchema = z
       uf: z.enum(UFS, "Escolha a UF."),
       cep: z.preprocess(soDigitos, z.string(CEP_MESSAGE).regex(/^\d{8}$/, CEP_MESSAGE)),
       telefone: z.preprocess((valor) => emBrancoViraNulo(soDigitos(valor)), z.string(FONE_MESSAGE).regex(/^\d{6,14}$/, FONE_MESSAGE).nullish()),
+      contato: textoOpcional(60, "Nome do contato muito longo (máximo de 60 letras)."),
+      email: z.preprocess(emBrancoViraNulo, z.string(EMAIL_DO_CONTATO_MESSAGE).trim().max(60, EMAIL_DO_CONTATO_MESSAGE).regex(/^[^@\s]+@[^.\s]+\.\S+$/, EMAIL_DO_CONTATO_MESSAGE).nullish()),
       rntrc: z.preprocess(soDigitos, z.string(RNTRC_MESSAGE).regex(/^\d{8}$/, RNTRC_MESSAGE)),
       regime: z.enum(Object.keys(REGIMES) as [Regime, ...Regime[]], "Escolha o regime tributário."),
       serie: z.preprocess(numeroDoFormulario, z.number(SERIE_MESSAGE).int(SERIE_MESSAGE).min(0, SERIE_MESSAGE).max(999, SERIE_MESSAGE)),
@@ -410,6 +413,9 @@ export type DadosFiscais = {
   uf: string;
   cep: string;
   telefone: string | null;
+  /** Pessoa de contato e e-mail: com o CNPJ e o telefone, o responsável técnico dos documentos. */
+  contato: string | null;
+  email: string | null;
   rntrc: string;
   regime: Regime;
   serie: number;

@@ -117,6 +117,8 @@ export const EMITENTE_SELECT = {
   state: true,
   zip: true,
   phone: true,
+  contactName: true,
+  contactEmail: true,
   rntrc: true,
   taxRegime: true,
   cteSeries: true,
@@ -154,6 +156,8 @@ export function emitenteDaLinha(linha: LinhaDoEmitente): EmitenteDoCte {
     fantasia: linha.tradeName,
     endereco: { logradouro: linha.street, numero: linha.number, complemento: linha.complement, bairro: linha.district, codigoMunicipio: linha.cityCode, municipio: linha.cityName, uf: linha.state, cep: linha.zip },
     telefone: linha.phone,
+    contato: linha.contactName,
+    email: linha.contactEmail,
     rntrc: linha.rntrc,
     regime: linha.taxRegime as Regime,
     serie: linha.cteSeries,
@@ -214,6 +218,8 @@ export async function fiscalDaEmpresa(empresa: Empresa): Promise<FiscalDaEmpresa
     uf: emitente.endereco.uf,
     cep: emitente.endereco.cep ?? "",
     telefone: emitente.telefone ?? null,
+    contato: emitente.contato ?? null,
+    email: emitente.email ?? null,
     rntrc: emitente.rntrc,
     regime: emitente.regime,
     serie: emitente.serie,
@@ -315,6 +321,8 @@ export async function salvarDadosFiscais(empresa: Empresa, dados: DadosFiscaisDo
       state: municipio.uf,
       zip: dados.cep,
       phone: dados.telefone ?? null,
+      contactName: dados.contato ?? null,
+      contactEmail: dados.email ?? null,
       rntrc: dados.rntrc,
       taxRegime: dados.regime,
       cteSeries: dados.serie,
@@ -584,7 +592,7 @@ async function situacaoDaCarga(db: LeituraDb, tenantId: string, collectionId: st
   const emitente = doEmitente ? emitenteDaLinha(doEmitente) : null;
   const certificado = doEmitente ? certificadoDaLinha(doEmitente) : null;
   const enderecos = emitente ? enderecosDaUf(emitente.endereco.uf, emitente.ambiente) : null;
-  const preparo = prepararCte(cargaDoCte(linha), emitente, enderecos?.qrCode ?? null, municipioDoTexto, new Date(), responsavelTecnico());
+  const preparo = prepararCte(cargaDoCte(linha), emitente, enderecos?.qrCode ?? null, municipioDoTexto, new Date(), responsavelTecnico(emitente));
 
   const daEmpresa = faltasDoCertificado(certificado);
 

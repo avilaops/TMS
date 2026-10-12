@@ -374,6 +374,8 @@ const DADOS: DadosFiscais = {
   uf: "SP",
   cep: "15130000",
   telefone: null,
+  contato: null,
+  email: null,
   rntrc: "12345678",
   regime: "3",
   serie: 1,

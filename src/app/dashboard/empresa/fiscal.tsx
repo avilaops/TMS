@@ -60,6 +60,8 @@ const EM_BRANCO: Formulario = {
   uf: "SP",
   cep: "",
   telefone: "",
+  contato: "",
+  email: "",
   rntrc: "",
   regime: "3",
   serie: "1",
@@ -97,6 +99,8 @@ const doServidor = (dados: DadosFiscais): Formulario => ({
   uf: dados.uf,
   cep: dados.cep,
   telefone: dados.telefone ?? "",
+  contato: dados.contato ?? "",
+  email: dados.email ?? "",
   rntrc: dados.rntrc,
   regime: dados.regime,
   serie: String(dados.serie),
@@ -280,6 +284,8 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
           {campo("razaoSocial", "Razão social", { largo: true, maximo: 60 })}
           {campo("fantasia", "Nome fantasia", { opcional: true, maximo: 60 })}
           {campo("telefone", "Telefone", { opcional: true })}
+          {campo("contato", "Contato", { opcional: true, maximo: 60 })}
+          {campo("email", "E-mail", { opcional: true, maximo: 60 })}
           {campo("logradouro", "Logradouro", { maximo: 60 })}
           {campo("numero", "Número")}
           {campo("complemento", "Complemento", { opcional: true })}

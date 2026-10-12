@@ -696,6 +696,7 @@ export const ROTULOS_DOS_CAMPOS: Record<string, string> = {
   cancelReason: "Justificativa",
   certificado: "Certificado digital",
   legalName: "Razão social",
+  contactEmail: "E-mail do contato",
   cityName: "Cidade",
   state: "UF",
   rntrc: "RNTRC",

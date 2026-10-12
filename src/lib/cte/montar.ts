@@ -73,6 +73,9 @@ export type EmitenteDoCte = {
   fantasia?: string | null;
   endereco: EnderecoDoCte;
   telefone?: string | null;
+  /** Pessoa de contato e e-mail da empresa (responsável técnico, `infRespTec`). */
+  contato?: string | null;
+  email?: string | null;
   rntrc: string;
   regime: Regime;
   serie: number;

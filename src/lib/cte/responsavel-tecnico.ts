@@ -12,13 +12,14 @@ import { digitos, grupo, tag, textoDoXml } from "@/lib/cte/texto";
  * equivalente do MOC do MDF-e. Por isso o grupo vai sempre que o servidor tem
  * os dados.
  *
- * Os dados são da plataforma (quem desenvolve o TMS), não de cada
- * transportadora: vêm de variáveis de ambiente (`.env.example`). Faltando
- * qualquer uma, ou com valor fora do formato do esquema, o grupo NÃO é montado
- * e a conferência avisa que a UF pode rejeitar. Nada é inventado.
+ * Os dados são os da empresa cadastrada em Empresa → Fiscal (decisão do dono
+ * do sistema, 12/10/2026): o CNPJ e o telefone do emitente, mais o nome da
+ * pessoa de contato e o e-mail da mesma tela. Faltando qualquer um, ou com
+ * valor fora do formato do esquema, o grupo NÃO é montado e a conferência
+ * avisa que a UF pode rejeitar. Nada é inventado.
  *
  * CÓDIGO DE SEGURANÇA (`idCSRT` e `hashCSRT`): opcional. Quando o fisco fornece
- * o CSRT à desenvolvedora, ele entra pelas variáveis `RESPTEC_CSRT_ID` e
+ * o CSRT, ele entra pelas variáveis `RESPTEC_CSRT_ID` e
  * `RESPTEC_CSRT`, e os dois campos fecham o grupo. A conta do hash é a do MOC
  * do CT-e 4.00 (Anexo I, campo 394) e do MOC do MDF-e 3.00b (Anexo I, campo
  * 170), com o mesmo texto: "O hashCSRT é o resultado das funções SHA-1 e base64
@@ -41,7 +42,7 @@ export type CodigoDeSeguranca = {
 };
 
 export type ResponsavelTecnico = {
-  /** CNPJ da desenvolvedora, 14 posições, sem pontuação. */
+  /** CNPJ da empresa, 14 posições, sem pontuação. */
   cnpj: string;
   /** Nome da pessoa de contato, de 2 a 60 letras. */
   contato: string;
@@ -52,7 +53,8 @@ export type ResponsavelTecnico = {
   csrt?: CodigoDeSeguranca;
 };
 
-export const VARIAVEIS_DO_RESPONSAVEL_TECNICO = ["RESPTEC_CNPJ", "RESPTEC_CONTATO", "RESPTEC_EMAIL", "RESPTEC_FONE"] as const;
+/** O que o cadastro da empresa (Empresa → Fiscal) dá ao responsável técnico. */
+export type EmpresaDoResponsavelTecnico = { cnpj: string; contato?: string | null; email?: string | null; telefone?: string | null };
 
 /** As duas variáveis, opcionais, do código de segurança: valem juntas ou nenhuma vale. */
 export const VARIAVEIS_DO_CSRT = ["RESPTEC_CSRT_ID", "RESPTEC_CSRT"] as const;
@@ -60,9 +62,9 @@ export const VARIAVEIS_DO_CSRT = ["RESPTEC_CSRT_ID", "RESPTEC_CSRT"] as const;
 /** A rejeição de cada documento para a falta do grupo: 867 no CT-e (regra G209), 720 no MDF-e (regra F120). */
 export const REJEICAO_SEM_RESPONSAVEL_TECNICO = { cte: 867, mdfe: 720 } as const;
 
-/** O aviso da conferência quando o servidor não tem os dados: não impede a emissão. */
+/** O aviso da conferência quando o cadastro da empresa não fecha o grupo: não impede a emissão. */
 export const semResponsavelTecnico = (documento: keyof typeof REJEICAO_SEM_RESPONSAVEL_TECNICO) =>
-  `O servidor não tem os dados do responsável técnico (variáveis RESPTEC_*): o documento vai sem o grupo infRespTec, e a SEFAZ de algumas UF rejeita (${REJEICAO_SEM_RESPONSAVEL_TECNICO[documento]}). Avise o suporte do sistema.`;
+  `Faltam o contato, o e-mail ou o telefone da empresa em Empresa → Fiscal: o documento vai sem o responsável técnico (infRespTec), e a SEFAZ de algumas UF rejeita (${REJEICAO_SEM_RESPONSAVEL_TECNICO[documento]}).`;
 
 type Ambiente = Record<string, string | undefined>;
 
@@ -82,15 +84,17 @@ export function codigoDeSeguranca(ambiente: Ambiente = process.env): CodigoDeSeg
 }
 
 /**
- * O responsável técnico configurado no servidor, ou `null` quando falta alguma
- * variável ou algum valor não cabe no esquema (`TRespTec`: CNPJ válido, contato
- * de 2 a 60 letras, e-mail de até 60 letras, telefone de 7 a 12 dígitos).
+ * O responsável técnico tirado do cadastro da empresa, ou `null` quando não há
+ * empresa, falta algum dado ou algum valor não cabe no esquema (`TRespTec`:
+ * CNPJ válido, contato de 2 a 60 letras, e-mail de até 60 letras, telefone de
+ * 7 a 12 dígitos). O código de segurança continua vindo do servidor.
  */
-export function responsavelTecnico(ambiente: Ambiente = process.env): ResponsavelTecnico | null {
-  const cnpj = limparCnpj(ambiente.RESPTEC_CNPJ ?? "");
-  const contato = textoDoXml(ambiente.RESPTEC_CONTATO, 60);
-  const email = (ambiente.RESPTEC_EMAIL ?? "").trim();
-  const telefone = digitos(ambiente.RESPTEC_FONE);
+export function responsavelTecnico(empresa: EmpresaDoResponsavelTecnico | null | undefined, ambiente: Ambiente = process.env): ResponsavelTecnico | null {
+  if (!empresa) return null;
+  const cnpj = limparCnpj(empresa.cnpj);
+  const contato = textoDoXml(empresa.contato, 60);
+  const email = (empresa.email ?? "").trim();
+  const telefone = digitos(empresa.telefone);
   if (!cnpjValido(cnpj)) return null;
   if (contato.length < 2) return null;
   if (email.length > 60 || !/^[^@\s]+@[^.\s]+\.\S+$/.test(email)) return null;
@@ -100,7 +104,7 @@ export function responsavelTecnico(ambiente: Ambiente = process.env): Responsave
 }
 
 /**
- * O grupo `infRespTec`, ou nada quando o servidor não tem os dados. `chave` é a
+ * O grupo `infRespTec`, ou nada quando a empresa não tem os dados. `chave` é a
  * chave de acesso do documento em que o grupo vai: o `hashCSRT` é dela.
  */
 export function responsavelTecnicoDoXml(responsavel: ResponsavelTecnico | null | undefined, chave: string): string {
