@@ -27,7 +27,7 @@ import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL } from "../deposito/comum";
 /**
  * Empresa → Fiscal: os dados do emitente de CT-e e o certificado digital A1.
  *
- * No celular a seção tem três partes (Emitente, Tributos e Certificado), para
+ * No celular a seção tem quatro partes (Emitente, Endereço, Tributos e Certificado), para
  * cada uma caber na tela; no computador fica tudo aberto. Os dados são um
  * formulário só, salvo de uma vez. O certificado é enviado à parte: o arquivo e
  * a senha saem da tela assim que são guardados, e a tela só mostra o titular, o
@@ -44,7 +44,7 @@ import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL } from "../deposito/comum";
 
 const FALHA_AO_SALVAR = "Não foi possível salvar.";
 
-type Parte = "emitente" | "tributos" | "certificado";
+type Parte = "emitente" | "endereco" | "tributos" | "certificado";
 type Formulario = Record<string, string>;
 
 const EM_BRANCO: Formulario = {
@@ -248,10 +248,11 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
         <p className="text-sm text-gray-500 mt-0.5">Dados do emitente, tributos e o certificado digital A1 que assina e transmite o CT-e.</p>
       </div>
 
-      <div role="tablist" aria-label="Parte do fiscal" className="md:hidden grid grid-cols-3 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+      <div role="tablist" aria-label="Parte do fiscal" className="md:hidden grid grid-cols-4 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
         {(
           [
             ["emitente", "Emitente"],
+            ["endereco", "Endereço"],
             ["tributos", "Tributos"],
             ["certificado", "Certificado"],
           ] as const
@@ -286,6 +287,10 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
           {campo("telefone", "Telefone", { opcional: true })}
           {campo("contato", "Contato", { opcional: true, maximo: 60 })}
           {campo("email", "E-mail", { opcional: true, maximo: 60 })}
+          {campo("rntrc", "RNTRC")}
+        </div>
+
+        <div className={`${visivel("endereco")}${GRADE}`}>
           {campo("logradouro", "Logradouro", { maximo: 60 })}
           {campo("numero", "Número")}
           {campo("complemento", "Complemento", { opcional: true })}
@@ -293,7 +298,6 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
           {campo("cidade", "Cidade")}
           {escolha("uf", "UF", UFS.map((uf) => [uf, uf] as const))}
           {campo("cep", "CEP")}
-          {campo("rntrc", "RNTRC")}
         </div>
 
         <div className={`${visivel("tributos")}${GRADE}`}>

@@ -419,7 +419,7 @@ describe("Empresa → Fiscal", () => {
     expect(secao(tela).className).toContain("hidden md:block");
     await clicar(tela.querySelector('[data-aba="fiscal"]')!);
     expect(secao(tela).className).not.toContain("hidden md:block");
-    expect([...secao(tela).querySelectorAll("[data-parte-fiscal]")].map((parte) => parte.textContent)).toEqual(["Emitente", "Tributos", "Certificado"]);
+    expect([...secao(tela).querySelectorAll("[data-parte-fiscal]")].map((parte) => parte.textContent)).toEqual(["Emitente", "Endereço", "Tributos", "Certificado"]);
 
     expect(campo(tela, "cnpj").value).toBe("99000108000141");
     expect(campo(tela, "cidade").value).toBe("Mirassol");
