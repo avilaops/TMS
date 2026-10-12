@@ -121,6 +121,8 @@ const PAPEL_DO_TOMADOR: Partial<Record<NonNullable<ResumoDoCte["tomador"]>["pape
   DESTINATARIO: "o destinatário",
 };
 
+type ParteDaConferencia = "falta" | "documento" | "avisos";
+
 function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFechar: () => void; aoMudar: () => void }) {
   const [conferencia, setConferencia] = useState<ConferenciaDoCte | null>(null);
   const [erro, setErro] = useState("");
@@ -129,6 +131,7 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
   // A emissão pela SVC é um pedido explícito: a pessoa abre o bloco e escreve a justificativa.
   const [pelaSvc, setPelaSvc] = useState(false);
   const [justificativa, setJustificativa] = useState("");
+  const [parte, setParte] = useState<ParteDaConferencia>("falta");
 
   const aplicar = (lida: ConferenciaDoCte | { erro: string }) => {
     if ("erro" in lida) setErro(lida.erro);
@@ -172,6 +175,18 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
   const svc = conferencia?.svc?.oferecida ? conferencia.svc.nome : null;
   const justificativaServe = justificativa.trim().length >= JUSTIFICATIVA_DA_SVC_MINIMA;
 
+  // No celular a conferência tem partes (o que falta, o documento, os avisos), para cada uma caber
+  // na tela sem rolar; no computador fica tudo aberto. Abre no que falta, quando falta algo.
+  const partes = (
+    [
+      ["falta", `Falta (${conferencia?.pendencias.length ?? 0})`, (conferencia?.pendencias.length ?? 0) > 0],
+      ["documento", "Documento", resumo !== null],
+      ["avisos", `Avisos (${conferencia?.avisos.length ?? 0})`, (conferencia?.avisos.length ?? 0) > 0],
+    ] as const
+  ).filter(([, , existe]) => existe);
+  const parteAberta = partes.some(([chave]) => chave === parte) ? parte : (partes[0]?.[0] ?? "documento");
+  const soNaParte = (chave: ParteDaConferencia) => (partes.length > 1 && parteAberta !== chave ? "hidden md:block " : "");
+
   return (
     <div className={MOLDURA} role="dialog" aria-modal="true" aria-label="Conferir e emitir CT-e">
       <div className={JANELA}>
@@ -201,21 +216,39 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
             </p>
           )}
 
+          {partes.length > 1 && (
+            <div role="tablist" aria-label="Parte da conferência" className="md:hidden grid gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl" style={{ gridTemplateColumns: `repeat(${partes.length}, minmax(0, 1fr))` }}>
+              {partes.map(([chave, rotulo]) => (
+                <button
+                  key={chave}
+                  type="button"
+                  role="tab"
+                  aria-selected={parteAberta === chave}
+                  data-parte-da-conferencia={chave}
+                  onClick={() => setParte(chave)}
+                  className={`py-1 rounded-lg text-xs font-semibold ${parteAberta === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+          )}
+
           {conferencia && conferencia.pendencias.length > 0 && (
-            <ul data-pendencias className="px-3 py-2 space-y-1 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50 list-disc list-inside">
+            <ul data-pendencias className={`${soNaParte("falta")}px-3 py-2 space-y-1 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50 list-disc list-inside`}>
               {conferencia.pendencias.map((pendencia) => (
                 <li key={pendencia}>{pendencia}</li>
               ))}
             </ul>
           )}
           {conferencia && !conferencia.pronta && (
-            <Link href="/dashboard/empresa" className="inline-block text-sm font-medium text-blue-600 hover:underline">
+            <Link href="/dashboard/empresa" className={`${soNaParte("falta") ? "hidden md:inline-block " : "inline-block "}text-sm font-medium text-blue-600 hover:underline`}>
               Abrir Empresa → Fiscal
             </Link>
           )}
 
           {resumo && (
-            <dl data-resumo className="grid grid-cols-2 gap-x-3 gap-y-2">
+            <dl data-resumo className={`${soNaParte("documento") ? "hidden md:grid " : "grid "}grid-cols-2 gap-x-3 gap-y-2`}>
               <Linha rotulo="Ambiente · série / número">
                 {ROTULO_DO_AMBIENTE[resumo.ambiente]} · {resumo.serie} / {resumo.numeroPrevisto}
               </Linha>
@@ -269,7 +302,7 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
           )}
 
           {conferencia && conferencia.avisos.length > 0 && (
-            <ul data-avisos className="px-3 py-2 space-y-1 text-xs text-amber-900 border border-amber-200 rounded-lg bg-amber-50 list-disc list-inside">
+            <ul data-avisos className={`${soNaParte("avisos")}px-3 py-2 space-y-1 text-xs text-amber-900 border border-amber-200 rounded-lg bg-amber-50 list-disc list-inside`}>
               {conferencia.avisos.map((aviso) => (
                 <li key={aviso}>{aviso}</li>
               ))}
