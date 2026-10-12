@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import { pode } from '@/lib/permissoes';
 import prisma, { transacao } from '@/lib/prisma';
-import { DRIVER_PUBLIC_INCLUDE, createDriverSchema, isUniqueViolation } from '@/lib/cadastros';
+import { CARRIER_NOT_FOUND_MESSAGE, DRIVER_PUBLIC_INCLUDE, createDriverSchema, isUniqueViolation } from '@/lib/cadastros';
 import { DRIVER_OMIT, firstIssue } from '@/lib/usuarios';
 import { dadosDoConvite, liberarAcesso, senhaSemUso } from '@/lib/acessos';
 import { origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
@@ -56,6 +56,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: DUPLICATE_EMAIL }, { status: 409 });
     }
 
+    // Parceiro de outra empresa não existe para esta: responde como id inventado.
+    if (data.carrierId) {
+      const parceiro = await prisma.carrier.findUnique({ where: { id: data.carrierId }, select: { id: true } });
+      if (!parceiro) return NextResponse.json({ error: CARRIER_NOT_FOUND_MESSAGE }, { status: 400 });
+    }
+
     const origem = origemDaRequisicao(req);
 
     try {
@@ -80,6 +86,7 @@ export async function POST(req: Request) {
             cnhExpiry: data.cnhExpiry,
             category: data.category,
             phone: data.phone,
+            carrierId: data.carrierId ?? null,
           },
           include: DRIVER_PUBLIC_INCLUDE,
         });
@@ -91,7 +98,7 @@ export async function POST(req: Request) {
           entidade: 'motorista',
           entidadeId: criado.id,
           resumo: `Motorista ${data.name} criado`,
-          depois: { name: data.name, email: data.email, cpf: criado.cpf, cnh: criado.cnh, cnhExpiry: criado.cnhExpiry, category: criado.category, phone: criado.phone },
+          depois: { name: data.name, email: data.email, cpf: criado.cpf, cnh: criado.cnh, cnhExpiry: criado.cnhExpiry, category: criado.category, phone: criado.phone, carrierId: criado.carrierId },
         });
 
         return criado;

@@ -14,7 +14,11 @@ import { PAYMENT_METHODS, diaDoVencimento, diaNoBrasil } from "@/lib/financeiro"
  * - **Combustível**: os abastecimentos da frota feitos no veículo entre a saída
  *   e a finalização, MENOS os que nasceram de uma despesa da viagem: esses já
  *   estão em "despesas" e contar de novo dobraria o custo.
- * - **Resultado** = frete − despesas − combustível. Adiantamento não é custo: é
+ * - **Frete contratado**: o custo do contrato com o parceiro dono do veículo
+ *   (bruto + acréscimos − descontos; src/lib/frete-contratado.ts). Os
+ *   pagamentos do contrato lançam despesa no Financeiro, mas não são despesa
+ *   de viagem: não entram em "despesas", e o custo conta uma vez só, aqui.
+ * - **Resultado** = frete − despesas − combustível − frete contratado. Adiantamento não é custo: é
  *   dinheiro entregue por conta das despesas, e o quadro mostra quanto sobrou
  *   ou faltou dele.
  *
@@ -223,6 +227,8 @@ export type DadosDoAcerto = {
   /** Abastecimentos da frota na janela da viagem que NÃO nasceram de uma despesa dela. */
   abastecimentos: readonly { totalCost: number }[];
   adiantamentos: readonly { amount: number }[];
+  /** O custo do frete contratado com o parceiro (`valoresDoContrato(...).custo`). Sem contrato, ou com ele cancelado, zero. */
+  freteContratado?: number;
   departureOdometer?: number | null;
   returnOdometer?: number | null;
 };
@@ -238,6 +244,8 @@ export type AcertoDaViagem = {
   /** Despesas esperando aprovação: fora do custo, à vista no quadro. */
   pendentes: { quantidade: number; total: number };
   combustivel: number;
+  /** O custo do contrato com o parceiro dono do veículo; zero em viagem de frota própria. */
+  freteContratado: number;
   custoTotal: number;
   resultado: number;
   /** % do frete que sobrou; `null` sem frete. */
@@ -272,7 +280,8 @@ export function acertoDaViagem(dados: DadosDoAcerto): AcertoDaViagem {
   }
 
   const combustivel = abastecimentos.reduce((soma, abastecimento) => soma + abastecimento.totalCost, 0);
-  const custoTotal = aprovadas + combustivel;
+  const freteContratado = dados.freteContratado ?? 0;
+  const custoTotal = aprovadas + combustivel + freteContratado;
   const resultado = frete - custoTotal;
   const km = kmRodados(dados.departureOdometer, dados.returnOdometer);
 
@@ -286,6 +295,7 @@ export function acertoDaViagem(dados: DadosDoAcerto): AcertoDaViagem {
       .sort((a, b) => b.total - a.total || rotuloDaDespesa(a.type).localeCompare(rotuloDaDespesa(b.type), "pt-BR")),
     pendentes: { quantidade: pendentes.quantidade, total: centavos(pendentes.total) },
     combustivel: centavos(combustivel),
+    freteContratado: centavos(freteContratado),
     custoTotal: centavos(custoTotal),
     resultado: centavos(resultado),
     margem: frete === 0 ? null : umaCasa((resultado / frete) * 100),

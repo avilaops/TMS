@@ -39,6 +39,7 @@ import { ChaveInvalida } from "../src/lib/cte/chave";
 import { compactar, decidir, eventoGuardadoComRessalva, eventoRegistrado, fraseDoEventoComRessalva, type Protocolo, type RespostaDoEvento } from "../src/lib/cte/sefaz";
 import { SEFAZ_FORA_DO_AR, SEFAZ_TEMPO_ESGOTADO, SefazError, envelope } from "../src/lib/cte/soap";
 import { chaveDoMdfe } from "../src/lib/mdfe/chave";
+import { proprietarioDoParceiro } from "../src/lib/parceiros";
 import { ENDERECO_DO_QR_CODE, SERVICOS, enderecoDoServico } from "../src/lib/mdfe/enderecos";
 import {
   ALVO_DO_EVENTO_DO_MDFE,
@@ -679,6 +680,26 @@ describe("da viagem ao MDF-e", () => {
     const daEmpresa = prepararMdfe(viagem(cargas, { veiculo: { ...VEICULO, proprietario: { documento: "99000108000141", nome: "x", rntrc: null, ie: null, uf: null, tipo: null } } }), "MG", ENTRADAS, contexto());
     expect(daEmpresa.pendencias).toEqual([]);
     expect(daEmpresa.dados?.rodo.tracao.proprietario).toBeNull();
+  });
+
+  it("veículo de parceiro: o proprietário sai do cadastro do parceiro, e a pendência aponta para Parceiros", () => {
+    const cargas = [carga(1), carga(2)];
+    const parceiro = { name: "Transportes Agregados Ltda", taxId: "99000303000171", rntrc: "87654321", ie: "123456789", state: "MG", type: "TRANSPORTADORA" };
+    const doParceiro = prepararMdfe(viagem(cargas, { veiculo: { ...VEICULO, proprietario: proprietarioDoParceiro(parceiro) } }), "MG", ENTRADAS, contexto());
+    expect(doParceiro.pendencias).toEqual([]);
+    expect(doParceiro.dados?.rodo.tracao.proprietario).toEqual({ documento: "99000303000171", rntrc: "87654321", nome: "Transportes Agregados Ltda", ie: "123456789", uf: "MG", tipo: "2" });
+    expect(doParceiro.dados?.rodo.contratantes).toEqual([{ nome: EMITENTE_DO_MDFE.razaoSocial, documento: EMITENTE_DO_MDFE.cnpj }]);
+
+    // Cada tipo de parceiro tem o seu tpProp.
+    for (const [type, tipo] of [["TAC_AGREGADO", "0"], ["TAC_INDEPENDENTE", "1"], ["TRANSPORTADORA", "2"]] as const) {
+      const preparo = prepararMdfe(viagem(cargas, { veiculo: { ...VEICULO, proprietario: proprietarioDoParceiro({ ...parceiro, taxId: "52998224725", type }) } }), "MG", ENTRADAS, contexto());
+      expect(preparo.dados?.rodo.tracao.proprietario?.tipo, type).toBe(tipo);
+    }
+
+    // Parceiro com cadastro incompleto: a frase manda corrigir em Parceiros, não na Frota.
+    const incompleto = prepararMdfe(viagem(cargas, { veiculo: { ...VEICULO, proprietario: proprietarioDoParceiro({ ...parceiro, rntrc: null, state: null }) } }), "MG", ENTRADAS, contexto());
+    expect(incompleto.pendencias.join(" ")).toMatch(/Falta no proprietário do veículo ABC1D23 \(parceiro Transportes Agregados Ltda, em Parceiros\): o RNTRC \(8 dígitos\), a UF\./);
+    expect(incompleto.dados).toBeNull();
   });
 
   it("cargas que carregam em UFs diferentes não cabem num MDF-e", () => {

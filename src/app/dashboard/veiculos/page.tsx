@@ -22,6 +22,8 @@ interface Veiculo {
   maxWeight: number | null;
   year: number | null;
   driverId: string | null;
+  // O parceiro de transporte dono do veículo; nulo = frota própria.
+  carrierId?: string | null;
   status: string;
   driver?: { user: { name: string } } | null;
   // O que o MDF-e pede do veículo (todos opcionais).
@@ -60,6 +62,8 @@ const FORM_VAZIO = {
   maxWeight: "",
   year: "",
   defaultDriverId: "",
+  // O parceiro de transporte dono do veículo; vazio = frota própria.
+  carrierId: "",
   // Dados para o MDF-e.
   renavam: "",
   tareKg: "",
@@ -85,12 +89,19 @@ export default function VeiculosPage() {
   const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [motoristas, setMotoristas] = useState<Motorista[]>([]);
+  // Parceiros de transporte, para o seletor "Dono do veículo". Quem não lê parceiros fica sem o seletor.
+  const [parceiros, setParceiros] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [formData, setFormData] = useState(FORM_VAZIO);
 
   useEffect(() => {
     fetchData();
+    // A lista de parceiros é só para o seletor: se a leitura falhar (ou o perfil não puder), o cadastro segue sem ele.
+    fetch('/api/parceiros')
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setParceiros)
+      .catch(() => setParceiros([]));
   }, []);
 
   const fetchData = async () => {
@@ -121,6 +132,8 @@ export default function VeiculosPage() {
   // Cadastro antigo pode ter o tipo gravado em branco, que a API não aceita de volta.
   const tipoEmBranco = tipoAntigo !== null && tipoAntigo.trim() === "";
   const motoristasDoSeletor = motoristas.filter((m) => m.active || m.id === emEdicao?.driverId);
+  // O parceiro que o veículo já tem continua no seletor mesmo desativado.
+  const parceirosDoSeletor = parceiros.filter((p) => p.active || p.id === emEdicao?.carrierId);
 
   const openCreate = () => {
     setEditingId(null);
@@ -138,6 +151,7 @@ export default function VeiculosPage() {
       maxWeight: veiculo.maxWeight == null ? "" : String(veiculo.maxWeight),
       year: veiculo.year == null ? "" : String(veiculo.year),
       defaultDriverId: veiculo.driverId ?? "",
+      carrierId: veiculo.carrierId ?? "",
       renavam: veiculo.renavam ?? "",
       tareKg: veiculo.tareKg == null ? "" : String(veiculo.tareKg),
       wheelType: veiculo.wheelType ?? "",
@@ -383,19 +397,39 @@ export default function VeiculosPage() {
                 </div>
               </div>
 
-              <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Motorista Padrão (Opcional)</label>
-                <select 
-                  value={formData.defaultDriverId}
-                  onChange={(e) => setFormData({...formData, defaultDriverId: e.target.value})}
-                  className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
-                >
-                  <option value="">Selecione um motorista...</option>
-                  {motoristasDoSeletor.map(m => (
-                    <option key={m.id} value={m.id}>{m.user?.name}{m.active ? "" : " (inativo)"}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500">Isso vinculará este veículo automaticamente a este motorista.</p>
+              {/* Motorista e parceiro lado a lado: o parceiro não acrescenta uma linha ao cadastro no celular. */}
+              <div className={parceirosDoSeletor.length > 0 ? "grid grid-cols-2 gap-x-3 gap-y-0.5 md:gap-x-4" : "space-y-0.5 md:space-y-1.5"}>
+                <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                  <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Motorista Padrão (Opcional)</label>
+                  <select
+                    value={formData.defaultDriverId}
+                    onChange={(e) => setFormData({...formData, defaultDriverId: e.target.value})}
+                    className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                  >
+                    <option value="">Selecione um motorista...</option>
+                    {motoristasDoSeletor.map(m => (
+                      <option key={m.id} value={m.id}>{m.user?.name}{m.active ? "" : " (inativo)"}</option>
+                    ))}
+                  </select>
+                </div>
+                {parceirosDoSeletor.length > 0 && (
+                  <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                    <label htmlFor="veiculo-parceiro" className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Dono do veículo</label>
+                    <select
+                      id="veiculo-parceiro"
+                      data-parceiro-do-veiculo
+                      value={formData.carrierId}
+                      onChange={(e) => setFormData({...formData, carrierId: e.target.value})}
+                      className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    >
+                      <option value="">Frota própria</option>
+                      {parceirosDoSeletor.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}{p.active ? "" : " (inativo)"}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <p className="col-span-2 text-xs text-gray-500">Isso vinculará este veículo automaticamente a este motorista.</p>
               </div>
 
               {/* O que o MDF-e pede do veículo. Fechado por padrão, para o cadastro caber na tela do celular. */}
@@ -437,11 +471,18 @@ export default function VeiculosPage() {
                       ))}
                     </select>
                   </label>
-                  <label className="space-y-0.5 min-w-0">
-                    <span className={ROTULO_DO_MDFE}>Dono (CPF/CNPJ), se de terceiro</span>
-                    <input value={formData.ownerTaxId} onChange={(e) => setFormData({ ...formData, ownerTaxId: e.target.value })} className={CAMPO_DO_MDFE} />
-                  </label>
-                  {formData.ownerTaxId.trim() !== "" && (
+                  {/* Com parceiro escolhido, o proprietário do MDF-e é o cadastro dele: os campos soltos somem (e ficam como estão no banco). */}
+                  {formData.carrierId !== "" ? (
+                    <p data-proprietario-do-parceiro className="min-w-0 self-end text-xs text-gray-500">
+                      Proprietário no MDF-e: o cadastro do parceiro (em Parceiros).
+                    </p>
+                  ) : (
+                    <label className="space-y-0.5 min-w-0">
+                      <span className={ROTULO_DO_MDFE}>Dono (CPF/CNPJ), se de terceiro</span>
+                      <input value={formData.ownerTaxId} onChange={(e) => setFormData({ ...formData, ownerTaxId: e.target.value })} className={CAMPO_DO_MDFE} />
+                    </label>
+                  )}
+                  {formData.carrierId === "" && formData.ownerTaxId.trim() !== "" && (
                     <>
                       <label className="space-y-0.5 min-w-0">
                         <span className={ROTULO_DO_MDFE}>Nome do dono</span>

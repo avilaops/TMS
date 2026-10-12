@@ -139,6 +139,14 @@ suite("permissões das rotas internas", () => {
   let equipeAdiantamentos: typeof import("../src/app/api/equipe/adiantamentos/route");
   let equipeAdiantamento: typeof import("../src/app/api/equipe/adiantamentos/[id]/route");
   let equipeProdutividade: typeof import("../src/app/api/equipe/produtividade/route");
+  let parceiros: typeof import("../src/app/api/parceiros/route");
+  let parceiro: typeof import("../src/app/api/parceiros/[id]/route");
+  let parceiroContratacao: typeof import("../src/app/api/parceiros/[id]/contratacao/route");
+  let parceiroFechamento: typeof import("../src/app/api/parceiros/[id]/fechamento/route");
+  let viagemFrete: typeof import("../src/app/api/manifestos/[id]/frete/route");
+  let viagemFretePagamentos: typeof import("../src/app/api/manifestos/[id]/frete/pagamentos/route");
+  let viagemFretePagamento: typeof import("../src/app/api/manifestos/[id]/frete/pagamentos/[registroId]/route");
+  let viagemFreteRecibo: typeof import("../src/app/api/manifestos/[id]/frete/recibo/route");
   let viagemDados: typeof import("../src/app/api/manifestos/[id]/dados/route");
   let viagemOrdem: typeof import("../src/app/api/manifestos/[id]/ordem/route");
   let viagemRoteiro: typeof import("../src/app/api/manifestos/[id]/roteiro/route");
@@ -294,6 +302,14 @@ suite("permissões das rotas internas", () => {
     equipeAdiantamentos = await import("../src/app/api/equipe/adiantamentos/route");
     equipeAdiantamento = await import("../src/app/api/equipe/adiantamentos/[id]/route");
     equipeProdutividade = await import("../src/app/api/equipe/produtividade/route");
+    parceiros = await import("../src/app/api/parceiros/route");
+    parceiro = await import("../src/app/api/parceiros/[id]/route");
+    parceiroContratacao = await import("../src/app/api/parceiros/[id]/contratacao/route");
+    parceiroFechamento = await import("../src/app/api/parceiros/[id]/fechamento/route");
+    viagemFrete = await import("../src/app/api/manifestos/[id]/frete/route");
+    viagemFretePagamentos = await import("../src/app/api/manifestos/[id]/frete/pagamentos/route");
+    viagemFretePagamento = await import("../src/app/api/manifestos/[id]/frete/pagamentos/[registroId]/route");
+    viagemFreteRecibo = await import("../src/app/api/manifestos/[id]/frete/recibo/route");
     viagemDados = await import("../src/app/api/manifestos/[id]/dados/route");
     viagemOrdem = await import("../src/app/api/manifestos/[id]/ordem/route");
     viagemRoteiro = await import("../src/app/api/manifestos/[id]/roteiro/route");
@@ -438,6 +454,9 @@ suite("permissões das rotas internas", () => {
       ],
       ["DELETE /api/equipe/ausencias/[id]", () => equipeAusencia.DELETE(req("DELETE"), ctx(semId))],
       ["GET /api/equipe/produtividade", () => equipeProdutividade.GET()],
+      ["GET /api/parceiros", () => parceiros.GET()],
+      ["POST /api/parceiros", () => parceiros.POST(req("POST", { type: "TAC_AGREGADO", name: "Invasor", taxId: "1" }))],
+      ["PATCH /api/parceiros/[id]", () => parceiro.PATCH(req("PATCH", { name: "Invasor" }), ctx(semId))],
       ["PATCH /api/manifestos/[id]/dados", () => viagemDados.PATCH(req("PATCH", { notes: "Invasor" }), ctx(semId))],
       ["PUT /api/manifestos/[id]/ordem", () => viagemOrdem.PUT(req("PUT", { collectionIds: [semId] }), ctx(semId))],
       ["POST /api/manifestos/[id]/roteiro", () => viagemRoteiro.POST(req("POST", {}), ctx(semId))],
@@ -493,6 +512,14 @@ suite("permissões das rotas internas", () => {
         () => equipeAdiantamentos.POST(req("POST", { driverId: semId, date: "2026-01-10", amount: "100", reason: "TRIP" })),
       ],
       ["PATCH /api/equipe/adiantamentos/[id]", () => equipeAdiantamento.PATCH(req("PATCH", { action: "acertar", spentAmount: "1" }), ctx(semId))],
+      ["PUT /api/parceiros/[id]/contratacao", () => parceiroContratacao.PUT(req("PUT", { defaultCalcMode: "FIXO", defaultCalcBase: "1" }), ctx(semId))],
+      ["GET /api/parceiros/[id]/fechamento", () => parceiroFechamento.GET(req(), ctx(semId))],
+      ["GET /api/manifestos/[id]/frete", () => viagemFrete.GET(req(), ctx(semId))],
+      ["PUT /api/manifestos/[id]/frete", () => viagemFrete.PUT(req("PUT", { carrierId: semId, calcMode: "FIXO", grossAmount: "1" }), ctx(semId))],
+      ["DELETE /api/manifestos/[id]/frete", () => viagemFrete.DELETE(req("DELETE"), ctx(semId))],
+      ["POST /api/manifestos/[id]/frete/pagamentos", () => viagemFretePagamentos.POST(req("POST", { kind: "SALDO", date: "2026-01-10", amount: "1", method: "PIX" }), ctx(semId))],
+      ["DELETE /api/manifestos/[id]/frete/pagamentos/[registroId]", () => viagemFretePagamento.DELETE(req("DELETE"), registro)],
+      ["GET /api/manifestos/[id]/frete/recibo", () => viagemFreteRecibo.GET(req(), ctx(semId))],
       ["PATCH /api/manifestos/[id]/despesas/[despesaId]", () => viagemDespesa.PATCH(req("PATCH", { action: "aprovar" }), despesaDaViagem)],
       ["GET /api/manifestos/[id]/acerto", () => viagemAcerto.GET(req(), ctx(semId))],
     ];

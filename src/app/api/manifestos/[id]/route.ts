@@ -13,6 +13,7 @@ import {
   updateManifestSchema,
 } from '@/lib/manifestos';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
+import { criarContratoDoParceiro } from '@/lib/frete-contratado-db';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /** Troca motorista ou veículo e acrescenta carga a uma viagem em montagem. */
@@ -73,6 +74,11 @@ export async function PATCH(
         where: { id: manifestId },
         data: { driverId: driverId ?? manifest.driverId, vehicleId: vehicleId ?? manifest.vehicleId },
       });
+
+      // Veículo trocado por um de parceiro: a viagem ganha o contrato de frete, se ainda não tem.
+      if ((vehicleId ?? manifest.vehicleId) !== manifest.vehicleId) {
+        await criarContratoDoParceiro(tx, { manifestId, ator: user, origem });
+      }
 
       const trocou = (driverId ?? manifest.driverId) !== manifest.driverId || (vehicleId ?? manifest.vehicleId) !== manifest.vehicleId;
       if (trocou || addCollectionIds.length > 0) {

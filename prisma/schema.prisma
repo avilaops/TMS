@@ -91,6 +91,9 @@ model Tenant {
   absences           Absence[]
   crewAdvances       CrewAdvance[]
   tripExpenses       TripExpense[]
+  carriers           Carrier[]
+  freightContracts   FreightContract[]
+  freightPayments    FreightPayment[]
   clientReceivers    ClientReceiver[]
   notifications      Notification[]
   pushSubscriptions  PushSubscription[]
@@ -320,10 +323,14 @@ model Driver {
   // Percentual do frete entregue que vira comissão. Nulo = sem comissão. Só o
   // administrador lê e altera (src/lib/equipe.ts).
   commissionPct Float?
+  // O parceiro de transporte de quem este motorista é (agregado ou terceiro).
+  // Nulo = motorista da própria empresa.
+  carrierId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // Relations
+  carrier   Carrier?  @relation(fields: [carrierId], references: [id], onDelete: SetNull)
   user      User      @relation(fields: [userId], references: [id])
   vehicles  Vehicle[]
   manifests Manifest[]
@@ -366,8 +373,13 @@ model Vehicle {
   ownerIe      String?  // só dígitos, "ISENTO" ou vazio
   ownerState   String?
   ownerType    String?  // tpProp: 0 TAC agregado, 1 TAC independente, 2 outros
+  // O parceiro de transporte dono do veículo (src/lib/parceiros.ts). Com ele,
+  // o MDF-e lê o proprietário do cadastro do parceiro e os campos `owner*`
+  // acima ficam sem uso; sem ele, valem os campos `owner*`.
+  carrierId    String?
 
   // Relations
+  carrier      Carrier? @relation(fields: [carrierId], references: [id], onDelete: SetNull)
   driver       Driver?  @relation(fields: [driverId], references: [id])
   manifests    Manifest[]
   maintenances Maintenance[]
@@ -547,6 +559,7 @@ model Manifest {
   mdfes       Mdfe[]
   advances    CrewAdvance[]
   expenses    TripExpense[]
+  freightContract FreightContract?
   positions   TripPosition[]
   deliveryAttempts DeliveryAttempt[]
 
@@ -610,6 +623,8 @@ model FinancialTransaction {
   // Relations
   client      Client?  @relation(fields: [clientId], references: [id])
   tripExpense TripExpense?
+  // O pagamento de frete contratado que lançou esta despesa (src/lib/frete-contratado.ts).
+  freightPayment FreightPayment?
   // A linha do extrato bancário com que este lançamento foi conciliado.
   statementLine BankStatementLine?
 
@@ -864,6 +879,107 @@ model TripExpense {
   @@index([tenantId])
   @@index([manifestId])
   @@index([tenantId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Parceiros de transporte e frete contratado (src/lib/parceiros.ts e
+// src/lib/frete-contratado.ts).
+//
+// O parceiro (Carrier) é o agregado, o autônomo ou a transportadora dona de
+// veículo que roda para a empresa. O veículo e o motorista dele apontam para
+// ele (`Vehicle.carrierId`, `Driver.carrierId`). A viagem feita com ele tem um
+// contrato de frete (FreightContract, um por viagem) e os pagamentos do
+// contrato (FreightPayment), cada um com a despesa que lançou no Financeiro.
+// O valor líquido, o saldo e a situação do contrato saem das contas de
+// src/lib/frete-contratado.ts; as retenções são valores digitados, o sistema
+// não calcula imposto.
+// ---------------------------------------------------------------------------
+model Carrier {
+  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  type      String   // TAC_AGREGADO, TAC_INDEPENDENTE, TRANSPORTADORA (tpProp 0, 1 e 2 do MDF-e)
+  name      String   // nome ou razão social
+  taxId     String   // CPF ou CNPJ, sem pontuação
+  rntrc     String?  // 8 dígitos
+  ie        String?
+  state     String?  // UF
+  phone     String?
+  email     String?
+  pixKey    String?
+  bankInfo  String?  // banco, agência e conta, em texto
+  notes     String?
+  active    Boolean  @default(true)
+  // Forma padrão de contratação, copiada para o contrato de cada viagem.
+  // É dinheiro: só quem lê o frete contratado recebe (src/lib/permissoes.ts).
+  defaultCalcMode String?  // FIXO, PERCENTUAL, POR_KM, POR_ENTREGA
+  defaultCalcBase Float?   // R$ por viagem, % do frete das cargas, R$ por km ou R$ por entrega
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  vehicles  Vehicle[]
+  drivers   Driver[]
+  contracts FreightContract[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@unique([tenantId, taxId])
+}
+
+model FreightContract {
+  tenantId   String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id         String   @id @default(uuid())
+  manifestId String   @unique // um contrato por viagem
+  carrierId  String
+  calcMode   String   // FIXO, PERCENTUAL, POR_KM, POR_ENTREGA
+  calcBase   Float?   // a base da forma de cálculo, copiada do parceiro e editável
+  grossAmount       Float @default(0) // valor bruto do frete contratado
+  tollAmount        Float @default(0) // pedágio ou vale-pedágio pago à parte
+  otherAdditions    Float @default(0)
+  discounts         Float @default(0)
+  // Retenções: valores informados por quem paga. O sistema não calcula.
+  inss              Float @default(0)
+  irrf              Float @default(0)
+  sestSenat         Float @default(0)
+  otherWithholdings Float @default(0)
+  status     String   @default("ABERTO") // ABERTO, ADIANTADO, QUITADO, CANCELADO
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  manifest   Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  carrier    Carrier  @relation(fields: [carrierId], references: [id], onDelete: Restrict)
+  payments   FreightPayment[]
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([carrierId])
+  @@index([tenantId, status])
+}
+
+// Pagamento de um contrato de frete: adiantamento ou saldo. Registrar lança a
+// despesa no Financeiro (categoria "Frete contratado") na mesma transação.
+model FreightPayment {
+  tenantId   String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id         String   @id @default(uuid())
+  contractId String
+  kind       String   // ADIANTAMENTO, SALDO
+  date       DateTime // dia do calendário, gravado à meia-noite UTC
+  amount     Float
+  method     String   // PIX, TRANSFERENCIA, DINHEIRO, CARTAO, OUTRO
+  notes      String?
+  // O lançamento que este pagamento criou no Financeiro. Nulo se ele foi apagado por lá.
+  transactionId String? @unique
+  createdAt  DateTime @default(now())
+
+  // Relations
+  contract    FreightContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId])
+  @@index([contractId])
 }
 
 model ProofOfDelivery {

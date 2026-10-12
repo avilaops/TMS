@@ -291,6 +291,12 @@ const commissionPct = percentual("A comissão precisa ser um percentual entre 0 
 
 export const COMMISSION_ADMIN_ONLY = "Só o administrador altera o percentual de comissão.";
 
+// O parceiro de transporte de quem o motorista é (src/lib/parceiros.ts). Vazio ou `null` desvincula.
+const driverCarrierId = optionalText(64, "Parceiro inválido.");
+
+/** A recusa das rotas de veículo e de motorista quando o parceiro informado não existe nesta empresa. */
+export const CARRIER_NOT_FOUND_MESSAGE = "Parceiro não encontrado.";
+
 export const createDriverSchema = z.object(
   {
     name: driverName,
@@ -300,6 +306,7 @@ export const createDriverSchema = z.object(
     category: cnhCategory,
     cnhExpiry,
     phone: driverPhone,
+    carrierId: driverCarrierId,
   },
   INVALID_BODY,
 );
@@ -315,6 +322,7 @@ export const updateDriverSchema = z
       category: cnhCategory.optional(),
       cnhExpiry: cnhExpiry.optional(),
       phone: driverPhone,
+      carrierId: driverCarrierId,
       active: activeFlag.optional(),
       // Só o administrador manda este campo: a rota recusa dos demais perfis.
       commissionPct,
@@ -393,6 +401,8 @@ const vehicleOptionalFields = {
   year: vehicleYear,
   // Vazio ou `null` desvincula o motorista.
   defaultDriverId: optionalText(64, "Motorista inválido."),
+  // O parceiro de transporte dono do veículo (src/lib/parceiros.ts). Vazio ou `null` desvincula.
+  carrierId: optionalText(64, "Parceiro inválido."),
   ...vehicleFiscalFields,
 };
 

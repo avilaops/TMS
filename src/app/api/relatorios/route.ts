@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { limitesDoPeriodo, montarRelatorio, montarResultado, periodoDoRelatorio } from '@/lib/relatorios';
 import { acertoDaViagem, finalizadaEm, finalizadaNoPeriodo } from '@/lib/viagem';
 import { combustivelDasViagens } from '@/lib/viagem-db';
+import { CONTRACT_COST_SELECT, custoParaAViagem } from '@/lib/frete-contratado';
 
 /**
  * Relatórios básicos (operação, comercial e financeiro) de um período, e o
@@ -89,6 +90,7 @@ export async function GET(req?: Request) {
         vehicle: { select: { plate: true } },
         collections: { select: { weight: true, freightValue: true } },
         expenses: { where: { status: 'APPROVED' }, select: { type: true, amount: true, status: true } },
+        freightContract: { select: CONTRACT_COST_SELECT },
       },
     });
     const combustivel = await combustivelDasViagens(prisma, viagens);
@@ -99,6 +101,7 @@ export async function GET(req?: Request) {
         despesas: viagem.expenses,
         abastecimentos: combustivel.get(viagem.id) ?? [],
         adiantamentos: [],
+        freteContratado: custoParaAViagem(viagem.freightContract),
         departureOdometer: viagem.departureOdometer,
         returnOdometer: viagem.returnOdometer,
       }),

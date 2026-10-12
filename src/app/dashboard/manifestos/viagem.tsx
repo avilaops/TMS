@@ -23,6 +23,7 @@ import { rotuloDaRessalva, textoDasTentativas } from "@/lib/comprovantes";
 import type { MapaDaViagem } from "@/lib/mapa";
 import { MapaDaViagemNaTela } from "@/components/mapa/mapa-da-viagem";
 import { MdfeDaViagem } from "../fiscal/mdfe/painel";
+import { FreteDaViagem } from "./frete";
 import type { Manifesto } from "./carregar";
 
 /**
@@ -38,7 +39,7 @@ const CAMPO =
 const ROTULO = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
 const BOTAO = "bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-xl flex items-center justify-center gap-2";
 
-type Aba = "Dados" | "Rota" | "Despesas" | "MDF-e" | "Acerto";
+type Aba = "Dados" | "Rota" | "Despesas" | "MDF-e" | "Frete" | "Acerto";
 
 type Ajudante = { id: string; name: string; active: boolean };
 
@@ -90,6 +91,8 @@ export function TelaDaViagem({
   alteraViagem = true,
   veFiscal = false,
   emiteFiscal = false,
+  veFrete = false,
+  alteraFrete = false,
   abaInicial = "Dados",
   onClose,
   onChange,
@@ -105,6 +108,10 @@ export function TelaDaViagem({
   veFiscal?: boolean;
   /** O perfil emite documento fiscal (capacidade `fiscal`): emite, encerra e cancela o MDF-e. */
   emiteFiscal?: boolean;
+  /** O perfil lê o frete contratado (capacidade `freteContratadoVer`): a aba Frete aparece. */
+  veFrete?: boolean;
+  /** O perfil grava contrato de frete e pagamento (capacidade `freteContratado`). */
+  alteraFrete?: boolean;
   /** A aba em que a tela abre: a lista abre direto no MDF-e ao oferecer o encerramento. */
   abaInicial?: "Dados" | "MDF-e";
   onClose: () => void;
@@ -113,7 +120,15 @@ export function TelaDaViagem({
 }) {
   const [aba, setAba] = useState<Aba>(abaInicial === "MDF-e" && veFiscal ? "MDF-e" : "Dados");
   // Viagem cancelada não recebe MDF-e: a aba some.
-  const abas: Aba[] = ["Dados", "Rota", "Despesas", ...(veFiscal && manifesto.status !== "CANCELLED" ? (["MDF-e"] as const) : []), ...(veAcerto && manifesto.status === "FINISHED" ? (["Acerto"] as const) : [])];
+  const abas: Aba[] = [
+    "Dados",
+    "Rota",
+    "Despesas",
+    ...(veFiscal && manifesto.status !== "CANCELLED" ? (["MDF-e"] as const) : []),
+    // O frete contratado com o parceiro dono do veículo: só para quem lê esse dinheiro.
+    ...(veFrete ? (["Frete"] as const) : []),
+    ...(veAcerto && manifesto.status === "FINISHED" ? (["Acerto"] as const) : []),
+  ];
   const selo = statusBadge(MANIFEST_STATUS, manifesto.status);
 
   return (
@@ -147,7 +162,8 @@ export function TelaDaViagem({
               aria-selected={aba === nome}
               data-aba={nome}
               onClick={() => setAba(nome)}
-              className={`py-1.5 rounded-lg text-sm font-semibold ${aba === nome ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+              // Com seis abas (administrador, viagem finalizada) a letra diminui no celular para todas caberem na linha.
+              className={`py-1.5 rounded-lg ${abas.length > 5 ? "text-xs md:text-sm" : "text-sm"} font-semibold ${aba === nome ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
             >
               {nome}
             </button>
@@ -159,6 +175,7 @@ export function TelaDaViagem({
           {aba === "Rota" && <Rota manifesto={manifesto} podeSugerir={alteraViagem} onChange={onChange} />}
           {aba === "Despesas" && <Despesas manifesto={manifesto} admin={aprovaDespesa} />}
           {aba === "MDF-e" && <MdfeDaViagem manifestId={manifesto.id} podeAlterar={emiteFiscal} />}
+          {aba === "Frete" && <FreteDaViagem manifestId={manifesto.id} podeAlterar={alteraFrete} />}
           {aba === "Acerto" && <AcertoDaViagemFinalizada manifestId={manifesto.id} />}
         </div>
       </div>
@@ -851,6 +868,8 @@ function AcertoDaViagemFinalizada({ manifestId }: { manifestId: string }) {
     ["Frete das cargas", formatCurrency(acerto.frete)],
     ["Despesas aprovadas", formatCurrency(acerto.despesas)],
     ["Combustível (frota)", formatCurrency(acerto.combustivel)],
+    // Só em viagem feita com veículo de parceiro: o custo do contrato de frete (aba Frete).
+    ...(acerto.freteContratado > 0 ? ([["Frete contratado", formatCurrency(acerto.freteContratado)]] as [string, string][]) : []),
     ["Custo total", formatCurrency(acerto.custoTotal)],
     ["Km rodados", acerto.km === null ? "-" : `${acerto.km.toLocaleString("pt-BR")} km`],
     ["Custo por km", acerto.custoPorKm === null ? "-" : formatCurrency(acerto.custoPorKm)],

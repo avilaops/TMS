@@ -3,6 +3,7 @@ import prisma, { transacao } from '@/lib/prisma';
 import { requireStaff } from '@/lib/staff';
 import { MANIFEST_STATUS, statusBadge } from '@/lib/format';
 import { ManifestError, lockManifest } from '@/lib/manifestos-db';
+import { cancelarContratoDaViagem } from '@/lib/frete-contratado-db';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /** Cancela a viagem antes da saída: as cargas voltam a ficar livres, ainda coletadas. */
@@ -25,6 +26,9 @@ export async function POST(
           `Só viagem em montagem pode ser cancelada; esta está "${statusBadge(MANIFEST_STATUS, manifest.status).label}".`,
         );
       }
+
+      // O frete contratado vai junto: sem pagamento é cancelado; com pagamento, a viagem não é cancelada (409).
+      await cancelarContratoDaViagem(tx, { manifestId, ator: user, origem });
 
       const { count } = await tx.collection.updateMany({ where: { manifestId }, data: { manifestId: null, manifestSequence: null } });
       await tx.manifest.update({ where: { id: manifestId }, data: { status: 'CANCELLED' } });

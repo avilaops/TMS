@@ -301,6 +301,7 @@ suite("rotas da emissão de MDF-e", () => {
     await sistema.collection.deleteMany({ where: { client: { companyName: { startsWith: PREFIXO } } } });
     await sistema.manifest.deleteMany({ where: { driver: { user: { email: { startsWith: PREFIXO } } } } });
     await sistema.vehicle.deleteMany({ where: { ...DAS_EMPRESAS, plate: { startsWith: "MDF" } } });
+    await sistema.carrier.deleteMany({ where: { ...DAS_EMPRESAS, name: { startsWith: PREFIXO } } });
     await sistema.notification.deleteMany({ where: { user: { email: { startsWith: PREFIXO } } } });
     await sistema.auditLog.deleteMany({ where: { ...DAS_EMPRESAS, userName: { startsWith: PREFIXO } } });
   }
@@ -590,6 +591,34 @@ suite("rotas da emissão de MDF-e", () => {
       expect(recusa.status).toBe(409);
       expect(sefaz.chamadas).toHaveLength(0);
       expect(await numeracao()).toBeNull();
+    });
+
+    it("veículo de parceiro: o proprietário do MDF-e sai do cadastro do parceiro, e não dos campos soltos do veículo", async () => {
+      await prepararEmpresa();
+      const parceiro = await banco.default.carrier.create({
+        data: { type: "TAC_INDEPENDENTE", name: `${PREFIXO}Autonomo Parceiro`, taxId: "52998224725", rntrc: "44556677", state: "MG" },
+        select: { id: true, name: true },
+      });
+      // O veículo ainda guarda um proprietário solto, de antes do parceiro: quem vale é o parceiro.
+      const veiculo = await novoVeiculo({ carrierId: parceiro.id, ownerTaxId: "11144477735", ownerName: "Dono Antigo", ownerRntrc: "87654321", ownerState: "SP", ownerType: "0" });
+      const viagem = await novaViagem(["MG", "UDI"], { veiculoId: veiculo.id });
+
+      const emitido = await emitir(viagem.id, "MG", { ...ENTRADAS, ciots: [{ codigo: "123456789012", documento: "52998224725" }] });
+      expect(emitido.corpo.autorizado, emitido.corpo.mensagem ?? emitido.corpo.error).toBe(true);
+      const xml = (await mdfesDe(viagem.id))[0].xmlSent;
+      expect(xml).toContain(`<prop><CPF>52998224725</CPF><RNTRC>44556677</RNTRC><xNome>${parceiro.name}</xNome>`);
+      expect(xml).toContain("<UF>MG</UF><tpProp>1</tpProp></prop>");
+      expect(xml).not.toContain("11144477735");
+      expect(xml).not.toContain("Dono Antigo");
+
+      // Cadastro do parceiro incompleto: a conferência manda corrigir em Parceiros. (O caminho
+      // do veículo sem parceiro, pelos campos soltos, é o do teste do TAC agregado, mais abaixo.)
+      await banco.default.carrier.update({ where: { id: parceiro.id }, data: { rntrc: null } });
+      const outroVeiculo = await novoVeiculo({ carrierId: parceiro.id });
+      const outra = await novaViagem(["MG", "UDI"], { veiculoId: outroVeiculo.id });
+      expect((await conferir(outra.id, "MG")).corpo.pendencias.join("\n")).toMatch(
+        new RegExp(`Falta no proprietário do veículo ${outroVeiculo.plate} \\(parceiro ${parceiro.name}, em Parceiros\\): o RNTRC \\(8 dígitos\\)\\.`),
+      );
     });
 
     it("CT-e de produção não vale para MDF-e de homologação", async () => {

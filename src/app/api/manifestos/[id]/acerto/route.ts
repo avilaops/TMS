@@ -4,10 +4,11 @@ import { requireStaff } from '@/lib/staff';
 import { ADVANCE_SELECT, acertoDoAdiantamento, comAcerto } from '@/lib/equipe';
 import { NOT_FINISHED_MESSAGE, TRIP_EXPENSE_SELECT, TRIP_NOT_FOUND, acertoDaViagem, finalizadaEm } from '@/lib/viagem';
 import { combustivelDasViagens } from '@/lib/viagem-db';
+import { CONTRACT_COST_SELECT, custoParaAViagem } from '@/lib/frete-contratado';
 
 /**
  * O acerto da viagem finalizada: frete das cargas, despesas aprovadas,
- * combustível, custo total, resultado e margem, os km rodados e os
+ * combustível, frete contratado com o parceiro, custo total, resultado e margem, os km rodados e os
  * adiantamentos ligados a ela. Só leitura; as contas estão em src/lib/viagem.ts.
  *
  * É dinheiro: só quem lê o financeiro (`financeiroVer`). O saldo do adiantamento compara o que foi
@@ -38,6 +39,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         helper: { select: { id: true, name: true } },
         vehicle: { select: { id: true, plate: true, model: true } },
         collections: { select: { freightValue: true } },
+        freightContract: { select: CONTRACT_COST_SELECT },
       },
     });
     if (!viagem) return NextResponse.json({ error: TRIP_NOT_FOUND }, { status: 404 });
@@ -60,6 +62,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       despesas,
       abastecimentos,
       adiantamentos,
+      // O custo do contrato com o parceiro, uma vez só: os pagamentos dele não são despesa de viagem.
+      freteContratado: custoParaAViagem(viagem.freightContract),
       departureOdometer: viagem.departureOdometer,
       returnOdometer: viagem.returnOdometer,
     });

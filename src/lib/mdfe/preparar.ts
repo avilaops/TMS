@@ -50,7 +50,12 @@ export type VeiculoDaViagem = {
   rodado: string | null;
   carroceria: string | null;
   uf: string | null;
-  proprietario: { documento: string | null; nome: string | null; rntrc: string | null; ie: string | null; uf: string | null; tipo: string | null } | null;
+  /**
+   * O dono do veículo de terceiro. Vem do parceiro de transporte do veículo
+   * (`parceiro` traz o nome dele; src/lib/parceiros.ts) ou, sem parceiro, dos
+   * campos soltos de proprietário do cadastro do veículo.
+   */
+  proprietario: { documento: string | null; nome: string | null; rntrc: string | null; ie: string | null; uf: string | null; tipo: string | null; parceiro?: string | null } | null;
 };
 
 export type CargaDaViagem = {
@@ -197,7 +202,8 @@ function proprietarioDoVeiculo(veiculo: VeiculoDaViagem, cnpjDoEmitente: string 
   const dono = veiculo.proprietario;
   const documento = (dono?.documento ?? "").toUpperCase().replace(/[^0-9A-Z]/g, "");
   if (!dono || documento === "") return null;
-  const onde = `do veículo ${veiculo.placa} (Frota)`;
+  // A pendência aponta para o cadastro em que se corrige: o do parceiro, quando o veículo tem um.
+  const onde = dono.parceiro ? `do veículo ${veiculo.placa} (parceiro ${dono.parceiro}, em Parceiros)` : `do veículo ${veiculo.placa} (Frota)`;
   if (!documentoValido(documento)) {
     pendencias.push(`O CPF ou CNPJ do proprietário ${onde} não é válido.`);
     return null;

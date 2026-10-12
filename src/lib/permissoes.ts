@@ -130,6 +130,15 @@ export const CAPACIDADES = {
   /** Lançar e acertar adiantamento; alterar o percentual de comissão (junto de `motoristas`). */
   equipeValores: ["ADMIN", "FINANCE"],
 
+  /** Ler o cadastro de parceiros de transporte (agregados e terceiros), com os veículos e motoristas ligados. Sem valores. */
+  parceirosVer: ["ADMIN", "DIRECTOR", "OPERATION", "FINANCE"],
+  /** Criar e alterar parceiro. A forma padrão de contratação exige também `freteContratado`. */
+  parceiros: ["ADMIN", "DIRECTOR", "OPERATION"],
+  /** Ler o que é dinheiro com o parceiro: contrato de frete da viagem, pagamentos, saldo, recibo, fechamento e a forma padrão de contratação. */
+  freteContratadoVer: ["ADMIN", "DIRECTOR", "FINANCE"],
+  /** Gravar e cancelar contrato de frete, registrar e excluir pagamento (lança no Financeiro) e alterar a forma padrão de contratação do parceiro. */
+  freteContratado: ["ADMIN", "FINANCE"],
+
   /** Chamados: ler, abrir, responder e encaminhar. */
   ocorrencias: ["ADMIN", "DIRECTOR", "OPERATION", "COMMERCIAL", "EXPEDITION", "WAREHOUSE"],
 

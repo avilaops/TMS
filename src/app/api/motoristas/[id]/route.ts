@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import { pode } from '@/lib/permissoes';
 import prisma, { sistema, transacao } from '@/lib/prisma';
-import { COMMISSION_ADMIN_ONLY, DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
+import { CARRIER_NOT_FOUND_MESSAGE, COMMISSION_ADMIN_ONLY, DRIVER_PUBLIC_INCLUDE, Refusal, isUniqueViolation, updateDriverSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { dadosDoConvite, liberarAcesso, revogarAcesso } from '@/lib/acessos';
 import { nadaMudou, origemDaRequisicao, registrarAuditoria, registrarAuditoriaDepois } from '@/lib/auditoria';
@@ -49,6 +49,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           phone: true,
           active: true,
           commissionPct: true,
+          carrierId: true,
           user: { select: { role: true, email: true, name: true } },
         }
       });
@@ -69,6 +70,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           select: { id: true }
         });
         if (other) throw new Refusal(DUPLICATE_EMAIL, 409);
+      }
+
+      // Parceiro de outra empresa não existe para esta: responde como id inventado.
+      if (data.carrierId) {
+        const parceiro = await tx.carrier.findUnique({ where: { id: data.carrierId }, select: { id: true } });
+        if (!parceiro) throw new Refusal(CARRIER_NOT_FOUND_MESSAGE, 400);
       }
 
       if (data.name !== undefined || data.email !== undefined) {
@@ -96,11 +103,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           phone: data.phone,
           active: data.active,
           commissionPct: data.commissionPct,
+          carrierId: data.carrierId,
         },
         include: DRIVER_PUBLIC_INCLUDE,
       });
 
-      const campos = (m: { cnh: string | null; category: string | null; cnhExpiry: Date | null; phone: string | null; active: boolean; commissionPct: number | null }, u: { name: string; email: string }) => ({
+      const campos = (m: { cnh: string | null; category: string | null; cnhExpiry: Date | null; phone: string | null; active: boolean; commissionPct: number | null; carrierId: string | null }, u: { name: string; email: string }) => ({
         name: u.name,
         email: u.email,
         cnh: m.cnh,
@@ -109,6 +117,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         phone: m.phone,
         active: m.active,
         commissionPct: m.commissionPct,
+        carrierId: m.carrierId,
       });
       const antes = campos(target, target.user);
       const depois = campos(atualizado, atualizado.user);

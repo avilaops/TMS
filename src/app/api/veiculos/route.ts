@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/staff';
 import prisma from '@/lib/prisma';
-import { INACTIVE_DRIVER_MESSAGE, VEHICLE_FISCAL_FIELDS, VEHICLE_PUBLIC_INCLUDE, createVehicleSchema, isUniqueViolation } from '@/lib/cadastros';
+import { CARRIER_NOT_FOUND_MESSAGE, INACTIVE_DRIVER_MESSAGE, VEHICLE_FISCAL_FIELDS, VEHICLE_PUBLIC_INCLUDE, createVehicleSchema, isUniqueViolation } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { escolher, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 
@@ -57,6 +57,12 @@ export async function POST(req: Request) {
       }
     }
 
+    // Parceiro de outra empresa não existe para esta: responde como id inventado.
+    if (data.carrierId) {
+      const parceiro = await prisma.carrier.findUnique({ where: { id: data.carrierId }, select: { id: true } });
+      if (!parceiro) return NextResponse.json({ error: CARRIER_NOT_FOUND_MESSAGE }, { status: 400 });
+    }
+
     try {
       // O formulário usa capacityKg/defaultDriverId; no banco são capacity/driverId.
       const newVehicle = await prisma.vehicle.create({
@@ -68,6 +74,7 @@ export async function POST(req: Request) {
           maxWeight: data.maxWeight ?? null,
           year: data.year ?? null,
           driverId: data.defaultDriverId ?? null,
+          carrierId: data.carrierId ?? null,
           // O que o MDF-e pede do veículo: os nomes do formulário são os do banco.
           ...Object.fromEntries(VEHICLE_FISCAL_FIELDS.map((campo) => [campo, data[campo] ?? null])),
         },
@@ -81,7 +88,7 @@ export async function POST(req: Request) {
         entidade: 'veiculo',
         entidadeId: newVehicle.id,
         resumo: `Veículo ${newVehicle.plate} criado`,
-        depois: escolher(newVehicle, ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'status', ...VEHICLE_FISCAL_FIELDS]),
+        depois: escolher(newVehicle, ['plate', 'model', 'type', 'capacity', 'maxWeight', 'year', 'driverId', 'carrierId', 'status', ...VEHICLE_FISCAL_FIELDS]),
       });
 
       return NextResponse.json(newVehicle, { status: 201 });

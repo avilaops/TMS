@@ -75,6 +75,7 @@ import {
 import { prepararMdfe, ufsDeDescarga, type CargaDaViagem, type PreparoDoMdfe, type SeguroPadrao, type VeiculoDaViagem, type ViagemDoMdfe } from "@/lib/mdfe/preparar";
 import { CSTAT, REJEICOES_POR_NAO_ENCERRADO, consultarMdfe, consultarNaoEncerrados, decidirMdfe as decidir, enviarEvento, enviarMdfe, statusDoServico, type DestinoDoMdfe } from "@/lib/mdfe/sefaz";
 import { municipioDoTexto } from "@/lib/municipios";
+import { proprietarioDoParceiro } from "@/lib/parceiros";
 import { responsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { avisarEquipe, avisoDeMdfe, avisoDeMdfeEmAberto } from "@/lib/notificacoes";
 import { sistema } from "@/lib/prisma";
@@ -364,9 +365,17 @@ const VEICULO_SELECT = {
   ownerIe: true,
   ownerState: true,
   ownerType: true,
+  // O parceiro de transporte dono do veículo: com ele, o proprietário do MDF-e sai do cadastro dele.
+  carrier: { select: { name: true, taxId: true, rntrc: true, ie: true, state: true, type: true } },
 } as const;
 
 type LinhaDoVeiculo = Prisma.VehicleGetPayload<{ select: typeof VEICULO_SELECT }>;
+
+/** O proprietário do veículo: o parceiro, quando há; senão, os campos soltos do cadastro do veículo. */
+const proprietarioDaLinha = (linha: LinhaDoVeiculo): VeiculoDaViagem["proprietario"] => {
+  if (linha.carrier) return proprietarioDoParceiro(linha.carrier);
+  return linha.ownerTaxId ? { documento: linha.ownerTaxId, nome: linha.ownerName, rntrc: linha.ownerRntrc, ie: linha.ownerIe, uf: linha.ownerState, tipo: linha.ownerType } : null;
+};
 
 const veiculoDaLinha = (linha: LinhaDoVeiculo): VeiculoDaViagem => ({
   id: linha.id,
@@ -377,7 +386,7 @@ const veiculoDaLinha = (linha: LinhaDoVeiculo): VeiculoDaViagem => ({
   rodado: linha.wheelType,
   carroceria: linha.bodyType,
   uf: linha.licenseState,
-  proprietario: linha.ownerTaxId ? { documento: linha.ownerTaxId, nome: linha.ownerName, rntrc: linha.ownerRntrc, ie: linha.ownerIe, uf: linha.ownerState, tipo: linha.ownerType } : null,
+  proprietario: proprietarioDaLinha(linha),
 });
 
 const viagemSelect = (ambiente: Ambiente) =>

@@ -162,6 +162,7 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Custos detalhados de frota e checklists.
 - [x] Atendimento e ocorrências.
 - [x] Equipe: ajudantes, ausências, adiantamentos e produtividade.
+- [x] Parceiros de transporte (agregados e terceiros) e frete contratado por viagem: contrato, adiantamento, saldo, recibo e fechamento por parceiro. Falta: cálculo de retenções, RPA, CIOT/PEF, piso mínimo da ANTT e subcontratação no CT-e.
 - [x] Portal do cliente: cotação, destinatários, exportação e tabela de frete.
 
 ### Fase 4: Fiscal e Automações

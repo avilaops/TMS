@@ -38,6 +38,8 @@ export default function ManifestosPage() {
   const alteraViagem = pode(session?.user?.role, "manifestos");
   const veFiscal = pode(session?.user?.role, "fiscalVer");
   const emiteFiscal = pode(session?.user?.role, "fiscal");
+  const veFrete = pode(session?.user?.role, "freteContratadoVer");
+  const alteraFrete = pode(session?.user?.role, "freteContratado");
   // A aba em que a tela da viagem abre: "MDF-e" quando a pessoa aceita encerrar o MDF-e ao finalizar.
   const [abaDaViagem, setAbaDaViagem] = useState<"Dados" | "MDF-e">("Dados");
   // A saída que o servidor não liberou por falta de CT-e ou de MDF-e (409): o cartão da viagem mostra o que falta.
@@ -499,6 +501,8 @@ export default function ManifestosPage() {
           alteraViagem={alteraViagem}
           veFiscal={veFiscal}
           emiteFiscal={emiteFiscal}
+          veFrete={veFrete}
+          alteraFrete={alteraFrete}
           abaInicial={abaDaViagem}
           onClose={() => {
             setViagem(null);

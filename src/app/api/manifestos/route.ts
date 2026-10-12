@@ -13,6 +13,7 @@ import {
   createManifestSchema,
 } from '@/lib/manifestos';
 import { ManifestError, ORDEM_DAS_CARGAS, conferirAjudante } from '@/lib/manifestos-db';
+import { criarContratoDoParceiro } from '@/lib/frete-contratado-db';
 import { incoerenciaDaViagem } from '@/lib/viagem';
 import { origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
@@ -165,6 +166,9 @@ export async function POST(req: Request) {
         resumo: `Manifesto criado com ${collectionIds.length} carga(s)`,
         depois: { status: manifest.status, driverId, vehicleId, cargas: collectionIds.length },
       });
+
+      // Veículo de parceiro: a viagem já nasce com o contrato de frete, pela forma padrão dele.
+      await criarContratoDoParceiro(tx, { manifestId: manifest.id, ator: user, origem });
 
       return manifest;
     });

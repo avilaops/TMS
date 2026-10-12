@@ -60,6 +60,9 @@ const DA_OPERACAO: Capacidade[] = [
   "equipeVer",
   "equipe",
   "ocorrencias",
+  // Parceiros de transporte: capacidade nova, dada à operação desde que nasceu (o cadastro, sem valores).
+  "parceirosVer",
+  "parceiros",
 ];
 
 // O que era "só ADMIN" antes dos perfis novos.
@@ -79,6 +82,9 @@ const SO_DO_ADMIN_ANTES: Capacidade[] = [
   "mensageria",
   "usuarios",
   "empresa",
+  // Frete contratado: capacidade nova, que nasceu sem a operação (é dinheiro).
+  "freteContratadoVer",
+  "freteContratado",
 ];
 
 const ESPERADO: Record<Perfil, Capacidade[]> = {
@@ -95,6 +101,7 @@ const ESPERADO: Record<Perfil, Capacidade[]> = {
     "relatorios",
     "auditoria",
     "mensageriaVer",
+    "freteContratadoVer",
   ],
   FINANCE: [
     "painel",
@@ -117,6 +124,9 @@ const ESPERADO: Record<Perfil, Capacidade[]> = {
     "faturamento",
     "cobranca",
     "relatorios",
+    "parceirosVer",
+    "freteContratadoVer",
+    "freteContratado",
   ],
   COMMERCIAL: ["painel", "clientesVer", "clientes", "clientesCondicoes", "crm", "tabelasFreteVer", "tabelasFrete", "coletasVer", "ocorrencias"],
   EXPEDITION: [
@@ -271,6 +281,12 @@ const ROTAS: Record<string, Capacidade> = {
   "PATCH /api/manifestos/[id]": "manifestos",
   "GET /api/manifestos": "manifestosVer",
   "POST /api/manifestos": "manifestos",
+  "GET /api/manifestos/[id]/frete": "freteContratadoVer",
+  "PUT /api/manifestos/[id]/frete": "freteContratado",
+  "DELETE /api/manifestos/[id]/frete": "freteContratado",
+  "POST /api/manifestos/[id]/frete/pagamentos": "freteContratado",
+  "DELETE /api/manifestos/[id]/frete/pagamentos/[registroId]": "freteContratado",
+  "GET /api/manifestos/[id]/frete/recibo": "freteContratadoVer",
   "PATCH /api/motoristas/[id]": "motoristas",
   "GET /api/motoristas": "motoristasVer",
   "POST /api/motoristas": "motoristas",
@@ -279,6 +295,11 @@ const ROTAS: Record<string, Capacidade> = {
   "PATCH /api/ocorrencias/[id]": "ocorrencias",
   "GET /api/ocorrencias": "ocorrencias",
   "POST /api/ocorrencias": "ocorrencias",
+  "GET /api/parceiros": "parceirosVer",
+  "POST /api/parceiros": "parceiros",
+  "PATCH /api/parceiros/[id]": "parceiros",
+  "PUT /api/parceiros/[id]/contratacao": "freteContratado",
+  "GET /api/parceiros/[id]/fechamento": "freteContratadoVer",
   "GET /api/relatorios": "relatorios",
   "POST /api/tabelas-frete/calcular": "tabelasFreteVer",
   "PUT /api/tabelas-frete/[id]/cidades": "tabelasFrete",
@@ -431,10 +452,10 @@ describe("matriz de permissões", () => {
   });
 
   it("dinheiro só para ADMIN, DIRECTOR e FINANCE; escrever nele, só ADMIN e FINANCE", () => {
-    for (const capacidade of ["financeiroVer", "faturamentoVer", "cobranca", "relatorios", "frotaCustos", "equipeValoresVer"] as const) {
+    for (const capacidade of ["financeiroVer", "faturamentoVer", "cobranca", "relatorios", "frotaCustos", "equipeValoresVer", "freteContratadoVer"] as const) {
       expect(ordenado(perfisQuePodem(capacidade)), capacidade).toEqual(["ADMIN", "DIRECTOR", "FINANCE"]);
     }
-    for (const capacidade of ["financeiro", "faturamento", "equipeValores"] as const) {
+    for (const capacidade of ["financeiro", "faturamento", "equipeValores", "freteContratado"] as const) {
       expect(ordenado(perfisQuePodem(capacidade)), capacidade).toEqual(["ADMIN", "FINANCE"]);
     }
     for (const capacidade of ["usuarios", "empresa", "mensageria"] as const) {
@@ -530,6 +551,7 @@ describe("menu do painel por perfil", () => {
     "/fiscal",
     "/motoristas",
     "/veiculos",
+    "/parceiros",
     "/equipe",
     "/frota",
   ];
@@ -553,6 +575,7 @@ describe("menu do painel por perfil", () => {
       "/financeiro",
       "/motoristas",
       "/veiculos",
+      "/parceiros",
       "/equipe",
       "/frota",
       "/relatorios",
@@ -580,6 +603,7 @@ describe("menu do painel por perfil", () => {
       "/financeiro",
       "/motoristas",
       "/veiculos",
+      "/parceiros",
       "/equipe",
       "/frota",
       "/relatorios",
@@ -598,6 +622,7 @@ describe("menu do painel por perfil", () => {
       "/financeiro",
       "/motoristas",
       "/veiculos",
+      "/parceiros",
       "/equipe",
       "/frota",
       "/relatorios",

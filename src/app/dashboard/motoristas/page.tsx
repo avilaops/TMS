@@ -17,6 +17,8 @@ interface Motorista {
   active: boolean;
   /** Percentual do frete entregue que vira comissão. Só vem para o administrador. */
   commissionPct?: number | null;
+  /** O parceiro de transporte de quem o motorista é; nulo = motorista da empresa. */
+  carrierId?: string | null;
 }
 
 const CATEGORIAS = ["A", "B", "C", "D", "E", "AB", "AC", "AD", "AE"];
@@ -30,6 +32,8 @@ const FORM_VAZIO = {
   category: "B",
   cnhExpiry: "",
   commissionPct: "",
+  // O parceiro de transporte de quem o motorista é; vazio = motorista da empresa.
+  carrierId: "",
 };
 
 const INPUT =
@@ -66,8 +70,17 @@ export default function MotoristasPage() {
   const { data: session } = useSession();
   const admin = pode(session?.user?.role, "equipeValores");
 
+  // Parceiros de transporte, para o seletor do cadastro. Quem não lê parceiros fica sem o seletor.
+  const [parceiros, setParceiros] = useState<{ id: string; name: string; active: boolean }[]>([]);
+  // O parceiro que o motorista já tem continua no seletor mesmo desativado.
+  const parceirosDoSeletor = parceiros.filter((parceiro) => parceiro.active || parceiro.id === formData.carrierId);
+
   useEffect(() => {
     fetchMotoristas();
+    fetch('/api/parceiros')
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setParceiros)
+      .catch(() => setParceiros([]));
   }, []);
 
   const fetchMotoristas = async () => {
@@ -102,6 +115,7 @@ export default function MotoristasPage() {
       category: motorista.category,
       cnhExpiry: diaDaValidade(motorista.cnhExpiry),
       commissionPct: motorista.commissionPct == null ? "" : String(motorista.commissionPct).replace(".", ","),
+      carrierId: motorista.carrierId ?? "",
     });
     setIsModalOpen(true);
   };
@@ -334,6 +348,24 @@ export default function MotoristasPage() {
                     className={INPUT}
                   />
                 </div>
+                {/* Motorista de agregado ou de terceiro: o parceiro de quem ele é. Ocupa o espaço ao lado do e-mail. */}
+                {parceirosDoSeletor.length > 0 && (
+                  <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                    <label className={LABEL} htmlFor="motorista-parceiro">Parceiro</label>
+                    <select
+                      id="motorista-parceiro"
+                      data-parceiro-do-motorista
+                      value={formData.carrierId}
+                      onChange={(e) => setFormData({...formData, carrierId: e.target.value})}
+                      className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    >
+                      <option value="">Motorista da empresa</option>
+                      {parceirosDoSeletor.map((parceiro) => (
+                        <option key={parceiro.id} value={parceiro.id}>{parceiro.name}{parceiro.active ? "" : " (inativo)"}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               <p className="text-xs text-gray-500">O motorista entra no aplicativo com a conta Ávila Ops deste e-mail (ou do CPF). Se ele ainda não tem conta, você recebe um link para enviar a ele.</p>
 

@@ -21,6 +21,7 @@ import {
   Warehouse,
   History,
   HardHat,
+  Handshake,
 } from "lucide-react";
 import { pode, type Capacidade } from "@/lib/permissoes";
 
@@ -67,6 +68,7 @@ export const SECOES: SecaoDoMenu[] = [
     links: [
       { href: "/dashboard/motoristas", icon: CarFront, label: "Motoristas", pode: "motoristasVer" },
       { href: "/dashboard/veiculos", icon: Truck, label: "Veículos", pode: "frotaVer" },
+      { href: "/dashboard/parceiros", icon: Handshake, label: "Parceiros", pode: "parceirosVer" },
       { href: "/dashboard/equipe", icon: HardHat, label: "Equipe", pode: "equipeVer" },
       { href: "/dashboard/frota", icon: Wrench, label: "Alertas", pode: "frotaVer" },
     ],
