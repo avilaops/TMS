@@ -1138,7 +1138,7 @@ suite("rotas da emissão de CT-e", () => {
         expect(pdf.headers.get("Content-Disposition")).toBe(`attachment; filename="${emitido.chave}-dacte-HOMOLOGACAO-SEM-VALOR-FISCAL.pdf"`);
         expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
         // O que foi para o serviço é o cteProc guardado, com o protocolo.
-        expect(pedidosAoFiscal).toEqual([{ ferramenta: "gerar_dacte", xml: linha.xmlReturn }]);
+        expect(pedidosAoFiscal).toEqual([{ ferramenta: "fiscal_gerar_dacte", xml: linha.xmlReturn }]);
 
         // O serviço não reconhece o protocolo: não há DACTE.
         fiscalDizAutorizado = false;

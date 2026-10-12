@@ -1451,7 +1451,7 @@ suite("rotas da emissão de MDF-e", () => {
       expect(pdf.headers.get("Content-Disposition")).toBe(`attachment; filename="${corpo.mdfe.chave}-damdfe-HOMOLOGACAO-SEM-VALOR-FISCAL.pdf"`);
       expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
       expect(pedidosAoFiscal).toHaveLength(1);
-      expect(pedidosAoFiscal[0].ferramenta).toBe("gerar_damdfe");
+      expect(pedidosAoFiscal[0].ferramenta).toBe("fiscal_gerar_damdfe");
       expect(pedidosAoFiscal[0].xml).toBe(conteudo);
 
       // O serviço não reconheceu o protocolo: o PDF não é entregue.
@@ -1568,7 +1568,7 @@ suite("rotas da emissão de MDF-e", () => {
       expect(pdf.headers.get("Content-Disposition")).toBe(`attachment; filename="${gravado.accessKey}-damdfe-CONTINGENCIA.pdf"`);
       expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
       expect(pedidosAoFiscal).toHaveLength(1);
-      expect(pedidosAoFiscal[0]).toEqual({ ferramenta: "gerar_damdfe", xml: gravado.xmlSent });
+      expect(pedidosAoFiscal[0]).toEqual({ ferramenta: "fiscal_gerar_damdfe", xml: gravado.xmlSent });
       expect(pedidosAoFiscal[0].xml).not.toContain("<protMDFe");
       // O serviço devolveu o DAMDFE de outro documento: não é entregue.
       chaveQueOFiscalDevolve = chaveDeExemplo("58", 77);

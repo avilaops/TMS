@@ -204,14 +204,14 @@ describe("serviço fiscal: leitura da resposta", () => {
   });
 
   it("sem endereço, ou com endereço que não é http(s), o recurso está desligado", () => {
-    for (const valor of [undefined, "", "   ", "fiscal.avilaops.com/mcp", "ftp://fiscal.avilaops.com/mcp", "file:///etc/passwd", "javascript:alert(1)"]) {
+    for (const valor of [undefined, "", "   ", "mcp.avilaops.com/mcp", "ftp://mcp.avilaops.com/mcp", "file:///etc/passwd", "javascript:alert(1)"]) {
       if (valor === undefined) delete process.env.FISCAL_MCP_URL;
       else process.env.FISCAL_MCP_URL = valor;
       expect(enderecoDoFiscal(), String(valor)).toBeNull();
       expect(danfeLigado(), String(valor)).toBe(false);
     }
-    process.env.FISCAL_MCP_URL = " https://fiscal.avilaops.com/mcp ";
-    expect(enderecoDoFiscal()).toBe("https://fiscal.avilaops.com/mcp");
+    process.env.FISCAL_MCP_URL = " https://mcp.avilaops.com/mcp ";
+    expect(enderecoDoFiscal()).toBe("https://mcp.avilaops.com/mcp");
     expect(danfeLigado()).toBe(true);
   });
 

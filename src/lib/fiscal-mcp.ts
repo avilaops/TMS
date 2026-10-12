@@ -1,7 +1,11 @@
 /**
- * Cliente do servidor fiscal da casa ("MCP Fiscal Brasil"), só para o que o TMS
- * usa dele: gerar o DANFE em PDF a partir do XML de uma NF-e, o DACTE a partir
- * do XML de um CT-e autorizado e o DAMDFE a partir do XML de um MDF-e autorizado.
+ * Cliente do serviço fiscal da casa, só para o que o TMS usa dele: gerar o
+ * DANFE em PDF a partir do XML de uma NF-e, o DACTE a partir do XML de um CT-e
+ * autorizado e o DAMDFE a partir do XML de um MDF-e autorizado.
+ *
+ * O serviço fiscal não tem endereço próprio: é alcançado pelo MCP único da
+ * empresa (`https://mcp.avilaops.com/mcp`), onde as ferramentas dele levam o
+ * prefixo `fiscal_`, com um token de serviço que só abre essas ferramentas.
  *
  * O servidor fala MCP por HTTP (JSON-RPC em `POST`, resposta em JSON ou em
  * `text/event-stream` com uma linha `data: {json}`). A conversa tem três
@@ -11,11 +15,11 @@
  * `fetch` e um leitor pequeno da resposta.
  *
  * Variáveis de ambiente:
- * - `FISCAL_MCP_URL`: o endereço (ex.: `https://fiscal.avilaops.com/mcp`). Sem
- *   ela o recurso fica desligado: as rotas respondem 503 e as telas não mostram
- *   o botão.
- * - `FISCAL_MCP_TOKEN` (opcional): vai como `Authorization: Bearer`, para
- *   quando o servidor passar a exigir autenticação.
+ * - `FISCAL_MCP_URL`: o endereço do MCP único (`https://mcp.avilaops.com/mcp`).
+ *   Sem ela o recurso fica desligado: as rotas respondem 503 e as telas não
+ *   mostram o botão.
+ * - `FISCAL_MCP_TOKEN`: o token de serviço do TMS no MCP único, enviado como
+ *   `Authorization: Bearer`. Sem ele o MCP único recusa a conversa (401).
  * - `FISCAL_MCP_TIMEOUT_MS` (opcional): o tempo máximo da conversa, em
  *   milissegundos, no lugar do padrão de 20 segundos.
  *
@@ -151,6 +155,9 @@ export function pdfDoResultado(resultado: unknown): Buffer {
 }
 
 const VERSAO_DO_PROTOCOLO = "2025-03-26";
+
+/** No MCP único, as ferramentas do serviço fiscal levam este prefixo (`fiscal_gerar_danfe`). */
+const PREFIXO_NO_MCP = "fiscal_";
 
 /**
  * Gera o DANFE (PDF) do XML de uma NF-e no serviço fiscal.
@@ -344,7 +351,7 @@ async function chamarFerramenta(ferramenta: "gerar_danfe" | "gerar_dacte" | "ger
     const aviso = await enviar({ method: "notifications/initialized" });
     await aviso.body?.cancel().catch(() => undefined);
 
-    const { resultado } = await chamar(2, "tools/call", { name: ferramenta, arguments: { xml_content: xml } });
+    const { resultado } = await chamar(2, "tools/call", { name: `${PREFIXO_NO_MCP}${ferramenta}`, arguments: { xml_content: xml } });
     return resultado;
   } catch (erro) {
     if (erro instanceof FiscalMcpError) throw erro;
