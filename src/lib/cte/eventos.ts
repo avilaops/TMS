@@ -133,6 +133,19 @@ export type DadosDoComprovanteDeEntrega = BaseDoEvento & {
 };
 
 /**
+ * As chaves das NF-e que o comprovante de entrega relaciona (`infEntrega`),
+ * lidas do XML do CT-e que foi autorizado: são as que ele transporta (regra
+ * O17, rejeição 864). Só no serviço normal: "se o CTe for do tipo de serviço
+ * diferente de Normal, o grupo infEntrega não deve ser informado" (MOC 4.00,
+ * Visão Geral, item 6.8, regra O10, rejeição 871), mesmo que o CT-e de
+ * subcontratação ou de redespacho leve NF-e.
+ */
+export function chavesDeNfeDaEntrega(xmlDoCte: string): string[] {
+  if (!xmlDoCte.includes("<tpServ>0</tpServ>")) return [];
+  return [...xmlDoCte.matchAll(/<infNFe><chave>(\d{44})<\/chave>/g)].map((achado) => achado[1]);
+}
+
+/**
  * O comprovante de entrega (110180). As datas vão no fuso da UF do emitente,
  * como as do CT-e. O grupo `infEntrega` leva cada NF-e uma vez só (regra O15,
  * rejeição 861) e é obrigatório quando o CT-e, de serviço normal, tem NF-e

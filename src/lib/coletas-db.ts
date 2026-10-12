@@ -3,6 +3,7 @@ import { COLLECTION_INCLUDE, INACTIVE_CLIENT_MESSAGE, INACTIVE_DRIVER_MESSAGE } 
 import { freteDaColeta } from "@/lib/frete-coleta";
 import { recordStatusChanges } from "@/lib/historico";
 import { avisarStatusAoCliente } from "@/lib/notificacoes";
+import { COLUNAS_DO_REDESPACHO, SEM_REDESPACHO, type RedespachoDaCarga } from "@/lib/redespacho";
 
 // Apoio das rotas que criam uma coleta pelo painel (a de minutas e a importação
 // de NF-e) e das que trocam o status dela dentro de transação (a do painel de
@@ -35,7 +36,18 @@ export type ColetaNova = {
   deliveryNumber?: string | null;
   deliveryDistrict?: string | null;
   deliveryZip?: string | null;
-};
+} & Partial<RedespachoDaCarga>; // Redespacho e subcontratação (src/lib/redespacho.ts): tudo opcional.
+
+/** As colunas de redespacho da coleta nova: o que veio no pedido, e o serviço normal sem nada no que não veio. */
+function redespachoDaColetaNova(dados: Partial<RedespachoDaCarga>): RedespachoDaCarga {
+  const colunas = { ...SEM_REDESPACHO };
+  for (const coluna of COLUNAS_DO_REDESPACHO) {
+    const valor = dados[coluna];
+    if (coluna === "serviceType") colunas.serviceType = typeof valor === "string" ? valor : SEM_REDESPACHO.serviceType;
+    else colunas[coluna] = valor ?? null;
+  }
+  return colunas;
+}
 
 /** Por que a coleta não pode nascer (cliente ou motorista inativo ou de fora), ou `null`. */
 export async function recusaDaColetaNova(db: ColetasDb, dados: Pick<ColetaNova, "clientId" | "driverId">): Promise<string | null> {
@@ -87,6 +99,7 @@ export async function criarColetaConfirmada(db: ColetasDb, dados: ColetaNova, us
       deliveryNumber: dados.deliveryNumber ?? null,
       deliveryDistrict: dados.deliveryDistrict ?? null,
       deliveryZip: dados.deliveryZip ?? null,
+      ...redespachoDaColetaNova(dados),
       ...frete,
       freightDetails: frete.freightDetails ?? undefined,
       // Quem cria pelo painel é o operador que aprovaria: nasce confirmada.

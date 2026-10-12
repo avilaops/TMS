@@ -457,6 +457,31 @@ model Collection {
   geoSource        String?
   geoAt            DateTime?
 
+  // Redespacho e subcontratação (src/lib/redespacho.ts): o tipo de serviço do
+  // CT-e desta carga (`tpServ`), a chave do CT-e da transportadora que contratou
+  // (ou do trecho anterior) e quem entrega a carga a esta transportadora
+  // (expedidor, `shipper*`) e quem a recebe dela (recebedor, `consignee*`).
+  // Tudo opcional no serviço normal. A cidade é texto "Cidade - UF", como a
+  // origem e o destino; o documento e o CEP guardam só letras e dígitos.
+  serviceType       String  @default("NORMAL") // NORMAL, SUBCONTRACT, REDISPATCH, INTERMEDIATE
+  previousCteKey    String?
+  shipperName       String?
+  shipperDocument   String?
+  shipperIe         String?
+  shipperStreet     String?
+  shipperNumber     String?
+  shipperDistrict   String?
+  shipperCity       String?
+  shipperZip        String?
+  consigneeName     String?
+  consigneeDocument String?
+  consigneeIe       String?
+  consigneeStreet   String?
+  consigneeNumber   String?
+  consigneeDistrict String?
+  consigneeCity     String?
+  consigneeZip      String?
+
   // Codigo publico de rastreio: 10 digitos sorteados com CSPRNG (src/lib/tracking.ts).
   // E o segundo fator do rastreio publico, junto do CNPJ do cliente. Opcional no
   // schema porque as coletas criadas antes desta mudanca recebem o codigo por

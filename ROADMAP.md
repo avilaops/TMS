@@ -172,6 +172,8 @@ O primeiro produto utilizável (MVP) deve fechar o fluxo central:
 - [x] Emissão de MDF-e implementada (montagem validada no esquema oficial, assinatura, transmissão, encerramento e cancelamento), em homologação.
 - [x] MDF-e: contingência off-line (emissão, DAMDFE de contingência e transmissão posterior), eventos de pagamento do frete (110116 e 110118) e revisão do retorno da SEFAZ contra o manual; CT-e e MDF-e: código de segurança do responsável técnico (opcional).
 - [x] CT-e: carta de correção (110110), comprovante de entrega na SEFAZ e o cancelamento dele (110180 e 110181), emissão pela SVC (contingência) e "Conferir na SEFAZ" (situação e eventos pela chave). Nada disso foi exercitado contra a SEFAZ de verdade.
+- [x] CT-e de subcontratação, redespacho e redespacho intermediário (quando outra transportadora contrata esta): tipo de serviço, CT-e anterior, expedidor e recebedor na carga, na conferência, no XML e na minuta de despacho. Carta de correção e comprovante de entrega de CT-e autorizado pela SVC passam a ir para a SEFAZ de origem. Validado no esquema oficial; nada foi enviado à SEFAZ.
+- [ ] Subcontratar outra transportadora (emitir o CT-e próprio e receber o CT-e de subcontratação dela): depende do cadastro de parceiros de transporte.
 - [ ] Primeira autorização real de CT-e e de MDF-e em homologação e liberação para produção (precisa do certificado A1 e do credenciamento da transportadora na SEFAZ).
 - [x] Auditoria de ações.
 - [x] Notificações no sistema (sininho), por push no navegador e por WhatsApp via n8n.

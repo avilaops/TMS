@@ -12,6 +12,7 @@ import {
   type Minuta,
 } from "../src/lib/minuta";
 import { PERFIS, PERFIS_INTERNOS, pode } from "../src/lib/permissoes";
+import { SEM_REDESPACHO } from "../src/lib/redespacho";
 import { EMPRESA_OUTRA, EMPRESA_PADRAO } from "./empresas-de-teste";
 
 /**
@@ -35,6 +36,7 @@ const AGORA = new Date("2026-10-10T17:32:00.000Z");
 const EMPRESA = { name: "Transportes Avila", logo: null };
 
 const cargaBase = (dados: Partial<CargaDaMinuta> = {}): CargaDaMinuta => ({
+  ...SEM_REDESPACHO,
   id: "c1",
   trackingCode: "1234567890",
   sender: "Serilon Brasil",
@@ -88,6 +90,9 @@ describe("minuta de despacho: montagem", () => {
       pagador: { nome: "Serilon Brasil Ltda", documento: "99000108000141", endereco: null },
       remetente: { nome: "Serilon Brasil", documento: null, endereco: null, cidade: "São José do Rio Preto - SP" },
       destinatario: { nome: "Mercado Bom Preço", documento: null, endereco: null, cidade: "Mirassol - SP" },
+      servico: null,
+      expedidor: null,
+      recebedor: null,
       carga: { volumes: 3, peso: 120.5, cubagem: null, valorDaMercadoria: null },
       notas: [],
       frete: { valor: null, manual: false, tabela: null, composicao: [], condicaoDePagamento: null },

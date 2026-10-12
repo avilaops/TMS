@@ -210,6 +210,38 @@ export const DESTINATARIO: ParticipanteDoCte = {
   endereco: { logradouro: "Rua da Bahia", numero: "900", bairro: "Centro", codigoMunicipio: "3106200", municipio: "Belo Horizonte", uf: "MG", cep: "30160011" },
 };
 
+/**
+ * Redespacho e subcontratação: a transportadora que contrata (o cliente
+ * pagador, que emitiu o CT-e anterior), um expedidor e um recebedor. Os CNPJ
+ * são de mentira, com os dígitos verificadores certos.
+ */
+export const CONTRATANTE: ParticipanteDoCte = {
+  documento: "99000503000124",
+  ie: "111222333444",
+  nome: "Transportadora Contratante Ltda",
+  endereco: { logradouro: "Rodovia Washington Luís", numero: "km 440", bairro: "Zona Rural", codigoMunicipio: "3549805", municipio: "São José do Rio Preto", uf: "SP", cep: "15090000" },
+};
+
+export const EXPEDIDOR: ParticipanteDoCte = {
+  documento: "99000903000130",
+  ie: "222333444555",
+  nome: "Centro de Distribuição Expedidor Ltda",
+  endereco: { logradouro: "Rua das Docas", numero: "50", bairro: "Distrito Industrial", codigoMunicipio: "3549805", municipio: "São José do Rio Preto", uf: "SP", cep: "15035100" },
+};
+
+export const RECEBEDOR: ParticipanteDoCte = {
+  documento: "99001103000133",
+  ie: null,
+  nome: "Transportes Recebedor Ltda",
+  endereco: { logradouro: "Av. do Contorno", numero: "8000", bairro: "Santo Agostinho", codigoMunicipio: "3106200", municipio: "Belo Horizonte", uf: "MG", cep: "30110932" },
+};
+
+/** A chave de um CT-e (modelo 57) emitido pela contratante em SP, com o dígito verificador certo. */
+export const CHAVE_DO_CTE_ANTERIOR = "35261099000503000124570010000003211123456785";
+
+/** O documento de transporte anterior de exemplo: o CT-e da contratante. */
+export const CTE_ANTERIOR = { cnpj: CONTRATANTE.documento, ie: "111222333444", uf: "SP", nome: CONTRATANTE.nome, chave: CHAVE_DO_CTE_ANTERIOR };
+
 /** Um CT-e completo de exemplo (interestadual, tomador remetente, uma NF-e); cada teste troca o que quer. */
 export function dadosDeExemplo(trocas: Partial<DadosDoCte> = {}): DadosDoCte {
   return {
@@ -290,6 +322,16 @@ export const CENARIOS_DO_CTE: Record<string, () => DadosDoCte> = {
   "emitente-utc-4-mt": () => dadosDeExemplo({ emitente: emitenteEm("MT"), inicio: CUIABA, fim: BELO_HORIZONTE, enderecoDoQrCode: "https://homologacao.sefaz.mt.gov.br/cte/qrcode" }),
   "emitente-utc-5-ac": () => dadosDeExemplo({ emitente: emitenteEm("AC"), inicio: RIO_BRANCO, fim: BELO_HORIZONTE, enderecoDoQrCode: "https://dfe-portal.svrs.rs.gov.br/cte/qrCode" }),
   "com-responsavel-tecnico": () => dadosDeExemplo({ responsavelTecnico: RESPONSAVEL_TECNICO }),
+  // Redespacho e subcontratação (tpServ 1, 2 e 3), com e sem expedidor e recebedor.
+  "subcontratacao": () => dadosDeExemplo({ servico: { tipo: "SUBCONTRACT", anterior: CTE_ANTERIOR }, tomador: { papel: "OUTRO", participante: CONTRATANTE } }),
+  "redespacho-sem-expedidor-nem-recebedor": () => dadosDeExemplo({ servico: { tipo: "REDISPATCH", anterior: CTE_ANTERIOR }, tomador: { papel: "OUTRO", participante: CONTRATANTE } }),
+  "redespacho-tomador-expedidor": () => dadosDeExemplo({ servico: { tipo: "REDISPATCH", anterior: CTE_ANTERIOR }, expedidor: CONTRATANTE, recebedor: RECEBEDOR, tomador: { papel: "EXPEDIDOR" } }),
+  "redespacho-intermediario": () =>
+    dadosDeExemplo({ servico: { tipo: "INTERMEDIATE", anterior: CTE_ANTERIOR }, remetente: null, destinatario: null, expedidor: CONTRATANTE, recebedor: RECEBEDOR, tomador: { papel: "EXPEDIDOR" }, chavesDeNfe: [] }),
+  "redespacho-intermediario-com-remetente-e-destinatario": () =>
+    dadosDeExemplo({ servico: { tipo: "INTERMEDIATE", anterior: { ...CTE_ANTERIOR, ie: null } }, expedidor: EXPEDIDOR, recebedor: RECEBEDOR, tomador: { papel: "OUTRO", participante: CONTRATANTE } }),
+  "normal-com-expedidor-e-recebedor": () => dadosDeExemplo({ expedidor: EXPEDIDOR, recebedor: RECEBEDOR }),
+  "normal-tomador-recebedor": () => dadosDeExemplo({ expedidor: EXPEDIDOR, recebedor: RECEBEDOR, tomador: { papel: "RECEBEDOR" } }),
 };
 
 /** A chave de acesso de uma NF-e de exemplo (modelo 55, do remetente de exemplo), com o dígito verificador certo. */
@@ -344,8 +386,11 @@ export type SefazDeMentira = {
   /** Quantas consultas ainda respondem "não consta" (217) mesmo para um CT-e autorizado: a consulta que chega antes de a autorização aparecer. */
   consultasCegas: number;
   chamadas: ChamadaRecebida[];
-  /** Chaves que este servidor já autorizou (a consulta responde por elas) e cancelou. `svc`: quem autorizou foi a SVC. */
-  autorizados: Map<string, { protocolo: string; resumo: string; recebidoEm: string; ambiente: string; svc?: boolean }>;
+  /**
+   * Chaves que este servidor já autorizou (a consulta responde por elas) e cancelou. `svc`: quem autorizou foi a SVC.
+   * `sincronizado`: a SVC já repassou o CT-e à SEFAZ de origem, que passa a aceitar os eventos dele (antes disso responde 217).
+   */
+  autorizados: Map<string, { protocolo: string; resumo: string; recebidoEm: string; ambiente: string; svc?: boolean; sincronizado?: boolean }>;
   cancelados: Set<string>;
   /**
    * A SVC (MOC 4.00, Visão Geral, itens 4.6.5 e 11.3.3): as chamadas que chegam
@@ -519,7 +564,9 @@ export async function subirSefazDeMentira(): Promise<SefazDeMentira> {
       if (svc !== null && tipo !== "110111") return responderEvento(530, "Rejeição: Se ambiente SVC, rejeitar eventos diferentes de EPEC, Liberação EPEC e Cancelamento");
       if (modo === "rejeitar") return responderEvento(220, "Rejeição: CTe autorizado há mais de 7 dias (168 horas)");
       const autorizado = estado.autorizados.get(chave);
-      if (!autorizado || Boolean(autorizado.svc) !== (svc !== null)) return responderEvento(217, "Rejeição: CTe não consta na base de dados da SEFAZ");
+      // Regra N20: o CT-e tem de constar na base de quem recebe o evento. O da SVC só consta na origem depois de sincronizado.
+      const constaAqui = autorizado && (Boolean(autorizado.svc) === (svc !== null) || (svc === null && autorizado.sincronizado === true));
+      if (!autorizado || !constaAqui) return responderEvento(217, "Rejeição: CTe não consta na base de dados da SEFAZ");
       if (estado.cancelados.has(chave)) {
         return responderEvento(218, "Rejeição: CTe já está cancelado na base de dados da SEFAZ [nProt:135260000000002][dhCanc: 2026-10-10T10:00:00-03:00]");
       }

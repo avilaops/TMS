@@ -330,6 +330,25 @@ export const CAMPOS_DA_COLETA = [
   "deliveryZip",
   "freightValue",
   "freightManual",
+  // Redespacho e subcontratação (src/lib/redespacho.ts).
+  "serviceType",
+  "previousCteKey",
+  "shipperName",
+  "shipperDocument",
+  "shipperIe",
+  "shipperStreet",
+  "shipperNumber",
+  "shipperDistrict",
+  "shipperCity",
+  "shipperZip",
+  "consigneeName",
+  "consigneeDocument",
+  "consigneeIe",
+  "consigneeStreet",
+  "consigneeNumber",
+  "consigneeDistrict",
+  "consigneeCity",
+  "consigneeZip",
 ] as const;
 
 /** O que entra em `antes`/`depois` de um pneu. */

@@ -12,6 +12,7 @@ import {
 import { CODIGO_DA_UF, MODELO_DO_CTE, TIPO_DE_EMISSAO_DA_SVC, TIPO_DE_EMISSAO_NORMAL, chaveDoCte, dataHoraDoEvento, dataHoraDoXml, type Svc } from "@/lib/cte/chave";
 import { codigoDoAmbiente } from "@/lib/cte/enderecos";
 import { responsavelTecnicoDoXml, type ResponsavelTecnico } from "@/lib/cte/responsavel-tecnico";
+import { TP_SERV, type TipoDeServico } from "@/lib/redespacho";
 import { centavos, decimal, digitos, escapar, grupo, tag, textoDoXml } from "@/lib/cte/texto";
 
 /**
@@ -25,8 +26,11 @@ import { centavos, decimal, digitos, escapar, grupo, tag, textoDoXml } from "@/l
  * (fiscal/esquemas/cte-4.00/cteTiposBasico_v4.00.xsd, tipo `TCTe`); os testes
  * validam o resultado contra o esquema oficial.
  *
- * O que este CT-e é, sempre: tipo normal (`tpCTe` 0), serviço normal
- * (`tpServ` 0), DACTE em retrato, sem expedidor nem recebedor. A emissão é a
+ * O que este CT-e é, sempre: tipo normal (`tpCTe` 0), DACTE em retrato. O
+ * serviço é o normal (`tpServ` 0) ou, quando a carga diz, subcontratação (1),
+ * redespacho (2) ou redespacho intermediário (3), com o documento de
+ * transporte anterior (`docAnt`): ver `DadosDoCte.servico`. Expedidor e
+ * recebedor vão quando a carga os tem. A emissão é a
  * normal (`tpEmis` 1) ou, a pedido de quem emite, pela SVC (`tpEmis` 7 ou 8):
  * ver `DadosDoCte.svc`. Não há contingência off-line, EPEC nem FS-DA.
  *
@@ -120,7 +124,31 @@ export type ParticipanteDoCte = {
 
 export type LocalDoCte = { codigoMunicipio: string; municipio: string; uf: string };
 
-export type TomadorDoCte = { papel: "REMETENTE" } | { papel: "DESTINATARIO" } | { papel: "OUTRO"; participante: ParticipanteDoCte };
+/**
+ * Quem é o tomador. Remetente, expedidor, recebedor e destinatário vão no
+ * `toma3` (0, 1, 2 e 3), que aponta para o grupo de mesmo nome; "outro" vai no
+ * `toma4`, com os dados dele (MOC 4.00, Anexo I, campos 35 a 38).
+ */
+export type TomadorDoCte = { papel: "REMETENTE" } | { papel: "EXPEDIDOR" } | { papel: "RECEBEDOR" } | { papel: "DESTINATARIO" } | { papel: "OUTRO"; participante: ParticipanteDoCte };
+
+/**
+ * O documento de transporte anterior (`infCTeNorm/docAnt`): o CT-e da
+ * transportadora que contratou esta (subcontratação) ou do trecho anterior
+ * (redespacho). Um emissor (`emiDocAnt`) com um CT-e eletrônico
+ * (`idDocAnt/idDocAntEle/chCTe`).
+ */
+export type DocumentoAnteriorDoCte = {
+  /** CNPJ de quem emitiu o CT-e anterior: o que está na chave dele (regra G062, rejeição 733). */
+  cnpj: string;
+  /** Inscrição estadual (só dígitos, `TIe`) e a UF dela. As duas vão juntas ou nenhuma vai (o esquema as põe numa sequência opcional). */
+  ie: string | null;
+  uf: string | null;
+  nome: string;
+  chave: string;
+};
+
+/** O serviço do CT-e. `anterior` é obrigatório nos tipos 1, 2 e 3 (regra G059, rejeição 521) e proibido no normal (G060, rejeição 747). */
+export type ServicoDoCte = { tipo: "NORMAL"; anterior?: null } | { tipo: Exclude<TipoDeServico, "NORMAL">; anterior: DocumentoAnteriorDoCte };
 
 export type DadosDoCte = {
   emitente: EmitenteDoCte;
@@ -128,8 +156,18 @@ export type DadosDoCte = {
   /** Código numérico aleatório, 8 dígitos (`sortearCodigo`). */
   codigo: string;
   emissao: Date;
-  remetente: ParticipanteDoCte;
-  destinatario: ParticipanteDoCte;
+  /**
+   * Remetente e destinatário. Só podem faltar (`null`) no redespacho
+   * intermediário (MOC 4.00, Anexo I, regras G053 e G054, rejeições 469 e 470:
+   * obrigatórios "para tipo de serviço diferente de redespacho intermediário").
+   */
+  remetente: ParticipanteDoCte | null;
+  destinatario: ParticipanteDoCte | null;
+  /** Quem entrega a carga a esta transportadora e quem a recebe dela. Obrigatórios no redespacho intermediário (regras G055 e G056, rejeições 474 e 475). */
+  expedidor?: ParticipanteDoCte | null;
+  recebedor?: ParticipanteDoCte | null;
+  /** Ausente: serviço normal. */
+  servico?: ServicoDoCte | null;
   tomador: TomadorDoCte;
   /** 1 = contribuinte do ICMS, 2 = contribuinte isento de inscrição, 9 = não contribuinte. */
   contribuinte: "1" | "2" | "9";
@@ -143,7 +181,11 @@ export type DadosDoCte = {
   produto: string;
   pesoKg: number;
   volumes: number;
-  /** Chaves das NF-e transportadas. Vazio: vai uma declaração (`infOutros`) com `documento`. */
+  /**
+   * Chaves das NF-e transportadas. Vazio: vai uma declaração (`infOutros`) com
+   * `documento`. No redespacho intermediário o grupo `infDoc` não vai, haja o
+   * que houver aqui (regra G037, rejeição 694).
+   */
   chavesDeNfe: readonly string[];
   /** Número do documento quando não há NF-e (o código de rastreio da carga). */
   documento?: string | null;
@@ -159,8 +201,15 @@ export type DadosDoCte = {
    * a chave de acesso, o `cDV`, o `Id` e o parâmetro `chCTe` do QR Code (MOC
    * 4.00, Visão Geral, item 11.3.3: "geração de novo arquivo XML do CTe com a
    * seguinte alteração: campo tpEmis alterado para 7 ou 8"). `dhCont` e `xJust`
-   * NÃO vão: a regra G008 do Anexo I (rejeição 586), mantida pela NT 2026.004
-   * (item 6), só os aceita na contingência off-line e no FS-DA. O QR Code não
+   * NÃO vão. A regra de validação, que é o que a SEFAZ aplica, diz: "G008. Se
+   * forma de emissão do CTe for diferente de 5 (FS-DA): dhCont e xJust não
+   * devem ser informados" (MOC 4.00, Anexo I; rejeição 586: "Data e
+   * Justificativa de entrada em contingência não devem ser informadas para
+   * tipo de emissão diferente de FS-DA"); a NT 2026.004 (item 6) a reescreve
+   * como "diferente de 2 (Contingência OffLine)". 7 e 8 são diferentes de 5 e
+   * de 2: proibidos. A anotação do esquema ("Informar apenas para tpEmis
+   * diferente de 1") é mais larga que a regra e só deixa o par opcional; se a
+   * SVC de verdade rejeitar o CT-e sem os campos, decide-se na homologação. O QR Code não
    * leva o parâmetro `sign` (regra G216, rejeição 854) e o endereço dele
    * continua o da UF do emitente (regra G213: "site da UF").
    */
@@ -212,12 +261,25 @@ export type IcmsDoCte = { situacao: SituacaoDoIcms; grupo: GrupoDoIcms; base: nu
  * configuração que começa com 5; fora, o que começa com 6. Quando a prestação
  * começa em UF diferente da do emitente, o MOC (Anexo I, regra G051) exige
  * 5932 ou 6932.
+ *
+ * `paraOutraTransportadora`: subcontratação, redespacho e redespacho
+ * intermediário, em que o tomador é outra transportadora (regra G063). O
+ * código é o 5351 ou o 6351, "prestação de serviço de transporte para execução
+ * de serviço da mesma natureza" ("classificam-se neste código as prestações de
+ * serviços de transporte destinadas às prestações de serviços da mesma
+ * natureza": Tabela de CFOP do Portal Nacional da NF-e, IT 2023.002 v2.10), no
+ * lugar do CFOP da configuração, que é o do tomador de costume da empresa
+ * (indústria, comércio...). A regra G051 continua na frente.
  */
-export function cfopDaPrestacao(emitente: Pick<EmitenteDoCte, "cfopDentro" | "cfopFora"> & { uf: string }, inicio: string, fim: string): string {
+export function cfopDaPrestacao(emitente: Pick<EmitenteDoCte, "cfopDentro" | "cfopFora"> & { uf: string }, inicio: string, fim: string, paraOutraTransportadora = false): string {
   const dentro = inicio === fim;
   if (emitente.uf !== inicio) return dentro ? CFOP_DE_OUTRA_UF.dentro : CFOP_DE_OUTRA_UF.fora;
+  if (paraOutraTransportadora) return dentro ? CFOP_DA_MESMA_NATUREZA.dentro : CFOP_DA_MESMA_NATUREZA.fora;
   return dentro ? emitente.cfopDentro : emitente.cfopFora;
 }
+
+/** O CFOP da prestação a outra transportadora (ver `cfopDaPrestacao`). */
+export const CFOP_DA_MESMA_NATUREZA = { dentro: "5351", fora: "6351" } as const;
 
 export const CONSULTE_O_CONTADOR = "Consulte o contador.";
 
@@ -404,8 +466,14 @@ function enderecoDoXml(endereco: EnderecoDoCte, limiteDoLogradouro: number): str
   ].join("");
 }
 
-function participanteDoXml(grupoDoXml: "rem" | "dest", endereco: "enderReme" | "enderDest", parte: ParticipanteDoCte, ambiente: Ambiente): string {
-  // Em homologação a razão social de remetente e destinatário é a frase do MOC, senão a SEFAZ rejeita (646 e 649).
+const ENDERECO_DO_GRUPO = { rem: "enderReme", exped: "enderExped", receb: "enderReceb", dest: "enderDest" } as const;
+
+/** Remetente, expedidor, recebedor ou destinatário: os quatro grupos têm os mesmos campos, nesta ordem. Sem a parte, sem o grupo. */
+function participanteDoXml(grupoDoXml: keyof typeof ENDERECO_DO_GRUPO, parte: ParticipanteDoCte | null | undefined, ambiente: Ambiente): string {
+  if (!parte) return "";
+  const endereco = ENDERECO_DO_GRUPO[grupoDoXml];
+  // Em homologação a razão social de remetente, expedidor, recebedor e destinatário é a frase do MOC,
+  // senão a SEFAZ rejeita (Anexo I, regras G002 a G005: 646, 647, 648 e 649).
   const nome = ambiente === "HOMOLOGACAO" ? NOME_EM_HOMOLOGACAO : textoDoXml(parte.nome, 60);
   return grupo(
     grupoDoXml,
@@ -422,9 +490,11 @@ function participanteDoXml(grupoDoXml: "rem" | "dest", endereco: "enderReme" | "
   );
 }
 
+/** O `toma` do `toma3`: 0 - Remetente; 1 - Expedidor; 2 - Recebedor; 3 - Destinatário (MOC 4.00, Anexo I, campo 36). */
+const TOMA3 = { REMETENTE: "0", EXPEDIDOR: "1", RECEBEDOR: "2", DESTINATARIO: "3" } as const;
+
 function tomadorDoXml(tomador: TomadorDoCte): string {
-  if (tomador.papel === "REMETENTE") return grupo("toma3", tag("toma", "0"));
-  if (tomador.papel === "DESTINATARIO") return grupo("toma3", tag("toma", "3"));
+  if (tomador.papel !== "OUTRO") return grupo("toma3", tag("toma", TOMA3[tomador.papel]));
   const parte = tomador.participante;
   return grupo(
     "toma4",
@@ -505,7 +575,24 @@ function componentesDoXml(dados: DadosDoCte, total: number): string {
   return lista.map((c) => grupo("Comp", tag("xNome", c.nome) + tag("vComp", decimal(c.valor, 2)))).join("");
 }
 
+/**
+ * O grupo `docAnt`, logo depois do `infDoc`: um `emiDocAnt` com o CNPJ, a IE e
+ * a UF (as duas juntas, ou nenhuma), o nome e a chave do CT-e anterior
+ * (`cteTiposBasico_v4.00.xsd`, `infCTeNorm/docAnt`). Sem documento anterior,
+ * sem grupo: é o serviço normal.
+ */
+function documentoAnteriorDoXml(servico: ServicoDoCte | null | undefined): string {
+  const anterior = servico?.anterior;
+  if (!anterior) return "";
+  const ie = digitos(anterior.ie);
+  const inscricao = ie.length >= 2 && ie.length <= 14 && anterior.uf ? tag("IE", ie) + tag("UF", anterior.uf) : "";
+  const emissor = tag("CNPJ", anterior.cnpj) + inscricao + tag("xNome", textoDoXml(anterior.nome, 60)) + grupo("idDocAnt", grupo("idDocAntEle", tag("chCTe", anterior.chave)));
+  return grupo("docAnt", grupo("emiDocAnt", emissor));
+}
+
 function documentosDoXml(dados: DadosDoCte): string {
+  // Redespacho intermediário: o grupo não pode ir (MOC 4.00, Anexo I, regra G037, rejeição 694).
+  if (dados.servico?.tipo === "INTERMEDIATE") return "";
   if (dados.chavesDeNfe.length > 0) {
     return grupo("infDoc", [...new Set(dados.chavesDeNfe)].map((chave) => grupo("infNFe", tag("chave", chave))).join(""));
   }
@@ -522,7 +609,8 @@ export function montarCte(dados: DadosDoCte): CteMontado {
   const id = `CTe${chave}`;
 
   const total = centavos(dados.valorDaPrestacao);
-  const cfop = cfopDaPrestacao({ ...emitente, uf: emitente.endereco.uf }, dados.inicio.uf, dados.fim.uf);
+  const tipoDeServico: TipoDeServico = dados.servico?.tipo ?? "NORMAL";
+  const cfop = cfopDaPrestacao({ ...emitente, uf: emitente.endereco.uf }, dados.inicio.uf, dados.fim.uf, tipoDeServico !== "NORMAL");
   const icms = icmsDaPrestacao({ ...emitente, uf: emitente.endereco.uf }, total, dados.inicio.uf, dados.fim.uf);
   const ibsCbs = ibsCbsDaPrestacao(emitente, total, icms);
 
@@ -548,7 +636,7 @@ export function montarCte(dados: DadosDoCte): CteMontado {
       tag("xMunEnv", textoDoXml(emitente.endereco.municipio, 60)),
       tag("UFEnv", emitente.endereco.uf),
       tag("modal", "01"),
-      tag("tpServ", "0"),
+      tag("tpServ", TP_SERV[tipoDeServico]),
       tag("cMunIni", dados.inicio.codigoMunicipio),
       tag("xMunIni", textoDoXml(dados.inicio.municipio, 60)),
       tag("UFIni", dados.inicio.uf),
@@ -590,11 +678,19 @@ export function montarCte(dados: DadosDoCte): CteMontado {
   );
 
   const infModal = grupo("infModal", montarModalRodoviario(emitente.rntrc), ` versaoModal="${VERSAO_DO_CTE}"`);
-  const infCTeNorm = grupo("infCTeNorm", infCarga + documentosDoXml(dados) + infModal);
+  const infCTeNorm = grupo("infCTeNorm", infCarga + documentosDoXml(dados) + documentoAnteriorDoXml(dados.servico) + infModal);
+
+  // A ordem do esquema: remetente, expedidor, recebedor, destinatário.
+  const partes = [
+    participanteDoXml("rem", dados.remetente, ambiente),
+    participanteDoXml("exped", dados.expedidor, ambiente),
+    participanteDoXml("receb", dados.recebedor, ambiente),
+    participanteDoXml("dest", dados.destinatario, ambiente),
+  ].join("");
 
   const infCte = grupo(
     "infCte",
-    [ide, compl, emit, participanteDoXml("rem", "enderReme", dados.remetente, ambiente), participanteDoXml("dest", "enderDest", dados.destinatario, ambiente), vPrest, imp, infCTeNorm, responsavelTecnicoDoXml(dados.responsavelTecnico, chave)].join(""),
+    [ide, compl, emit, partes, vPrest, imp, infCTeNorm, responsavelTecnicoDoXml(dados.responsavelTecnico, chave)].join(""),
     ` versao="${VERSAO_DO_CTE}" Id="${id}"`,
   );
 

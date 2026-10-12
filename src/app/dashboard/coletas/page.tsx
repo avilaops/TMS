@@ -15,6 +15,7 @@ import {
 } from "@/lib/coletas";
 import { COLLECTION_STATUS, statusBadge } from "@/lib/format";
 import { cepFormatado } from "@/lib/endereco";
+import { EXIGENCIA_DO_SERVICO, QUEM_DECIDE_O_SERVICO, ROTULO_DO_SERVICO, TIPOS_DE_SERVICO, tipoDeServico, type RedespachoDaCarga } from "@/lib/redespacho";
 import { textoDasTentativas } from "@/lib/comprovantes";
 
 interface Cliente {
@@ -30,7 +31,8 @@ interface Motorista {
   user: { name: string };
 }
 
-interface Coleta {
+// Redespacho e subcontratação (src/lib/redespacho.ts): o tipo de serviço, o CT-e anterior, o expedidor e o recebedor. Tudo opcional.
+interface Coleta extends Partial<RedespachoDaCarga> {
   id: string;
   sender: string;
   receiver: string;
@@ -126,6 +128,24 @@ const EMPTY_FORM = {
   deliveryNumber: "",
   deliveryDistrict: "",
   deliveryZip: "",
+  serviceType: "NORMAL",
+  previousCteKey: "",
+  shipperName: "",
+  shipperDocument: "",
+  shipperIe: "",
+  shipperStreet: "",
+  shipperNumber: "",
+  shipperDistrict: "",
+  shipperCity: "",
+  shipperZip: "",
+  consigneeName: "",
+  consigneeDocument: "",
+  consigneeIe: "",
+  consigneeStreet: "",
+  consigneeNumber: "",
+  consigneeDistrict: "",
+  consigneeCity: "",
+  consigneeZip: "",
 };
 
 // A coleta como o formulário de edição a mostra, sem o cliente (que não muda).
@@ -152,7 +172,47 @@ const toEditForm = (coleta: Coleta) => ({
   deliveryNumber: coleta.deliveryNumber ?? "",
   deliveryDistrict: coleta.deliveryDistrict ?? "",
   deliveryZip: cepFormatado(coleta.deliveryZip),
+  serviceType: tipoDeServico(coleta.serviceType),
+  previousCteKey: coleta.previousCteKey ?? "",
+  shipperName: coleta.shipperName ?? "",
+  shipperDocument: coleta.shipperDocument ?? "",
+  shipperIe: coleta.shipperIe ?? "",
+  shipperStreet: coleta.shipperStreet ?? "",
+  shipperNumber: coleta.shipperNumber ?? "",
+  shipperDistrict: coleta.shipperDistrict ?? "",
+  shipperCity: coleta.shipperCity ?? "",
+  shipperZip: cepFormatado(coleta.shipperZip),
+  consigneeName: coleta.consigneeName ?? "",
+  consigneeDocument: coleta.consigneeDocument ?? "",
+  consigneeIe: coleta.consigneeIe ?? "",
+  consigneeStreet: coleta.consigneeStreet ?? "",
+  consigneeNumber: coleta.consigneeNumber ?? "",
+  consigneeDistrict: coleta.consigneeDistrict ?? "",
+  consigneeCity: coleta.consigneeCity ?? "",
+  consigneeZip: cepFormatado(coleta.consigneeZip),
 });
+
+// As duas partes do bloco de redespacho e os campos de cada uma (as colunas são `shipper*` e `consignee*`).
+const PARTES_DO_REDESPACHO = [
+  { prefixo: "shipper", rotulo: "Expedidor", explicacao: "Quem entrega a carga a você." },
+  { prefixo: "consignee", rotulo: "Recebedor", explicacao: "Quem recebe a carga de você." },
+] as const;
+type PrefixoDaParte = (typeof PARTES_DO_REDESPACHO)[number]["prefixo"];
+
+const CAMPOS_DA_PARTE = [
+  { sufixo: "Name", rotulo: "Nome / razão social", maximo: 60 },
+  { sufixo: "Document", rotulo: "CNPJ / CPF", maximo: 18 },
+  { sufixo: "Ie", rotulo: "Inscrição estadual", maximo: 20, exemplo: "ou ISENTO" },
+  { sufixo: "City", rotulo: "Cidade - UF", maximo: 100, exemplo: "Ex: Santos - SP" },
+  { sufixo: "Street", rotulo: "Logradouro", maximo: 200 },
+  { sufixo: "Number", rotulo: "Número", maximo: 20 },
+  { sufixo: "District", rotulo: "Bairro", maximo: 100 },
+  { sufixo: "Zip", rotulo: "CEP", maximo: 9, exemplo: "00000-000" },
+] as const;
+
+// O formulário tem algum dado de redespacho? É o que abre o bloco ao editar.
+const temRedespachoNoFormulario = (form: typeof EMPTY_FORM) =>
+  form.serviceType !== "NORMAL" || Boolean(form.previousCteKey) || PARTES_DO_REDESPACHO.some(({ prefixo }) => CAMPOS_DA_PARTE.some(({ sufixo }) => Boolean(form[`${prefixo}${sufixo}`])));
 
 // O formulário tem algum dado do endereço de entrega? É o que abre a seção ao editar.
 const temEndereco = (form: typeof EMPTY_FORM) => Boolean(form.deliveryStreet || form.deliveryNumber || form.deliveryDistrict || form.deliveryZip);
@@ -194,6 +254,9 @@ export default function ColetasPage() {
   // opcionais, e o formulário principal precisa caber na tela do celular.
   const [pedidoAberto, setPedidoAberto] = useState(false);
   const [enderecoAberto, setEnderecoAberto] = useState(false);
+  // Redespacho e subcontratação: fechado por padrão. No celular, expedidor e recebedor são abas (uma parte por vez).
+  const [redespachoAberto, setRedespachoAberto] = useState(false);
+  const [parteAberta, setParteAberta] = useState<PrefixoDaParte>("shipper");
 
   // A tela já nasce com `isLoading` ligado: a primeira carga só busca.
   const loadData = () =>
@@ -226,6 +289,8 @@ export default function ColetasPage() {
     setFormData(EMPTY_FORM);
     setPedidoAberto(false);
     setEnderecoAberto(false);
+    setRedespachoAberto(false);
+    setParteAberta("shipper");
   };
 
   const openEdit = (coleta: Coleta) => {
@@ -235,6 +300,7 @@ export default function ColetasPage() {
     setFormData({ clientId: coleta.client?.id ?? "", ...original });
     setPedidoAberto(temPedido({ clientId: "", ...original }));
     setEnderecoAberto(temEndereco({ clientId: "", ...original }));
+    setRedespachoAberto(temRedespachoNoFormulario({ clientId: "", ...original }));
     setIsModalOpen(true);
   };
 
@@ -770,6 +836,87 @@ export default function ColetasPage() {
                     <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                       <label htmlFor="coleta-cep" className={ROTULO_DO_PEDIDO}>CEP</label>
                       <input id="coleta-cep" type="text" inputMode="numeric" maxLength={9} value={formData.deliveryZip} onChange={(e) => setFormData({...formData, deliveryZip: e.target.value})} placeholder="00000-000" className={CAMPO_DO_PEDIDO} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Redespacho e subcontratação: opcional e recolhido. O que cada tipo exige é cobrado na conferência do CT-e. */}
+              <div className="rounded-xl border border-gray-100 dark:border-gray-800">
+                <button
+                  type="button"
+                  aria-expanded={redespachoAberto}
+                  data-secao="redespacho"
+                  onClick={() => setRedespachoAberto((aberto) => !aberto)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  <span>Redespacho / subcontratação{formData.serviceType !== "NORMAL" ? `: ${ROTULO_DO_SERVICO[tipoDeServico(formData.serviceType)]}` : " (opcional)"}</span>
+                  <span aria-hidden className="text-gray-400">{redespachoAberto ? "−" : "+"}</span>
+                </button>
+                {redespachoAberto && (
+                  <div className="px-3 pb-3 space-y-2">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+                      <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                        <label htmlFor="coleta-servico" className={ROTULO_DO_PEDIDO}>Tipo de serviço</label>
+                        <select id="coleta-servico" value={formData.serviceType} onChange={(e) => setFormData({...formData, serviceType: tipoDeServico(e.target.value)})} className={CAMPO_DO_PEDIDO}>
+                          {TIPOS_DE_SERVICO.map((tipo) => (
+                            <option key={tipo} value={tipo}>{ROTULO_DO_SERVICO[tipo]}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-0.5 md:space-y-1.5 min-w-0">
+                        <label htmlFor="coleta-cte-anterior" className={ROTULO_DO_PEDIDO}>Chave do CT-e anterior</label>
+                        <input id="coleta-cte-anterior" type="text" maxLength={60} value={formData.previousCteKey} onChange={(e) => setFormData({...formData, previousCteKey: e.target.value})} placeholder="44 dígitos" className={`${CAMPO_DO_PEDIDO} text-xs`} />
+                      </div>
+                    </div>
+                    <p data-exigencia className="text-xs text-gray-500 dark:text-gray-400">
+                      {EXIGENCIA_DO_SERVICO[tipoDeServico(formData.serviceType)]} {QUEM_DECIDE_O_SERVICO}
+                    </p>
+
+                    {/* No celular, uma parte por vez; no computador, as duas lado a lado. */}
+                    <div role="tablist" className="md:hidden grid grid-cols-2 gap-1 rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
+                      {PARTES_DO_REDESPACHO.map(({ prefixo, rotulo }) => (
+                        <button
+                          key={prefixo}
+                          type="button"
+                          role="tab"
+                          aria-selected={parteAberta === prefixo}
+                          data-aba={prefixo}
+                          onClick={() => setParteAberta(prefixo)}
+                          className={`px-2 py-1 rounded-lg text-xs font-medium ${parteAberta === prefixo ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400"}`}
+                        >
+                          {rotulo}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="md:grid md:grid-cols-2 md:gap-4">
+                      {PARTES_DO_REDESPACHO.map(({ prefixo, rotulo, explicacao }) => (
+                        <fieldset key={prefixo} data-parte={prefixo} className={`${parteAberta === prefixo ? "" : "hidden"} md:block min-w-0`}>
+                          <legend className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            <span className="hidden md:inline font-medium text-gray-700 dark:text-gray-300">{rotulo}. </span>
+                            {explicacao}
+                          </legend>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                            {CAMPOS_DA_PARTE.map((campo) => {
+                              const nome = `${prefixo}${campo.sufixo}` as const;
+                              return (
+                                <div key={nome} className="space-y-0.5 min-w-0">
+                                  <label htmlFor={`coleta-${nome}`} className={ROTULO_DO_PEDIDO}>{campo.rotulo}</label>
+                                  <input
+                                    id={`coleta-${nome}`}
+                                    type="text"
+                                    maxLength={campo.maximo}
+                                    value={formData[nome]}
+                                    onChange={(e) => setFormData({...formData, [nome]: e.target.value})}
+                                    placeholder={"exemplo" in campo ? campo.exemplo : undefined}
+                                    className={CAMPO_DO_PEDIDO}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </fieldset>
+                      ))}
                     </div>
                   </div>
                 )}

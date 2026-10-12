@@ -15,6 +15,7 @@ import { freteDaColeta, type FreteDaColeta } from '@/lib/frete-coleta';
 import { Prisma } from '@prisma/client';
 import { CAMPOS_DA_COLETA, escolher, nadaMudou, origemDaRequisicao, registrarAuditoriaDepois } from '@/lib/auditoria';
 import { enderecoMudou } from '@/lib/endereco';
+import { COLUNAS_DO_REDESPACHO, REDESPACHO_SELECT } from '@/lib/redespacho';
 
 const NOT_FOUND = 'Coleta não encontrada.';
 const IN_MANIFEST = 'Esta coleta já está em um manifesto e não pode mais ser alterada.';
@@ -84,6 +85,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         deliveryNumber: true,
         deliveryDistrict: true,
         deliveryZip: true,
+        ...REDESPACHO_SELECT,
       }
     });
     if (!target) {
@@ -167,6 +169,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         deliveryNumber: data.deliveryNumber,
         deliveryDistrict: data.deliveryDistrict,
         deliveryZip: data.deliveryZip,
+        // Redespacho e subcontratação (src/lib/redespacho.ts): o tipo de serviço, o CT-e anterior, o expedidor e o recebedor.
+        ...Object.fromEntries(COLUNAS_DO_REDESPACHO.map((coluna) => [coluna, data[coluna]])),
         // Endereço ou cidade mudou: a coordenada antiga deixa de valer e a carga
         // volta para a fila da localização (src/lib/geo-db.ts).
         ...(enderecoMudou(target, data) && { deliveryLat: null, deliveryLon: null, geoSource: null, geoAt: null }),

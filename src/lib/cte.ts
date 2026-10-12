@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Svc } from "@/lib/cte/chave";
 import { textoDoXml } from "@/lib/cte/texto";
+import type { TipoDeServico } from "@/lib/redespacho";
 import { UFS } from "@/lib/roteiro";
 
 /**
@@ -564,9 +565,18 @@ export type ResumoDoCte = {
   numeroPrevisto: number;
   cfop: string;
   emitente: ParteDoResumo;
+  /**
+   * O tipo de serviço da carga (src/lib/redespacho.ts), a chave do CT-e
+   * anterior como está na carga e, quando ela serve, quem o emitiu ("Nome ·
+   * CNPJ": o cliente pagador). No serviço normal a chave não vai no documento.
+   */
+  servico: { tipo: TipoDeServico; chaveDoCteAnterior: string | null; emissorDoAnterior: string | null };
   remetente: ParteDoResumo | null;
+  /** Quem entrega a carga à transportadora e quem a recebe dela, quando a carga os tem. */
+  expedidor: ParteDoResumo | null;
+  recebedor: ParteDoResumo | null;
   destinatario: ParteDoResumo | null;
-  tomador: { papel: "REMETENTE" | "DESTINATARIO" | "OUTRO"; nome: string; documento: string; contribuinte: "1" | "2" | "9" } | null;
+  tomador: { papel: "REMETENTE" | "EXPEDIDOR" | "RECEBEDOR" | "DESTINATARIO" | "OUTRO"; nome: string; documento: string; contribuinte: "1" | "2" | "9" } | null;
   origem: string;
   destino: string;
   valorDaPrestacao: number | null;
@@ -796,8 +806,9 @@ export const resumoDaCarta = (correcoes: readonly Pick<CorrecaoDaCarta, "grupo" 
     .join("; ")
     .slice(0, 400);
 
-export const CANCELAMENTO_COM_CARTA = "Este CT-e tem carta de correção registrada: a SEFAZ não aceita mais o cancelamento dele (rejeição 523).";
-export const CANCELAMENTO_COM_ENTREGA = "Este CT-e tem comprovante de entrega registrado na SEFAZ: cancele o comprovante antes de cancelar o CT-e (rejeição 862).";
+export const CANCELAMENTO_COM_CARTA = "Este CT-e tem carta de correção registrada: a SEFAZ não aceita mais o cancelamento dele (rejeição 523), e isso não tem volta, porque a carta de correção não se cancela.";
+export const CANCELAMENTO_COM_ENTREGA =
+  "Este CT-e tem comprovante de entrega registrado na SEFAZ: ela não aceita o cancelamento do CT-e enquanto ele estiver em vigor (rejeição 862). O cancelamento volta a ser possível depois de cancelar o comprovante (evento 110181, em \"Entrega na SEFAZ\").";
 export const SO_AUTORIZADO_RECEBE_EVENTO ="Só CT-e autorizado (e não cancelado) recebe este evento.";
 export const LIMITE_DE_CARTAS = `Este CT-e já tem ${MAXIMO_DE_CARTAS} cartas de correção, o máximo que a SEFAZ aceita.`;
 
@@ -820,8 +831,24 @@ export const SEM_IMAGEM_NO_COMPROVANTE = "O comprovante aprovado não tem imagem
 export const RECEBEDOR_INCOMPLETO = "O nome e o documento de quem recebeu precisam ter pelo menos 2 letras cada (o documento, até 20). Corrija o comprovante antes de registrar a entrega.";
 export const ENTREGA_JA_REGISTRADA = "Este CT-e já tem um comprovante de entrega registrado na SEFAZ. Para registrar outro, cancele o comprovante primeiro.";
 export const SEM_ENTREGA_REGISTRADA = "Este CT-e não tem comprovante de entrega registrado na SEFAZ por este sistema.";
-export const SVC_NAO_RECEBE_ESTE_EVENTO =
-  "Este CT-e foi autorizado pela SVC (contingência). A SVC só aceita o evento de cancelamento (MOC 4.00, regra N09, rejeição 530), e o manual não diz por onde os outros eventos de um CT-e da SVC devem entrar: este sistema não envia carta de correção nem comprovante de entrega para ele.";
+/**
+ * Carta de correção, comprovante de entrega e o cancelamento dele num CT-e que
+ * a SVC autorizou vão para a autorizadora NORMAL da UF, e não para a SVC:
+ *
+ * - a SVC só recebe EPEC e cancelamento: "Se ambiente de Autorização SVC:
+ *   rejeitar se Tipo de Evento for diferente de EPEC (110113) ou Cancelamento
+ *   (110111)" (MOC 4.00, Visão Geral, item 5.1.5, regra N09, rejeição 530);
+ * - o local desses três eventos é a "SEFAZ Autoriz." (item 3.7.1, tabela dos
+ *   tipos de evento), e eles exigem que o CT-e exista na base de quem os
+ *   recebe: "Se evento exige CTe: CTe não consta na base" (regra N20, rejeição
+ *   217).
+ *
+ * O MOC não descreve como nem quando o CT-e autorizado na SVC chega à base da
+ * SEFAZ de origem. Enquanto ela responde 217 a um evento de CT-e da SVC, a
+ * frase é esta; nada é gravado e o `nSeqEvento` não é consumido.
+ */
+export const SVC_AINDA_NAO_SINCRONIZADA =
+  "O CT-e emitido pela SVC (contingência) ainda não foi sincronizado com a SEFAZ de origem: ela respondeu que ele não consta na base. Nada foi registrado. Tente mais tarde.";
 
 /** O que a tela mostra do comprovante de entrega do CT-e e se dá para registrar o evento. */
 export type EntregaDoCte = {

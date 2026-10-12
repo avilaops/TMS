@@ -2,6 +2,7 @@ import { enderecoCompleto, enderecoEmLinha } from "@/lib/endereco";
 import type { Identidade } from "@/lib/empresa";
 import { cteRegistrado } from "@/lib/nfe";
 import { pode } from "@/lib/permissoes";
+import { REDESPACHO_SELECT, ROTULO_DO_SERVICO, enderecoDaParte, servicoDaCarga, type ParteInformada, type RedespachoDaCarga } from "@/lib/redespacho";
 import { codigoDaViagem } from "@/lib/viagem";
 
 /**
@@ -51,6 +52,7 @@ export const MINUTA_SELECT = {
   deliveryNumber: true,
   deliveryDistrict: true,
   deliveryZip: true,
+  ...REDESPACHO_SELECT,
   cteKey: true,
   cteNumber: true,
   cteStatus: true,
@@ -121,7 +123,7 @@ export type CargaDaMinuta = {
   driver: NomeDoMotorista | null;
   manifest: { id: string; driver: NomeDoMotorista; vehicle: { plate: string; model: string } } | null;
   fiscalDocuments: NotaDaCarga[];
-};
+} & RedespachoDaCarga;
 
 /** Uma das partes da minuta. `documento` são só os dígitos do CNPJ ou CPF. */
 export type ParteDaMinuta = { nome: string; documento: string | null; endereco: string | null };
@@ -149,6 +151,14 @@ export type Minuta = {
   pagador: ParteDaMinuta;
   remetente: ParteDaMinuta & { cidade: string };
   destinatario: ParteDaMinuta & { cidade: string };
+  /**
+   * Redespacho e subcontratação (src/lib/redespacho.ts). `servico` nulo: serviço
+   * normal. Expedidor e recebedor nulos: a carga não os tem. Como o resto da
+   * minuta, é só o que foi digitado na carga: quem confere é o CT-e.
+   */
+  servico: { rotulo: string; chaveDoCteAnterior: string | null } | null;
+  expedidor: ParteDaMinuta | null;
+  recebedor: ParteDaMinuta | null;
   carga: { volumes: number; peso: number; cubagem: number | null; valorDaMercadoria: number | null };
   /** NF-e da carga: as notas importadas ligadas a ela, ou só a chave digitada na minuta (sem número). */
   notas: { numero: string | null; chave: string }[];
@@ -200,6 +210,13 @@ export function notasDaMinuta(carga: Pick<CargaDaMinuta, "invoiceKey" | "fiscalD
   return notas;
 }
 
+/** O expedidor ou o recebedor digitado na carga, como parte da minuta. Sem nome não há quem mostrar. */
+function parteDoRedespacho(parte: ParteInformada | null): ParteDaMinuta | null {
+  const nome = textoOuNulo(parte?.nome);
+  if (!parte || !nome) return null;
+  return { nome, documento: textoOuNulo(parte.documento), endereco: textoOuNulo(enderecoDaParte(parte)) };
+}
+
 /**
  * Monta a minuta da carga.
  *
@@ -216,6 +233,7 @@ export function montarMinuta(carga: CargaDaMinuta, empresa: Identidade, opcoes: 
   const notaDoDestinatario = carga.fiscalDocuments.find((nota) => mesmoNome(nota.recipientName, carga.receiver));
   const { tabela, composicao } = composicaoDoFrete(carga.freightDetails);
   const motorista = carga.manifest?.driver ?? carga.driver;
+  const servico = servicoDaCarga(carga);
 
   return {
     empresa: { name: empresa.name, logo: empresa.logo },
@@ -238,6 +256,9 @@ export function montarMinuta(carga: CargaDaMinuta, empresa: Identidade, opcoes: 
       endereco: enderecoEmLinha(carga) ? enderecoCompleto(carga, carga.destination) : textoOuNulo(notaDoDestinatario?.recipientAddress),
       cidade: carga.destination,
     },
+    servico: servico.tipo === "NORMAL" ? null : { rotulo: ROTULO_DO_SERVICO[servico.tipo], chaveDoCteAnterior: servico.chaveDoCteAnterior },
+    expedidor: parteDoRedespacho(servico.expedidor),
+    recebedor: parteDoRedespacho(servico.recebedor),
     carga: { volumes: carga.volumes, peso: carga.weight, cubagem: carga.cubicMeters, valorDaMercadoria: carga.invoiceValue },
     notas: notasDaMinuta(carga),
     frete: opcoes.verFrete

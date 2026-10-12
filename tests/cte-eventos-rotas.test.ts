@@ -14,8 +14,8 @@ import {
   SEM_IMAGEM_NO_COMPROVANTE,
   SO_AUTORIZADO_RECEBE_EVENTO,
   SO_ENVIADO_SE_CONFERE,
+  SVC_AINDA_NAO_SINCRONIZADA,
   SVC_NAO_OFERECIDA,
-  SVC_NAO_RECEBE_ESTE_EVENTO,
   fraseDoCampoProibido,
   type ConferenciaDoCte,
   type ConferenciaNaSefaz,
@@ -752,14 +752,43 @@ suite("rotas dos eventos, da SVC e da conferência do CT-e", () => {
       expect((await trilha("cte.emitir")).map((registro) => registro.summary)).toEqual([expect.stringContaining("CT-e nº 411 autorizado pela SVC-RS em homologação")]);
       expect((await lista()).find((c) => c.id === carga.id)).toMatchObject({ emitido: { numero: 411, svc: "SVC-RS" }, aResolver: [] });
 
-      // O CT-e da SVC é conferido e cancelado NA SVC; carta de correção e comprovante ela não aceita, e o sistema não envia.
+      // O CT-e da SVC é conferido e cancelado NA SVC. Carta de correção e comprovante vão para a SEFAZ DE ORIGEM (a SVC os rejeita:
+      // regra N09, 530). Enquanto a origem não tem o CT-e (217), nada é gravado e a sequência não é consumida.
+      const cteId = pelaSvc.corpo.cte.id;
+      const chave = pelaSvc.corpo.cte.chave;
+      sefaz.modo = "autorizar";
       sefaz.chamadas.length = 0;
-      expect((await conferirNaSefaz(pelaSvc.corpo.cte.id)).corpo.mensagem).toContain("está autorizado na SEFAZ, como aqui");
-      expect(await corrigir(pelaSvc.corpo.cte.id)).toMatchObject({ status: 409, corpo: { error: SVC_NAO_RECEBE_ESTE_EVENTO } });
+      expect((await conferirNaSefaz(cteId)).corpo.mensagem).toContain("está autorizado na SEFAZ, como aqui");
+      expect(await corrigir(cteId)).toMatchObject({ status: 409, corpo: { error: SVC_AINDA_NAO_SINCRONIZADA } });
       await plantarComprovante(carga.id);
-      expect(await registrarEntrega(pelaSvc.corpo.cte.id)).toMatchObject({ status: 409, corpo: { error: SVC_NAO_RECEBE_ESTE_EVENTO } });
+      expect(await registrarEntrega(cteId)).toMatchObject({ status: 409, corpo: { error: SVC_AINDA_NAO_SINCRONIZADA } });
+      expect(sefaz.chamadas.map((chamada) => [chamada.servico, chamada.svc])).toEqual([["CTeConsultaV4", "SVC-RS"], ["CTeRecepcaoEventoV4", null], ["CTeRecepcaoEventoV4", null]]);
+      expect(await banco.sistema.cteEvent.count({ where: { cteId } })).toBe(0);
+      expect((await eventosDe(cteId)).corpo.entrega).toMatchObject({ situacao: "DISPONIVEL" });
+
+      // A SVC repassou o CT-e à origem: a carta sai com a sequência 1 (a tentativa recusada não a consumiu), e a entrega é registrada e cancelada lá.
+      sefaz.autorizados.get(chave)!.sincronizado = true;
+      sefaz.chamadas.length = 0;
+      const carta = await corrigir(cteId);
+      expect(carta.status, carta.corpo.error).toBe(200);
+      expect(carta.corpo.eventos).toMatchObject([{ tipo: "110110", sequencia: 1 }]);
+      expect((await registrarEntrega(cteId)).corpo.entrega).toMatchObject({ situacao: "REGISTRADA" });
+      expect((await cancelarEntrega(cteId)).corpo.entrega).toMatchObject({ situacao: "DISPONIVEL" });
+      expect(sefaz.chamadas.map((chamada) => [chamada.servico, chamada.svc])).toEqual([["CTeRecepcaoEventoV4", null], ["CTeRecepcaoEventoV4", null], ["CTeRecepcaoEventoV4", null]]);
+      expect(sefaz.chamadas.every((chamada) => chamada.dados.includes(`<chCTe>${chave}</chCTe>`))).toBe(true);
+    });
+
+    it("CT-e da SVC sem carta nem comprovante: o cancelamento vai para a SVC que o autorizou", async () => {
+      await prepararEmpresa({ proximoNumero: "430" });
+      const carga = await novaCarga();
+      sefaz.modo = "parado";
+      await emitir(carga.id);
+      sefaz.svcAtiva = true;
+      const pelaSvc = await emitir(carga.id, { justificativa: JUSTIFICATIVA });
+      expect(pelaSvc.corpo).toMatchObject({ autorizado: true, cte: { svc: "SVC-RS" } });
+      sefaz.chamadas.length = 0;
       expect((await cancelar(pelaSvc.corpo.cte.id)).corpo).toMatchObject({ situacao: "CANCELLED" });
-      expect(sefaz.chamadas.map((chamada) => [chamada.servico, chamada.svc])).toEqual([["CTeConsultaV4", "SVC-RS"], ["CTeRecepcaoEventoV4", "SVC-RS"]]);
+      expect(sefaz.chamadas.map((chamada) => [chamada.servico, chamada.svc])).toEqual([["CTeRecepcaoEventoV4", "SVC-RS"]]);
     });
 
     it("envio sem resposta e a SEFAZ de origem fora do ar: a SVC emite outro CT-e, o envio fica à espera; depois, se a origem não o tem, ele é encerrado", async () => {

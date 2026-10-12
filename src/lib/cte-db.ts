@@ -37,8 +37,8 @@ import {
   SO_AUTORIZADO_TEM_XML,
   SO_CARGA_QUE_SAIU,
   SO_ENVIADO_SE_CONFERE,
+  SVC_AINDA_NAO_SINCRONIZADA,
   SVC_NAO_OFERECIDA,
-  SVC_NAO_RECEBE_ESTE_EVENTO,
   TIPO_DO_EVENTO_DO_CTE,
   dentroDoPrazoDeCancelamento,
   fraseDaSvcInativa,
@@ -67,7 +67,7 @@ import { ALVO_DO_CTE, ALVO_DO_EVENTO, assinarXml, resumoDaAssinatura } from "@/l
 import { CertificadoError, VENCIDO, conferenciaDoCnpj, conferirCertificado, lerCertificado } from "@/lib/cte/certificado";
 import { svcDaChave, type Svc } from "@/lib/cte/chave";
 import { enderecosDaUf, svcDaUf } from "@/lib/cte/enderecos";
-import { hashDaEntrega, montarCancelamentoDoComprovante, montarCartaDeCorrecao, montarComprovanteDeEntrega, montarProcEventoCte, type EventoMontado } from "@/lib/cte/eventos";
+import { chavesDeNfeDaEntrega, hashDaEntrega, montarCancelamentoDoComprovante, montarCartaDeCorrecao, montarComprovanteDeEntrega, montarProcEventoCte, type EventoMontado } from "@/lib/cte/eventos";
 import { TIPO_DO_CANCELAMENTO, montarCancelamento, montarCte, montarProcCte, type EmitenteDoCte } from "@/lib/cte/montar";
 import { prepararCte, type CargaDoCte, type Preparo } from "@/lib/cte/preparar";
 import { responsavelTecnico } from "@/lib/cte/responsavel-tecnico";
@@ -94,6 +94,7 @@ import { textoDoXml } from "@/lib/cte/texto";
 import { danfeLigado } from "@/lib/fiscal-mcp";
 import { municipioDoTexto } from "@/lib/municipios";
 import { cargaRecebeCte } from "@/lib/nfe";
+import { REDESPACHO_SELECT, servicoDaCarga } from "@/lib/redespacho";
 import { avisarEquipe, avisoDeCte } from "@/lib/notificacoes";
 
 /**
@@ -573,6 +574,7 @@ const CARGA_SELECT = {
   deliveryNumber: true,
   deliveryDistrict: true,
   deliveryZip: true,
+  ...REDESPACHO_SELECT,
   cteKey: true,
   cteStatus: true,
   client: {
@@ -606,6 +608,7 @@ function cargaDoCte(linha: LinhaDaCarga): CargaDoCte {
     notas: linha.fiscalDocuments,
     destinatarios: receivers,
     viagem: linha.manifest ? { placa: linha.manifest.vehicle.plate, motorista: linha.manifest.driver.user.name } : null,
+    servico: servicoDaCarga(linha),
   };
 }
 
@@ -1256,7 +1259,6 @@ const entregaEmVigor = (eventos: readonly LinhaDoEvento[]) => eventos.filter((ev
 /** O que impede o registro da entrega deste CT-e, ou `null` quando dá para registrar. */
 function impedimentoDaEntrega(cte: Pick<Alvo, "status" | "protocol" | "accessKey" | "issuedAt">, comprovante: ComprovanteAceito | null): string | null {
   if (cte.status !== "AUTHORIZED" || !cte.protocol) return SO_AUTORIZADO_RECEBE_EVENTO;
-  if (svcDaChave(cte.accessKey)) return SVC_NAO_RECEBE_ESTE_EVENTO;
   if (!comprovante) return SEM_COMPROVANTE_ACEITO;
   if (!comprovante.imagem) return SEM_IMAGEM_NO_COMPROVANTE;
   if (comprovante.nome.length < 2 || comprovante.documento.length < 2) return RECEBEDOR_INCOMPLETO;
@@ -1317,13 +1319,20 @@ type EnvioDeEvento = { alvo: Alvo; ambiente: Ambiente; cnpj: string; destino: De
 /**
  * Lê o CT-e e o que é preciso para assinar e enviar um evento dele (carta de
  * correção, comprovante de entrega e o cancelamento do comprovante). Só o
- * CT-e autorizado, e não o que a SVC autorizou (`SVC_NAO_RECEBE_ESTE_EVENTO`).
+ * CT-e autorizado.
+ *
+ * O destino é SEMPRE a autorizadora normal da UF do emitente, também quando a
+ * chave é de CT-e autorizado pela SVC (`tpEmis` 7 ou 8): a SVC rejeita estes
+ * eventos (regra N09, rejeição 530) e o local deles é a SEFAZ autorizadora
+ * (ver `SVC_AINDA_NAO_SINCRONIZADA`, em src/lib/cte.ts). O cancelamento do
+ * CT-e é que vai à SVC que o autorizou (`cancelarCte`): "os pedidos de
+ * cancelamento na modalidade SVC somente poderão afetar documentos autorizados
+ * em contingência pela correspondente SVC" (MOC 4.00, Visão Geral, item 6.2).
  */
 async function prepararEvento(empresa: Empresa, cteId: string): Promise<EnvioDeEvento> {
   const alvo = await empresa.db.cte.findUnique({ where: { id: cteId }, select: ALVO_SELECT });
   if (!alvo) throw new Refusal(CTE_NAO_ENCONTRADO, 404);
   if (alvo.status !== "AUTHORIZED" || !alvo.protocol) throw new Refusal(SO_AUTORIZADO_RECEBE_EVENTO, 409);
-  if (svcDaChave(alvo.accessKey)) throw new Refusal(SVC_NAO_RECEBE_ESTE_EVENTO, 409);
   const doEmitente = await empresa.db.fiscalIssuer.findUnique({ where: { tenantId: empresa.id }, select: { cnpj: true, state: true } });
   if (!doEmitente) throw new Refusal(SEM_EMITENTE_CADASTRADO, 409);
   const credencial = await credencialDaEmpresa(empresa);
@@ -1352,6 +1361,8 @@ const CSTAT_DUPLICIDADE_DE_EVENTO = 631;
  *   com alerta sobre a situação do documento. Vale como registro.
  * - 136: guardado SEM vínculo (o CT-e não existe lá). Não vale: `Refusal` 409
  *   dizendo que o evento ficou guardado na SEFAZ.
+ * - 217 para CT-e autorizado pela SVC: a SEFAZ de origem ainda não o tem
+ *   (`SVC_AINDA_NAO_SINCRONIZADA`). `Refusal` 409, nada gravado.
  * - 631: a SEFAZ já tem um evento deste tipo com esta sequência (uma resposta
  *   anterior se perdeu, ou ele foi registrado por fora). O sistema NÃO presume
  *   que é o mesmo conteúdo: manda conferir na SEFAZ, que traz o evento.
@@ -1366,6 +1377,8 @@ async function enviarERegistrar(envio: EnvioDeEvento, evento: EventoMontado, oQu
     const vinculado = eventoRegistrado(resposta, esperado) || (eventoGuardadoComRessalva(resposta, esperado) && resposta.cStat === CSTAT.EVENTO_REGISTRADO_COM_ALERTA);
     if (vinculado) return { protocolo: resposta.protocolo, quando: resposta.registradoEm ?? new Date(), cStat: resposta.cStat, motivo: resposta.motivo.slice(0, MOTIVO_MAXIMO), xmlEnviado: assinado, xmlDoRetorno: resposta.xml };
     if (eventoGuardadoComRessalva(resposta, esperado)) throw new Refusal(fraseDoEventoComRessalva(oQue, resposta), 409);
+    // CT-e da SVC que a SEFAZ de origem ainda não tem (regra N20, rejeição 217): nada é gravado, a sequência não é consumida.
+    if (resposta.cStat === CSTAT.NAO_CONSTA && svcDaChave(envio.alvo.accessKey)) throw new Refusal(SVC_AINDA_NAO_SINCRONIZADA, 409);
     if (resposta.cStat === CSTAT_DUPLICIDADE_DE_EVENTO) {
       throw new Refusal(`A SEFAZ já tem um evento deste tipo com a sequência ${evento.sequencia} para este CT-e (${frase(resposta.cStat, resposta.motivo)}). Use "Conferir na SEFAZ" para trazer os eventos registrados e tente de novo.`, 409);
     }
@@ -1428,9 +1441,6 @@ export async function corrigirCte(empresa: Empresa, cteId: string, correcoes: re
 
 const DIA_E_HORA = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-/** As chaves das NF-e que o CT-e transporta, lidas do XML que foi autorizado: são as que o comprovante pode relacionar (regra O17, rejeição 864). */
-const chavesDeNfeDoCte = (xml: string) => [...xml.matchAll(/<infNFe><chave>(\d{44})<\/chave>/g)].map((achado) => achado[1]);
-
 /**
  * Registra na SEFAZ o comprovante de entrega do CT-e (evento 110180; MOC 4.00,
  * Visão Geral, item 6.8), com o que o comprovante APROVADO da carga tem: quem
@@ -1469,7 +1479,7 @@ export async function registrarEntrega(empresa: Empresa, cteId: string, quem: Qu
     longitude: comprovante.longitude,
     hash: hashDaEntrega(alvo.accessKey, comprovante.imagem.base64),
     hashEm: agora,
-    chavesDeNfe: chavesDeNfeDoCte(alvo.xmlSent),
+    chavesDeNfe: chavesDeNfeDaEntrega(alvo.xmlSent),
   });
   const registro = await enviarERegistrar(envio, evento, "o comprovante de entrega");
   const descricao = `Entregue a ${comprovante.nome} em ${DIA_E_HORA.format(comprovante.entregueEm)} (${comprovante.imagem.nome})`;

@@ -113,7 +113,7 @@ function Assinatura({ de, completa = false }: { de: string; completa?: boolean }
 }
 
 export function FolhaDaMinuta({ minuta }: { minuta: Minuta }) {
-  const { empresa, pagador, remetente, destinatario, carga, notas, frete, viagem, motorista, cte } = minuta;
+  const { empresa, pagador, remetente, destinatario, servico, expedidor, recebedor, carga, notas, frete, viagem, motorista, cte } = minuta;
 
   return (
     <article data-minuta className="mx-auto w-full max-w-[190mm] bg-white text-black border border-gray-400 rounded-lg p-3 md:p-5 space-y-2">
@@ -147,6 +147,26 @@ export function FolhaDaMinuta({ minuta }: { minuta: Minuta }) {
         <Parte titulo="Remetente" secao="remetente" parte={remetente} cidade={{ rotulo: "Origem", nome: remetente.cidade }} />
         <Parte titulo="Destinatário" secao="destinatario" parte={destinatario} cidade={{ rotulo: "Destino", nome: destinatario.cidade }} />
       </div>
+
+      {/* Redespacho e subcontratação: só quando a carga tem. Quem entrega a carga à transportadora e quem a recebe dela. */}
+      {(expedidor || recebedor) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-2">
+          {expedidor && <Parte titulo="Expedidor" secao="expedidor" parte={expedidor} />}
+          {recebedor && <Parte titulo="Recebedor" secao="recebedor" parte={recebedor} />}
+        </div>
+      )}
+
+      {servico && (
+        <section data-secao="servico" className={SECAO}>
+          <h2 className={TITULO_DA_SECAO}>Tipo de serviço</h2>
+          <p className="text-sm font-semibold leading-snug">{servico.rotulo}</p>
+          {servico.chaveDoCteAnterior && (
+            <p className="text-xs leading-snug break-words">
+              <span className="font-semibold">CT-e anterior:</span> <span className="font-mono">{chaveEmBlocos(servico.chaveDoCteAnterior)}</span>
+            </p>
+          )}
+        </section>
+      )}
 
       <Parte titulo="Cliente pagador" secao="pagador" parte={pagador} />
 

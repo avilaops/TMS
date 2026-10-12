@@ -110,7 +110,7 @@ const EVENTOS = "/api/fiscal/cte/emissao/cte1/eventos";
 const dialogoDe = (tela: HTMLElement) => tela.querySelector<HTMLElement>('[role="dialog"]')!;
 
 describe("tela de CT-e: eventos, SVC e conferência", () => {
-  it("as ações da linha: Corrigir e Conferir na SEFAZ no autorizado; Entrega na SEFAZ só com comprovante aprovado; nada disso no CT-e da SVC nem no rascunho", async () => {
+  it("as ações da linha: Corrigir e Conferir na SEFAZ no autorizado (também no da SVC); Entrega na SEFAZ só com comprovante aprovado; nada disso no rascunho", async () => {
     api({
       "/api/fiscal/cte": {
         body: [
@@ -128,8 +128,8 @@ describe("tela de CT-e: eventos, SVC e conferência", () => {
     const acoes = (id: string) => [...tela.querySelectorAll(`tr[data-carga="${id}"] [data-acao]`)].map((no) => no.getAttribute("data-acao"));
     expect(acoes("c1")).toEqual(["xml", "corrigir", "sefaz", "cancelar"]);
     expect(acoes("c2")).toEqual(["xml", "corrigir", "entrega", "sefaz", "cancelar"]);
-    // O CT-e da SVC é conferido e cancelado, mas não recebe carta de correção nem comprovante por este sistema.
-    expect(acoes("c3")).toEqual(["xml", "sefaz", "cancelar"]);
+    // O CT-e da SVC tem as mesmas ações: a carta de correção e o comprovante dele vão para a SEFAZ de origem.
+    expect(acoes("c3")).toEqual(["xml", "corrigir", "entrega", "sefaz", "cancelar"]);
     expect(tela.querySelector('tr[data-carga="c3"] [data-cte]')!.textContent).toBe("Autorizado nº 40, SVC-RS");
     expect(acoes("c4")).toEqual(["conferir", "registrar"]);
     // O envio sem resposta pode ser conferido na SEFAZ sem reenviar nada.

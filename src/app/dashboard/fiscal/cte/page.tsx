@@ -31,6 +31,7 @@ import {
   type StatusDoServico,
 } from "@/lib/cte";
 import { cteRegistrado, pendenciasParaCte, type CargaParaCte } from "@/lib/nfe";
+import { ROTULO_DO_SERVICO } from "@/lib/redespacho";
 import { BotaoDanfe } from "@/components/fiscal/botao-danfe";
 import { deniedReason, type DeniedReason } from "../../financeiro/carregar";
 import { BOTAO_AZUL, BOTAO_CLARO, CARD, INPUT, LABEL, ROTULO, erroDe } from "../../deposito/comum";
@@ -111,6 +112,14 @@ function linhaDoIcms(icms: NonNullable<ResumoDoCte["icms"]>): string {
   if (!(icms.valor > 0)) return situacao;
   return `${situacao} · ${icms.aliquota}% de ${formatCurrency(icms.base)} = ${formatCurrency(icms.valor)}${icms.retido ? " (retido)" : ""}`;
 }
+
+/** Como a conferência chama o tomador que é uma das partes do documento. "Outro" aparece pelo nome. */
+const PAPEL_DO_TOMADOR: Partial<Record<NonNullable<ResumoDoCte["tomador"]>["papel"], string>> = {
+  REMETENTE: "o remetente",
+  EXPEDIDOR: "o expedidor",
+  RECEBEDOR: "o recebedor",
+  DESTINATARIO: "o destinatário",
+};
 
 function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFechar: () => void; aoMudar: () => void }) {
   const [conferencia, setConferencia] = useState<ConferenciaDoCte | null>(null);
@@ -211,11 +220,34 @@ function Conferencia({ carga, aoFechar, aoMudar }: { carga: CargaParaCte; aoFech
                 {ROTULO_DO_AMBIENTE[resumo.ambiente]} · {resumo.serie} / {resumo.numeroPrevisto}
               </Linha>
               <Linha rotulo="CFOP">{resumo.cfop || "a definir"}</Linha>
+              {/* Redespacho e subcontratação: as linhas só aparecem quando a carga tem o que mostrar. */}
+              {resumo.servico.tipo !== "NORMAL" && (
+                <>
+                  <Linha rotulo="Tipo de serviço">
+                    <span data-servico={resumo.servico.tipo}>{ROTULO_DO_SERVICO[resumo.servico.tipo]}</span>
+                  </Linha>
+                  <Linha rotulo="CT-e anterior">
+                    <span data-cte-anterior>
+                      {resumo.servico.chaveDoCteAnterior ? `${resumo.servico.emissorDoAnterior ?? "chave a conferir"} · ${chaveEmBlocos(resumo.servico.chaveDoCteAnterior)}` : "falta a chave"}
+                    </span>
+                  </Linha>
+                </>
+              )}
               <Linha rotulo="Remetente">{resumo.remetente ? `${resumo.remetente.nome} · ${resumo.remetente.documento}` : "não identificado"}</Linha>
               <Linha rotulo="Destinatário">{resumo.destinatario ? `${resumo.destinatario.nome} · ${resumo.destinatario.documento}` : "não identificado"}</Linha>
+              {(resumo.expedidor || resumo.servico.tipo === "INTERMEDIATE") && (
+                <Linha rotulo="Expedidor">
+                  <span data-expedidor>{resumo.expedidor ? `${resumo.expedidor.nome} · ${resumo.expedidor.documento}` : "falta informar"}</span>
+                </Linha>
+              )}
+              {(resumo.recebedor || resumo.servico.tipo === "INTERMEDIATE") && (
+                <Linha rotulo="Recebedor">
+                  <span data-recebedor>{resumo.recebedor ? `${resumo.recebedor.nome} · ${resumo.recebedor.documento}` : "falta informar"}</span>
+                </Linha>
+              )}
               <Linha rotulo="Tomador (quem paga)">
                 {resumo.tomador
-                  ? `${resumo.tomador.papel === "REMETENTE" ? "o remetente" : resumo.tomador.papel === "DESTINATARIO" ? "o destinatário" : resumo.tomador.nome} · ${resumo.tomador.contribuinte === "9" ? "não contribuinte" : resumo.tomador.contribuinte === "2" ? "isento de IE" : "contribuinte"}`
+                  ? `${PAPEL_DO_TOMADOR[resumo.tomador.papel] ?? resumo.tomador.nome} · ${resumo.tomador.contribuinte === "9" ? "não contribuinte" : resumo.tomador.contribuinte === "2" ? "isento de IE" : "contribuinte"}`
                   : "não identificado"}
               </Linha>
               <Linha rotulo="Origem → destino">
@@ -313,6 +345,9 @@ function Cancelamento({ carga, cte, aoFechar, aoMudar }: { carga: CargaParaCte; 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           <p className="text-xs text-gray-600 dark:text-gray-400">
             O cancelamento é um evento enviado à SEFAZ, aceito até 7 dias depois da autorização. O CT-e só fica cancelado quando a SEFAZ registra o evento.
+          </p>
+          <p data-o-que-barra className="text-xs text-gray-600 dark:text-gray-400">
+            Com carta de correção registrada, o cancelamento não volta mais. Com comprovante de entrega registrado, volta depois de cancelar o comprovante.
           </p>
           {!noPrazo && (
             <p data-fora-do-prazo className="px-3 py-2 text-sm text-amber-900 border border-amber-200 rounded-lg bg-amber-50">
@@ -954,12 +989,12 @@ export default function CtePage() {
                           {emitido?.situacao === "AUTHORIZED" && situacao?.dacte && (
                             <BotaoDanfe documento="dacte" endereco={`/api/fiscal/cte/emissao/${emitido.id}/dacte`} className="text-blue-600" />
                           )}
-                          {emitido?.situacao === "AUTHORIZED" && emitido.svc === null && (
+                          {emitido?.situacao === "AUTHORIZED" && (
                             <button type="button" data-acao="corrigir" onClick={() => setAberto({ tipo: "correcao", carga })} className="text-blue-600 hover:underline">
                               Corrigir
                             </button>
                           )}
-                          {emitido?.situacao === "AUTHORIZED" && emitido.svc === null && carga.comprovanteAceito && (
+                          {emitido?.situacao === "AUTHORIZED" && carga.comprovanteAceito && (
                             <button type="button" data-acao="entrega" onClick={() => setAberto({ tipo: "entrega", carga })} className="text-blue-600 hover:underline">
                               Entrega na SEFAZ
                             </button>

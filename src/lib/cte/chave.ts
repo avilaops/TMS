@@ -1,4 +1,4 @@
-import { digitoDaChave } from "@/lib/nfe";
+import { digitoDaChave } from "@/lib/chave-dfe";
 
 /**
  * A chave de acesso do CT-e (44 dígitos), como o MOC 4.00 a define:

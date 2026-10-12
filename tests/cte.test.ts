@@ -1312,9 +1312,9 @@ describe("da carga aos dados do CT-e", () => {
     expect(dados.contribuinte).toBe("1");
     expect(dados.remetente).toMatchObject({ documento: "99000303000171", ie: "110042490114", nome: "Indústria Remetente S/A", telefone: "1733334444" });
     // O município vem da tabela (nome oficial), com o código IBGE.
-    expect(dados.remetente.endereco).toMatchObject({ logradouro: "Av. Brasil", numero: "1500", bairro: "Distrito Industrial", codigoMunicipio: "3549805", municipio: "São José do Rio Preto", uf: "SP", cep: "15035000" });
+    expect(dados.remetente!.endereco).toMatchObject({ logradouro: "Av. Brasil", numero: "1500", bairro: "Distrito Industrial", codigoMunicipio: "3549805", municipio: "São José do Rio Preto", uf: "SP", cep: "15035000" });
     expect(dados.destinatario).toMatchObject({ documento: "99000703000187", ie: "0623079040081" });
-    expect(dados.destinatario.endereco).toMatchObject({ complemento: "Loja 2", codigoMunicipio: "3106200", uf: "MG" });
+    expect(dados.destinatario!.endereco).toMatchObject({ complemento: "Loja 2", codigoMunicipio: "3106200", uf: "MG" });
     expect(dados.inicio).toEqual({ codigoMunicipio: "3549805", municipio: "São José do Rio Preto", uf: "SP" });
     expect(dados.fim).toEqual({ codigoMunicipio: "3106200", municipio: "Belo Horizonte", uf: "MG" });
     expect(dados.valorDaPrestacao).toBe(850.5);
@@ -1500,6 +1500,6 @@ describe("da carga aos dados do CT-e", () => {
   it("o município da nota escrito fora do padrão ainda vale pelo código IBGE que a nota traz", () => {
     const xml = nfe().replace("<xMun>Belo Horizonte</xMun>", "<xMun>B HORIZONTE</xMun>");
     const preparo = preparar(carga({ notas: [{ accessKey: "35261099000303000171550010000012341000012341", xml }] }));
-    expect(preparo.dados?.destinatario.endereco).toMatchObject({ codigoMunicipio: "3106200", municipio: "B HORIZONTE", uf: "MG" });
+    expect(preparo.dados?.destinatario?.endereco).toMatchObject({ codigoMunicipio: "3106200", municipio: "B HORIZONTE", uf: "MG" });
   });
 });

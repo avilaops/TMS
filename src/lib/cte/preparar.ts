@@ -11,12 +11,15 @@ import {
   observacaoDaViagem,
   resolverIcms,
   type DadosDoCte,
+  type DocumentoAnteriorDoCte,
   type EmitenteDoCte,
   type EnderecoDoCte,
   type LocalDoCte,
   type ParticipanteDoCte,
+  type ServicoDoCte,
   type TomadorDoCte,
 } from "@/lib/cte/montar";
+import { ROTULO_DO_SERVICO, emissorDaChave, problemaDaChaveDoCteAnterior, type ParteInformada, type ServicoDaCarga, type TipoDeServico } from "@/lib/redespacho";
 import { dataHoraDoXml } from "@/lib/cte/chave";
 import { semResponsavelTecnico, type ResponsavelTecnico } from "@/lib/cte/responsavel-tecnico";
 import { centavos, digitos } from "@/lib/cte/texto";
@@ -76,6 +79,8 @@ export type CargaDoCte = {
   /** Os destinatários frequentes do cliente pagador. */
   destinatarios: readonly { name: string; document: string | null; address: string | null }[];
   viagem: { placa: string | null; motorista: string | null } | null;
+  /** O tipo de serviço, o CT-e anterior, o expedidor e o recebedor da carga (src/lib/redespacho.ts). Ausente: serviço normal, sem nada disso. */
+  servico?: ServicoDaCarga | null;
 };
 
 export type DadosPreparados = Omit<DadosDoCte, "numero" | "codigo" | "emissao">;
@@ -156,6 +161,22 @@ function doCadastro(cliente: ClienteDaCarga, achar: AcharMunicipio): Participant
   return { documento, ie: inscricao(cliente.ie), nome: cliente.companyName, fantasia: cliente.tradeName, telefone: cliente.phone, email: cliente.email, endereco };
 }
 
+/**
+ * O expedidor ou o recebedor digitado na carga, pronto para o documento, ou o
+ * que falta nele. Nada digitado: sem participante e sem falta. O esquema pede
+ * CNPJ/CPF, nome e endereço com logradouro, bairro e município (`exped`,
+ * `receb`); a inscrição estadual é opcional.
+ */
+function parteInformada(parte: ParteInformada | null, achar: AcharMunicipio, qual: "expedidor" | "recebedor"): { participante: ParticipanteDoCte | null; falta: string | null } {
+  if (!parte) return { participante: null, falta: null };
+  const documento = documentoValido(parte.documento);
+  const nome = (parte.nome ?? "").trim();
+  const endereco = enderecoCompleto({ logradouro: parte.logradouro, numero: parte.numero, bairro: parte.bairro, cep: parte.cep }, achar(parte.cidade));
+  const faltas = [nome.length < 2 ? "o nome" : null, documento ? null : "o CNPJ/CPF", endereco ? null : 'o endereço (logradouro, bairro e a cidade escrita como "Cidade - UF")'].flatMap((falta) => (falta ? [falta] : []));
+  if (!documento || !endereco || faltas.length > 0) return { participante: null, falta: parteIncompleta(qual, faltas) };
+  return { participante: { documento, ie: inscricao(parte.ie), nome, endereco }, falta: null };
+}
+
 const local = (municipio: Municipio): LocalDoCte => ({ codigoMunicipio: municipio.codigo, municipio: municipio.nome, uf: municipio.uf });
 
 function documentoFormatado(documento: string): string {
@@ -189,6 +210,39 @@ function componentesDoFrete(detalhes: unknown): { nome: string; valor: number }[
   });
 }
 
+/* ---------------------- Redespacho e subcontratação: as frases ------------------- */
+
+/** Onde a pessoa preenche o que falta. A carga só é editada fora de viagem, como os outros dados dela. */
+export const ONDE_PREENCHER_O_REDESPACHO = 'Preencha em Minutas → Editar, no bloco "Redespacho / subcontratação" (com a carga fora de viagem).';
+
+export const semCteAnterior = (tipo: TipoDeServico) =>
+  `CT-e de ${ROTULO_DO_SERVICO[tipo].toLowerCase()} exige a chave do CT-e anterior, o da transportadora que contratou você (a SEFAZ rejeita sem ela: 521). ${ONDE_PREENCHER_O_REDESPACHO}`;
+export const CTE_ANTERIOR_DE_OUTRA_EMPRESA =
+  "O CT-e anterior foi emitido por um CNPJ que não é o do cliente pagador. Na subcontratação e no redespacho o tomador é a transportadora que emitiu o CT-e anterior (a SEFAZ rejeita quando não é: 745). Use como cliente pagador da carga a transportadora que contratou você, ou confira a chave.";
+export const SEM_EXPEDIDOR = `Redespacho intermediário exige o expedidor, quem entrega a carga a você (a SEFAZ rejeita sem ele: 474). ${ONDE_PREENCHER_O_REDESPACHO}`;
+export const SEM_RECEBEDOR = `Redespacho intermediário exige o recebedor, quem recebe a carga de você (a SEFAZ rejeita sem ele: 475). ${ONDE_PREENCHER_O_REDESPACHO}`;
+export const parteIncompleta = (qual: "expedidor" | "recebedor", faltas: readonly string[]) => `O ${qual} da carga está incompleto: falta ${faltas.join(", ")}. ${ONDE_PREENCHER_O_REDESPACHO}`;
+
+export const AVISO_DA_CHAVE_SEM_USO = "A carga tem a chave de um CT-e anterior, mas o tipo de serviço é normal: a chave não vai no documento (a SEFAZ rejeita documento anterior no serviço normal: 747).";
+export const AVISO_DAS_NOTAS_NO_INTERMEDIARIO = "No redespacho intermediário as NF-e da carga não vão no CT-e (a SEFAZ rejeita: 694): o que identifica a carga é o CT-e anterior.";
+/**
+ * O sistema NÃO decide o ICMS da subcontratação. Vários estados têm regra
+ * própria (diferimento, dispensa de destaque para o subcontratado), que não foi
+ * conferida em fonte oficial: o documento sai com a situação tributária da
+ * configuração da empresa, e a conferência manda confirmar.
+ */
+export const AVISO_DO_ICMS_NA_SUBCONTRATACAO =
+  "Na subcontratação, confirme com o contador se o ICMS é devido por você ou pela contratante: o CT-e vai com a situação tributária da configuração da empresa, e o sistema não decide isso.";
+export const AVISO_DOS_MUNICIPIOS_NA_SUBCONTRATACAO =
+  "Na subcontratação, o município de início e o de fim da prestação têm de ser os mesmos do CT-e da contratante (a SEFAZ pode rejeitar: 832). Confira a origem e o destino da carga com o CT-e dela.";
+export const avisoDoCfopDaMesmaNatureza = (cfop: string) =>
+  `O tomador é outra transportadora: o CT-e vai com o CFOP ${cfop} (prestação de serviço de transporte para execução de serviço da mesma natureza), e não com o da configuração da empresa. Confirme com o contador.`;
+/** Serviço normal com tomador que não é remetente nem destinatário: se ele for transportadora, a SEFAZ rejeita (MOC 4.00, Anexo I, regra G064). */
+export const AVISO_DO_TOMADOR_TRANSPORTADORA =
+  "O tomador não é o remetente nem o destinatário. Se ele é uma transportadora (emite CT-e), a SEFAZ rejeita o serviço normal (746): o tipo de serviço da carga é subcontratação ou redespacho.";
+export const avisoDoLocal = (qual: "expedidor" | "recebedor", cidadeDaParte: string, ponta: "início" | "fim", cidadeDaCarga: string, campo: "origem" | "destino") =>
+  `O ${qual} fica em ${cidadeDaParte}, e o ${ponta} da prestação no CT-e é ${campo === "origem" ? "a origem" : "o destino"} da carga (${cidadeDaCarga}). Se o seu trecho ${ponta === "início" ? "começa" : "termina"} em outra cidade, corrija ${campo === "origem" ? "a origem" : "o destino"} da carga.`;
+
 export const AVISO_DO_ICMS_DE_OUTRA_UF = (uf: string) =>
   `A prestação começa em ${uf}, fora da UF do emitente: o ICMS vai no grupo ICMSOutraUF, devido a ${uf}, com a alíquota interestadual. O recolhimento do imposto a ${uf} é por conta da empresa: confirme com o contador como fazer.`;
 export const AVISO_DO_ICMS_RETIDO =
@@ -217,16 +271,21 @@ export function prepararCte(
   const daPrimeiraNota = carga.notas.map((nota) => participantesDaNota(nota.xml)).find((lido) => lido !== null) ?? null;
   const chavesDeNfe = chavesDaCarga(carga);
 
+  const servico = carga.servico ?? null;
+  const tipo: TipoDeServico = servico?.tipo ?? "NORMAL";
+  const intermediario = tipo === "INTERMEDIATE";
+
   /* Remetente */
+  const faltasDasPartes: string[] = [];
   let remetente: ParticipanteDoCte | null = null;
   if (daPrimeiraNota) {
     remetente = daNota(daPrimeiraNota.emitente, achar);
-    if (!remetente) pendencias.push("A NF-e ligada à carga não traz o CNPJ/CPF e o endereço completo do emitente (o remetente do CT-e).");
+    if (!remetente) faltasDasPartes.push("A NF-e ligada à carga não traz o CNPJ/CPF e o endereço completo do emitente (o remetente do CT-e).");
   } else if (mesmoNome(carga.sender, cliente)) {
     remetente = doCadastro(cliente, achar);
-    if (!remetente) pendencias.push(`O remetente é o cliente pagador, mas o endereço do cadastro dele não está completo. Escreva-o como "${FORMATO_DO_ENDERECO}".`);
+    if (!remetente) faltasDasPartes.push(`O remetente é o cliente pagador, mas o endereço do cadastro dele não está completo. Escreva-o como "${FORMATO_DO_ENDERECO}".`);
   } else {
-    pendencias.push("Sem NF-e ligada à carga, o sistema não tem o CNPJ/CPF nem o endereço do remetente. Importe a NF-e e ligue-a à carga.");
+    faltasDasPartes.push("Sem NF-e ligada à carga, o sistema não tem o CNPJ/CPF nem o endereço do remetente. Importe a NF-e e ligue-a à carga.");
   }
 
   /* Destinatário */
@@ -234,10 +293,10 @@ export function prepararCte(
   const destino = achar(carga.destination);
   if (daPrimeiraNota) {
     destinatario = daNota(daPrimeiraNota.destinatario, achar);
-    if (!destinatario) pendencias.push("A NF-e ligada à carga não traz o CNPJ/CPF e o endereço completo do destinatário.");
+    if (!destinatario) faltasDasPartes.push("A NF-e ligada à carga não traz o CNPJ/CPF e o endereço completo do destinatário.");
   } else if (mesmoNome(carga.receiver, cliente)) {
     destinatario = doCadastro(cliente, achar);
-    if (!destinatario) pendencias.push(`O destinatário é o cliente pagador, mas o endereço do cadastro dele não está completo. Escreva-o como "${FORMATO_DO_ENDERECO}".`);
+    if (!destinatario) faltasDasPartes.push(`O destinatário é o cliente pagador, mas o endereço do cadastro dele não está completo. Escreva-o como "${FORMATO_DO_ENDERECO}".`);
   } else {
     const frequente = carga.destinatarios.find((d) => normalizeText(d.name) === normalizeText(carga.receiver) && documentoValido(d.document) !== null);
     const doCadastroDele = enderecoDoTexto(frequente?.address);
@@ -253,9 +312,21 @@ export function prepararCte(
     const documento = documentoValido(frequente?.document);
     if (frequente && documento && endereco) destinatario = { documento, ie: null, nome: frequente.name, endereco };
     else if (!frequente) {
-      pendencias.push("Sem NF-e ligada à carga, o sistema não tem o CNPJ/CPF do destinatário. Importe a NF-e, ou cadastre o destinatário (com CNPJ/CPF) nos destinatários frequentes do cliente.");
-    } else pendencias.push("Falta o endereço da entrega (logradouro e bairro) na carga para o destinatário do CT-e.");
+      faltasDasPartes.push("Sem NF-e ligada à carga, o sistema não tem o CNPJ/CPF do destinatário. Importe a NF-e, ou cadastre o destinatário (com CNPJ/CPF) nos destinatários frequentes do cliente.");
+    } else faltasDasPartes.push("Falta o endereço da entrega (logradouro e bairro) na carga para o destinatário do CT-e.");
   }
+  // No redespacho intermediário o remetente e o destinatário podem faltar (regras G053 e G054): vão quando o sistema os conhece.
+  if (!intermediario) pendencias.push(...faltasDasPartes);
+
+  /* Expedidor e recebedor: o que foi digitado na carga. Obrigatórios só no redespacho intermediário (regras G055 e G056). */
+  const doExpedidor = parteInformada(servico?.expedidor ?? null, achar, "expedidor");
+  const doRecebedor = parteInformada(servico?.recebedor ?? null, achar, "recebedor");
+  let expedidor = doExpedidor.participante;
+  let recebedor = doRecebedor.participante;
+  if (doExpedidor.falta) pendencias.push(doExpedidor.falta);
+  else if (intermediario && !expedidor) pendencias.push(SEM_EXPEDIDOR);
+  if (doRecebedor.falta) pendencias.push(doRecebedor.falta);
+  else if (intermediario && !recebedor) pendencias.push(SEM_RECEBEDOR);
 
   /* Início e fim da prestação */
   const origem = achar(carga.origin);
@@ -276,13 +347,46 @@ export function prepararCte(
     tomador = { papel: "DESTINATARIO" };
     ieDoTomador = inscricao(destinatario.ie) ?? ieDoTomador;
     destinatario = { ...destinatario, ie: ieDoTomador };
-  } else if (remetente && destinatario) {
+  } else if (expedidor && expedidor.documento === documentoDoCliente) {
+    tomador = { papel: "EXPEDIDOR" };
+    ieDoTomador = inscricao(expedidor.ie) ?? ieDoTomador;
+    expedidor = { ...expedidor, ie: ieDoTomador };
+  } else if (recebedor && recebedor.documento === documentoDoCliente) {
+    tomador = { papel: "RECEBEDOR" };
+    ieDoTomador = inscricao(recebedor.ie) ?? ieDoTomador;
+    recebedor = { ...recebedor, ie: ieDoTomador };
+  } else if ((remetente && destinatario) || intermediario) {
     const outro = doCadastro(cliente, achar);
     if (outro) tomador = { papel: "OUTRO", participante: outro };
     else {
       pendencias.push(
         `O cliente pagador não é o remetente nem o destinatário: o CT-e precisa do endereço dele. Escreva o endereço do cadastro como "${FORMATO_DO_ENDERECO}".`,
       );
+    }
+  }
+
+  /*
+   * Documento de transporte anterior: o CT-e da transportadora que contratou
+   * esta. Obrigatório fora do serviço normal (regra G059, rejeição 521). Quem o
+   * emitiu é o CNPJ da própria chave (regra G062, rejeição 733) e tem de ser a
+   * mesma empresa do tomador, pelo CNPJ base (regra G063, rejeição 745): como o
+   * tomador é sempre o cliente pagador, a chave tem de ser de um CT-e dele.
+   */
+  let anterior: DocumentoAnteriorDoCte | null = null;
+  const chaveAnterior = servico?.chaveDoCteAnterior ?? null;
+  if (tipo === "NORMAL") {
+    if (chaveAnterior) avisos.push(AVISO_DA_CHAVE_SEM_USO);
+  } else if (!chaveAnterior) {
+    pendencias.push(semCteAnterior(tipo));
+  } else {
+    const problema = problemaDaChaveDoCteAnterior(chaveAnterior, agora);
+    const emissor = emissorDaChave(chaveAnterior);
+    if (problema) pendencias.push(problema);
+    else if (documentoDoCliente && emissor.cnpj.slice(0, 8) !== documentoDoCliente.slice(0, 8)) pendencias.push(CTE_ANTERIOR_DE_OUTRA_EMPRESA);
+    else if (documentoDoCliente) {
+      // A IE do cadastro é a do estabelecimento do cadastro: só vale quando o CT-e anterior saiu desse mesmo CNPJ (e não de outra filial).
+      const ie = emissor.cnpj === documentoDoCliente ? inscricao(cliente.ie) : null;
+      anterior = { cnpj: emissor.cnpj, ie: ie === "ISENTO" ? null : ie, uf: emissor.uf, nome: cliente.companyName, chave: chaveAnterior };
     }
   }
   const contribuinte = ieDoTomador === null ? "9" : ieDoTomador === "ISENTO" ? "2" : "1";
@@ -296,8 +400,10 @@ export function prepararCte(
   const valorDaCarga = carga.invoiceValue !== null && carga.invoiceValue > 0 ? centavos(carga.invoiceValue) : null;
   if (valorDaCarga === null) pendencias.push("A carga está sem o valor da mercadoria (valor da NF), que o CT-e rodoviário exige.");
 
-  /* Documentos */
-  if (chavesDeNfe.length === 0) {
+  /* Documentos. No redespacho intermediário as notas não vão no CT-e (regra G037, rejeição 694): o que identifica a carga é o CT-e anterior. */
+  if (intermediario) {
+    if (chavesDeNfe.length > 0) avisos.push(AVISO_DAS_NOTAS_NO_INTERMEDIARIO);
+  } else if (chavesDeNfe.length === 0) {
     if (origem && destino && origem.uf !== destino.uf) {
       pendencias.push("Carga interestadual sem NF-e: a SEFAZ só aceita CT-e interestadual com a chave da nota (rejeição 813). Informe a chave da NF-e na carga ou importe a nota.");
     } else avisos.push("A carga não tem NF-e: o CT-e vai com uma declaração no lugar da nota.");
@@ -308,7 +414,18 @@ export function prepararCte(
   }
 
   const ufDoEmitente = emitente.endereco.uf;
-  const cfop = origem && destino ? cfopDaPrestacao({ ...emitente, uf: ufDoEmitente }, origem.uf, destino.uf) : "";
+  const cfop = origem && destino ? cfopDaPrestacao({ ...emitente, uf: ufDoEmitente }, origem.uf, destino.uf, tipo !== "NORMAL") : "";
+
+  /* O que muda fora do serviço normal, e o que o sistema não decide. */
+  if (tipo !== "NORMAL") {
+    if (origem && origem.uf === ufDoEmitente && cfop !== "") avisos.push(avisoDoCfopDaMesmaNatureza(cfop));
+    if (tipo === "SUBCONTRACT") avisos.push(AVISO_DO_ICMS_NA_SUBCONTRATACAO, AVISO_DOS_MUNICIPIOS_NA_SUBCONTRATACAO);
+  } else if (tomador?.papel === "OUTRO" && contribuinte === "1") {
+    avisos.push(AVISO_DO_TOMADOR_TRANSPORTADORA);
+  }
+  // O início e o fim da prestação são a origem e o destino da carga: o MOC não os amarra ao expedidor nem ao recebedor. Só avisa quando divergem.
+  if (expedidor && origem && expedidor.endereco.codigoMunicipio !== origem.codigo) avisos.push(avisoDoLocal("expedidor", `${expedidor.endereco.municipio} - ${expedidor.endereco.uf}`, "início", `${origem.nome} - ${origem.uf}`, "origem"));
+  if (recebedor && destino && recebedor.endereco.codigoMunicipio !== destino.codigo) avisos.push(avisoDoLocal("recebedor", `${recebedor.endereco.municipio} - ${recebedor.endereco.uf}`, "fim", `${destino.nome} - ${destino.uf}`, "destino"));
 
   /* ICMS: o grupo depende de onde a prestação começa e termina; o que o sistema não sabe calcular bloqueia. */
   const resolvido = frete !== null && origem && destino ? resolverIcms({ ...emitente, uf: ufDoEmitente }, frete, origem.uf, destino.uf) : null;
@@ -345,7 +462,10 @@ export function prepararCte(
       ie: emitente.ie,
       endereco: enderecoEmLinha(emitente.endereco),
     },
+    servico: { tipo, chaveDoCteAnterior: chaveAnterior, emissorDoAnterior: anterior ? `${anterior.nome} · ${documentoFormatado(anterior.cnpj)}` : null },
     remetente: remetente && parteDoResumo(remetente),
+    expedidor: expedidor && parteDoResumo(expedidor),
+    recebedor: recebedor && parteDoResumo(recebedor),
     destinatario: destinatario && parteDoResumo(destinatario),
     tomador:
       tomador && documentoDoCliente
@@ -365,10 +485,12 @@ export function prepararCte(
     },
     peso: carga.weight,
     volumes: carga.volumes,
-    chavesDeNfe,
+    chavesDeNfe: intermediario ? [] : chavesDeNfe,
   };
 
-  if (pendencias.length > 0 || !remetente || !destinatario || !tomador || !origem || !destino || frete === null || valorDaCarga === null) {
+  const semPartes = !intermediario && (!remetente || !destinatario);
+  const servicoDoCte: ServicoDoCte | null = tipo === "NORMAL" ? { tipo } : anterior ? { tipo, anterior } : null;
+  if (pendencias.length > 0 || semPartes || !servicoDoCte || !tomador || !origem || !destino || frete === null || valorDaCarga === null) {
     return { dados: null, pendencias, avisos, resumo };
   }
 
@@ -377,6 +499,9 @@ export function prepararCte(
       emitente,
       remetente,
       destinatario,
+      expedidor,
+      recebedor,
+      servico: servicoDoCte,
       tomador,
       contribuinte,
       inicio: local(origem),
@@ -387,7 +512,7 @@ export function prepararCte(
       produto: daPrimeiraNota?.produto ?? "DIVERSOS",
       pesoKg: carga.weight,
       volumes: carga.volumes,
-      chavesDeNfe,
+      chavesDeNfe: intermediario ? [] : chavesDeNfe,
       documento: carga.trackingCode,
       observacao: observacaoDaViagem(carga.viagem),
       enderecoDoQrCode,
