@@ -547,6 +547,67 @@ describe("formulário de minuta: os blocos opcionais como etapas no celular", ()
     expect(pedidos.find((pedido) => pedido.method === "POST")!.body).toMatchObject({ serviceType: "REDISPATCH", shipperName: "Centro de Distribuição", deliveryStreet: "Rua das Flores" });
   });
 
+  it("o formulário principal cabe na tela do celular: os três atalhos numa linha só, com nome curto e marca de preenchido, e rótulos em bloco", async () => {
+    telaDeCelular(true);
+    const { tela } = await abrirFormulario();
+    const atalhos = tela.querySelector<HTMLElement>("[data-atalhos-dos-blocos]")!;
+    const temClasse = (no: Element, classe: string) => no.className.split(/\s+/).includes(classe);
+
+    // Os três blocos são filhos diretos da linha de atalhos: três colunas no celular, um embaixo do outro no computador.
+    expect([...atalhos.children].map((filho) => filho.getAttribute("data-bloco"))).toEqual(["pedido", "endereco", "redespacho"]);
+    for (const classe of ["grid", "grid-cols-3", "md:block", "md:space-y-6"]) expect(temClasse(atalhos, classe), classe).toBe(true);
+
+    // Cada atalho: o nome curto só no celular, o nome inteiro só no computador, e nada marcado como preenchido.
+    const curto = (nome: string) => botao(tela, nome).querySelector(".md\\:hidden.truncate")!.textContent;
+    expect(["pedido", "endereco", "redespacho"].map(curto)).toEqual(["Janela", "Endereço", "Redespacho"]);
+    for (const [nome, inteiro] of [["pedido", "Janela, prioridade e cubagem (opcional)"], ["endereco", "Endereço da entrega (opcional)"], ["redespacho", "Redespacho / subcontratação (opcional)"]] as const) {
+      const rotulo = porTexto(botao(tela, nome), "span", inteiro)[0];
+      expect(temClasse(rotulo, "hidden") && temClasse(rotulo, "md:inline"), nome).toBe(true);
+      expect(botao(tela, nome).querySelector("[data-preenchido]")!.getAttribute("data-preenchido"), nome).toBe("false");
+    }
+
+    // Rótulo em bloco só no celular; no computador, o desenho de antes (`md:inline`). Todo rótulo do formulário principal, sem exceção.
+    const rotulos = [...tela.querySelectorAll("label")].filter((rotulo) => !rotulo.closest("[data-conteudo-do-bloco]"));
+    expect(rotulos.map((rotulo) => rotulo.textContent)).toEqual(["Cliente (Pagador) *", "Remetente *", "Cidade - UF *", "Destinatário *", "Cidade - UF *", "Volumes *", "Peso Total (KG) *", "Chave da NF (Opcional)", "Valor da NF (R$)", "Alocar Motorista (Opcional)"]);
+    for (const rotulo of rotulos) expect(temClasse(rotulo, "block") && temClasse(rotulo, "md:inline"), rotulo.textContent!).toBe(true);
+
+    // Com a etapa aberta a linha de atalhos deixa de ser grade (o bloco ocupa a tela); o que se preenche marca o atalho ao voltar.
+    await clicar(botao(tela, "endereco"));
+    expect(temClasse(atalhos, "grid")).toBe(false);
+    expect(temClasse(atalhos, "md:block")).toBe(true);
+    await digitar(tela.querySelector<HTMLInputElement>("#coleta-rua")!, "Rua das Flores");
+    await clicar(tela.querySelector("[data-concluir-etapa]")!);
+    expect(temClasse(atalhos, "grid")).toBe(true);
+    expect(botao(tela, "endereco").querySelector("[data-preenchido]")!.getAttribute("data-preenchido")).toBe("true");
+    expect(botao(tela, "endereco").querySelector("[data-preenchido]")!.textContent).toBe("✓");
+    // Abrir e concluir sem digitar não marca nada.
+    await clicar(botao(tela, "pedido"));
+    await clicar(tela.querySelector("[data-concluir-etapa]")!);
+    expect(botao(tela, "pedido").querySelector("[data-preenchido]")!.getAttribute("data-preenchido")).toBe("false");
+    expect(botao(tela, "redespacho").querySelector("[data-preenchido]")!.textContent).toBe("›");
+  });
+
+  it("ao editar no celular: o frete entra no formulário principal com o rótulo em bloco, e o atalho do bloco que já tem dado vem marcado", async () => {
+    telaDeCelular(true);
+    const carga = {
+      id: "c1", sender: "Remetente", receiver: "Destinatário", origin: "Mirassol - SP", destination: "Uberaba - MG", volumes: 2, weight: 10, status: "CONFIRMED", manifestId: null,
+      invoiceKey: null, invoiceValue: null, freightValue: 120, freightManual: true, trackingCode: "9900000001", pickupDate: null, pickupFrom: null, pickupTo: null, priority: "URGENT",
+      cubicMeters: null, pickupNotes: null, deliveryStreet: null, deliveryNumber: null, deliveryDistrict: null, deliveryZip: null, proof: null, _count: { deliveryAttempts: 0 }, client: cliente, driver: null,
+    };
+    api({ "/api/coletas": { body: [carga] }, "/api/clientes": { body: [cliente] }, "/api/motoristas": { body: [] } });
+    const tela = await montar(<ColetasPage />);
+    await ate(() => expect(tela.querySelectorAll("tbody tr")).toHaveLength(1));
+    await clicar(porTexto(tela, "tbody button", "Editar")[0]);
+
+    expect(titulo(tela).textContent).toBe("Editar Minuta");
+    expect(porTexto(tela, "p", "O cliente não pode ser trocado depois de a minuta ser emitida.")).toHaveLength(1);
+    const frete = tela.querySelector<HTMLInputElement>("#coleta-frete")!;
+    expect(frete.value).toBe("120");
+    expect(tela.querySelector('label[for="coleta-frete"]')!.className).toContain("md:inline");
+    // A carga urgente já vem com o atalho da janela marcado; os outros dois, não.
+    expect(["pedido", "endereco", "redespacho"].map((nome) => botao(tela, nome).querySelector("[data-preenchido]")!.getAttribute("data-preenchido"))).toEqual(["true", "false", "false"]);
+  });
+
   it("no computador nada muda: o bloco abre e fecha no lugar, sem etapa", async () => {
     telaDeCelular(false);
     const { tela } = await abrirFormulario();
@@ -636,11 +697,28 @@ describe("lista de CT-e: ações principais à vista e o resto no menu Mais", ()
     expect(menu.open).toBe(false);
     expect(menu.querySelector("summary")!.textContent).toBe("Mais ▾");
 
+    // As ações ficam numa moldura que, no computador, flutua com folga embaixo; ao abrir, a página rola até ela aparecer inteira
+    // (o menu da última linha abre abaixo do cartão, e sem isso as ações ficavam fora da tela).
+    const moldura = menu.querySelector<HTMLElement>("[data-mais-moldura]")!;
+    expect(moldura.parentElement).toBe(menu);
+    expect(menu.querySelector("[data-mais-acoes]")!.parentElement).toBe(moldura);
+    for (const classe of ["scroll-mb-3", "md:absolute", "md:right-0", "md:z-20", "md:pb-3"]) expect(moldura.className.split(/\s+/), classe).toContain(classe);
+    const rolar = vi.fn();
+    moldura.scrollIntoView = rolar;
+
     await act(async () => {
       menu.open = true;
+      menu.dispatchEvent(new Event("toggle"));
     });
+    expect(rolar).toHaveBeenCalledWith({ block: "nearest" });
     await clicar(document.body);
     expect(menu.open).toBe(false);
+    // Fechar não rola nada.
+    rolar.mockClear();
+    await act(async () => {
+      menu.dispatchEvent(new Event("toggle"));
+    });
+    expect(rolar).not.toHaveBeenCalled();
 
     await act(async () => {
       menu.open = true;

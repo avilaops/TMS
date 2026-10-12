@@ -810,9 +810,16 @@ const COR_DO_SELO: Record<CteEmitido["situacao"], string> = {
  * continuam no documento, o teclado abre e fecha sem código, e escolher uma
  * ação ou clicar fora fecha. No computador abre por cima da tabela; no celular
  * abre dentro do cartão, empurrando o que vem depois.
+ *
+ * Ao abrir, a página rola o que faltar para o menu aparecer inteiro: o da
+ * última linha abre abaixo do cartão e, com a lista no pé da janela, as ações
+ * ficavam fora da tela (medido em 1280×800 e em 390×700). A moldura de fora
+ * (`data-mais-moldura`) tem uma folga embaixo (no computador, dentro dela; no
+ * celular, na rolagem), para o menu não encostar na borda da janela.
  */
 function MenuMais({ children }: { children: ReactNode }) {
   const menu = useRef<HTMLDetailsElement>(null);
+  const moldura = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fecharSeFora = (evento: MouseEvent) => {
@@ -824,18 +831,28 @@ function MenuMais({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <details ref={menu} data-mais className="relative">
+    <details
+      ref={menu}
+      data-mais
+      className="relative"
+      onToggle={() => {
+        // `scrollIntoView` falta onde não há tela (os testes de tela): lá não há o que rolar.
+        if (menu.current?.open) moldura.current?.scrollIntoView?.({ block: "nearest" });
+      }}
+    >
       <summary className="list-none cursor-pointer select-none whitespace-nowrap text-gray-700 dark:text-gray-300 hover:underline [&::-webkit-details-marker]:hidden">
         Mais <span aria-hidden>▾</span>
       </summary>
-      <div
-        data-mais-acoes
-        onClick={() => {
-          if (menu.current) menu.current.open = false;
-        }}
-        className="mt-1 flex flex-col items-start gap-1.5 md:absolute md:right-0 md:z-20 md:min-w-44 md:gap-2 md:rounded-xl md:border md:border-gray-200 md:bg-white md:p-3 md:shadow-lg dark:md:border-gray-700 dark:md:bg-gray-900"
-      >
-        {children}
+      <div ref={moldura} data-mais-moldura className="mt-1 scroll-mb-3 md:absolute md:right-0 md:z-20 md:pb-3">
+        <div
+          data-mais-acoes
+          onClick={() => {
+            if (menu.current) menu.current.open = false;
+          }}
+          className="flex flex-col items-start gap-1.5 md:min-w-44 md:gap-2 md:rounded-xl md:border md:border-gray-200 md:bg-white md:p-3 md:shadow-lg dark:md:border-gray-700 dark:md:bg-gray-900"
+        >
+          {children}
+        </div>
       </div>
     </details>
   );

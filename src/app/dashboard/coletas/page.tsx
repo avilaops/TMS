@@ -224,6 +224,8 @@ const temPedido = (form: typeof EMPTY_FORM) =>
 // Os blocos opcionais do formulário. No celular cada um abre como uma etapa própria, em tela cheia.
 const TITULO_DA_ETAPA = { pedido: "Janela, prioridade e cubagem", endereco: "Endereço da entrega", redespacho: "Redespacho / subcontratação" } as const;
 type Etapa = keyof typeof TITULO_DA_ETAPA;
+// No celular os três atalhos dividem uma linha só, com o nome curto: é o que faz o formulário principal caber na tela sem rolar.
+const ATALHO_DA_ETAPA: Record<Etapa, string> = { pedido: "Janela", endereco: "Endereço", redespacho: "Redespacho" };
 
 /** A tela é de celular? Sem `matchMedia` (testes, navegador antigo) vale o desenho do computador. */
 const noCelular = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
@@ -231,6 +233,14 @@ const noCelular = () => typeof window !== "undefined" && typeof window.matchMedi
 const CAMPO_DO_PEDIDO =
   "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
 const ROTULO_DO_PEDIDO = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
+// Formulário principal. No celular o rótulo é um bloco (16 px de altura, não a linha de 24 px do texto em volta): com isso e com os
+// atalhos numa linha, tudo cabe numa tela de 390×700. No computador (`md:`) nada muda. A letra do campo no celular é a do globals.css (16 px).
+const ROTULO_PRINCIPAL = "block md:inline text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
+const ROTULO_DA_PARTE = "block md:inline text-xs font-medium text-gray-500 dark:text-gray-400";
+const CAMPO_PRINCIPAL =
+  "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
+const SELETOR_PRINCIPAL =
+  "block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white";
 
 // Como cada troca de status aparece na linha. As que não têm volta pedem confirmação.
 const STATUS_ACTIONS: Partial<Record<CollectionStatus, { label: string; confirm?: string; className: string }>> = {
@@ -278,7 +288,15 @@ export default function ColetasPage() {
   // Fora da etapa aberta, o que é do formulário principal some no celular.
   const foraDaEtapa = etapa ? "hidden md:block" : "";
   const blocoDaEtapa = (nome: Etapa) => (etapa && etapa !== nome ? "hidden md:block" : "");
-  const botaoDoBloco = (nome: Etapa) => `${etapa === nome ? "hidden md:flex" : "flex"} w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300`;
+  const botaoDoBloco = (nome: Etapa) =>
+    `${etapa === nome ? "hidden md:flex" : "flex"} w-full min-w-0 items-center justify-between gap-1 px-2 py-1.5 md:px-3 md:py-2 text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300`;
+  // O que o atalho mostra no celular: o nome curto e, quando o bloco já tem dado, a marca de preenchido.
+  const atalhoDoBloco = (nome: Etapa, preenchido: boolean) => (
+    <>
+      <span className="md:hidden truncate">{ATALHO_DA_ETAPA[nome]}</span>
+      <span aria-hidden data-preenchido={preenchido} className={`md:hidden ${preenchido ? "text-blue-600 dark:text-blue-400" : "text-gray-400"}`}>{preenchido ? "✓" : "›"}</span>
+    </>
+  );
 
   // A tela já nasce com `isLoading` ligado: a primeira carga só busca.
   const loadData = () =>
@@ -654,12 +672,12 @@ export default function ColetasPage() {
             <div className="p-3 md:p-6 space-y-2 md:space-y-6">
               {/* Cliente */}
               <div className={`space-y-0.5 md:space-y-1.5 min-w-0 ${foraDaEtapa}`}>
-                <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Cliente (Pagador) *</label>
-                <select 
+                <label className={ROTULO_PRINCIPAL}>Cliente (Pagador) *</label>
+                <select
                   value={formData.clientId}
                   onChange={(e) => setFormData({...formData, clientId: e.target.value})}
                   disabled={editingId !== null}
-                  className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800"
+                  className={`${SELETOR_PRINCIPAL} disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800`}
                 >
                   <option value="">Selecione um cliente...</option>
                   {clientOptions.map(c => (
@@ -679,7 +697,7 @@ export default function ColetasPage() {
                   </h3>
                   <div className="space-y-1.5 md:space-y-3">
                     <div className="space-y-0.5 md:space-y-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Remetente *</label>
+                      <label className={ROTULO_DA_PARTE}>Remetente *</label>
                       <input
                         type="text"
                         value={formData.sender}
@@ -687,8 +705,8 @@ export default function ColetasPage() {
                         className="block w-full min-w-0 px-3 py-1.5 md:py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Cidade - UF *</label>
+                    <div className="space-y-0.5 md:space-y-1">
+                      <label className={ROTULO_DA_PARTE}>Cidade - UF *</label>
                       <input
                         type="text"
                         value={formData.origin}
@@ -706,7 +724,7 @@ export default function ColetasPage() {
                   </h3>
                   <div className="space-y-1.5 md:space-y-3">
                     <div className="space-y-0.5 md:space-y-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Destinatário *</label>
+                      <label className={ROTULO_DA_PARTE}>Destinatário *</label>
                       <input
                         type="text"
                         value={formData.receiver}
@@ -714,8 +732,8 @@ export default function ColetasPage() {
                         className="block w-full min-w-0 px-3 py-1.5 md:py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Cidade - UF *</label>
+                    <div className="space-y-0.5 md:space-y-1">
+                      <label className={ROTULO_DA_PARTE}>Cidade - UF *</label>
                       <input
                         type="text"
                         value={formData.destination}
@@ -731,26 +749,26 @@ export default function ColetasPage() {
               {/* Mercadoria & Notas */}
               <div className={`${etapa ? "hidden md:grid" : "grid"} grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4`}>
                 <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                  <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Volumes *</label>
+                  <label className={ROTULO_PRINCIPAL}>Volumes *</label>
                   <input
                     type="number"
                     value={formData.volumes}
                     onChange={(e) => setFormData({...formData, volumes: e.target.value})}
-                    className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    className={CAMPO_PRINCIPAL}
                   />
                 </div>
                 <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                  <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Peso Total (KG) *</label>
+                  <label className={ROTULO_PRINCIPAL}>Peso Total (KG) *</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.weight}
                     onChange={(e) => setFormData({...formData, weight: e.target.value})}
-                    className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    className={CAMPO_PRINCIPAL}
                   />
                 </div>
                 <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                  <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Chave da NF (Opcional)</label>
+                  <label className={ROTULO_PRINCIPAL}>Chave da NF (Opcional)</label>
                   <input
                     type="text"
                     value={formData.invoiceKey}
@@ -760,13 +778,13 @@ export default function ColetasPage() {
                   />
                 </div>
                 <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                  <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Valor da NF (R$)</label>
+                  <label className={ROTULO_PRINCIPAL}>Valor da NF (R$)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.invoiceValue}
                     onChange={(e) => setFormData({...formData, invoiceValue: e.target.value})}
-                    className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    className={CAMPO_PRINCIPAL}
                   />
                 </div>
               </div>
@@ -774,7 +792,7 @@ export default function ColetasPage() {
               {/* Frete: só na edição. Na criação ele sai da tabela de frete. */}
               {editingId && (
                 <div className={`space-y-0.5 md:space-y-1.5 min-w-0 ${foraDaEtapa}`}>
-                  <label htmlFor="coleta-frete" className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Frete (R$)</label>
+                  <label htmlFor="coleta-frete" className={ROTULO_PRINCIPAL}>Frete (R$)</label>
                   <input
                     id="coleta-frete"
                     type="number"
@@ -783,13 +801,15 @@ export default function ColetasPage() {
                     value={formData.freightValue}
                     onChange={(e) => setFormData({...formData, freightValue: e.target.value})}
                     placeholder="Em branco = calcular pela tabela de frete"
-                    className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                    className={CAMPO_PRINCIPAL}
                   />
                 </div>
               )}
 
+              {/* Os três blocos opcionais. No celular, os atalhos ficam lado a lado numa linha; com uma etapa aberta, só o bloco dela aparece. No computador, um embaixo do outro, como sempre. */}
+              <div data-atalhos-dos-blocos className={`${etapa ? "" : "grid grid-cols-3 gap-2 "}md:block md:space-y-6`}>
               {/* Pedido de coleta: opcional e recolhido, para o formulário caber na tela do celular (lá, aberto, é uma etapa em tela cheia). */}
-              <div data-bloco="pedido" className={`rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("pedido")}`}>
+              <div data-bloco="pedido" className={`min-w-0 rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("pedido")}`}>
                 <button
                   type="button"
                   aria-expanded={pedidoAberto}
@@ -797,9 +817,9 @@ export default function ColetasPage() {
                   onClick={() => alternarBloco("pedido", pedidoAberto, setPedidoAberto)}
                   className={botaoDoBloco("pedido")}
                 >
-                  <span>Janela, prioridade e cubagem (opcional)</span>
+                  <span className="hidden md:inline">Janela, prioridade e cubagem (opcional)</span>
                   <span aria-hidden className="hidden md:inline text-gray-400">{pedidoAberto ? "−" : "+"}</span>
-                  <span aria-hidden className="md:hidden text-gray-400">{pedidoAberto ? "editar ›" : "›"}</span>
+                  {atalhoDoBloco("pedido", temPedido(formData))}
                 </button>
                 {pedidoAberto && (
                   <div data-conteudo-do-bloco="pedido" className={`${etapa === "pedido" ? "grid pt-3 md:pt-0" : "hidden md:grid"} grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3`}>
@@ -836,7 +856,7 @@ export default function ColetasPage() {
               </div>
 
               {/* Endereço da entrega: opcional e recolhido. Com ele a ordem das entregas e o mapa usam o ponto do endereço, não o centro da cidade. */}
-              <div data-bloco="endereco" className={`rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("endereco")}`}>
+              <div data-bloco="endereco" className={`min-w-0 rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("endereco")}`}>
                 <button
                   type="button"
                   aria-expanded={enderecoAberto}
@@ -844,9 +864,9 @@ export default function ColetasPage() {
                   onClick={() => alternarBloco("endereco", enderecoAberto, setEnderecoAberto)}
                   className={botaoDoBloco("endereco")}
                 >
-                  <span>Endereço da entrega (opcional)</span>
+                  <span className="hidden md:inline">Endereço da entrega (opcional)</span>
                   <span aria-hidden className="hidden md:inline text-gray-400">{enderecoAberto ? "−" : "+"}</span>
-                  <span aria-hidden className="md:hidden text-gray-400">{enderecoAberto ? "editar ›" : "›"}</span>
+                  {atalhoDoBloco("endereco", temEndereco(formData))}
                 </button>
                 {enderecoAberto && (
                   <div data-conteudo-do-bloco="endereco" className={`${etapa === "endereco" ? "grid pt-3 md:pt-0" : "hidden md:grid"} grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 md:gap-4 px-3 pb-3`}>
@@ -871,7 +891,7 @@ export default function ColetasPage() {
               </div>
 
               {/* Redespacho e subcontratação: opcional e recolhido. O que cada tipo exige é cobrado na conferência do CT-e. */}
-              <div data-bloco="redespacho" className={`rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("redespacho")}`}>
+              <div data-bloco="redespacho" className={`min-w-0 rounded-xl border border-gray-100 dark:border-gray-800 ${blocoDaEtapa("redespacho")}`}>
                 <button
                   type="button"
                   aria-expanded={redespachoAberto}
@@ -879,9 +899,9 @@ export default function ColetasPage() {
                   onClick={() => alternarBloco("redespacho", redespachoAberto, setRedespachoAberto)}
                   className={botaoDoBloco("redespacho")}
                 >
-                  <span>Redespacho / subcontratação{formData.serviceType !== "NORMAL" ? `: ${ROTULO_DO_SERVICO[tipoDeServico(formData.serviceType)]}` : " (opcional)"}</span>
+                  <span className="hidden md:inline">Redespacho / subcontratação{formData.serviceType !== "NORMAL" ? `: ${ROTULO_DO_SERVICO[tipoDeServico(formData.serviceType)]}` : " (opcional)"}</span>
                   <span aria-hidden className="hidden md:inline text-gray-400">{redespachoAberto ? "−" : "+"}</span>
-                  <span aria-hidden className="md:hidden text-gray-400">{redespachoAberto ? "editar ›" : "›"}</span>
+                  {atalhoDoBloco("redespacho", temRedespachoNoFormulario(formData))}
                 </button>
                 {redespachoAberto && (
                   <div data-conteudo-do-bloco="redespacho" className={`${etapa === "redespacho" ? "pt-3 md:pt-0" : "hidden md:block"} px-3 pb-3 space-y-2`}>
@@ -951,14 +971,15 @@ export default function ColetasPage() {
                   </div>
                 )}
               </div>
+              </div>
 
               {/* Motorista Alocado */}
               <div className={`space-y-0.5 md:space-y-1.5 min-w-0 ${foraDaEtapa}`}>
-                <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Alocar Motorista (Opcional)</label>
-                <select 
+                <label className={ROTULO_PRINCIPAL}>Alocar Motorista (Opcional)</label>
+                <select
                   value={formData.driverId}
                   onChange={(e) => setFormData({...formData, driverId: e.target.value})}
-                  className="block w-full min-w-0 px-3 py-1.5 md:px-4 md:py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                  className={SELETOR_PRINCIPAL}
                 >
                   <option value="">Deixar pendente / Sem motorista...</option>
                   {driverOptions.map(m => (
