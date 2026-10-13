@@ -1,19 +1,22 @@
 import type { ReactNode } from "react";
 import { SimboloDaEmpresa } from "@/components/empresa/identidade";
 import { formatCalendarDate, formatCurrency, formatDate, formatDocument } from "@/lib/format";
-import { rotuloDoMotivo } from "@/lib/equipe";
 import {
   AVISO_DO_DEMONSTRATIVO,
   EXPLICACAO_DO_PARCEIRO,
   EXPLICACAO_SEM_KM,
   PARCELAS,
   ROTULO_DA_PARCELA,
+  ROTULO_DE_MESES_ANTERIORES,
   TITULO_DO_DEMONSTRATIVO,
   type ReciboDoFechamento,
+  avisoDeSemAcerto,
   basesPorExtenso,
+  descontoPorExtenso,
   formasPorExtenso,
   mesPorExtenso,
   parcelasPorExtenso,
+  saldoAnteriorPorExtenso,
 } from "@/lib/remuneracao";
 
 /**
@@ -87,6 +90,17 @@ function Assinatura({ de, nome }: { de: string; nome: string }) {
 export function FolhaDoDemonstrativo({ recibo }: { recibo: ReciboDoFechamento }) {
   const { empresa, pessoa, conta } = recibo;
   const papel = pessoa.tipo === "motorista" ? "Motorista" : "Ajudante";
+  const doMes = conta.adiantamentos.filter((adiantamento) => !adiantamento.anterior);
+  const anteriores = conta.adiantamentos.filter((adiantamento) => adiantamento.anterior);
+  const semAcerto = avisoDeSemAcerto(conta.semAcerto, true);
+  const desconto = (adiantamento: (typeof conta.adiantamentos)[number]) => (
+    <li key={adiantamento.id} data-adiantamento={adiantamento.id} className="flex justify-between gap-3 border-t border-dotted border-gray-400 text-xs leading-snug">
+      <span className="min-w-0 break-words">
+        {formatCalendarDate(adiantamento.date)} · {descontoPorExtenso(adiantamento)}
+      </span>
+      <span className="shrink-0 tabular-nums">− {formatCurrency(adiantamento.amount)}</span>
+    </li>
+  );
 
   return (
     <article data-recibo className="mx-auto w-full max-w-[190mm] bg-white text-black border border-gray-400 rounded-lg p-3 md:p-5 space-y-2">
@@ -163,25 +177,34 @@ export function FolhaDoDemonstrativo({ recibo }: { recibo: ReciboDoFechamento })
       </section>
 
       <section data-secao="adiantamentos" className={SECAO}>
-        <h2 className={TITULO_DA_SECAO}>Adiantamentos e vales descontados</h2>
-        {conta.adiantamentos.length === 0 ? (
-          <p className="text-xs leading-snug">Nenhum adiantamento ou vale em aberto no mês.</p>
+        <h2 className={TITULO_DA_SECAO}>Vales e sobras de acerto descontados</h2>
+        {doMes.length === 0 && conta.anteriores === 0 ? (
+          <p className="text-xs leading-snug">Nenhum vale ou sobra de acerto a descontar.</p>
         ) : (
-          <ul>
-            {conta.adiantamentos.map((adiantamento) => (
-              <li key={adiantamento.id} data-adiantamento={adiantamento.id} className="flex justify-between gap-3 border-t border-dotted border-gray-400 text-xs leading-snug">
-                <span className="min-w-0 break-words">
-                  {formatCalendarDate(adiantamento.date)} · {rotuloDoMotivo(adiantamento.reason)}
-                </span>
-                <span className="shrink-0 tabular-nums">− {formatCurrency(adiantamento.amount)}</span>
+          <ul>{doMes.map(desconto)}</ul>
+        )}
+        {/* A dívida que ficou de meses anteriores sai à parte da do mês. */}
+        {conta.anteriores > 0 && (
+          <ul data-descontos="anteriores" className="mt-1">
+            <Linha rotulo={ROTULO_DE_MESES_ANTERIORES} valor={conta.anteriores} sinal="−" forte />
+            {conta.saldoAnterior && (
+              <li data-saldo-anterior className="flex justify-between gap-3 border-t border-dotted border-gray-400 text-xs leading-snug">
+                <span className="min-w-0 break-words">{saldoAnteriorPorExtenso(conta.saldoAnterior)}</span>
+                <span className="shrink-0 tabular-nums">− {formatCurrency(conta.saldoAnterior.valor)}</span>
               </li>
-            ))}
+            )}
+            {anteriores.map(desconto)}
           </ul>
         )}
         <ul className="mt-1">
           <Linha rotulo="Total descontado" valor={conta.adiantado} sinal="−" forte />
           <Linha rotulo={conta.saldo < 0 ? "Saldo (a pessoa deve)" : "Saldo a pagar"} valor={Math.abs(conta.saldo)} forte />
         </ul>
+        {semAcerto && (
+          <p data-sem-acerto className="mt-1 text-xs leading-snug">
+            {semAcerto}
+          </p>
+        )}
       </section>
 
       {/* O fecho da folha: na impressão, as assinaturas e o rodapé nunca ficam em folhas diferentes. */}

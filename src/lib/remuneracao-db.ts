@@ -6,7 +6,7 @@ import {
   type FormasDoMotorista,
   type LinhaDeViagem,
   type PessoaDoFechamento,
-  adiantamentoDoMes,
+  adiantamentosDoFechamento,
   apurarAjudante,
   apurarViagem,
   contaCongelada,
@@ -16,6 +16,7 @@ import {
   limitesDoMes,
   linhaDaViagem,
   mesDaViagem,
+  saldoDevedor,
   temForma,
 } from "@/lib/remuneracao";
 import { finalizadaNoPeriodo } from "@/lib/viagem";
@@ -76,9 +77,10 @@ export type FechamentoGravado = Prisma.CrewPayClosingGetPayload<{ select: typeof
 
 /**
  * A conta do mês de UMA pessoa, com o cadastro e as viagens como estão agora:
- * as viagens finalizadas no mês em que ela foi o motorista (ou o ajudante) e
- * os adiantamentos e vales dela em aberto com data no mês. `null` quando a
- * pessoa não existe nesta empresa.
+ * as viagens finalizadas no mês em que ela foi o motorista (ou o ajudante), os
+ * adiantamentos dela ainda não descontados em fechamento nenhum (do mês e de
+ * meses anteriores) e o saldo devedor do último fechamento anterior. `null`
+ * quando a pessoa não existe nesta empresa.
  */
 export async function contaDaPessoa(
   db: Db,
@@ -99,11 +101,27 @@ export async function contaDaPessoa(
   if (!cadastro) return null;
 
   const viagens = await db.manifest.findMany({ where: { ...finalizadaNoPeriodo(limites.instantes), ...dela }, select: VIAGEM_DA_REMUNERACAO_SELECT });
-  const adiantamentos = await db.crewAdvance.findMany({ where: { ...dela, status: "OPEN", date: limites.dias }, select: { id: true, date: true, amount: true, reason: true } });
+  const adiantamentos = await db.crewAdvance.findMany({ where: { ...dela, ...aDescontarAte(limites.dias.lt) }, select: ADIANTAMENTO_SELECT });
+  const anterior = await db.crewPayClosing.findFirst({ where: { ...dela, month: { lt: mes } }, orderBy: { month: "desc" }, select: { month: true, balance: true } });
 
   const linhas = viagens.flatMap((viagem) => (pessoa.driverId ? linhaDoMotorista(viagem) : (linhaDoAjudante(viagem) ?? [])));
-  return { ...cadastro, conta: contaDoMes(linhas, adiantamentos.map(adiantamentoDoMes)) };
+  const { descontos, semAcerto } = adiantamentosDoFechamento(adiantamentos, mes);
+  return { ...cadastro, conta: contaDoMes(linhas, descontos, { semAcerto, saldoAnterior: saldoDevedor(anterior) }) };
 }
+
+const ADIANTAMENTO_SELECT = { id: true, date: true, amount: true, reason: true, status: true, spentAmount: true, driverId: true, helperId: true } as const;
+
+/**
+ * Os adiantamentos que o fechamento de um mês olha: com data até o fim dele
+ * (os do mês e os de meses anteriores que ficaram para trás) e ainda não
+ * descontados em fechamento nenhum. `doFechamento` acrescenta os que estes
+ * fechamentos descontaram: é como a conta de hoje de um mês JÁ fechado continua
+ * igual à congelada enquanto nada muda.
+ */
+const aDescontarAte = (fimDoMes: Date, doFechamento: readonly string[] = []): Prisma.CrewAdvanceWhereInput => ({
+  date: { lt: fimDoMes },
+  OR: [{ closingId: null }, ...(doFechamento.length > 0 ? [{ closingId: { in: [...doFechamento] } }] : [])],
+});
 
 const formasDe = (motorista: FormasDoMotorista): FormasDoMotorista => Object.fromEntries(CAMPOS_DAS_FORMAS.map((campo) => [campo, motorista[campo]])) as FormasDoMotorista;
 
@@ -123,7 +141,8 @@ export function fechamentoParaATela(fechamento: FechamentoGravado): NonNullable<
  * (quando há) e a diferença entre os dois.
  *
  * Entra na lista quem tem o que mostrar: viagem que rende no mês, adiantamento
- * em aberto nele, fechamento gravado, ou cadastro ativo com alguma forma de
+ * a descontar ou sem acerto, saldo devedor de um fechamento anterior,
+ * fechamento gravado, ou cadastro ativo com alguma forma de
  * remuneração. Motorista de parceiro que só fez viagem com frete contratado não
  * aparece: o pagamento dele é o do contrato.
  */
@@ -134,8 +153,15 @@ export async function fechamentoDoMes(db: Db, mes: string): Promise<PessoaDoFech
   const motoristas = await db.driver.findMany({ select: { id: true, cpf: true, active: true, ...FORMAS_DO_MOTORISTA_SELECT, user: { select: { name: true } } } });
   const ajudantes = await db.helper.findMany({ select: { id: true, name: true, cpf: true, active: true, dailyRate: true, perTripRate: true } });
   const viagens = await db.manifest.findMany({ where: finalizadaNoPeriodo(limites.instantes), select: VIAGEM_DA_REMUNERACAO_SELECT });
-  const adiantamentos = await db.crewAdvance.findMany({ where: { status: "OPEN", date: limites.dias }, select: { id: true, date: true, amount: true, reason: true, driverId: true, helperId: true } });
   const fechamentos = await db.crewPayClosing.findMany({ where: { month: mes }, select: CLOSING_SELECT });
+  const adiantamentos = await db.crewAdvance.findMany({ where: aDescontarAte(limites.dias.lt, fechamentos.map((fechamento) => fechamento.id)), select: ADIANTAMENTO_SELECT });
+  // O último fechamento anterior de cada pessoa (do mais novo para o mais antigo: o primeiro de cada uma é o que vale).
+  const anteriores = await db.crewPayClosing.findMany({ where: { month: { lt: mes } }, orderBy: { month: "desc" }, select: { driverId: true, helperId: true, month: true, balance: true } });
+  const anteriorDe = new Map<string, { month: string; balance: number }>();
+  for (const anterior of anteriores) {
+    const chave = chaveDaPessoa(anterior);
+    if (!anteriorDe.has(chave)) anteriorDe.set(chave, anterior);
+  }
 
   const linhas = new Map<string, LinhaDeViagem[]>();
   const juntar = (chave: string, linha: LinhaDeViagem | null) => {
@@ -149,11 +175,12 @@ export async function fechamentoDoMes(db: Db, mes: string): Promise<PessoaDoFech
 
   const montar = (tipo: "motorista" | "ajudante", pessoa: Pessoa, cadastro: { nome: string; cpf: string; ativo: boolean; formas: Partial<FormasDoMotorista> }): PessoaDoFechamento | null => {
     const chave = chaveDaPessoa(pessoa);
-    const dela = adiantamentos.filter((adiantamento) => chaveDaPessoa(adiantamento) === chave).map(adiantamentoDoMes);
-    const atual = contaDoMes(linhas.get(chave) ?? [], dela);
+    const { descontos, semAcerto } = adiantamentosDoFechamento(adiantamentos.filter((adiantamento) => chaveDaPessoa(adiantamento) === chave), mes);
+    const atual = contaDoMes(linhas.get(chave) ?? [], descontos, { semAcerto, saldoAnterior: saldoDevedor(anteriorDe.get(chave)) });
     const gravado = fechamentoDe.get(chave);
     const rende = atual.viagens.some((linha) => linha.fora === null);
-    if (!gravado && !rende && atual.adiantamentos.length === 0 && !(cadastro.ativo && temForma(cadastro.formas))) return null;
+    const deve = atual.adiantamentos.length > 0 || atual.semAcerto.length > 0 || atual.saldoAnterior !== null;
+    if (!gravado && !rende && !deve && !(cadastro.ativo && temForma(cadastro.formas))) return null;
     return {
       chave,
       tipo,

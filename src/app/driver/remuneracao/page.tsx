@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Wallet } from "lucide-react";
+import { ChevronDown, Loader2, Wallet } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { EXPLICACAO_DO_PARCEIRO_NO_APP, EXPLICACAO_SEM_KM, type RemuneracaoDoMotorista, basesPorExtenso, mesAtual, mesPorExtenso, mesVizinho, parcelasPorExtenso } from "@/lib/remuneracao";
 
@@ -10,13 +10,22 @@ import { EXPLICACAO_DO_PARCEIRO_NO_APP, EXPLICACAO_SEM_KM, type RemuneracaoDoMot
  * leitura, e só quando a empresa ligou isso em Empresa: com o interruptor
  * desligado a rota não manda valor nenhum e a tela diz que não está disponível.
  * O motorista escolhe entre este mês e o anterior.
+ *
+ * Cabe numa tela de celular: o total em cima e as viagens numa lista compacta,
+ * uma linha cada, que abre o detalhe ao tocar.
  */
 
 const dia = (data: string) => data.slice(5).split("-").reverse().join("/");
 
+// A lista ocupa o que sobra da tela depois do cabeçalho do aplicativo, do cartão do total, do rodapé da
+// página e do menu de baixo (25,5rem, medidos em 390×700), e nunca menos que três linhas de viagem.
+const ALTURA_DA_LISTA = "max-h-[max(8.5rem,calc(100dvh-25.5rem))]";
+
 export default function RemuneracaoDoMotoristaPage() {
   const esteMes = mesAtual();
   const [mes, setMes] = useState(esteMes);
+  // A viagem com o detalhe aberto: uma por vez.
+  const [aberta, setAberta] = useState<string | null>(null);
   const [estado, setEstado] = useState<{ erro: string } | RemuneracaoDoMotorista | null>(null);
 
   useEffect(() => {
@@ -39,6 +48,7 @@ export default function RemuneracaoDoMotoristaPage() {
   const trocar = (novo: string) => {
     if (novo === mes) return;
     setEstado(null);
+    setAberta(null);
     setMes(novo);
   };
 
@@ -58,11 +68,11 @@ export default function RemuneracaoDoMotoristaPage() {
         </p>
       ) : (
         <>
-          <div data-ganhos="total" className="bg-white rounded-2xl p-4 shadow-xl shadow-blue-900/5">
+          <div data-ganhos="total" className="bg-white rounded-2xl px-4 py-3 shadow-xl shadow-blue-900/5">
             <p className="flex items-center gap-2 text-sm text-gray-500">
               <Wallet className="w-4 h-4 text-blue-600" /> Meus ganhos em {mesPorExtenso(estado.mes)}
             </p>
-            <p className="text-3xl font-bold text-gray-900">{formatCurrency(estado.total)}</p>
+            <p className="text-3xl font-bold leading-tight text-gray-900">{formatCurrency(estado.total)}</p>
             <p className="text-xs text-gray-500">
               {estado.viagens.length} {estado.viagens.length === 1 ? "viagem finalizada" : "viagens finalizadas"} · {estado.fechado ? "mês fechado pela empresa" : "mês em aberto: o valor ainda pode mudar"}
             </p>
@@ -83,22 +93,40 @@ export default function RemuneracaoDoMotoristaPage() {
           {estado.viagens.length === 0 ? (
             <p className="bg-white rounded-2xl p-4 text-sm text-gray-500 shadow-sm">Nenhuma viagem finalizada neste mês.</p>
           ) : (
-            <ul className="space-y-2">
-              {estado.viagens.map((viagem) => (
-                <li key={viagem.manifestId} data-viagem={viagem.manifestId} className="bg-white rounded-2xl px-4 py-2.5 shadow-sm border border-gray-100">
-                  <p className="flex justify-between gap-2">
-                    <span className="min-w-0 truncate font-bold text-gray-900">
-                      Viagem #{viagem.codigo} · {dia(viagem.finalizada)}
-                    </span>
-                    <span className="shrink-0 font-bold text-blue-700">{formatCurrency(viagem.total)}</span>
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {viagem.placa} · {basesPorExtenso(viagem)}
-                  </p>
-                  <p className="text-xs text-gray-600">{viagem.fora === "PARCEIRO" ? EXPLICACAO_DO_PARCEIRO_NO_APP :parcelasPorExtenso(viagem) || "Sem valor nesta viagem"}</p>
-                  {viagem.semKm && <p className="text-xs text-amber-700">{EXPLICACAO_SEM_KM}</p>}
-                </li>
-              ))}
+            // Uma linha por viagem; tocar abre o detalhe dela. Até três viagens a tela inteira cabe sem rolar;
+            // com mais, é a lista que rola por dentro, e o total e o rodapé ficam à vista.
+            <ul data-ganhos="viagens" className={`${ALTURA_DA_LISTA} overflow-y-auto overscroll-contain bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100`}>
+              {estado.viagens.map((viagem) => {
+                const esta = aberta === viagem.manifestId;
+                return (
+                  <li key={viagem.manifestId} data-viagem={viagem.manifestId}>
+                    <button
+                      type="button"
+                      aria-expanded={esta}
+                      data-abrir-viagem={viagem.manifestId}
+                      onClick={() => setAberta(esta ? null : viagem.manifestId)}
+                      className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm"
+                    >
+                      <span className="min-w-0 truncate font-semibold text-gray-900">
+                        Viagem #{viagem.codigo} · {dia(viagem.finalizada)}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1 font-bold text-blue-700">
+                        {formatCurrency(viagem.total)}
+                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${esta ? "rotate-180" : ""}`} />
+                      </span>
+                    </button>
+                    {esta && (
+                      <div data-detalhe-da-viagem className="px-4 pb-2.5 -mt-1 space-y-0.5">
+                        <p className="text-xs text-gray-500">
+                          {viagem.placa} · {basesPorExtenso(viagem)}
+                        </p>
+                        <p className="text-xs text-gray-600">{viagem.fora === "PARCEIRO" ? EXPLICACAO_DO_PARCEIRO_NO_APP : parcelasPorExtenso(viagem) || "Sem valor nesta viagem"}</p>
+                        {viagem.semKm && <p className="text-xs text-amber-700">{EXPLICACAO_SEM_KM}</p>}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
           <p className="px-1 text-[11px] text-gray-500">Remuneração variável das viagens. Não inclui salário, encargos nem descontos: isso é com a empresa.</p>

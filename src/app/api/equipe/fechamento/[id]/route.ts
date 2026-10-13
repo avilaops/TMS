@@ -52,7 +52,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /**
  * Reabre o mês: apaga o fechamento e, na mesma transação, desfaz o lançamento
- * que ele fez no Financeiro. Só enquanto o lançamento está em aberto: se já foi
+ * que ele fez no Financeiro e devolve os adiantamentos que ele descontou ao
+ * estado em que estavam (voltam a ser dívida em aberto). Só enquanto o lançamento está em aberto: se já foi
  * pago por lá, a reabertura é recusada (409) com o aviso de reabri-lo antes —
  * dinheiro que saiu não some em silêncio. O que estava fechado fica na
  * auditoria. Só o administrador (`equipeFechamento`).
@@ -78,6 +79,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         if (lancamento?.status === 'PAID') throw new Refusal(CLOSING_ALREADY_PAID, 409);
       }
 
+      // Os adiantamentos que este fechamento descontou voltam a ser o que eram (em aberto, ou acertados com
+      // sobra a devolver): o `status` e o acerto nunca mudaram, só a ligação com o fechamento.
+      const devolvidos = await tx.crewAdvance.updateMany({ where: { closingId: id }, data: { closingId: null } });
       await tx.crewPayClosing.delete({ where: { id } });
       if (fechamento.transactionId) await tx.financialTransaction.deleteMany({ where: { id: fechamento.transactionId } });
 
@@ -95,6 +99,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
           variableTotal: fechamento.variableTotal,
           advancesTotal: fechamento.advancesTotal,
           balance: fechamento.balance,
+          adiantamentosDescontados: devolvidos.count,
           transactionId: fechamento.transactionId,
         },
       });

@@ -10,6 +10,8 @@ import {
   ADVANCE_STATUS_LABEL,
   acertoDoAdiantamento,
   acertoPorExtenso,
+  descontadoNoFechamento,
+  emAberto,
   nomeDaPessoa,
   pessoaDaChave,
   rotuloDoMotivo,
@@ -38,7 +40,9 @@ import {
 /**
  * Adiantamentos e acertos (só administrador). Registrar o adiantamento lança a
  * despesa no Financeiro; o acerto, na volta, guarda quanto foi gasto com
- * comprovante e mostra a diferença: a devolver ou a receber.
+ * comprovante e mostra a diferença: a devolver ou a receber. O adiantamento que
+ * um fechamento mensal descontou aparece como "Descontado no fechamento de
+ * MM/AAAA", sai do "em aberto" e não tem ação: quem desfaz é reabrir o mês.
  */
 
 type Adiantamento = {
@@ -54,6 +58,8 @@ type Adiantamento = {
   driver: { id: string; user: { name: string } } | null;
   helper: { id: string; name: string } | null;
   acerto: Acerto | null;
+  /** O fechamento mensal que descontou este adiantamento, quando houve: daí em diante ele não se mexe por aqui. */
+  closing?: { id: string; month: string } | null;
 };
 
 type Viagem = { id: string; status: string; createdAt: string; driver: { user: { name: string } }; vehicle: { plate: string } };
@@ -165,7 +171,8 @@ export function Adiantamentos({ pessoas }: { pessoas: PessoaDaEquipe[] }) {
   };
 
   const painelAberto = formAberto || acertando !== null;
-  const emAberto = (adiantamentos ?? []).filter((a) => a.status === "OPEN").reduce((soma, a) => soma + a.amount, 0);
+  // O que um fechamento já descontou não é mais dívida em aberto.
+  const totalEmAberto = (adiantamentos ?? []).filter(emAberto).reduce((soma, a) => soma + a.amount, 0);
   const gastoDigitado = doCampo(gasto);
   const previa = acertando && gastoDigitado !== null ? acertoDoAdiantamento(acertando.amount, gastoDigitado) : null;
 
@@ -173,7 +180,7 @@ export function Adiantamentos({ pessoas }: { pessoas: PessoaDaEquipe[] }) {
     <div className="space-y-3 md:space-y-4">
       <div className={`${painelAberto ? "hidden md:flex" : "flex"} items-center justify-between gap-2`}>
         <p className="text-sm text-gray-600 dark:text-gray-300" data-resumo="em-aberto">
-          Em aberto: <strong className="text-gray-900 dark:text-white">{formatCurrency(emAberto)}</strong>
+          Em aberto: <strong className="text-gray-900 dark:text-white">{formatCurrency(totalEmAberto)}</strong>
         </p>
         <button
           type="button"
@@ -299,18 +306,29 @@ export function Adiantamentos({ pessoas }: { pessoas: PessoaDaEquipe[] }) {
                   <td className={`${TD} text-gray-600 dark:text-gray-300`}>{rotuloDoMotivo(adiantamento.reason)}</td>
                   <td data-rotulo="Data" className={`${TD} ${COM_ROTULO} text-gray-600 dark:text-gray-300`}>{formatCalendarDate(adiantamento.date)}</td>
                   <td data-rotulo="Valor" className={`${TD} ${COM_ROTULO} md:text-right text-gray-900 dark:text-white`}>{formatCurrency(adiantamento.amount)}</td>
-                  <td className={TD}>
-                    <span className={`text-xs px-2.5 py-1 rounded-full ${adiantamento.status === "OPEN" ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-700"}`}>
-                      {ADVANCE_STATUS_LABEL[adiantamento.status] ?? adiantamento.status}
-                    </span>
+                  <td className={adiantamento.closing ? `${TD} col-span-2 md:col-auto` : TD}>
+                    {adiantamento.closing ? (
+                      <span data-descontado={adiantamento.closing.month} className="inline-block text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-800">
+                        {descontadoNoFechamento(adiantamento.closing.month)}
+                      </span>
+                    ) : (
+                      <span className={`text-xs px-2.5 py-1 rounded-full ${adiantamento.status === "OPEN" ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-700"}`}>
+                        {ADVANCE_STATUS_LABEL[adiantamento.status] ?? adiantamento.status}
+                      </span>
+                    )}
                     {adiantamento.acerto && adiantamento.spentAmount !== null && (
                       <span className="block text-xs text-gray-500 mt-1" data-acerto>
                         Gastou {formatCurrency(adiantamento.spentAmount)} · {acertoPorExtenso(adiantamento.acerto, formatCurrency)}
                       </span>
                     )}
                   </td>
-                  <td className={`${TD} md:text-right whitespace-nowrap`}>
-                    {adiantamento.status === "OPEN" ? (
+                  <td className={`${TD} md:text-right whitespace-nowrap ${adiantamento.closing ? "hidden md:table-cell" : ""}`}>
+                    {adiantamento.closing ? (
+                      // Descontado num fechamento: não se acerta nem se reabre por aqui (a rota recusa). Quem desfaz é reabrir o mês.
+                      <span className="text-xs text-gray-500" title="Reabra o mês na aba Fechamento para mexer neste adiantamento">
+                        Sem ação
+                      </span>
+                    ) : adiantamento.status === "OPEN" ? (
                       <button
                         type="button"
                         disabled={ocupado}

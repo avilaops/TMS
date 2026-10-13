@@ -3,13 +3,17 @@ import { requireStaff } from '@/lib/staff';
 import { transacao } from '@/lib/prisma';
 import { Refusal } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
-import { ADVANCE_NOT_FOUND, ADVANCE_SELECT, CAMPOS_DO_ADIANTAMENTO, advanceActionSchema, comAcerto, nomeDaPessoa } from '@/lib/equipe';
+import { ADVANCE_NOT_FOUND, ADVANCE_SELECT, CAMPOS_DO_ADIANTAMENTO, adiantamentoNoFechamento, advanceActionSchema, comAcerto, nomeDaPessoa } from '@/lib/equipe';
 import { escolher, origemDaRequisicao, registrarAuditoria } from '@/lib/auditoria';
 
 /**
  * Acerta um adiantamento (`action: "acertar"`, com o valor gasto comprovado) ou
  * desfaz um acerto digitado errado (`action: "reabrir"`). A diferença (a
  * devolver ou a receber) não é gravada: sai do adiantado menos o gasto.
+ *
+ * Adiantamento já descontado num fechamento mensal da remuneração variável
+ * (`closingId`) não se acerta nem se reabre por aqui: 409, com o aviso de
+ * reabrir o mês na aba Fechamento.
  *
  * O acerto não mexe na despesa lançada no Financeiro quando o adiantamento foi
  * registrado: a sobra devolvida ou o complemento pago são lançados lá, à mão.
@@ -32,6 +36,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       await tx.$queryRaw`SELECT id FROM "CrewAdvance" WHERE id = ${id} FOR UPDATE`;
       const atual = await tx.crewAdvance.findUnique({ where: { id }, select: ADVANCE_SELECT });
       if (!atual) throw new Refusal(ADVANCE_NOT_FOUND, 404);
+      // Descontado num fechamento mensal: acertar ou desfazer o acerto mudaria a conta que já foi fechada e
+      // paga. Quem desfaz é a reabertura do fechamento.
+      if (atual.closing) throw new Refusal(adiantamentoNoFechamento(atual.closing.month), 409);
 
       let mudanca;
       if (data.action === 'acertar') {

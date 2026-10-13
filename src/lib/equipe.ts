@@ -117,6 +117,23 @@ export const rotuloDoMotivo = (motivo: string) => (ADVANCE_REASON_LABEL as Recor
 
 export const ADVANCE_STATUS_LABEL: Record<string, string> = { OPEN: "Em aberto", SETTLED: "Acertado" };
 
+/**
+ * Adiantamento descontado num fechamento mensal da remuneração variável
+ * (`CrewAdvance.closingId`, src/lib/remuneracao.ts): o vale, ou a sobra a
+ * devolver de um acerto, já saiu do que a pessoa tinha a receber naquele mês.
+ * O `status` e o acerto ficam como estavam; o que muda é que ele deixa de ser
+ * dívida em aberto e não se mexe mais nele por aqui: quem desfaz é a reabertura
+ * do fechamento, que devolve todos ao estado em que estavam.
+ */
+export const descontadoNoFechamento = (mes: string) => `Descontado no fechamento de ${mes.split("-").reverse().join("/")}`;
+
+/** A recusa de acertar ou reabrir um adiantamento que um fechamento descontou. */
+export const adiantamentoNoFechamento = (mes: string) =>
+  `Este adiantamento foi descontado no fechamento de ${mes.split("-").reverse().join("/")}. Reabra o mês na aba Fechamento para mexer nele.`;
+
+/** Ainda é dívida em aberto? Em aberto e não descontado em fechamento nenhum. */
+export const emAberto = (adiantamento: { status: string; closing?: unknown }) => adiantamento.status === "OPEN" && !adiantamento.closing;
+
 /** Categoria da despesa que o adiantamento lança no Financeiro. */
 export const CATEGORIA_DO_ADIANTAMENTO = "Adiantamento";
 
@@ -356,7 +373,8 @@ export const createAdvanceSchema = z
 
 /**
  * O que se faz com um adiantamento já registrado: `acertar` (com o valor gasto
- * comprovado) ou `reabrir` (desfaz um acerto digitado errado).
+ * comprovado) ou `reabrir` (desfaz um acerto digitado errado). Nenhuma das duas
+ * vale para adiantamento já descontado num fechamento mensal.
  */
 export const advanceActionSchema = z.discriminatedUnion(
   "action",
@@ -404,13 +422,16 @@ export const ADVANCE_SELECT = {
   createdAt: true,
   manifestId: true,
   manifest: { select: { id: true, status: true, createdAt: true } },
+  // O fechamento mensal que descontou este adiantamento, quando houve.
+  closingId: true,
+  closing: { select: { id: true, month: true } },
   ...DE_QUEM,
 } as const;
 
 /** O que entra em `antes`/`depois` da auditoria de cada registro da equipe. */
 export const CAMPOS_DO_AJUDANTE = ["name", "cpf", "phone", "active"] as const;
 export const CAMPOS_DA_AUSENCIA = ["driverId", "helperId", "type", "startDate", "endDate", "notes"] as const;
-export const CAMPOS_DO_ADIANTAMENTO = ["driverId", "helperId", "date", "amount", "reason", "manifestId", "status", "spentAmount", "settledAt", "notes"] as const;
+export const CAMPOS_DO_ADIANTAMENTO = ["driverId", "helperId", "date", "amount", "reason", "manifestId", "status", "spentAmount", "settledAt", "notes", "closingId"] as const;
 
 export const HELPER_NOT_FOUND = "Ajudante não encontrado.";
 export const ABSENCE_NOT_FOUND = "Ausência não encontrada.";

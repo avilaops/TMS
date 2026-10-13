@@ -876,6 +876,10 @@ model CrewAdvance {
   spentAmount Float?
   settledAt   DateTime?
   notes       String?
+  // O fechamento mensal que descontou este adiantamento (o vale inteiro, ou a
+  // sobra a devolver do acerto). Nulo enquanto não foi descontado em nenhum.
+  // `status` e o acerto ficam como estavam: reabrir o fechamento só zera isto.
+  closingId   String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -883,6 +887,7 @@ model CrewAdvance {
   driver      Driver?   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: Cascade)
   manifest    Manifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  closing     CrewPayClosing? @relation(fields: [closingId], references: [id], onDelete: SetNull)
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
@@ -890,6 +895,7 @@ model CrewAdvance {
   @@index([driverId])
   @@index([helperId])
   @@index([manifestId])
+  @@index([closingId])
 }
 
 // Fechamento mensal da remuneração variável de um motorista ou de um ajudante
@@ -905,9 +911,9 @@ model CrewPayClosing {
   helperId    String?
   month       String    // AAAA-MM, no relógio do Brasil
   variableTotal Float   // a soma do variável das viagens finalizadas no mês
-  advancesTotal Float   // os adiantamentos e vales em aberto do mês, descontados
-  balance     Float     // variável − adiantamentos (negativo quando a pessoa ficou devendo)
-  details     Json      // { viagens: [...], adiantamentos: [...] } como estavam no fechamento
+  advancesTotal Float   // tudo o que foi descontado: vales, sobras de acerto e o saldo devedor do fechamento anterior
+  balance     Float     // variável − descontos (negativo quando a pessoa ficou devendo: o próximo fechamento traz a dívida)
+  details     Json      // { formas, viagens, adiantamentos, semAcerto, saldoAnterior } como estavam no fechamento
   closedById  String?
   closedByName String
   closedAt    DateTime  @default(now())
@@ -920,6 +926,8 @@ model CrewPayClosing {
   helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: Cascade)
   closedBy    User?     @relation("CrewPayClosingClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
   transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  // Os adiantamentos que este fechamento descontou.
+  advances    CrewAdvance[]
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])

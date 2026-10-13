@@ -2,7 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { getServerSession } from "next-auth";
 import type { Prisma } from "@prisma/client";
 import { updateDriverSchema } from "../src/lib/cadastros";
+import { adiantamentoNoFechamento } from "../src/lib/equipe";
 import {
+  ADVANCES_CHANGED,
   ALREADY_CLOSED,
   AVISO_DO_DEMONSTRATIVO,
   CATEGORIA_DA_REMUNERACAO,
@@ -18,11 +20,15 @@ import {
   type PessoaDoFechamento,
   type ReciboDoFechamento,
   type RemuneracaoDoMotorista,
+  adiantamentosDoFechamento,
   apurarAjudante,
   apurarViagem,
+  avisoDeSemAcerto,
   basesPorExtenso,
   contaCongelada,
   contaDoMes,
+  descontoDoAdiantamento,
+  descontoPorExtenso,
   descricaoDoFechamento,
   diasDeViagem,
   diferencaDoFechamento,
@@ -36,7 +42,10 @@ import {
   mesVizinho,
   parcelasPorExtenso,
   remuneracaoDoAjudanteSchema,
+  saldoAnteriorPorExtenso,
+  saldoDevedor,
   temForma,
+  temOQueFechar,
   valorALancar,
   visibilidadeSchema,
 } from "../src/lib/remuneracao";
@@ -188,7 +197,7 @@ describe("contas da remuneração variável", () => {
       expect(valorALancar(conta)).toBe(630.25);
     });
 
-    it("adiantamento maior que o variável deixa saldo negativo, e nada é lançado", () => {
+    it("desconto maior que o variável deixa saldo negativo, e nada é lançado", () => {
       const conta = contaDoMes([linha("a", "2013-08-07", 100)], [adiantamento("x", "2013-08-10", 250)]);
       expect(conta.saldo).toBe(-150);
       expect(valorALancar(conta)).toBe(0);
@@ -208,9 +217,75 @@ describe("contas da remuneração variável", () => {
       const congelada = contaCongelada({ variableTotal: 500, advancesTotal: 100, balance: 400, details: { formas: { dailyRate: 500 }, viagens, adiantamentos: [adiantamento("x", "2013-08-10", 100)] } });
       expect(congelada).toMatchObject({ variavel: 500, adiantado: 100, saldo: 400 });
       expect(congelada.viagens).toHaveLength(1);
-      for (const estranho of [null, "texto", 7, { viagens: "nada" }, []]) {
-        expect(lerDetalhes(estranho), JSON.stringify(estranho)).toEqual({ formas: {}, viagens: [], adiantamentos: [] });
+      for (const estranho of [null, "texto", 7, { viagens: "nada", saldoAnterior: "muito" }, []]) {
+        expect(lerDetalhes(estranho), JSON.stringify(estranho)).toEqual({ formas: {}, viagens: [], adiantamentos: [], semAcerto: [], saldoAnterior: null });
       }
+      // Fechamento gravado antes de existirem "de meses anteriores" e "sem acerto": tudo é do mês, sem aviso.
+      expect(congelada).toMatchObject({ anteriores: 0, saldoAnterior: null, semAcerto: [] });
+    });
+
+    it("só é desconto o que a pessoa deve: o vale em aberto e a sobra a devolver de um acerto; adiantamento sem acerto fica de fora", () => {
+      const de = (reason: string, status: string, amount: number, spentAmount: number | null = null) => descontoDoAdiantamento({ reason, status, amount, spentAmount });
+      // Vale em aberto: inteiro.
+      expect(de("VOUCHER", "OPEN", 200)).toEqual({ valor: 200, origem: "VALE" });
+      // Adiantamento de viagem (e o de motivo "outro") em aberto: não se sabe quanto foi gasto.
+      expect(de("TRIP", "OPEN", 300)).toBe("SEM_ACERTO");
+      expect(de("OTHER", "OPEN", 300)).toBe("SEM_ACERTO");
+      // Acertado: só a sobra a devolver é dívida, qualquer que seja o motivo.
+      expect(de("TRIP", "SETTLED", 300, 220.5)).toEqual({ valor: 79.5, origem: "SOBRA" });
+      expect(de("VOUCHER", "SETTLED", 200, 0)).toEqual({ valor: 200, origem: "SOBRA" });
+      // Gastou tudo, ou gastou mais (a empresa é que completa): nada a descontar.
+      expect(de("TRIP", "SETTLED", 300, 300)).toBeNull();
+      expect(de("TRIP", "SETTLED", 300, 350)).toBeNull();
+      expect(de("TRIP", "SETTLED", 300, null)).toBeNull();
+    });
+
+    it("separa os adiantamentos do fechamento: os do mês, os de meses anteriores e os sem acerto", () => {
+      const bruto = (id: string, date: string, reason: string, status: string, amount: number, spentAmount: number | null = null) => ({ id, date: new Date(`${date}T00:00:00.000Z`), reason, status, amount, spentAmount });
+      const { descontos, semAcerto } = adiantamentosDoFechamento(
+        [
+          bruto("vale-do-mes", "2013-08-10", "VOUCHER", "OPEN", 150),
+          bruto("vale-antigo", "2013-06-30", "VOUCHER", "OPEN", 200),
+          bruto("sobra", "2013-07-31", "TRIP", "SETTLED", 300, 250),
+          bruto("quitado", "2013-08-12", "TRIP", "SETTLED", 100, 100),
+          bruto("sem-acerto", "2013-08-20", "TRIP", "OPEN", 400),
+          bruto("primeiro-dia", "2013-08-01", "VOUCHER", "OPEN", 10),
+        ],
+        "2013-08",
+      );
+      expect(descontos).toEqual([
+        { id: "vale-do-mes", date: "2013-08-10", reason: "VOUCHER", amount: 150, origem: "VALE", anterior: false },
+        { id: "vale-antigo", date: "2013-06-30", reason: "VOUCHER", amount: 200, origem: "VALE", anterior: true },
+        { id: "sobra", date: "2013-07-31", reason: "TRIP", amount: 50, origem: "SOBRA", anterior: true },
+        { id: "primeiro-dia", date: "2013-08-01", reason: "VOUCHER", amount: 10, origem: "VALE", anterior: false },
+      ]);
+      expect(semAcerto).toEqual([{ id: "sem-acerto", date: "2013-08-20", reason: "TRIP", amount: 400, anterior: false }]);
+
+      const conta = contaDoMes([linha("a", "2013-08-07", 1000)], descontos, { semAcerto });
+      expect(conta).toMatchObject({ variavel: 1000, adiantado: 410, anteriores: 250, saldo: 590, saldoAnterior: null });
+      expect(conta.adiantamentos.map((a) => a.id)).toEqual(["vale-antigo", "sobra", "primeiro-dia", "vale-do-mes"]);
+      // O adiantamento sem acerto não entra em número nenhum: só no aviso.
+      expect(conta.semAcerto.map((a) => a.id)).toEqual(["sem-acerto"]);
+      expect(avisoDeSemAcerto(conta.semAcerto)).toMatch(/^1 adiantamento sem acerto \(R\$\s400,00\) ficou fora da conta: acerte na aba Adiantamentos/);
+      expect(avisoDeSemAcerto([...conta.semAcerto, ...conta.semAcerto], true)).toMatch(/^2 adiantamentos sem acerto \(R\$\s800,00\) ficaram fora da conta: a sobra a devolver/);
+      expect(avisoDeSemAcerto([])).toBeNull();
+      expect(descontos.map(descontoPorExtenso)).toEqual(["Vale", "Vale", "Sobra do adiantamento de viagem", "Vale"]);
+    });
+
+    it("o saldo devedor do último fechamento anterior entra como dívida de meses anteriores", () => {
+      expect(saldoDevedor(null)).toBeNull();
+      expect(saldoDevedor({ month: "2013-07", balance: 0 })).toBeNull();
+      expect(saldoDevedor({ month: "2013-07", balance: 120 })).toBeNull();
+      const trazido = saldoDevedor({ month: "2013-07", balance: -290.4 });
+      expect(trazido).toEqual({ mes: "2013-07", valor: 290.4 });
+      expect(saldoAnteriorPorExtenso(trazido!)).toBe("Saldo devedor do fechamento de 07/2013");
+
+      const conta = contaDoMes([linha("a", "2013-08-07", 500)], [{ ...adiantamento("x", "2013-08-10", 100), anterior: false }], { saldoAnterior: trazido });
+      expect(conta).toMatchObject({ variavel: 500, adiantado: 390.4, anteriores: 290.4, saldo: 109.6 });
+      // Só a dívida trazida, sem viagem nem adiantamento novo, não fecha mês: ela segue para o próximo.
+      expect(temOQueFechar(contaDoMes([], [], { saldoAnterior: trazido }))).toBe(false);
+      expect(temOQueFechar(conta)).toBe(true);
+      expect(temOQueFechar(contaDoMes([], [adiantamento("x", "2013-08-10", 100)]))).toBe(true);
     });
 
     it("o mês: validade, vizinhos, limites e o mês em que a viagem foi finalizada", () => {
@@ -347,6 +422,8 @@ suite("rotas da remuneração variável", () => {
   let relatorios: typeof import("../src/app/api/relatorios/route");
   let empresaRota: typeof import("../src/app/api/empresa/remuneracao/route");
   let doMotorista: typeof import("../src/app/api/driver/remuneracao/route");
+  let adiantamentosRota: typeof import("../src/app/api/equipe/adiantamentos/route");
+  let adiantamentoPorId: typeof import("../src/app/api/equipe/adiantamentos/[id]/route");
 
   const sessao = vi.mocked(getServerSession);
   const ids = {} as Record<Perfil, string>;
@@ -431,8 +508,25 @@ suite("rotas da remuneração variável", () => {
     return viagem.id;
   }
 
+  /** Um adiantamento gravado direto no banco. Por padrão: um vale de 300 do motorista principal, em aberto, no mês. */
   const adiantar = (dados: Partial<Prisma.CrewAdvanceUncheckedCreateInput> = {}) =>
-    banco.default.crewAdvance.create({ data: { driverId: dados.helperId ? null : motoristaId, date: dia("2013-08-10"), amount: 300, reason: "TRIP", ...dados } });
+    banco.default.crewAdvance.create({ data: { driverId: dados.helperId ? null : motoristaId, date: dia("2013-08-10"), amount: 300, reason: "VOUCHER", ...dados } });
+  const adiantamentoGravado = (id: string) => banco.sistema.crewAdvance.findUniqueOrThrow({ where: { id }, select: { status: true, spentAmount: true, closingId: true } });
+  const agirNoAdiantamento = (id: string, corpo: unknown) => {
+    entrarComo("ADMIN");
+    return chamar(adiantamentoPorId.PATCH(req("PATCH", corpo), ctx(id)));
+  };
+
+  /** Duas viagens do motorista principal (740 + 190 = 930), a primeira com o ajudante (210), e um vale de 300 em aberto. */
+  async function mesCheio() {
+    const primeira = await viajar({ extra: { helperId: ajudanteId } });
+    const segunda = await viajar({ fretes: [200], saida: em("2013-08-20", "08:00"), fim: em("2013-08-20", "19:00"), km: null });
+    const vale = (await adiantar()).id;
+    // Fora da conta: adiantamento acertado sem sobra (gastou tudo) e vale do mês seguinte.
+    const quitado = (await adiantar({ amount: 100, date: dia("2013-08-12"), reason: "TRIP", status: "SETTLED", spentAmount: 100, settledAt: new Date() })).id;
+    const doMesSeguinte = (await adiantar({ amount: 50, date: dia("2013-09-01") })).id;
+    return { primeira, segunda, vale, quitado, doMesSeguinte };
+  }
 
   const lerFechamento = async (perfil: Perfil = "ADMIN", mes = MES) => {
     entrarComo(perfil);
@@ -475,6 +569,8 @@ suite("rotas da remuneração variável", () => {
     relatorios = await import("../src/app/api/relatorios/route");
     empresaRota = await import("../src/app/api/empresa/remuneracao/route");
     doMotorista = await import("../src/app/api/driver/remuneracao/route");
+    adiantamentosRota = await import("../src/app/api/equipe/adiantamentos/route");
+    adiantamentoPorId = await import("../src/app/api/equipe/adiantamentos/[id]/route");
     await limpar();
 
     const db = banco.default;
@@ -653,22 +749,11 @@ suite("rotas da remuneração variável", () => {
   });
 
   describe("fechamento do mês", () => {
-    /** Duas viagens do motorista principal (740 + 190 = 930), a primeira com o ajudante (210), e 300 de adiantamento em aberto. */
-    async function mesCheio() {
-      const primeira = await viajar({ extra: { helperId: ajudanteId } });
-      const segunda = await viajar({ fretes: [200], saida: em("2013-08-20", "08:00"), fim: em("2013-08-20", "19:00"), km: null });
-      await adiantar();
-      // Fora da conta: adiantamento já acertado e adiantamento de outro mês.
-      await adiantar({ amount: 100, date: dia("2013-08-12"), status: "SETTLED", spentAmount: 100, settledAt: new Date() });
-      await adiantar({ amount: 50, date: dia("2013-09-01") });
-      return { primeira, segunda };
-    }
-
     it("mês inválido é 400", async () => {
       expect(await lerFechamento("ADMIN", "2013-13")).toMatchObject({ status: 400, corpo: { error: MES_MESSAGE } });
     });
 
-    it("por pessoa: as viagens finalizadas no mês com a apuração de cada uma, o variável, os adiantamentos em aberto do mês e o saldo", async () => {
+    it("por pessoa: as viagens finalizadas no mês com a apuração de cada uma, o variável, os vales em aberto e o saldo", async () => {
       const { primeira, segunda } = await mesCheio();
       // Fora do mês: viagem finalizada em setembro e viagem ainda em rota.
       await viajar({ saida: em("2013-08-30"), fim: em("2013-09-01", "09:00") });
@@ -684,7 +769,8 @@ suite("rotas da remuneração variável", () => {
       expect(motorista!.atual.viagens[1].parcelas).toEqual({ comissao: 20, diarias: 100, porKm: null, porEntrega: 20, fixo: 50 });
       expect(motorista!.atual).toMatchObject({ variavel: 930, adiantado: 300, saldo: 630 });
       expect(motorista!.atual.adiantamentos).toHaveLength(1);
-      expect(motorista!.atual.adiantamentos[0]).toMatchObject({ date: "2013-08-10", amount: 300, reason: "TRIP" });
+      expect(motorista!.atual.adiantamentos[0]).toMatchObject({ date: "2013-08-10", amount: 300, reason: "VOUCHER", origem: "VALE", anterior: false });
+      expect(motorista!.atual).toMatchObject({ anteriores: 0, saldoAnterior: null, semAcerto: [] });
 
       // O ajudante: linha própria, só diária e fixo, só na viagem em que foi.
       const ajudante = await pessoaNoMes(chaveDoAjudante(ajudanteId));
@@ -868,6 +954,221 @@ suite("rotas da remuneração variável", () => {
         [segunda, 1, null, 1, 200, 190],
       ]);
       expect(corpo.conta.adiantamentos.map((a) => [a.date, a.amount])).toEqual([["2013-08-10", 300]]);
+    });
+  });
+
+  describe("adiantamentos no fechamento", () => {
+    const chave = () => chaveDoMotorista(motoristaId);
+
+    it("fechar dá baixa nos adiantamentos descontados e lança o saldo; os que não entraram na conta ficam como estavam", async () => {
+      const { vale, quitado, doMesSeguinte } = await mesCheio();
+      const semAcerto = (await adiantar({ amount: 400, date: dia("2013-08-15"), reason: "TRIP" })).id;
+
+      const fechado = await fechar(chave());
+      expect(fechado.status).toBe(201);
+      expect(fechado.corpo.conta).toMatchObject({ variavel: 930, adiantado: 300, anteriores: 0, saldo: 630 });
+      expect(fechado.corpo.conta.semAcerto.map((a) => [a.id, a.amount])).toEqual([[semAcerto, 400]]);
+
+      // O vale passa a apontar para o fechamento, sem mudar de situação; os outros não são tocados.
+      expect(await adiantamentoGravado(vale)).toEqual({ status: "OPEN", spentAmount: null, closingId: fechado.corpo.id });
+      for (const id of [quitado, doMesSeguinte, semAcerto]) expect((await adiantamentoGravado(id)).closingId, id).toBeNull();
+      expect((await lancamentos()).map((l) => l.amount)).toEqual([630]);
+
+      // Na aba Adiantamentos ele vem com o fechamento que o descontou.
+      entrarComo("ADMIN");
+      const lista = (await (await adiantamentosRota.GET()).json()) as (Corpo & { closing: { id: string; month: string } | null })[];
+      expect(lista.find((a) => a.id === vale)!.closing).toEqual({ id: fechado.corpo.id, month: MES });
+      expect(lista.find((a) => a.id === semAcerto)!.closing).toBeNull();
+
+      const [gravado] = await fechamentos();
+      expect(lerDetalhes(gravado.details).semAcerto.map((a) => a.id)).toEqual([semAcerto]);
+      expect((await trilha(fechado.corpo.id))[0].after).toMatchObject({ adiantamentosDescontados: 1 });
+      // A conta de hoje do mês fechado continua igual à congelada: o vale descontado por ELE segue na conta dele.
+      const pessoa = (await pessoaNoMes(chave()))!;
+      expect(pessoa.atual).toMatchObject({ adiantado: 300, saldo: 630 });
+      expect(pessoa.diferenca).toBeNull();
+    });
+
+    it("a baixa, o fechamento e o lançamento são uma transação só: se a baixa falha, nada fica gravado", async () => {
+      const { vale } = await mesCheio();
+      const doAjudante = await fechar(chaveDoAjudante(ajudanteId));
+      expect(doAjudante.status).toBe(201);
+
+      // No meio do fechamento do motorista, o vale aparece descontado por outro fechamento: a baixa não o encontra mais livre.
+      const apoio = await import("../src/lib/remuneracao-db");
+      const original = apoio.contaDaPessoa;
+      const espiao = vi.spyOn(apoio, "contaDaPessoa").mockImplementationOnce(async (tx, pessoa, mes) => {
+        const apurado = await original(tx, pessoa, mes);
+        await tx.crewAdvance.update({ where: { id: vale }, data: { closingId: doAjudante.corpo.id } });
+        return apurado;
+      });
+      try {
+        expect(await fechar(chave())).toMatchObject({ status: 409, corpo: { error: ADVANCES_CHANGED } });
+        expect(espiao).toHaveBeenCalledTimes(1);
+      } finally {
+        espiao.mockRestore();
+      }
+
+      // Nem o fechamento, nem o lançamento do saldo, nem a troca feita dentro da transação ficaram.
+      expect((await fechamentos()).map((f) => f.id)).toEqual([doAjudante.corpo.id]);
+      expect((await lancamentos()).map((l) => [l.counterparty, l.amount])).toEqual([[nome("ajudante"), 210]]);
+      expect((await adiantamentoGravado(vale)).closingId).toBeNull();
+    });
+
+    it("adiantamento descontado não se acerta nem se reabre na aba Adiantamentos; reabrir o mês devolve todos ao estado em que estavam", async () => {
+      await viajar();
+      const vale = (await adiantar()).id;
+      // Adiantamento de viagem de 500 já acertado: gastou 420, tem 80 a devolver.
+      const sobra = (await adiantar({ amount: 500, reason: "TRIP", date: dia("2013-08-11"), status: "SETTLED", spentAmount: 420, settledAt: new Date() })).id;
+
+      const fechado = await fechar(chave());
+      expect(fechado.corpo.conta).toMatchObject({ variavel: 740, adiantado: 380, saldo: 360 });
+      expect(fechado.corpo.conta.adiantamentos.map((a) => [a.id, a.amount, a.origem])).toEqual([
+        [vale, 300, "VALE"],
+        [sobra, 80, "SOBRA"],
+      ]);
+
+      const recusa = { status: 409, corpo: { error: adiantamentoNoFechamento(MES) } };
+      expect(recusa.corpo.error).toBe("Este adiantamento foi descontado no fechamento de 08/2013. Reabra o mês na aba Fechamento para mexer nele.");
+      expect(await agirNoAdiantamento(vale, { action: "acertar", spentAmount: "10" })).toMatchObject(recusa);
+      expect(await agirNoAdiantamento(sobra, { action: "reabrir" })).toMatchObject(recusa);
+      expect(await agirNoAdiantamento(sobra, { action: "acertar", spentAmount: "1" })).toMatchObject(recusa);
+      // Excluir adiantamento não existe em rota nenhuma: não há por onde apagar o que foi descontado.
+      expect(Object.keys(adiantamentoPorId)).toEqual(["PATCH"]);
+      expect(await adiantamentoGravado(vale)).toEqual({ status: "OPEN", spentAmount: null, closingId: fechado.corpo.id });
+      expect(await adiantamentoGravado(sobra)).toEqual({ status: "SETTLED", spentAmount: 420, closingId: fechado.corpo.id });
+
+      expect((await reabrir(fechado.corpo.id)).status).toBe(200);
+      expect(await adiantamentoGravado(vale)).toEqual({ status: "OPEN", spentAmount: null, closingId: null });
+      expect(await adiantamentoGravado(sobra)).toEqual({ status: "SETTLED", spentAmount: 420, closingId: null });
+      expect(await lancamentos()).toHaveLength(0);
+      expect((await trilha(fechado.corpo.id))[1].before).toMatchObject({ adiantamentosDescontados: 2 });
+      expect((await pessoaNoMes(chave()))!.atual).toMatchObject({ adiantado: 380, saldo: 360 });
+
+      // Reaberto o mês, voltam a aceitar o que a aba Adiantamentos faz.
+      expect((await agirNoAdiantamento(sobra, { action: "reabrir" })).corpo).toMatchObject({ status: "OPEN", spentAmount: null });
+      expect((await agirNoAdiantamento(vale, { action: "acertar", spentAmount: "300" })).corpo).toMatchObject({ status: "SETTLED" });
+    });
+
+    it("adiantamento de viagem sem acerto fica fora da conta, com aviso; acertado, entra só a sobra a devolver", async () => {
+      await viajar();
+      const deViagem = (await adiantar({ amount: 400, reason: "TRIP" })).id;
+      const outro = (await adiantar({ amount: 90, reason: "OTHER", date: dia("2013-08-11") })).id;
+
+      const antes = (await pessoaNoMes(chave()))!;
+      expect(antes.atual).toMatchObject({ variavel: 740, adiantado: 0, saldo: 740, adiantamentos: [] });
+      expect(antes.atual.semAcerto.map((a) => [a.id, a.amount])).toEqual([
+        [deViagem, 400],
+        [outro, 90],
+      ]);
+
+      // O de viagem: gastou 340 com comprovante, sobram 60 a devolver. O outro: gastou 100, a empresa é que completa.
+      expect((await agirNoAdiantamento(deViagem, { action: "acertar", spentAmount: "340" })).status).toBe(200);
+      expect((await agirNoAdiantamento(outro, { action: "acertar", spentAmount: "100" })).status).toBe(200);
+      const depois = (await pessoaNoMes(chave()))!;
+      expect(depois.atual).toMatchObject({ adiantado: 60, saldo: 680, semAcerto: [] });
+      expect(depois.atual.adiantamentos.map((a) => [a.id, a.amount, a.origem])).toEqual([[deViagem, 60, "SOBRA"]]);
+
+      const fechado = await fechar(chave());
+      expect(fechado.corpo.lancamento).toMatchObject({ amount: 680 });
+      expect((await adiantamentoGravado(deViagem)).closingId).toBe(fechado.corpo.id);
+      expect((await adiantamentoGravado(outro)).closingId).toBeNull();
+    });
+
+    it("vale e sobra de mês que nunca foi fechado entram no próximo fechamento, numa linha à parte, e uma única vez", async () => {
+      await viajar();
+      const deJulho = (await adiantar({ amount: 200, date: dia("2013-07-15") })).id;
+      const deJunho = (await adiantar({ amount: 80, reason: "TRIP", date: dia("2013-06-20"), status: "SETTLED", spentAmount: 50, settledAt: new Date() })).id;
+      const doMes = (await adiantar({ amount: 100 })).id;
+      // Setembro: uma viagem de 190.
+      await viajar({ fretes: [200], saida: em("2013-09-10", "08:00"), fim: em("2013-09-10", "19:00"), km: null });
+
+      const agosto = (await pessoaNoMes(chave()))!;
+      expect(agosto.atual).toMatchObject({ variavel: 740, adiantado: 330, anteriores: 230, saldo: 410 });
+      expect(agosto.atual.adiantamentos.map((a) => [a.id, a.amount, a.anterior])).toEqual([
+        [deJunho, 30, true],
+        [deJulho, 200, true],
+        [doMes, 100, false],
+      ]);
+      // Julho só enxerga o que tem data até julho; setembro, enquanto agosto não fecha, enxerga tudo como dívida anterior.
+      expect((await pessoaNoMes(chave(), "2013-07"))!.atual).toMatchObject({ variavel: 0, adiantado: 230, anteriores: 30 });
+      expect((await pessoaNoMes(chave(), "2013-09"))!.atual).toMatchObject({ variavel: 190, adiantado: 330, anteriores: 330, saldo: -140 });
+
+      const fechado = await fechar(chave());
+      expect(fechado.corpo.conta).toMatchObject({ adiantado: 330, anteriores: 230, saldo: 410 });
+      for (const id of [deJulho, deJunho, doMes]) expect((await adiantamentoGravado(id)).closingId, id).toBe(fechado.corpo.id);
+      const [gravado] = await fechamentos();
+      expect(gravado).toMatchObject({ advancesTotal: 330, balance: 410 });
+
+      // O recibo traz a dívida de meses anteriores separada.
+      entrarComo("ADMIN");
+      const recibo = await chamar<ReciboDoFechamento>(fechamentoPorId.GET(req(), ctx(fechado.corpo.id)));
+      expect(recibo.corpo.conta).toMatchObject({ adiantado: 330, anteriores: 230 });
+      expect(recibo.corpo.conta.adiantamentos.filter((a) => a.anterior).map((a) => a.id)).toEqual([deJunho, deJulho]);
+
+      // Descontados em agosto, não entram em mais nenhum mês: nem no seguinte, nem no que ficou para trás.
+      expect((await pessoaNoMes(chave(), "2013-09"))!.atual).toMatchObject({ variavel: 190, adiantado: 0, anteriores: 0, saldo: 190 });
+      const setembro = await fechar(chave(), "ADMIN", "2013-09");
+      expect(setembro.corpo.conta).toMatchObject({ adiantado: 0, saldo: 190 });
+      expect((await lancamentos()).map((l) => l.amount)).toEqual([410, 190]);
+      expect(await fechar(chave(), "ADMIN", "2013-07")).toMatchObject({ status: 409, corpo: { error: NOTHING_TO_CLOSE } });
+    });
+
+    it("mês que fecha com saldo negativo: a dívida vai para o próximo fechamento da pessoa, uma vez só", async () => {
+      const doAjudante = chaveDoAjudante(ajudanteId);
+      await viajar({ extra: { helperId: ajudanteId } });
+      const vale = (await adiantar({ driverId: null, helperId: ajudanteId, amount: 500 })).id;
+      const agosto = await fechar(doAjudante);
+      expect(agosto.corpo.conta).toMatchObject({ variavel: 210, adiantado: 500, saldo: -290 });
+      expect((await adiantamentoGravado(vale)).closingId).toBe(agosto.corpo.id);
+
+      // Setembro rende 210: a dívida de 290 vem do fechamento de agosto, e o vale (já descontado lá) não volta.
+      await viajar({ extra: { helperId: ajudanteId }, saida: em("2013-09-10", "08:00"), fim: em("2013-09-12", "18:00") });
+      const emSetembro = (await pessoaNoMes(doAjudante, "2013-09"))!;
+      expect(emSetembro.atual).toMatchObject({ variavel: 210, adiantado: 290, anteriores: 290, saldo: -80, saldoAnterior: { mes: MES, valor: 290 }, adiantamentos: [] });
+      const setembro = await fechar(doAjudante, "ADMIN", "2013-09");
+      expect(setembro.corpo.conta).toMatchObject({ saldo: -80, saldoAnterior: { mes: MES, valor: 290 } });
+      expect(setembro.corpo.lancamento).toBeNull();
+
+      // Outubro traz só o que o ÚLTIMO fechamento deixou (80), não a soma dos dois.
+      await viajar({ extra: { helperId: ajudanteId }, saida: em("2013-10-10", "08:00"), fim: em("2013-10-12", "18:00") });
+      expect((await pessoaNoMes(doAjudante, "2013-10"))!.atual).toMatchObject({ variavel: 210, adiantado: 80, anteriores: 80, saldo: 130, saldoAnterior: { mes: "2013-09", valor: 80 } });
+      expect(await lancamentos()).toHaveLength(0);
+
+      // Reabrir agosto não muda o que setembro congelou; a conta de hoje de setembro muda, e a tela recebe a diferença.
+      expect((await reabrir(agosto.corpo.id)).status).toBe(200);
+      const depois = (await pessoaNoMes(doAjudante, "2013-09"))!;
+      expect(depois.fechamento!.conta).toMatchObject({ adiantado: 290, saldo: -80 });
+      expect(depois.atual).toMatchObject({ adiantado: 500, anteriores: 500, saldo: -290, saldoAnterior: null });
+      expect(depois.diferenca).toEqual({ variavel: 0, adiantado: 210, saldo: -210 });
+    });
+
+    it("isolamento: o fechamento daqui não enxerga nem toca adiantamento da outra empresa, e o banco recusa a ligação entre empresas", async () => {
+      await viajar();
+      const meu = (await adiantar()).id;
+      const outra = banco.paraEmpresa(EMPRESA_OUTRA.id).db;
+      const alheio = await outra.crewAdvance.create({ data: { driverId: daOutra.motoristaId, date: dia("2013-07-10"), amount: 7771, reason: "VOUCHER" } });
+      const alheioDescontado = await outra.crewAdvance.create({ data: { driverId: daOutra.motoristaId, date: dia("2013-08-10"), amount: 8881, reason: "VOUCHER", closingId: daOutra.fechamentoId } });
+
+      const { corpo } = await lerFechamento();
+      const texto = JSON.stringify(corpo);
+      for (const deLa of [alheio.id, alheioDescontado.id, "7771", "8881"]) expect(texto, deLa).not.toContain(deLa);
+
+      const fechado = await fechar(chave());
+      expect(fechado.corpo.conta).toMatchObject({ adiantado: 300, anteriores: 0 });
+      expect((await adiantamentoGravado(meu)).closingId).toBe(fechado.corpo.id);
+      expect((await adiantamentoGravado(alheio.id)).closingId).toBeNull();
+
+      // O fechamento de lá não se reabre por aqui (404), e o adiantamento que ele descontou continua descontado.
+      expect((await reabrir(daOutra.fechamentoId)).status).toBe(404);
+      expect((await adiantamentoGravado(alheioDescontado.id)).closingId).toBe(daOutra.fechamentoId);
+      // Adiantamento de lá não existe para esta empresa: 404, e não a recusa de "descontado no fechamento".
+      expect((await agirNoAdiantamento(alheioDescontado.id, { action: "acertar", spentAmount: "1" })).status).toBe(404);
+
+      // Mesmo por fora das rotas, o banco não deixa um adiantamento apontar para o fechamento de outra empresa.
+      await expect(banco.default.crewAdvance.update({ where: { id: meu }, data: { closingId: daOutra.fechamentoId } })).rejects.toThrow();
+      await expect(outra.crewAdvance.update({ where: { id: alheio.id }, data: { closingId: fechado.corpo.id } })).rejects.toThrow();
+      expect((await adiantamentoGravado(meu)).closingId).toBe(fechado.corpo.id);
     });
   });
 

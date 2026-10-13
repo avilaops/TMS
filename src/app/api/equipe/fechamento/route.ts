@@ -7,6 +7,7 @@ import { firstIssue } from '@/lib/usuarios';
 import { PERSON_NOT_FOUND } from '@/lib/equipe';
 import { diaNoBrasil } from '@/lib/financeiro';
 import {
+  ADVANCES_CHANGED,
   ALREADY_CLOSED,
   CATEGORIA_DA_REMUNERACAO,
   FUTURE_MONTH,
@@ -18,6 +19,7 @@ import {
   mesAtual,
   mesPorExtenso,
   mesValido,
+  temOQueFechar,
   valorALancar,
 } from '@/lib/remuneracao';
 import { CLOSING_SELECT, contaDaPessoa, fechamentoDoMes, fechamentoParaATela } from '@/lib/remuneracao-db';
@@ -28,8 +30,10 @@ const centavos = (valor: number) => Math.round((valor + Number.EPSILON) * 100) /
 /**
  * O fechamento mensal da remuneração variável (`?mes=AAAA-MM`; sem ele, o mês
  * corrente): por motorista e por ajudante, as viagens finalizadas no mês com a
- * apuração de cada uma, o total do variável, os adiantamentos e vales em
- * aberto do mês e o saldo. Mês já fechado vem também com os valores
+ * apuração de cada uma, o total do variável, os descontos (vales e sobras de
+ * acerto ainda não descontados, do mês e de meses anteriores, e o saldo devedor
+ * do fechamento anterior), os adiantamentos sem acerto, que ficam de fora, e o
+ * saldo. Mês já fechado vem também com os valores
  * congelados e a diferença para a conta de hoje. Só leitura; as contas estão em
  * src/lib/remuneracao.ts.
  *
@@ -65,12 +69,14 @@ export async function GET(req?: Request) {
  * variável, os adiantamentos descontados, o saldo, cada viagem e cada
  * adiantamento como estavam) e quem fechou e, na mesma transação, lança a
  * despesa no Financeiro (categoria "Remuneração variável", a pessoa como
- * contraparte), como o adiantamento e o pagamento de frete contratado fazem: ou
- * ficam os dois, ou nenhum.
+ * contraparte), como o adiantamento e o pagamento de frete contratado fazem, e
+ * dá baixa nos adiantamentos descontados (`CrewAdvance.closingId` passa a
+ * apontar para o fechamento): ou ficam os três, ou nenhum.
  *
- * O lançamento é o SALDO A PAGAR (variável − adiantamentos em aberto do mês):
- * o adiantamento já virou despesa quando foi entregue. Sem saldo a pagar o mês
- * fecha sem lançamento. Um fechamento por pessoa e mês: fechar de novo é 409.
+ * O lançamento é o SALDO A PAGAR (variável − descontos): o adiantamento já
+ * virou despesa quando foi entregue. Sem saldo a pagar o mês fecha sem
+ * lançamento; saldo negativo é dívida, e o próximo fechamento da pessoa a traz.
+ * Um fechamento por pessoa e mês: fechar de novo é 409.
  * Só o administrador (`equipeFechamento`).
  */
 export async function POST(req: Request) {
@@ -89,6 +95,11 @@ export async function POST(req: Request) {
       if (pessoa.driverId) await tx.$queryRaw`SELECT id FROM "Driver" WHERE id = ${pessoa.driverId} FOR UPDATE`;
       else await tx.$queryRaw`SELECT id FROM "Helper" WHERE id = ${pessoa.helperId} FOR UPDATE`;
 
+      // Segura os adiantamentos da pessoa ainda não descontados: um acerto feito agora espera o fechamento e
+      // encontra o adiantamento já descontado, ou chega antes e a conta daqui já o lê acertado.
+      if (pessoa.driverId) await tx.$queryRaw`SELECT id FROM "CrewAdvance" WHERE "driverId" = ${pessoa.driverId} AND "closingId" IS NULL FOR UPDATE`;
+      else await tx.$queryRaw`SELECT id FROM "CrewAdvance" WHERE "helperId" = ${pessoa.helperId} AND "closingId" IS NULL FOR UPDATE`;
+
       // Pessoa de outra empresa não existe para esta consulta: 400, como um id inventado.
       const apurado = await contaDaPessoa(tx, pessoa, mes);
       if (!apurado) throw new Refusal(PERSON_NOT_FOUND, 400);
@@ -97,7 +108,7 @@ export async function POST(req: Request) {
       if (await tx.crewPayClosing.findFirst({ where: { ...dela, month: mes }, select: { id: true } })) throw new Refusal(ALREADY_CLOSED, 409);
 
       const { conta, nome, formas } = apurado;
-      if (conta.viagens.length === 0 && conta.adiantamentos.length === 0) throw new Refusal(NOTHING_TO_CLOSE, 409);
+      if (!temOQueFechar(conta)) throw new Refusal(NOTHING_TO_CLOSE, 409);
 
       const aLancar = valorALancar(conta);
       const lancamento =
@@ -117,7 +128,7 @@ export async function POST(req: Request) {
             })
           : null;
 
-      const detalhes: DetalhesDoFechamento = { formas, viagens: conta.viagens, adiantamentos: conta.adiantamentos };
+      const detalhes: DetalhesDoFechamento = { formas, viagens: conta.viagens, adiantamentos: conta.adiantamentos, semAcerto: conta.semAcerto, saldoAnterior: conta.saldoAnterior };
       const criado = await tx.crewPayClosing.create({
         data: {
           ...dela,
@@ -133,6 +144,14 @@ export async function POST(req: Request) {
         select: CLOSING_SELECT,
       });
 
+      // Dá baixa nos adiantamentos que entraram na conta: passam a apontar para este fechamento e deixam de
+      // ser dívida em aberto. Só os que continuam sem fechamento: se algum mudou no meio, nada é gravado.
+      const descontados = conta.adiantamentos.map((adiantamento) => adiantamento.id);
+      if (descontados.length > 0) {
+        const marcados = await tx.crewAdvance.updateMany({ where: { id: { in: descontados }, closingId: null }, data: { closingId: criado.id } });
+        if (marcados.count !== descontados.length) throw new Refusal(ADVANCES_CHANGED, 409);
+      }
+
       await registrarAuditoria(tx, {
         ator: user,
         origem,
@@ -140,7 +159,16 @@ export async function POST(req: Request) {
         entidade: 'fechamento-equipe',
         entidadeId: criado.id,
         resumo: `Remuneração variável de ${nome} em ${mesPorExtenso(mes)} fechada${lancamento ? ', com o lançamento no Financeiro' : ', sem saldo a pagar'}`,
-        depois: { ...dela, month: mes, variableTotal: conta.variavel, advancesTotal: conta.adiantado, balance: conta.saldo, viagens: conta.viagens.length, transactionId: lancamento?.id ?? null },
+        depois: {
+          ...dela,
+          month: mes,
+          variableTotal: conta.variavel,
+          advancesTotal: conta.adiantado,
+          balance: conta.saldo,
+          viagens: conta.viagens.length,
+          adiantamentosDescontados: descontados.length,
+          transactionId: lancamento?.id ?? null,
+        },
       });
 
       return criado;

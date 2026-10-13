@@ -4,26 +4,31 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Loader2, Printer } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
-import { rotuloDoMotivo } from "@/lib/equipe";
 import {
   EXPLICACAO_DO_PARCEIRO,
   EXPLICACAO_SEM_KM,
+  ROTULO_DE_MESES_ANTERIORES,
   type ContaDoMes,
   type FechamentoDoMes,
   type PessoaDoFechamento,
+  avisoDeSemAcerto,
   basesPorExtenso,
+  descontoPorExtenso,
   formasPorExtenso,
   mesAtual,
   mesPorExtenso,
   parcelasPorExtenso,
+  saldoAnteriorPorExtenso,
+  temOQueFechar,
   valorALancar,
 } from "@/lib/remuneracao";
 import { BOTAO, CARD, COM_ROTULO, INPUT, LABEL, Mensagem, TABELA, TBODY, TD, TH, THEAD, TR, enviar, erroDe, type Aviso } from "./comum";
 
 /**
  * Fechamento mensal da remuneração variável: por motorista e por ajudante, as
- * viagens finalizadas no mês com o que cada uma rendeu, os adiantamentos e
- * vales em aberto e o saldo a pagar. A lista mostra o mês; a pessoa abre num
+ * viagens finalizadas no mês com o que cada uma rendeu, os descontos (vales e
+ * sobras de acerto ainda não descontados, do mês e de meses anteriores) e o
+ * saldo a pagar. A lista mostra o mês; a pessoa abre num
  * painel com as viagens, e é nele que o administrador fecha (congela os valores
  * e lança o saldo no Financeiro) ou reabre o mês.
  *
@@ -35,6 +40,8 @@ const FALHA = "Não foi possível carregar o fechamento.";
 const CAMPO = "min-w-0 w-full px-2 py-1.5 md:px-3 md:py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-950";
 
 const dia = (data: string) => data.slice(5).split("-").reverse().join("/");
+// O desconto de outro mês leva o ano: "28/09/2026".
+const diaComAno = (data: string, comAno = false) => (comAno ? data.split("-").reverse().join("/") : dia(data));
 const paraOCampo = (valor: number | null | undefined) => (valor == null ? "" : String(valor).replace(".", ","));
 
 const SELO_ABERTO = "bg-amber-50 text-amber-700 border-amber-200";
@@ -132,7 +139,7 @@ export function Fechamento({ podeFechar, alteraValores }: { podeFechar: boolean;
       {resposta && (
         <div className={`${CARD} overflow-hidden`}>
           {resposta.pessoas.length === 0 ? (
-            <p className="p-8 text-center text-sm text-gray-500">Ninguém com viagem finalizada, adiantamento em aberto ou forma de remuneração neste mês.</p>
+            <p className="p-8 text-center text-sm text-gray-500">Ninguém com viagem finalizada, desconto pendente ou forma de remuneração neste mês.</p>
           ) : (
             <table className={TABELA}>
               <thead className={THEAD}>
@@ -140,7 +147,7 @@ export function Fechamento({ podeFechar, alteraValores }: { podeFechar: boolean;
                   <th className={TH}>Pessoa</th>
                   <th className={`${TH} text-right`}>Viagens</th>
                   <th className={`${TH} text-right`}>Variável</th>
-                  <th className={`${TH} text-right`}>Adiantamentos</th>
+                  <th className={`${TH} text-right`}>Descontos</th>
                   <th className={`${TH} text-right`}>Saldo</th>
                   <th className={TH}>Situação</th>
                 </tr>
@@ -163,7 +170,7 @@ export function Fechamento({ podeFechar, alteraValores }: { podeFechar: boolean;
                       </td>
                       <td data-rotulo="Viagens" className={`${TD} ${COM_ROTULO} hidden md:table-cell md:text-right text-gray-600 dark:text-gray-300`}>{conta.viagens.length}</td>
                       <td data-rotulo={`Variável (${conta.viagens.length} ${conta.viagens.length === 1 ? "viagem" : "viagens"})`} className={`${TD} ${COM_ROTULO} md:text-right text-gray-900 dark:text-white`}>{formatCurrency(conta.variavel)}</td>
-                      <td data-rotulo="Adiantamentos" className={`${TD} ${COM_ROTULO} md:text-right text-gray-600 dark:text-gray-300`}>{formatCurrency(conta.adiantado)}</td>
+                      <td data-rotulo="Descontos" className={`${TD} ${COM_ROTULO} md:text-right text-gray-600 dark:text-gray-300`}>{formatCurrency(conta.adiantado)}</td>
                       <td data-rotulo="Saldo" className={`${TD} ${COM_ROTULO} md:text-right font-semibold ${conta.saldo < 0 ? "text-red-700" : "text-gray-900 dark:text-white"}`}>{formatCurrency(conta.saldo)}</td>
                       <td className={`${TD} hidden md:table-cell`}>
                         <Situacao pessoa={linha} />
@@ -175,7 +182,7 @@ export function Fechamento({ podeFechar, alteraValores }: { podeFechar: boolean;
             </table>
           )}
           <p className="px-3 py-2 md:px-4 md:py-3 text-[11px] md:text-xs text-gray-500 border-t border-gray-100 dark:border-gray-800">
-            Saldo = variável das viagens finalizadas no mês − adiantamentos e vales em aberto do mês. Demonstrativo gerencial: não é folha de pagamento.
+            Saldo = variável das viagens finalizadas no mês − vales e sobras de acerto ainda não descontados, do mês e de meses anteriores. Demonstrativo gerencial: não é folha de pagamento.
           </p>
         </div>
       )}
@@ -234,6 +241,45 @@ function ViagensDaConta({ conta }: { conta: ContaDoMes }) {
   );
 }
 
+/** Os descontos da conta: os do mês e, numa parte separada, os de meses anteriores (com o saldo devedor trazido). */
+function DescontosDaConta({ conta }: { conta: ContaDoMes }) {
+  const doMes = conta.adiantamentos.filter((adiantamento) => !adiantamento.anterior);
+  const anteriores = conta.adiantamentos.filter((adiantamento) => adiantamento.anterior);
+  if (doMes.length === 0 && conta.anteriores === 0) return <p className="text-xs text-gray-500">Nenhum vale ou sobra de acerto a descontar.</p>;
+
+  const linha = (adiantamento: ContaDoMes["adiantamentos"][number]) => (
+    <li key={adiantamento.id} data-adiantamento={adiantamento.id} className="flex justify-between gap-2 py-1.5 text-sm">
+      <span className="min-w-0 break-words text-gray-700 dark:text-gray-300">
+        {diaComAno(adiantamento.date, adiantamento.anterior)} · {descontoPorExtenso(adiantamento)}
+      </span>
+      <span className="shrink-0 font-medium">− {formatCurrency(adiantamento.amount)}</span>
+    </li>
+  );
+
+  return (
+    <div className="space-y-1">
+      {doMes.length > 0 && <ul className="divide-y divide-gray-100 dark:divide-gray-800">{doMes.map(linha)}</ul>}
+      {conta.anteriores > 0 && (
+        <div data-descontos="anteriores">
+          <p className="flex justify-between gap-2 pt-1 text-[11px] md:text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <span>{ROTULO_DE_MESES_ANTERIORES}</span>
+            <span>− {formatCurrency(conta.anteriores)}</span>
+          </p>
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+            {conta.saldoAnterior && (
+              <li data-saldo-anterior className="flex justify-between gap-2 py-1.5 text-sm">
+                <span className="min-w-0 break-words text-gray-700 dark:text-gray-300">{saldoAnteriorPorExtenso(conta.saldoAnterior)}</span>
+                <span className="shrink-0 font-medium">− {formatCurrency(conta.saldoAnterior.valor)}</span>
+              </li>
+            )}
+            {anteriores.map(linha)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PainelDaPessoa({
   pessoa,
   mes,
@@ -253,8 +299,8 @@ function PainelDaPessoa({
 }) {
   const fechado = pessoa.fechamento;
   const conta = fechado?.conta ?? pessoa.atual;
-  // No celular, uma parte por vez: as viagens ou os adiantamentos.
-  const [parte, setParte] = useState<"viagens" | "adiantamentos">("viagens");
+  // Uma parte por vez: as viagens ou os descontos.
+  const [parte, setParte] = useState<"viagens" | "descontos">("viagens");
   // O passo de confirmação: nada é gravado até o "Confirmar".
   const [confirmando, setConfirmando] = useState<"fechar" | "reabrir" | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -287,7 +333,9 @@ function PainelDaPessoa({
   };
 
   const aLancar = valorALancar(pessoa.atual);
-  const nadaAFechar = pessoa.atual.viagens.length === 0 && pessoa.atual.adiantamentos.length === 0;
+  const nadaAFechar = !temOQueFechar(pessoa.atual);
+  const semAcerto = avisoDeSemAcerto(conta.semAcerto);
+  const descontos = conta.adiantamentos.length + (conta.saldoAnterior ? 1 : 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center md:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
@@ -309,9 +357,24 @@ function PainelDaPessoa({
         <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-2 md:space-y-4">
           <dl className="grid grid-cols-3 gap-x-3">
             <Numero rotulo="Variável" valor={conta.variavel} />
-            <Numero rotulo="Adiantamentos" valor={conta.adiantado} />
+            <Numero rotulo="Descontos" valor={conta.adiantado} />
             <Numero rotulo={conta.saldo < 0 ? "Saldo (deve)" : "Saldo a pagar"} valor={conta.saldo} forte negativo={conta.saldo < 0} />
           </dl>
+
+          {/* A dívida que ficou de meses anteriores, à parte da do mês. */}
+          {conta.anteriores > 0 && (
+            <p data-anteriores className="flex justify-between gap-2 text-xs text-gray-700 dark:text-gray-200">
+              <span className="min-w-0">{ROTULO_DE_MESES_ANTERIORES} (já dentro dos descontos)</span>
+              <span className="shrink-0 font-semibold">− {formatCurrency(conta.anteriores)}</span>
+            </p>
+          )}
+
+          {/* Adiantamento de viagem sem acerto não é dívida ainda: fica fora da conta. */}
+          {semAcerto && (
+            <p data-sem-acerto className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] md:text-xs text-amber-900">
+              {semAcerto}
+            </p>
+          )}
 
           {/* As formas do cadastro. A do motorista se altera em Motoristas; a do ajudante, aqui. */}
           {editandoFormas ? (
@@ -349,7 +412,7 @@ function PainelDaPessoa({
           {fechado && pessoa.diferenca && (
             <p role="alert" data-diferenca className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               A conta de hoje é diferente da que foi fechada: variável {formatCurrency(pessoa.atual.variavel)} ({pessoa.diferenca.variavel >= 0 ? "+" : "−"}
-              {formatCurrency(Math.abs(pessoa.diferenca.variavel))}), adiantamentos {formatCurrency(pessoa.atual.adiantado)}, saldo {formatCurrency(pessoa.atual.saldo)}. Alguma viagem ou adiantamento do mês mudou depois do
+              {formatCurrency(Math.abs(pessoa.diferenca.variavel))}), descontos {formatCurrency(pessoa.atual.adiantado)}, saldo {formatCurrency(pessoa.atual.saldo)}. Alguma viagem ou adiantamento do mês mudou depois do
               fechamento. Reabra o mês para fechar de novo com os valores de hoje.
             </p>
           )}
@@ -358,7 +421,7 @@ function PainelDaPessoa({
             {(
               [
                 ["viagens", `Viagens (${conta.viagens.length})`],
-                ["adiantamentos", `Adiantamentos (${conta.adiantamentos.length})`],
+                ["descontos", `Descontos (${descontos})`],
               ] as const
             ).map(([chave, rotulo]) => (
               <button
@@ -377,19 +440,8 @@ function PainelDaPessoa({
 
           {parte === "viagens" ? (
             <ViagensDaConta conta={conta} />
-          ) : conta.adiantamentos.length === 0 ? (
-            <p className="text-xs text-gray-500">Nenhum adiantamento ou vale em aberto com data neste mês.</p>
           ) : (
-            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-              {conta.adiantamentos.map((adiantamento) => (
-                <li key={adiantamento.id} data-adiantamento={adiantamento.id} className="flex justify-between gap-2 py-1.5 text-sm">
-                  <span className="min-w-0 truncate text-gray-700 dark:text-gray-300">
-                    {dia(adiantamento.date)} · {rotuloDoMotivo(adiantamento.reason)}
-                  </span>
-                  <span className="shrink-0 font-medium">− {formatCurrency(adiantamento.amount)}</span>
-                </li>
-              ))}
-            </ul>
+            <DescontosDaConta conta={conta} />
           )}
         </div>
 
@@ -406,6 +458,9 @@ function PainelDaPessoa({
                 ) : (
                   "nada é lançado no Financeiro, porque não há saldo a pagar."
                 )}
+                {pessoa.atual.adiantamentos.length > 0 &&
+                  ` ${pessoa.atual.adiantamentos.length === 1 ? "O adiantamento descontado sai" : `Os ${pessoa.atual.adiantamentos.length} adiantamentos descontados saem`} do "em aberto" na aba Adiantamentos.`}
+                {pessoa.atual.saldo < 0 && ` O saldo devedor de ${formatCurrency(-pessoa.atual.saldo)} vai para o próximo fechamento.`}
               </p>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setConfirmando(null)} disabled={ocupado} className="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -420,7 +475,8 @@ function PainelDaPessoa({
           ) : confirmando === "reabrir" ? (
             <div role="alertdialog" aria-label="Reabrir o mês" data-confirmar-reabertura className="space-y-2">
               <p className="text-xs md:text-sm text-gray-700 dark:text-gray-200">
-                Reabrir {mesPorExtenso(mes)} de {pessoa.nome}? O fechamento é desfeito{fechado?.lancamento ? " e o lançamento dele sai do Financeiro (se já foi pago, a reabertura é recusada)" : ""}.
+                Reabrir {mesPorExtenso(mes)} de {pessoa.nome}? O fechamento é desfeito{fechado?.lancamento ? ", o lançamento dele sai do Financeiro (se já foi pago, a reabertura é recusada)" : ""}
+                {conta.adiantamentos.length > 0 ? " e os adiantamentos descontados voltam a ficar em aberto" : ""}.
               </p>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setConfirmando(null)} disabled={ocupado} className="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -449,7 +505,7 @@ function PainelDaPessoa({
                   )}
                 </>
               ) : podeFechar ? (
-                <button type="button" data-fechar-o-mes onClick={() => setConfirmando("fechar")} disabled={ocupado || nadaAFechar} title={nadaAFechar ? "Não há viagem finalizada nem adiantamento em aberto neste mês" : undefined} className={BOTAO}>
+                <button type="button" data-fechar-o-mes onClick={() => setConfirmando("fechar")} disabled={ocupado || nadaAFechar} title={nadaAFechar ? "Não há viagem finalizada no mês nem vale ou sobra de acerto a descontar" : undefined} className={BOTAO}>
                   Fechar o mês
                 </button>
               ) : (

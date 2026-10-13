@@ -739,6 +739,8 @@ export const ROTULOS_DOS_CAMPOS: Record<string, string> = {
   manifestId: "Viagem",
   spentAmount: "Gasto comprovado",
   settledAt: "Acertado em",
+  closingId: "Fechamento que descontou",
+  adiantamentosDescontados: "Adiantamentos descontados (quantos)",
   multaPct: "Multa (%)",
   jurosPct: "Juros ao mês (%)",
   cteNumber: "Número do CT-e",

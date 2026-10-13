@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { diaDoVencimento, diaNoBrasil } from "@/lib/financeiro";
-import { comissaoDoFrete, pessoaDaChave, type Pessoa } from "@/lib/equipe";
+import { acertoDoAdiantamento, comissaoDoFrete, pessoaDaChave, rotuloDoMotivo, type Pessoa } from "@/lib/equipe";
 import { type ViagemNoTempo, codigoDaViagem, finalizadaEm, janelaDaViagem, kmRodados } from "@/lib/viagem";
 
 /**
@@ -23,17 +23,32 @@ import { type ViagemNoTempo, codigoDaViagem, finalizadaEm, janelaDaViagem, kmRod
  * (src/lib/frete-contratado.ts), e somar os dois pagaria a viagem duas vezes.
  *
  * O fechamento do mês junta as viagens finalizadas nele, soma o variável e
- * desconta os adiantamentos e vales EM ABERTO com data no mês. Não há outro
- * desconto: o sistema não calcula encargo, falta nem imposto.
- * **Saldo** = variável − adiantamentos. Fechar congela esses números e lança o
- * saldo a pagar no Financeiro. O adiantamento já virou despesa quando foi
- * entregue: lançar o variável inteiro contaria esse dinheiro duas vezes.
+ * desconta o que a pessoa DEVE à empresa e ainda não foi descontado em
+ * fechamento nenhum (`descontoDoAdiantamento`):
+ * - o **vale** em aberto, inteiro;
+ * - a **sobra a devolver** de um adiantamento já acertado (recebeu mais do que
+ *   gastou com comprovante);
+ * - o **saldo devedor** do último fechamento anterior da pessoa, quando ele
+ *   fechou negativo (`saldoDevedor`).
+ * Entram os do mês e os de meses anteriores que ficaram para trás; estes saem
+ * numa linha à parte ("de meses anteriores"). O adiantamento de viagem (e o de
+ * motivo "outro") ainda SEM ACERTO não é dívida: é dinheiro da empresa na mão
+ * da pessoa para pagar despesa, e só o acerto diz quanto sobrou. Fica de fora,
+ * com um aviso. Não há outro desconto: o sistema não calcula encargo, falta nem
+ * imposto.
+ * **Saldo** = variável − descontos. Fechar congela esses números, lança o
+ * saldo a pagar no Financeiro e marca os adiantamentos descontados
+ * (`CrewAdvance.closingId`), para nenhum entrar em dois fechamentos. O
+ * adiantamento já virou despesa quando foi entregue: lançar o variável inteiro
+ * contaria esse dinheiro duas vezes.
  *
  * É um demonstrativo gerencial. Não é folha de pagamento: não há encargos,
  * INSS, IRRF, FGTS, hora extra, jornada, banco de horas, DSR nem férias.
  */
 
 const centavos = (valor: number) => Math.round((valor + Number.EPSILON) * 100) / 100;
+const reais = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const numero = (valor: number) => valor.toLocaleString("pt-BR");
 const DIA = 86_400_000;
 
 /* ----------------------------------- Formas ----------------------------------- */
@@ -231,15 +246,80 @@ export function linhaDaViagem(viagem: ViagemDaApuracao & { id: string; vehicle: 
   return { ...apuracao, manifestId: viagem.id, codigo: codigoDaViagem(viagem.id), saida: janela.inicio, finalizada: janela.fim, placa: viagem.vehicle.plate };
 }
 
-/** Um adiantamento ou vale descontado no fechamento. `date` é o dia do calendário (`AAAA-MM-DD`). */
-export type AdiantamentoDoMes = { id: string; date: string; amount: number; reason: string };
+/**
+ * De onde vem o desconto: `VALE` é o vale em aberto, inteiro; `SOBRA` é o que a
+ * pessoa tem a devolver de um adiantamento já acertado.
+ */
+export type OrigemDoDesconto = "VALE" | "SOBRA";
 
-export const adiantamentoDoMes = (adiantamento: { id: string; date: Date | string; amount: number; reason: string }): AdiantamentoDoMes => ({
-  id: adiantamento.id,
-  date: diaDoVencimento(adiantamento.date),
-  amount: adiantamento.amount,
-  reason: adiantamento.reason,
-});
+/**
+ * Um adiantamento no fechamento. `date` é o dia do calendário (`AAAA-MM-DD`) e
+ * `amount`, o que entra na conta: o vale inteiro ou a sobra a devolver (no
+ * adiantamento sem acerto, que fica de fora, é o valor adiantado). Fechamento
+ * gravado antes de `origem` e `anterior` existirem vem sem os dois.
+ */
+export type AdiantamentoDoMes = {
+  id: string;
+  date: string;
+  amount: number;
+  reason: string;
+  origem?: OrigemDoDesconto;
+  /** Com data anterior ao mês do fechamento: dívida de meses anteriores. */
+  anterior?: boolean;
+};
+
+/** O que a conta lê de um adiantamento (`CrewAdvance`). */
+export type AdiantamentoDaEquipe = { id: string; date: Date | string; amount: number; reason: string; status: string; spentAmount: number | null };
+
+/**
+ * Quanto de um adiantamento é dívida da pessoa com a empresa, a descontar no
+ * fechamento:
+ * - acertado com sobra: a sobra a devolver (qualquer motivo);
+ * - acertado sem sobra (quitado, ou a empresa é que completa): nada (`null`);
+ * - vale em aberto: o vale inteiro;
+ * - adiantamento de viagem ou de motivo "outro" em aberto: `"SEM_ACERTO"`. Não
+ *   se sabe ainda quanto foi gasto: fica de fora até o acerto.
+ */
+export function descontoDoAdiantamento(adiantamento: Pick<AdiantamentoDaEquipe, "amount" | "reason" | "status" | "spentAmount">): { valor: number; origem: OrigemDoDesconto } | "SEM_ACERTO" | null {
+  if (adiantamento.status === "SETTLED") {
+    const acerto = acertoDoAdiantamento(adiantamento.amount, adiantamento.spentAmount ?? adiantamento.amount);
+    return acerto.sentido === "devolver" ? { valor: acerto.diferenca, origem: "SOBRA" } : null;
+  }
+  return adiantamento.reason === "VOUCHER" ? { valor: centavos(adiantamento.amount), origem: "VALE" } : "SEM_ACERTO";
+}
+
+/**
+ * Separa os adiantamentos de uma pessoa para o fechamento de `mes`: os que
+ * entram na conta (`descontos`, com `anterior` nos de data anterior ao mês) e
+ * os que ficam de fora por falta de acerto (`semAcerto`). Acertado sem sobra
+ * não aparece em nenhuma das duas listas. Quem chama já escolheu os
+ * adiantamentos com data até o fim do mês e ainda não descontados.
+ */
+export function adiantamentosDoFechamento(adiantamentos: readonly AdiantamentoDaEquipe[], mes: string): { descontos: AdiantamentoDoMes[]; semAcerto: AdiantamentoDoMes[] } {
+  const descontos: AdiantamentoDoMes[] = [];
+  const semAcerto: AdiantamentoDoMes[] = [];
+  for (const adiantamento of adiantamentos) {
+    const desconto = descontoDoAdiantamento(adiantamento);
+    if (desconto === null) continue;
+    const date = diaDoVencimento(adiantamento.date);
+    const comum = { id: adiantamento.id, date, reason: adiantamento.reason, anterior: date < `${mes}-01` };
+    if (desconto === "SEM_ACERTO") semAcerto.push({ ...comum, amount: adiantamento.amount });
+    else descontos.push({ ...comum, amount: desconto.valor, origem: desconto.origem });
+  }
+  return { descontos, semAcerto };
+}
+
+/** O saldo devedor que um fechamento anterior deixou, trazido para a conta deste mês. */
+export type SaldoAnterior = { mes: string; valor: number };
+
+/**
+ * O que o último fechamento anterior da pessoa deixou de dívida: o saldo dele,
+ * quando fechou negativo. Só o último importa: o saldo dele já carrega o que
+ * veio dos anteriores.
+ */
+export function saldoDevedor(anterior: { month: string; balance: number } | null | undefined): SaldoAnterior | null {
+  return anterior && anterior.balance < 0 ? { mes: anterior.month, valor: centavos(-anterior.balance) } : null;
+}
 
 /** A conta do mês de uma pessoa. */
 export type ContaDoMes = {
@@ -247,25 +327,79 @@ export type ContaDoMes = {
   /** A soma de cada parcela nas viagens do mês. */
   parcelas: Record<Parcela, number>;
   variavel: number;
+  /** Os adiantamentos descontados: os do mês e os de meses anteriores (`anterior`). */
   adiantamentos: AdiantamentoDoMes[];
+  /** O saldo devedor do último fechamento anterior, quando há. */
+  saldoAnterior: SaldoAnterior | null;
+  /** Tudo o que foi descontado: os adiantamentos e o saldo devedor anterior. */
   adiantado: number;
-  /** Variável − adiantamentos. Negativo: a pessoa recebeu adiantado mais do que o mês rendeu. */
+  /** A parte de `adiantado` que é de meses anteriores. */
+  anteriores: number;
+  /** Adiantamentos ainda sem acerto: ficam fora da conta, e a tela avisa. */
+  semAcerto: AdiantamentoDoMes[];
+  /** Variável − descontos. Negativo: a pessoa deve à empresa, e o próximo fechamento traz a dívida. */
   saldo: number;
 };
 
+const somar = (lista: readonly { amount: number }[]) => centavos(lista.reduce((soma, item) => soma + item.amount, 0));
+const porData = (a: AdiantamentoDoMes, b: AdiantamentoDoMes) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id);
+
 /**
  * A conta do mês: as viagens da mais antiga para a mais nova, o variável, os
- * adiantamentos em aberto e o saldo. Viagem fora da apuração (motorista de
- * parceiro com contrato) continua na lista, com total zero e o motivo.
+ * descontos (adiantamentos e saldo devedor anterior) e o saldo. Viagem fora da
+ * apuração (motorista de parceiro com contrato) continua na lista, com total
+ * zero e o motivo.
  */
-export function contaDoMes(viagens: readonly LinhaDeViagem[], adiantamentos: readonly AdiantamentoDoMes[]): ContaDoMes {
+export function contaDoMes(
+  viagens: readonly LinhaDeViagem[],
+  adiantamentos: readonly AdiantamentoDoMes[],
+  outros: { semAcerto?: readonly AdiantamentoDoMes[]; saldoAnterior?: SaldoAnterior | null } = {},
+): ContaDoMes {
   const linhas = [...viagens].sort((a, b) => a.finalizada.localeCompare(b.finalizada) || a.codigo.localeCompare(b.codigo));
-  const descontados = [...adiantamentos].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const descontados = [...adiantamentos].sort(porData);
+  const saldoAnterior = outros.saldoAnterior ?? null;
   const parcelas = Object.fromEntries(PARCELAS.map((parcela) => [parcela, centavos(linhas.reduce((soma, linha) => soma + (linha.parcelas[parcela] ?? 0), 0))])) as Record<Parcela, number>;
   const variavel = centavos(linhas.reduce((soma, linha) => soma + linha.total, 0));
-  const adiantado = centavos(descontados.reduce((soma, adiantamento) => soma + adiantamento.amount, 0));
-  return { viagens: linhas, parcelas, variavel, adiantamentos: descontados, adiantado, saldo: centavos(variavel - adiantado) };
+  const anteriores = centavos(somar(descontados.filter((adiantamento) => adiantamento.anterior)) + (saldoAnterior?.valor ?? 0));
+  const adiantado = centavos(somar(descontados) + (saldoAnterior?.valor ?? 0));
+  return {
+    viagens: linhas,
+    parcelas,
+    variavel,
+    adiantamentos: descontados,
+    saldoAnterior,
+    adiantado,
+    anteriores,
+    semAcerto: [...(outros.semAcerto ?? [])].sort(porData),
+    saldo: centavos(variavel - adiantado),
+  };
 }
+
+/** Há o que fechar? Viagem finalizada no mês ou adiantamento a descontar. Só saldo devedor anterior não fecha mês: ele segue para o próximo. */
+export const temOQueFechar = (conta: Pick<ContaDoMes, "viagens" | "adiantamentos">) => conta.viagens.length > 0 || conta.adiantamentos.length > 0;
+
+/**
+ * O aviso dos adiantamentos sem acerto, ou `null` sem nenhum: "1 adiantamento
+ * sem acerto (R$ 300,00) ficou fora da conta: …". No recibo (`noPapel`) sai sem
+ * a instrução de tela, que é para quem fecha o mês.
+ */
+export function avisoDeSemAcerto(semAcerto: readonly AdiantamentoDoMes[], noPapel = false): string | null {
+  if (semAcerto.length === 0) return null;
+  const um = semAcerto.length === 1;
+  const fato = `${semAcerto.length} ${um ? "adiantamento" : "adiantamentos"} sem acerto (${reais(somar(semAcerto))}) ${um ? "ficou" : "ficaram"} fora da conta`;
+  return noPapel ? `${fato}: a sobra a devolver, se houver, entra num próximo fechamento, depois do acerto.` : `${fato}: acerte na aba Adiantamentos e a sobra a devolver entra no fechamento.`;
+}
+
+/** O desconto por extenso, para a tela e o recibo: "Vale", "Sobra do adiantamento de viagem". */
+export function descontoPorExtenso(adiantamento: Pick<AdiantamentoDoMes, "reason" | "origem">): string {
+  const motivo = rotuloDoMotivo(adiantamento.reason);
+  return adiantamento.origem === "SOBRA" ? `Sobra do ${motivo.charAt(0).toLowerCase()}${motivo.slice(1)}` : motivo;
+}
+
+export const ROTULO_DE_MESES_ANTERIORES = "De meses anteriores";
+
+/** A linha do saldo devedor trazido: "Saldo devedor do fechamento de 09/2026". */
+export const saldoAnteriorPorExtenso = (saldo: SaldoAnterior) => `Saldo devedor do fechamento de ${mesPorExtenso(saldo.mes)}`;
 
 /** O que o fechamento lança no Financeiro: o saldo a pagar. Saldo zero ou negativo não lança nada. */
 export const valorALancar = (conta: Pick<ContaDoMes, "saldo">) => (conta.saldo > 0 ? conta.saldo : 0);
@@ -290,23 +424,36 @@ export function diferencaDoFechamento(fechado: ValoresCongelados, atual: Pick<Co
   return diferenca.variavel === 0 && diferenca.adiantado === 0 && diferenca.saldo === 0 ? null : diferenca;
 }
 
-/** O que o fechamento guarda em `details`: as formas do cadastro, as viagens e os adiantamentos como estavam. */
-export type DetalhesDoFechamento = { formas: Partial<FormasDoMotorista>; viagens: LinhaDeViagem[]; adiantamentos: AdiantamentoDoMes[] };
+/**
+ * O que o fechamento guarda em `details`: as formas do cadastro, as viagens, os
+ * adiantamentos descontados, os que ficaram sem acerto e o saldo devedor
+ * trazido, como estavam.
+ */
+export type DetalhesDoFechamento = {
+  formas: Partial<FormasDoMotorista>;
+  viagens: LinhaDeViagem[];
+  adiantamentos: AdiantamentoDoMes[];
+  semAcerto: AdiantamentoDoMes[];
+  saldoAnterior: SaldoAnterior | null;
+};
 
 /** Lê o `details` gravado. Formato estranho (linha antiga ou mexida à mão) vira listas vazias, sem derrubar a tela. */
 export function lerDetalhes(valor: unknown): DetalhesDoFechamento {
   const objeto = (valor && typeof valor === "object" ? valor : {}) as Partial<DetalhesDoFechamento>;
+  const saldo = objeto.saldoAnterior;
   return {
     formas: objeto.formas && typeof objeto.formas === "object" ? objeto.formas : {},
     viagens: Array.isArray(objeto.viagens) ? objeto.viagens : [],
     adiantamentos: Array.isArray(objeto.adiantamentos) ? objeto.adiantamentos : [],
+    semAcerto: Array.isArray(objeto.semAcerto) ? objeto.semAcerto : [],
+    saldoAnterior: saldo && typeof saldo === "object" && typeof saldo.mes === "string" && typeof saldo.valor === "number" ? { mes: saldo.mes, valor: saldo.valor } : null,
   };
 }
 
 /** A conta congelada, remontada do que o fechamento guardou. */
 export function contaCongelada(fechamento: ValoresCongelados & { details: unknown }): ContaDoMes {
-  const { viagens, adiantamentos } = lerDetalhes(fechamento.details);
-  return { ...contaDoMes(viagens, adiantamentos), variavel: fechamento.variableTotal, adiantado: fechamento.advancesTotal, saldo: fechamento.balance };
+  const { viagens, adiantamentos, semAcerto, saldoAnterior } = lerDetalhes(fechamento.details);
+  return { ...contaDoMes(viagens, adiantamentos, { semAcerto, saldoAnterior }), variavel: fechamento.variableTotal, adiantado: fechamento.advancesTotal, saldo: fechamento.balance };
 }
 
 /** Categoria da despesa que o fechamento lança no Financeiro. */
@@ -316,9 +463,6 @@ export const CATEGORIA_DA_REMUNERACAO = "Remuneração variável";
 export const descricaoDoFechamento = (mes: string, nome: string) => `Remuneração variável de ${mesPorExtenso(mes)}: ${nome}`;
 
 /* --------------------------------- Por extenso -------------------------------- */
-
-const reais = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const numero = (valor: number) => valor.toLocaleString("pt-BR");
 
 /** As formas do cadastro numa linha: "Comissão 5% · Diária R$ 80,00 · Por km R$ 0,30". */
 export function formasPorExtenso(formas: Partial<FormasDoMotorista>): string {
@@ -446,6 +590,7 @@ export const visibilidadeSchema = z.object({ visivelAoMotorista: z.boolean("Info
 
 export const CLOSING_NOT_FOUND = "Fechamento não encontrado.";
 export const ALREADY_CLOSED = "Este mês já está fechado para esta pessoa. Reabra antes de fechar de novo.";
-export const NOTHING_TO_CLOSE = "Não há viagem finalizada nem adiantamento em aberto neste mês: não há o que fechar.";
-export const FUTURE_MONTH = "Não dá para fechar um mês que ainda não começou.";
+export const NOTHING_TO_CLOSE = "Não há viagem finalizada no mês nem vale ou sobra de acerto a descontar: não há o que fechar.";
+export const ADVANCES_CHANGED = "Um adiantamento desta pessoa mudou enquanto o mês era fechado. Confira a conta e feche de novo.";
+export const FUTURE_MONTH ="Não dá para fechar um mês que ainda não começou.";
 export const CLOSING_ALREADY_PAID = "O lançamento deste fechamento já está pago no Financeiro. Reabra o lançamento lá antes de reabrir o mês.";

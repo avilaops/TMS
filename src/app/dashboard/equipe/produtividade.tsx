@@ -22,7 +22,11 @@ type Resposta = { periodo: { de: string; ate: string }; comValores: boolean; mot
 const FALHA = "Não foi possível carregar a produtividade.";
 const CAMPO = "min-w-0 w-full px-2 py-1.5 md:px-3 md:py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-950";
 
-const porcento = (valor: number | null | undefined) => (valor === null || valor === undefined ? "-" : `${valor.toLocaleString("pt-BR")}%`);
+/** Por que a comissão desta aba e a do Fechamento podem não bater. */
+export const NOTA_DA_COMISSAO =
+  "O valor a pagar é o do Fechamento, e pode diferir: aqui conta a data da entrega; lá, a viagem finalizada no mês.";
+
+const porcento =(valor: number | null | undefined) => (valor === null || valor === undefined ? "-" : `${valor.toLocaleString("pt-BR")}%`);
 
 export function Produtividade() {
   const [periodo, setPeriodo] = useState(periodoDoRelatorio);
@@ -61,7 +65,8 @@ export function Produtividade() {
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="flex items-end justify-between gap-2">
-        <div className="flex items-end gap-2 md:gap-3">
+        {/* `min-w-0`: os dois campos de mês encolhem no celular em vez de empurrar o total da comissão para fora da tela. */}
+        <div className="flex min-w-0 items-end gap-2 md:gap-3">
           <label className="min-w-0 text-xs text-gray-500">
             De
             <input type="month" value={periodo.de} onChange={(e) => mudarPeriodo("de", e.target.value)} className={`${CAMPO} block mt-1`} />
@@ -135,6 +140,12 @@ export function Produtividade() {
             Viagens finalizadas e cargas entregues no período. O prazo é o da tabela de frete, da coleta à entrega; entrega sem medição fica fora do percentual.
             {comValores ? " A comissão é o percentual do cadastro do motorista sobre o frete das cargas que ele entregou." : ""}
           </p>
+          {/* A comissão daqui é medida de desempenho; a que se paga sai do Fechamento, e as duas contam por datas diferentes. */}
+          {comValores && totalDeComissao > 0 && (
+            <p data-nota="comissao-a-pagar" className="px-3 pb-2 md:px-4 md:pb-3 text-xs text-gray-900 dark:text-gray-100">
+              {NOTA_DA_COMISSAO}
+            </p>
+          )}
         </div>
       )}
     </div>
