@@ -109,6 +109,7 @@ suite("permissões das rotas internas", () => {
   let crm: typeof import("../src/app/api/dashboard/crm/route");
   let crmLead: typeof import("../src/app/api/dashboard/crm/[id]/route");
   let crmConverter: typeof import("../src/app/api/dashboard/crm/[id]/converter/route");
+  let crmEquipe: typeof import("../src/app/api/dashboard/crm/equipe/route");
   let ocorrencias: typeof import("../src/app/api/ocorrencias/route");
   let ocorrencia: typeof import("../src/app/api/ocorrencias/[id]/route");
   let ocorrenciaMensagens: typeof import("../src/app/api/ocorrencias/[id]/mensagens/route");
@@ -279,6 +280,7 @@ suite("permissões das rotas internas", () => {
     crm = await import("../src/app/api/dashboard/crm/route");
     crmLead = await import("../src/app/api/dashboard/crm/[id]/route");
     crmConverter = await import("../src/app/api/dashboard/crm/[id]/converter/route");
+    crmEquipe = await import("../src/app/api/dashboard/crm/equipe/route");
     ocorrencias = await import("../src/app/api/ocorrencias/route");
     ocorrencia = await import("../src/app/api/ocorrencias/[id]/route");
     ocorrenciaMensagens = await import("../src/app/api/ocorrencias/[id]/mensagens/route");
@@ -437,6 +439,8 @@ suite("permissões das rotas internas", () => {
       ["GET /api/dashboard/coletas/pendentes", () => pendentes.GET(req())],
       ["POST /api/dashboard/coletas/[id]/status", () => coletaStatus.POST(req("POST", {}), ctx(semId))],
       ["GET /api/dashboard/crm", () => crm.GET()],
+      ["POST /api/dashboard/crm", () => crm.POST(req("POST", {}))],
+      ["GET /api/dashboard/crm/equipe", () => crmEquipe.GET()],
       ["PATCH /api/dashboard/crm/[id]", () => crmLead.PATCH(req("PATCH", {}), ctx(semId))],
       ["POST /api/dashboard/crm/[id]/converter", () => crmConverter.POST(req("POST", {}), ctx(semId))],
       ["GET /api/ocorrencias", () => ocorrencias.GET(req())],

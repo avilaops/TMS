@@ -87,7 +87,7 @@ DECLARE
     "VehicleDocument": ["vehicleId", "Vehicle"],
     "Tire": ["vehicleId", "Vehicle"],
     "VehicleChecklist": ["vehicleId", "Vehicle", "userId", "User"],
-    "QuoteLead": ["collectionId", "Collection"],
+    "QuoteLead": ["collectionId", "Collection", "assigneeId", "User"],
     "ProofOfDelivery": ["collectionId", "Collection", "reviewedById", "User"],
     "ProofPhoto": ["proofId", "ProofOfDelivery", "attemptId", "DeliveryAttempt"],
     "ProofRejection": ["proofId", "ProofOfDelivery", "rejectedById", "User"],

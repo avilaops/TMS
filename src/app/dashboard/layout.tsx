@@ -9,7 +9,7 @@ import { SimboloDaEmpresa, useIdentidade } from "@/components/empresa/identidade
 import { Menu, X, LogOut } from "lucide-react";
 import { motion } from "framer-motion";
 import { Avisos, Sininho } from "@/components/notificacoes/Sininho";
-import { secoesDoMenu } from "./menu";
+import { secoesDoMenu, tituloDaTela } from "./menu";
 
 // Enquanto o nome da empresa não chega (ou se a leitura falhar), o cabeçalho mostra o do sistema.
 const NOME_PADRAO = "TMS";
@@ -118,8 +118,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className="flex-1 flex flex-col md:min-h-screen min-w-0 max-w-full">
         {/* Top Header */}
         <header className="hidden md:flex h-20 items-center justify-between px-8 bg-white/50 dark:bg-gray-950/50 backdrop-blur-md sticky top-0 z-30 border-b border-gray-200/50 dark:border-gray-800/50">
-          <h2 className="text-xl font-bold font-outfit text-gray-800 dark:text-gray-100 capitalize">
-            {pathname.split("/").pop() === "dashboard" ? "Visão Geral" : pathname.split("/").pop()}
+          <h2 className="text-xl font-bold font-outfit text-gray-800 dark:text-gray-100">
+            {tituloDaTela(pathname)}
           </h2>
           <div className="flex items-center space-x-4">
             <Sininho />

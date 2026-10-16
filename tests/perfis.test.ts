@@ -16,7 +16,7 @@ import {
   type Perfil,
 } from "../src/lib/permissoes";
 import { createUserSchema, updateUserSchema } from "../src/lib/usuarios";
-import { secoesDoMenu } from "../src/app/dashboard/menu";
+import { tituloDaTela, secoesDoMenu } from "../src/app/dashboard/menu";
 import { showFinance } from "../src/app/dashboard/painel";
 import { EMPRESA_OUTRA } from "./empresas-de-teste";
 
@@ -170,6 +170,8 @@ const ROTAS: Record<string, Capacidade> = {
   "POST /api/dashboard/crm/[id]/converter": "crm",
   "PATCH /api/dashboard/crm/[id]": "crm",
   "GET /api/dashboard/crm": "crm",
+  "POST /api/dashboard/crm": "crm",
+  "GET /api/dashboard/crm/equipe": "crm",
   "GET /api/dashboard": "painel",
   "POST /api/deposito/coletas/[id]/concluir": "deposito",
   "POST /api/deposito/coletas/[id]/posicao": "deposito",
@@ -644,6 +646,15 @@ describe("menu do painel por perfil", () => {
     expect(links("COMMERCIAL")).toEqual(["/", "/clientes", "/crm", "/tabelas-frete", "/coletas", "/ocorrencias"]);
     expect(links("EXPEDITION")).toEqual(["/", "/coletas", "/manifestos", "/comprovantes", "/ocorrencias", "/fiscal", "/motoristas", "/veiculos", "/equipe", "/frota"]);
     expect(links("WAREHOUSE")).toEqual(["/", "/coletas", "/deposito", "/ocorrencias"]);
+  });
+
+  it("o título do cabeçalho é o rótulo do menu, também nas telas de dentro; fora do menu, o trecho da URL", () => {
+    expect(tituloDaTela("/dashboard")).toBe("Visão Geral");
+    expect(tituloDaTela("/dashboard/crm")).toBe("Cotações");
+    expect(tituloDaTela("/dashboard/tabelas-frete")).toBe("Tabelas de frete");
+    expect(tituloDaTela("/dashboard/coletas/abc/minuta")).toBe("Minutas");
+    expect(tituloDaTela("/dashboard/fiscal/mdfe")).toBe("Notas fiscais");
+    expect(tituloDaTela("/dashboard/desconhecida")).toBe("Desconhecida");
   });
 
   it("sem perfil, ou com perfil de fora da equipe, o menu vem vazio", () => {

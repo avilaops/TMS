@@ -160,6 +160,7 @@ model User {
   cteEventsCreated     CteEvent[]
   subcontractDocumentsCreated SubcontractDocument[]
   crewPayClosings      CrewPayClosing[] @relation("CrewPayClosingClosedBy")
+  quoteLeadsAssigned   QuoteLead[] @relation("QuoteLeadAssignee")
 
   @@index([clientId])
 
@@ -1226,6 +1227,10 @@ model DeliveryAttempt {
 model QuoteLead {
   tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id              String   @id @default(uuid())
+  // Número sequencial por empresa, dado na criação (src/lib/crm-db.ts). É por
+  // ele que a equipe fala da cotação com o cliente. Nulo só em linha criada
+  // fora do caminho normal (teste, script).
+  number          Int?
   companyName     String
   email           String
   phone           String
@@ -1237,6 +1242,17 @@ model QuoteLead {
   // Valor da nota informado no pedido de cotação; segue para a coleta na conversão.
   invoiceValue    Float?
   status          String   @default("NEW") // NEW, CONTACTED, CONVERTED, LOST
+  // Por onde o pedido chegou: SITE (formulário público), WHATSAPP, EMAIL ou
+  // TELEFONE (registrado pela equipe no painel). Ver src/lib/crm.ts.
+  channel         String   @default("SITE")
+  // Quem da equipe cuida desta cotação. Nulo = ninguém assumiu ainda.
+  assigneeId      String?
+  assignee        User?    @relation("QuoteLeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  // Por que foi perdida (lista fechada em src/lib/crm.ts). Só com status LOST.
+  lostReason      String?
+  // Última vez que alguém mexeu nela ou falou com o cliente: troca de status,
+  // contato registrado. É por aqui que a tela acha cotação parada.
+  lastActivityAt  DateTime @default(now())
   // Coleta criada na conversão do lead (src/lib/crm.ts). Uma coleta por lead.
   collectionId    String?  @unique
   collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
@@ -1245,6 +1261,9 @@ model QuoteLead {
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@index([assigneeId])
 }
 
 // ---------------------------------------------------------------------------

@@ -23,10 +23,17 @@ const lead = (extra: Record<string, unknown> = {}) => ({
   estimatedValue: 150,
   invoiceValue: 2000,
   status: "NEW",
+  channel: "SITE",
+  number: 1494,
+  lostReason: null,
+  assignee: null,
   createdAt: "2026-10-08T15:30:00.000Z",
+  lastActivityAt: new Date().toISOString(),
   collection: null,
   ...extra,
 });
+
+const haDias = (dias: number) => new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
 
 const CLIENTES = [
   { id: "cli-1", companyName: "Serilon Brasil Ltda", tradeName: "Serilon", active: true },
@@ -59,6 +66,11 @@ function api(respostas: Record<string, Resposta[]>) {
 }
 
 const LISTA = "GET /api/dashboard/crm";
+const EQUIPE = "GET /api/dashboard/crm/equipe";
+const PESSOAS = [
+  { id: "u-ana", name: "Ana Paula" },
+  { id: "u-rafa", name: "Rafael" },
+];
 
 const coluna = (tela: HTMLElement, status: string) => tela.querySelector<HTMLElement>(`[data-coluna="${status}"]`)!;
 const cartao = (tela: HTMLElement, id = "lead-1") => tela.querySelector<HTMLElement>(`[data-lead="${id}"]`)!;
@@ -75,11 +87,13 @@ async function preencher(campo: HTMLInputElement | HTMLSelectElement, valor: str
 }
 
 async function abrir(leads: unknown[], outras: Record<string, Resposta[]> = {}) {
-  const pedidos = api({ [LISTA]: [{ body: leads }], ...outras });
+  const pedidos = api({ [LISTA]: [{ body: leads }], [EQUIPE]: [{ body: PESSOAS }], ...outras });
   const tela = await montar(<CRMPage />);
-  await ate(() => expect(tela.textContent).not.toContain("Carregando CRM..."));
+  await ate(() => expect(tela.textContent).not.toContain("Carregando cotações..."));
   return { tela, pedidos };
 }
+
+const selectStatus = (onde: ParentNode) => onde.querySelector<HTMLSelectElement>('select[aria-label="Status da cotação"]')!;
 
 afterEach(async () => {
   await desmontarTudo();
@@ -115,7 +129,7 @@ describe("tela do funil de cotações", () => {
   it("o select de status oferece só o que o operador escolhe, sem Convertidos", async () => {
     const { tela } = await abrir([lead()]);
 
-    const opcoes = [...cartao(tela).querySelectorAll("select option")];
+    const opcoes = [...selectStatus(cartao(tela)).querySelectorAll("option")];
     expect(opcoes.map((o) => o.getAttribute("value"))).toEqual(["NEW", "CONTACTED", "LOST"]);
     expect(opcoes.map((o) => o.textContent)).toEqual(["Novos", "Em contato", "Perdidos"]);
   });
@@ -142,7 +156,7 @@ describe("tela do funil de cotações", () => {
       "PATCH /api/dashboard/crm/lead-1": [{ body: lead({ status: "CONTACTED" }) }],
     });
 
-    await preencher(cartao(tela).querySelector("select")!, "CONTACTED");
+    await preencher(selectStatus(cartao(tela)), "CONTACTED");
     await ate(() => expect(coluna(tela, "CONTACTED").contains(cartao(tela))).toBe(true));
     expect(pedidos.at(-1)).toEqual({ metodo: "PATCH", caminho: "/api/dashboard/crm/lead-1", corpo: { status: "CONTACTED" } });
   });
@@ -203,7 +217,7 @@ describe("tela do funil de cotações", () => {
     const form = cartao(tela).querySelector("form")!;
     await ate(() => expect(form.querySelectorAll('select[name="clientId"] option')).toHaveLength(3));
 
-    expect(pedidos.map((p) => `${p.metodo} ${p.caminho}`)).toEqual([LISTA, "GET /api/clientes"]);
+    expect(pedidos.map((p) => `${p.metodo} ${p.caminho}`)).toEqual([LISTA, EQUIPE, "GET /api/clientes"]);
     const opcoes = [...form.querySelectorAll('select[name="clientId"] option')];
     // Nome fantasia quando há; senão a razão social. O inativo não entra.
     expect(opcoes.map((o) => o.textContent)).toEqual(["Selecione o cliente", "Serilon", "Transportes Lima Ltda"]);
@@ -391,7 +405,7 @@ describe("tela do funil de cotações", () => {
       ],
     });
 
-    await preencher(cartao(tela).querySelector("select")!, "LOST");
+    await preencher(selectStatus(cartao(tela)), "LOST");
     await ate(() =>
       expect(alerta(tela)?.textContent).toBe("Cotação já convertida em coleta: não pode mais ser alterada."),
     );
@@ -411,7 +425,7 @@ describe("tela do funil de cotações", () => {
     await ate(() => expect(alerta(tela)?.textContent).toBe("Erro 502 ao falar com o servidor."));
 
     // A ação seguinte que dá certo limpa a faixa.
-    await preencher(cartao(tela).querySelector("select")!, "LOST");
+    await preencher(selectStatus(cartao(tela)), "LOST");
     await ate(() => expect(coluna(tela, "LOST").contains(cartao(tela))).toBe(true));
     expect(alerta(tela)).toBeNull();
   });
@@ -429,7 +443,7 @@ describe("tela do funil de cotações", () => {
     ["resposta 200 que não é lista", { body: { leads: [] } } as Resposta, "Não foi possível carregar as cotações."],
     ["falha de rede", new TypeError("Failed to fetch") as Resposta, "Não foi possível falar com o servidor. Tente de novo."],
   ])("falha ao carregar (%s): mostra a mensagem, mantém Atualizar Lista e recarrega por ele", async (_caso, resposta, mensagem) => {
-    const pedidos = api({ [LISTA]: [resposta, { body: [lead()] }] });
+    const pedidos = api({ [LISTA]: [resposta, { body: [lead()] }], [EQUIPE]: [{ body: PESSOAS }] });
     const tela = await montar(<CRMPage />);
 
     await ate(() => expect(alerta(tela)?.textContent).toBe(mensagem));
@@ -438,7 +452,9 @@ describe("tela do funil de cotações", () => {
     await clicar(botao(tela, "Atualizar Lista"));
     await ate(() => expect(cartao(tela)).not.toBeNull());
     expect(alerta(tela)).toBeNull();
-    expect(pedidos).toHaveLength(2);
+    // A lista duas vezes (a que falhou e a do botão) e a equipe uma.
+    expect(pedidos.filter((p) => p.caminho === "/api/dashboard/crm")).toHaveLength(2);
+    expect(pedidos).toHaveLength(3);
   });
 
   it("celular: as abas mostram a contagem de cada etapa e trocam a coluna à mostra", async () => {
@@ -458,5 +474,182 @@ describe("tela do funil de cotações", () => {
     expect(aba("NEW").getAttribute("aria-selected")).toBe("false");
     expect(escondida("LOST")).toBe(false);
     expect(escondida("NEW")).toBe(true);
+  });
+
+  it("cartão: número, canal, selo de parada, responsável e motivo da perda; convertido mostra só texto", async () => {
+    const { tela, pedidos } = await abrir(
+      [
+        lead({ channel: "WHATSAPP", status: "CONTACTED", lastActivityAt: haDias(3), assignee: { id: "u-rafa", name: "Rafael" } }),
+        lead({ id: "lead-2", number: 7, status: "LOST", lostReason: "PRECO", lastActivityAt: haDias(9) }),
+        lead({ id: "lead-3", number: null, status: "CONVERTED", assignee: { id: "u-x", name: "Quem Saiu" }, collection: { id: "c-1", trackingCode: "9184726350", status: "CONFIRMED" } }),
+      ],
+      {
+        "PATCH /api/dashboard/crm/lead-1": [{ body: lead({ status: "CONTACTED", assignee: { id: "u-ana", name: "Ana Paula" } }) }],
+        "PATCH /api/dashboard/crm/lead-2": [{ body: lead({ id: "lead-2", status: "LOST", lostReason: "PRAZO" }) }],
+      },
+    );
+
+    const aberto = cartao(tela);
+    expect(aberto.textContent).toContain("nº 1494");
+    expect(aberto.textContent).toContain("WhatsApp");
+    expect(aberto.querySelector("[data-parada]")!.textContent).toBe("parada há 3 dias");
+    const responsavel = aberto.querySelector<HTMLSelectElement>('select[aria-label="Responsável"]')!;
+    expect(responsavel.value).toBe("u-rafa");
+    expect([...responsavel.options].map((o) => o.textContent)).toEqual(["Sem responsável", "Ana Paula", "Rafael"]);
+    expect(aberto.querySelector('select[aria-label="Motivo da perda"]')).toBeNull();
+
+    await preencher(responsavel, "u-ana");
+    expect(pedidos.at(-1)).toEqual({ metodo: "PATCH", caminho: "/api/dashboard/crm/lead-1", corpo: { assigneeId: "u-ana" } });
+    await ate(() => expect(cartao(tela).querySelector<HTMLSelectElement>('select[aria-label="Responsável"]')!.value).toBe("u-ana"));
+    // Responder renovou a atividade: o selo some.
+    expect(cartao(tela).querySelector("[data-parada]")).toBeNull();
+
+    const perdido = cartao(tela, "lead-2");
+    expect(perdido.querySelector("[data-parada]")).toBeNull();
+    expect(perdido.textContent).toContain("Perdida: Preço acima do concorrente");
+    const motivo = perdido.querySelector<HTMLSelectElement>('select[aria-label="Motivo da perda"]')!;
+    expect(motivo.value).toBe("PRECO");
+    expect([...motivo.options].map((o) => o.getAttribute("value"))).toEqual(["", "PRECO", "PRAZO", "DESISTIU", "SEM_RETORNO", "OUTRA_TRANSPORTADORA", "OUTRO"]);
+    await preencher(motivo, "PRAZO");
+    expect(pedidos.at(-1)!.corpo).toEqual({ lostReason: "PRAZO" });
+    await ate(() => expect(cartao(tela, "lead-2").textContent).toContain("Perdida: Prazo de entrega"));
+    // Perdida não tem Registrar contato nem Converter.
+    expect(botao(cartao(tela, "lead-2"), "Registrar contato")).toBeUndefined();
+
+    const convertido = cartao(tela, "lead-3");
+    expect(convertido.textContent).not.toContain("nº");
+    expect(convertido.textContent).toContain("Responsável: Quem Saiu");
+    expect(convertido.querySelectorAll("button, select")).toHaveLength(0);
+  });
+
+  it("Registrar contato manda só `contato: true` e atualiza o cartão com a resposta", async () => {
+    const { tela, pedidos } = await abrir([lead({ lastActivityAt: haDias(4) })], {
+      "PATCH /api/dashboard/crm/lead-1": [{ body: lead({ lastActivityAt: new Date().toISOString() }) }],
+    });
+    expect(cartao(tela).querySelector("[data-parada]")!.textContent).toBe("parada há 4 dias");
+
+    await clicar(botao(cartao(tela), "Registrar contato"));
+    expect(pedidos.at(-1)).toEqual({ metodo: "PATCH", caminho: "/api/dashboard/crm/lead-1", corpo: { contato: true } });
+    await ate(() => expect(cartao(tela).querySelector("[data-parada]")).toBeNull());
+  });
+
+  it("resumo do topo: cotações, conversão, fechado × cotado e paradas, do que está na tela", async () => {
+    const { tela } = await abrir([
+      lead({ estimatedValue: 100, lastActivityAt: haDias(3) }),
+      lead({ id: "lead-2", status: "CONVERTED", estimatedValue: 300, collection: null }),
+      lead({ id: "lead-3", status: "LOST", estimatedValue: 50 }),
+      lead({ id: "lead-4", status: "CONTACTED", estimatedValue: null }),
+    ]);
+
+    const resumo = semNbsp(tela.querySelector("[data-resumo]")!.textContent);
+    expect(resumo).toContain("Cotações4");
+    expect(resumo).toContain("2 em aberto");
+    expect(resumo).toContain("Conversão50%");
+    expect(resumo).toContain("1 de 2 decididas");
+    expect(resumo).toContain("Fechado × cotadoR$ 300,00");
+    expect(resumo).toContain("de R$ 450,00 cotados");
+    expect(resumo).toContain("Paradas1");
+  });
+
+  it("filtros vão para a rota como query; o cartão de paradas liga e desliga o filtro; sem filtro a URL é a de sempre", async () => {
+    const { tela, pedidos } = await abrir([lead()], {
+      "GET /api/dashboard/crm?status=parada": [{ body: [] }],
+      "GET /api/dashboard/crm?status=LOST": [{ body: [] }],
+      "GET /api/dashboard/crm?status=LOST&dias=30": [{ body: [] }],
+      "GET /api/dashboard/crm?status=LOST&dias=30&assigneeId=ninguem": [{ body: [] }],
+      "GET /api/dashboard/crm?status=LOST&dias=30&assigneeId=ninguem&busca=Mirassol": [{ body: [] }],
+    });
+
+    await clicar(tela.querySelector("[data-paradas]")!);
+    await ate(() => expect(pedidos.at(-1)!.caminho).toBe("/api/dashboard/crm?status=parada"));
+    expect(tela.querySelector<HTMLSelectElement>('select[aria-label="Etapa"]')!.value).toBe("parada");
+    await ate(() => expect(tela.querySelector("[data-lead]")).toBeNull());
+
+    await clicar(tela.querySelector("[data-paradas]")!);
+    await ate(() => expect(pedidos.at(-1)!.caminho).toBe("/api/dashboard/crm"));
+    await ate(() => expect(cartao(tela)).not.toBeNull());
+
+    await preencher(tela.querySelector<HTMLSelectElement>('select[aria-label="Etapa"]')!, "LOST");
+    await ate(() => expect(pedidos.at(-1)!.caminho).toBe("/api/dashboard/crm?status=LOST"));
+    await preencher(tela.querySelector<HTMLSelectElement>('select[aria-label="Período"]')!, "30");
+    await ate(() => expect(pedidos.at(-1)!.caminho).toBe("/api/dashboard/crm?status=LOST&dias=30"));
+    const porResponsavel = tela.querySelector<HTMLSelectElement>('select[aria-label="Filtrar por responsável"]')!;
+    expect([...porResponsavel.options].map((o) => o.textContent)).toEqual(["Qualquer responsável", "Sem responsável", "Ana Paula", "Rafael"]);
+    await preencher(porResponsavel, "ninguem");
+    await ate(() => expect(pedidos.at(-1)!.caminho).toBe("/api/dashboard/crm?status=LOST&dias=30&assigneeId=ninguem"));
+    await preencher(tela.querySelector<HTMLInputElement>('input[aria-label="Buscar cotação"]')!, "Mirassol");
+    await ate(() => expect(pedidos.at(-1)!.caminho).toBe("/api/dashboard/crm?status=LOST&dias=30&assigneeId=ninguem&busca=Mirassol"));
+  });
+
+  it("a lista mostra a mesma coleção em tabela, com os mesmos controles, e Converter volta ao funil com o formulário aberto", async () => {
+    const { tela, pedidos } = await abrir(
+      [lead({ assignee: { id: "u-ana", name: "Ana Paula" }, lastActivityAt: haDias(2) }), lead({ id: "lead-2", status: "CONVERTED", collection: { id: "c-1", trackingCode: "9184726350", status: "CONFIRMED" } })],
+      { "GET /api/clientes": [{ body: CLIENTES }], "PATCH /api/dashboard/crm/lead-1": [{ body: lead({ status: "CONTACTED" }) }] },
+    );
+
+    await clicar(tela.querySelector('[data-visao="lista"]')!);
+    expect(tela.querySelector("[data-coluna]")).toBeNull();
+    const linhas = [...tela.querySelectorAll("[data-linha]")];
+    expect(linhas.map((l) => l.getAttribute("data-linha"))).toEqual(["lead-1", "lead-2"]);
+    const aberta = linhas[0] as HTMLElement;
+    expect(aberta.textContent).toContain("1494");
+    expect(aberta.textContent).toContain("São José do Rio Preto ➔ Mirassol");
+    expect(aberta.textContent).toContain("3 vol · 120.5 kg");
+    expect(semNbsp(aberta.textContent)).toContain("R$ 150,00");
+    expect(aberta.querySelector("[data-parada]")!.textContent).toBe("parada há 2 dias");
+    expect(aberta.querySelector<HTMLSelectElement>('select[aria-label="Responsável"]')!.value).toBe("u-ana");
+
+    const convertida = linhas[1] as HTMLElement;
+    expect(convertida.textContent).toContain("9184726350");
+    expect(convertida.querySelectorAll("button, select")).toHaveLength(0);
+
+    await preencher(selectStatus(aberta), "CONTACTED");
+    expect(pedidos.at(-1)).toEqual({ metodo: "PATCH", caminho: "/api/dashboard/crm/lead-1", corpo: { status: "CONTACTED" } });
+
+    await clicar(botao(tela.querySelector("[data-linha='lead-1']")!, "Converter em coleta"));
+    await ate(() => expect(cartao(tela).querySelector("form")).not.toBeNull());
+    expect(tela.querySelector("[data-lista]")).toBeNull();
+    expect(tela.querySelector('[data-visao="funil"]')!.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("registrar cotação: manda o que foi digitado, sem responsável quando é quem registra, e põe a nova em Novos", async () => {
+    const nova = lead({ id: "lead-novo", number: 1495, companyName: "Autopeças Rota 376", channel: "WHATSAPP", estimatedValue: null });
+    const { tela, pedidos } = await abrir([lead()], { "POST /api/dashboard/crm": [{ status: 400, body: { error: "Informe o telefone ou o e-mail do cliente." } }, { status: 201, body: nova }] });
+
+    expect(tela.querySelector('form[aria-label="Registrar cotação"]')).toBeNull();
+    await clicar(botao(tela, "Registrar cotação"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Registrar cotação"]')!;
+    expect([...form.querySelectorAll("input, select")].map((c) => c.getAttribute("name"))).toEqual([
+      "companyName", "phone", "email", "channel", "origin", "destination", "volumes", "weight", "invoiceValue", "assigneeId",
+    ]);
+    expect([...form.querySelector<HTMLSelectElement>('select[name="channel"]')!.options].map((o) => o.textContent)).toEqual(["WhatsApp", "Telefone", "E-mail"]);
+    expect([...form.querySelector<HTMLSelectElement>('select[name="assigneeId"]')!.options].map((o) => o.textContent)).toEqual(["Quem registra", "Sem responsável", "Ana Paula", "Rafael"]);
+
+    await preencher(form.querySelector<HTMLInputElement>('input[name="companyName"]')!, "Autopeças Rota 376");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="origin"]')!, "Maringá");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="destination"]')!, "Mirassol");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="weight"]')!, "88,5");
+    await act(async () => {
+      form.requestSubmit();
+    });
+    // A recusa aparece dentro do formulário, que fica aberto para corrigir.
+    await ate(() => expect(form.querySelector('[role="alert"]')?.textContent).toBe("Informe o telefone ou o e-mail do cliente."));
+    expect(pedidos.at(-1)).toEqual({
+      metodo: "POST",
+      caminho: "/api/dashboard/crm",
+      corpo: { companyName: "Autopeças Rota 376", phone: "", email: "", channel: "WHATSAPP", origin: "Maringá", destination: "Mirassol", volumes: "1", weight: "88,5", invoiceValue: "" },
+    });
+
+    await preencher(form.querySelector<HTMLInputElement>('input[name="phone"]')!, "44999990000");
+    await preencher(form.querySelector<HTMLSelectElement>('select[name="assigneeId"]')!, "ninguem");
+    await act(async () => {
+      form.requestSubmit();
+    });
+    await ate(() => expect(cartao(tela, "lead-novo")).not.toBeNull());
+    expect(pedidos.at(-1)!.corpo).toMatchObject({ phone: "44999990000", assigneeId: null });
+    expect(tela.querySelector('form[aria-label="Registrar cotação"]')).toBeNull();
+    expect(coluna(tela, "NEW").querySelectorAll("[data-lead]")).toHaveLength(2);
+    expect(coluna(tela, "NEW").querySelector("[data-lead]")!.getAttribute("data-lead")).toBe("lead-novo");
+    expect(cartao(tela, "lead-novo").textContent).toContain("nº 1495");
   });
 });

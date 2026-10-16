@@ -2,7 +2,17 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { getServerSession } from "next-auth";
 import { randomInt } from "node:crypto";
 import { EMPRESA_OUTRA, EMPRESA_PADRAO } from "./empresas-de-teste";
-import { divergenciaDeFrete } from "../src/lib/crm";
+import {
+  DIAS_PARA_COBRAR,
+  csvDeCotacoes,
+  diasParada,
+  divergenciaDeFrete,
+  filtrosDaLista,
+  linhasDoCsv,
+  ondeDaLista,
+  resumoDoFunil,
+  type LeadDaLista,
+} from "../src/lib/crm";
 
 /**
  * Funil de cotações (CRM) e conversão da cotação em coleta, contra um
@@ -43,6 +53,112 @@ describe("divergência entre o valor estimado do lead e o frete da coleta", () =
   });
 });
 
+const AGORA = new Date("2026-10-16T12:00:00.000Z");
+const haDias = (dias: number) => new Date(AGORA.getTime() - dias * 24 * 60 * 60 * 1000);
+
+/** Uma cotação como a lista devolve, para os testes sem banco. */
+const daLista = (extra: Partial<LeadDaLista> = {}): LeadDaLista => ({
+  id: "lead-1",
+  number: 12,
+  companyName: "Indústria Interessada",
+  email: "compras@industria.br",
+  phone: "17999990000",
+  origin: "São José do Rio Preto",
+  destination: "Mirassol",
+  volumes: 3,
+  weight: 120.5,
+  estimatedValue: 150,
+  invoiceValue: 2000,
+  status: "NEW",
+  channel: "SITE",
+  lostReason: null,
+  lastActivityAt: AGORA,
+  createdAt: AGORA,
+  assignee: null,
+  collection: null,
+  ...extra,
+});
+
+/** Sem banco: o que é cotação parada, os filtros da lista, o resumo e o CSV. */
+describe("regras das cotações (sem banco)", () => {
+  it("parada é a cotação em aberto sem atividade há DIAS_PARA_COBRAR ou mais; fechada nunca está parada", () => {
+    expect(DIAS_PARA_COBRAR).toBe(2);
+    expect(diasParada({ status: "NEW", lastActivityAt: haDias(1) }, AGORA)).toBeNull();
+    expect(diasParada({ status: "NEW", lastActivityAt: haDias(2) }, AGORA)).toBe(2);
+    expect(diasParada({ status: "CONTACTED", lastActivityAt: haDias(5).toISOString() }, AGORA)).toBe(5);
+    expect(diasParada({ status: "CONVERTED", lastActivityAt: haDias(30) }, AGORA)).toBeNull();
+    expect(diasParada({ status: "LOST", lastActivityAt: haDias(30) }, AGORA)).toBeNull();
+  });
+
+  it("filtros: só o que é válido entra, e cada um vira a sua condição", () => {
+    expect(filtrosDaLista(new URLSearchParams(""))).toEqual({});
+    expect(filtrosDaLista(new URLSearchParams("status=QUALQUER&dias=abc&dias=-1&assigneeId=%20&busca=%20"))).toEqual({});
+    expect(filtrosDaLista(new URLSearchParams("status=parada&dias=30&assigneeId=ninguem&busca=%20Mirassol%20"))).toEqual({
+      status: "parada",
+      dias: 30,
+      assigneeId: "ninguem",
+      busca: "Mirassol",
+    });
+    expect(filtrosDaLista(new URLSearchParams("status=LOST&dias=7&assigneeId=u1"))).toEqual({ status: "LOST", dias: 7, assigneeId: "u1" });
+
+    expect(ondeDaLista({}, AGORA)).toEqual({});
+    expect(ondeDaLista({ status: "LOST" }, AGORA)).toEqual({ status: "LOST" });
+    expect(ondeDaLista({ status: "parada" }, AGORA)).toEqual({ status: { in: ["NEW", "CONTACTED"] }, lastActivityAt: { lt: haDias(2) } });
+    expect(ondeDaLista({ dias: 7 }, AGORA)).toEqual({ createdAt: { gte: haDias(7) } });
+    expect(ondeDaLista({ assigneeId: "ninguem" }, AGORA)).toEqual({ assigneeId: null });
+    expect(ondeDaLista({ assigneeId: "u1" }, AGORA)).toEqual({ assigneeId: "u1" });
+
+    const porTexto = ondeDaLista({ busca: "Mira" }, AGORA) as { OR: Record<string, unknown>[] };
+    expect(porTexto.OR.map((c) => Object.keys(c)[0])).toEqual(["companyName", "email", "phone", "origin", "destination"]);
+    expect(porTexto.OR[0]).toEqual({ companyName: { contains: "Mira", mode: "insensitive" } });
+    // Só dígitos: também é o número da cotação.
+    const porNumero = ondeDaLista({ busca: "12" }, AGORA) as { OR: Record<string, unknown>[] };
+    expect(porNumero.OR.at(-1)).toEqual({ number: 12 });
+    expect((ondeDaLista({ busca: "99999999999" }, AGORA) as { OR: unknown[] }).OR).toHaveLength(5);
+  });
+
+  it("resumo: conversão sobre as decididas, cotado e fechado pelo valor estimado, paradas pela atividade", () => {
+    const leads = [
+      daLista({ status: "NEW", estimatedValue: 100, lastActivityAt: haDias(3) }),
+      daLista({ status: "CONTACTED", estimatedValue: null, lastActivityAt: haDias(1) }),
+      daLista({ status: "CONVERTED", estimatedValue: 250.5 }),
+      daLista({ status: "CONVERTED", estimatedValue: 49.5, lastActivityAt: haDias(40) }),
+      daLista({ status: "LOST", estimatedValue: 80 }),
+    ];
+    expect(resumoDoFunil(leads, AGORA)).toEqual({
+      total: 5,
+      abertas: 2,
+      ganhas: 2,
+      perdidas: 1,
+      conversao: 2 / 3,
+      cotado: 480,
+      fechado: 300,
+      paradas: 1,
+    });
+    expect(resumoDoFunil([], AGORA)).toEqual({ total: 0, abertas: 0, ganhas: 0, perdidas: 0, conversao: null, cotado: 0, fechado: 0, paradas: 0 });
+  });
+
+  it("CSV: cabeçalho, uma linha por cotação com rótulos em português, vírgula decimal e aspas só quando preciso", () => {
+    const linhas = linhasDoCsv(
+      [
+        daLista({ companyName: 'Loja "Centro"; filial', channel: "WHATSAPP", status: "LOST", lostReason: "PRECO", assignee: { id: "u1", name: "Ana" }, lastActivityAt: haDias(3) }),
+        daLista({ id: "lead-2", number: null, estimatedValue: null, weight: 80, status: "CONVERTED", collection: { id: "c1", trackingCode: "9184726350", status: "CONFIRMED" } }),
+      ],
+      AGORA,
+    );
+    expect(linhas).toHaveLength(3);
+    expect(linhas[0].slice(0, 3)).toEqual(["Nº", "Criada em", "Empresa"]);
+    expect(linhas[1]).toMatchObject({ 0: "12", 2: 'Loja "Centro"; filial', 8: "120,5", 9: "2000", 10: "150", 11: "WhatsApp", 12: "Perdidos", 13: "Preço acima do concorrente", 14: "Ana", 16: "" });
+    expect(linhas[2]).toMatchObject({ 0: "", 8: "80", 10: "", 12: "Convertidos", 13: "", 14: "", 17: "9184726350" });
+
+    const csv = csvDeCotacoes(linhas);
+    expect(csv.startsWith("\uFEFFNº;Criada em;Empresa;")).toBe(true);
+    expect(csv.split("\r\n")).toHaveLength(3);
+    expect(csv).toContain('"Loja ""Centro""; filial"');
+    expect(csv).toContain(";120,5;2000;150;WhatsApp;Perdidos;Preço acima do concorrente;Ana;");
+  });
+});
+
 // Tudo o que esta suite cria usa estes marcadores, e só isso é apagado.
 const PREFIXO = "teste-crm-";
 const CNPJ = "99777444000133";
@@ -58,13 +174,14 @@ suite("CRM e cotações", () => {
   let converter: typeof import("../src/app/api/dashboard/crm/[id]/converter/route");
   let leads: typeof import("../src/app/api/leads/route");
   let cotacoes: typeof import("../src/app/api/cotacoes/route");
+  let crmEquipe: typeof import("../src/app/api/dashboard/crm/equipe/route");
 
   const sessao = vi.mocked(getServerSession);
   const sorteio = vi.mocked(randomInt);
-  const ids = { ADMIN: "", OPERATION: "", CLIENT: "", DRIVER: "" };
+  const ids = { ADMIN: "", OPERATION: "", CLIENT: "", DRIVER: "", COMMERCIAL: "", FINANCE: "", daOutra: "" };
   const clientes = { ativo: "", inativo: "", daOutra: "" };
 
-  const entrarComo = (perfil: keyof typeof ids | null) =>
+  const entrarComo = (perfil: Exclude<keyof typeof ids, "daOutra"> | null) =>
     sessao.mockResolvedValue(perfil ? { user: { id: ids[perfil], role: perfil, clientId: null } } : null);
 
   const req = (method = "GET", body?: unknown) =>
@@ -118,6 +235,7 @@ suite("CRM e cotações", () => {
     await sistema.client.updateMany({ where: { cnpj: { in: [CNPJ, CNPJ_INATIVO] } }, data: { freightTableId: null } });
     await sistema.freightTable.deleteMany({ where: { name: { startsWith: PREFIXO } } });
     await sistema.client.deleteMany({ where: { cnpj: { in: [CNPJ, CNPJ_INATIVO] } } });
+    await sistema.auditLog.deleteMany({ where: { entity: "cotacao", userName: { in: ["ADMIN", "OPERATION", "COMMERCIAL"] } } });
     await sistema.user.deleteMany({ where: { email: { startsWith: PREFIXO } } });
   }
 
@@ -128,9 +246,10 @@ suite("CRM e cotações", () => {
     converter = await import("../src/app/api/dashboard/crm/[id]/converter/route");
     leads = await import("../src/app/api/leads/route");
     cotacoes = await import("../src/app/api/cotacoes/route");
+    crmEquipe = await import("../src/app/api/dashboard/crm/equipe/route");
     await limpar();
 
-    for (const perfil of ["ADMIN", "OPERATION", "CLIENT", "DRIVER"] as const) {
+    for (const perfil of ["ADMIN", "OPERATION", "CLIENT", "DRIVER", "COMMERCIAL", "FINANCE"] as const) {
       ids[perfil] = (
         await banco.default.user.create({
           data: { name: perfil, email: `${PREFIXO}${perfil.toLowerCase()}@exemplo.br`, password: HASH_FALSO, role: perfil },
@@ -140,6 +259,11 @@ suite("CRM e cotações", () => {
     clientes.ativo = (await banco.default.client.create({ data: { cnpj: CNPJ, companyName: `${PREFIXO}cliente` } })).id;
     clientes.inativo = (
       await banco.default.client.create({ data: { cnpj: CNPJ_INATIVO, companyName: `${PREFIXO}inativo`, active: false } })
+    ).id;
+    ids.daOutra = (
+      await banco.paraEmpresa(EMPRESA_OUTRA.id).db.user.create({
+        data: { name: "Comercial da outra", email: `${PREFIXO}outra-comercial@exemplo.br`, password: HASH_FALSO, role: "COMMERCIAL" },
+      })
     ).id;
     clientes.daOutra = (
       await banco.paraEmpresa(EMPRESA_OUTRA.id).db.client.create({ data: { cnpj: CNPJ, companyName: `${PREFIXO}da outra` } })
@@ -613,6 +737,226 @@ suite("CRM e cotações", () => {
         status: "CONFIRMED",
       });
       expect(lista[1]).toMatchObject({ status: "NEW", invoiceValue: null, collection: null });
+    });
+  });
+
+  describe("número, canal e a lista com filtros", () => {
+    const registrar = (body: unknown) => crm.POST(req("POST", body));
+    const listar = (query = "") => crm.GET(new Request(`http://localhost/api/dashboard/crm${query}`));
+    const idsDaSuite = async (query = "") => {
+      const res = await listar(query);
+      expect(res.status).toBe(200);
+      return ((await res.json()) as { id: string; email: string }[]).filter((l) => l.email.startsWith(PREFIXO)).map((l) => l.id);
+    };
+    const pedidoDoPainel = (extra: Record<string, unknown> = {}) => ({
+      companyName: "Autopeças Rota 376",
+      phone: "44999990000",
+      email: `${PREFIXO}painel@exemplo.br`,
+      channel: "WHATSAPP",
+      origin: "Maringá",
+      destination: "Mirassol",
+      volumes: "4",
+      weight: "88",
+      invoiceValue: "6.250,00".replace(".", ""),
+      ...extra,
+    });
+
+    it("site e painel entram na mesma numeração, sequencial por empresa, e cada empresa conta a sua", async () => {
+      // A numeração desta empresa pode já ter cotações de outras suites: o que vale é a sequência.
+      sessao.mockResolvedValue(null);
+      const doSite = (await (await leads.POST(req("POST", { empresa: EMPRESA_PADRAO.slug, companyName: "Interessado", email: `${PREFIXO}site@exemplo.br`, origin: "A", destination: "B", weight: "10" }))).json()) as { lead: { id: string } };
+      entrarComo("COMMERCIAL");
+      const doPainel = await registrar(pedidoDoPainel());
+      expect(doPainel.status).toBe(201);
+      const painel = (await doPainel.json()) as { id: string; number: number; channel: string; status: string; assignee: { id: string; name: string } | null };
+
+      const primeiro = await noBanco(doSite.lead.id);
+      expect(primeiro.number).toEqual(expect.any(Number));
+      expect(primeiro.channel).toBe("SITE");
+      expect(painel.number).toBe(primeiro.number! + 1);
+      expect(painel).toMatchObject({ channel: "WHATSAPP", status: "NEW", assignee: { id: ids.COMMERCIAL, name: "COMMERCIAL" } });
+      expect(await noBanco(painel.id)).toMatchObject({ tenantId: EMPRESA_PADRAO.id, volumes: 4, weight: 88, invoiceValue: 6250, estimatedValue: null, assigneeId: ids.COMMERCIAL });
+
+      // A outra empresa começa a contar do zero dela, não do número desta.
+      sessao.mockResolvedValue(null);
+      const alheio = (await (await cotacoes.POST(req("POST", { empresa: EMPRESA_OUTRA.slug, companyName: "Outro", email: `${PREFIXO}outra@exemplo.br`, origin: "A", destination: "B", volumes: 1, weight: 5 }))).json()) as { id: string };
+      const daOutra = await noBanco(alheio.id);
+      expect(daOutra.tenantId).toBe(EMPRESA_OUTRA.id);
+      const maiorDaOutra = await banco.sistema.quoteLead.aggregate({ where: { tenantId: EMPRESA_OUTRA.id }, _max: { number: true } });
+      expect(daOutra.number).toBe(maiorDaOutra._max.number);
+      expect(daOutra.number).toBeLessThanOrEqual(painel.number);
+    });
+
+    it("duas cotações registradas ao mesmo tempo não repetem número", async () => {
+      entrarComo("ADMIN");
+      const respostas = await Promise.all([registrar(pedidoDoPainel({ companyName: "A" })), registrar(pedidoDoPainel({ companyName: "B" })), registrar(pedidoDoPainel({ companyName: "C" }))]);
+      expect(respostas.map((r) => r.status)).toEqual([201, 201, 201]);
+      const numeros = (await Promise.all(respostas.map((r) => r.json()))).map((l) => (l as { number: number }).number).sort((a, b) => a - b);
+      expect(new Set(numeros).size).toBe(3);
+      expect(numeros[2] - numeros[0]).toBe(2);
+    });
+
+    it.each([
+      ["corpo que não é JSON", "{isto não é json", "Dados inválidos."],
+      ["sem empresa", { phone: "44999990000", channel: "WHATSAPP", origin: "A", destination: "B", weight: 1 }, "Informe a empresa ou o nome do cliente."],
+      ["sem telefone nem e-mail", { companyName: "X", channel: "WHATSAPP", origin: "A", destination: "B", weight: 1 }, "Informe o telefone ou o e-mail do cliente."],
+      ["e-mail inválido", { companyName: "X", email: "nao-e-email", channel: "WHATSAPP", origin: "A", destination: "B", weight: 1 }, "E-mail inválido."],
+      ["canal do site pela equipe", { companyName: "X", phone: "1", channel: "SITE", origin: "A", destination: "B", weight: 1 }, "Informe por onde o pedido chegou."],
+      ["sem destino", { companyName: "X", phone: "1", channel: "EMAIL", origin: "A", weight: 1 }, "Informe a cidade de destino."],
+      ["peso zero", { companyName: "X", phone: "1", channel: "EMAIL", origin: "A", destination: "B", weight: "0" }, "O peso precisa ser maior que zero."],
+      ["volumes quebrados", { companyName: "X", phone: "1", channel: "EMAIL", origin: "A", destination: "B", weight: 1, volumes: "1,5" }, "A quantidade de volumes precisa ser um número inteiro."],
+      ["nota negativa", { companyName: "X", phone: "1", channel: "EMAIL", origin: "A", destination: "B", weight: 1, invoiceValue: -1 }, "O valor da nota precisa ser um número maior ou igual a zero."],
+    ])("registrar: %s → 400 e nada é gravado", async (_caso, body, mensagem) => {
+      entrarComo("OPERATION");
+      const antes = await banco.sistema.quoteLead.count();
+      const res = await registrar(body);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: mensagem });
+      expect(await banco.sistema.quoteLead.count()).toBe(antes);
+    });
+
+    it("registrar: responsável que não é da equipe comercial, de outra empresa ou inexistente → 400; `null` grava sem responsável", async () => {
+      entrarComo("OPERATION");
+      for (const assigneeId of [ids.FINANCE, ids.CLIENT, ids.daOutra, SEM_ID]) {
+        const res = await registrar(pedidoDoPainel({ assigneeId }));
+        expect(res.status, assigneeId).toBe(400);
+        expect(await res.json(), assigneeId).toEqual({ error: "O responsável precisa ser um usuário da equipe comercial." });
+      }
+      const semNinguem = await registrar(pedidoDoPainel({ assigneeId: null }));
+      expect(semNinguem.status).toBe(201);
+      expect(await semNinguem.json()).toMatchObject({ assignee: null });
+      const outro = await registrar(pedidoDoPainel({ assigneeId: ids.COMMERCIAL }));
+      expect(await outro.json()).toMatchObject({ assignee: { id: ids.COMMERCIAL } });
+    });
+
+    it("registrar fica na auditoria, com o número e o canal", async () => {
+      entrarComo("OPERATION");
+      const criada = (await (await registrar(pedidoDoPainel())).json()) as { id: string; number: number };
+      const linhas = await banco.sistema.auditLog.findMany({ where: { action: "cotacao.registrar", entityId: criada.id } });
+      expect(linhas).toHaveLength(1);
+      expect(linhas[0]).toMatchObject({ tenantId: EMPRESA_PADRAO.id, userId: ids.OPERATION, entity: "cotacao", summary: `Cotação nº ${criada.number} registrada para Autopeças Rota 376` });
+      expect(linhas[0].after).toMatchObject({ number: criada.number, channel: "WHATSAPP", assigneeId: ids.OPERATION });
+    });
+
+    it("a lista filtra por etapa, parada, período, responsável e busca; sem filtro vem tudo, do mais novo para o mais antigo", async () => {
+      const haDias = (dias: number) => new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+      const parada = await criarLead({ companyName: "Metalúrgica Parada", status: "CONTACTED", lastActivityAt: haDias(3), createdAt: haDias(40), assigneeId: ids.COMMERCIAL });
+      const recente = await criarLead({ companyName: "Papelaria Recente", status: "NEW", phone: "4433221100" });
+      const perdida = await criarLead({ companyName: "Vidraçaria Perdida", status: "LOST", lostReason: "PRECO", lastActivityAt: haDias(10), createdAt: haDias(10) });
+      const convertidaAntiga = await criarLead({ companyName: "Antiga Convertida", status: "CONVERTED", lastActivityAt: haDias(90), createdAt: haDias(90) });
+      await leadDaOutra();
+
+      expect(await idsDaSuite()).toEqual([recente.id, perdida.id, parada.id, convertidaAntiga.id]);
+      expect(await idsDaSuite("?status=parada")).toEqual([parada.id]);
+      expect(await idsDaSuite("?status=LOST")).toEqual([perdida.id]);
+      expect(await idsDaSuite("?dias=30")).toEqual([recente.id, perdida.id]);
+      expect(await idsDaSuite(`?assigneeId=${ids.COMMERCIAL}`)).toEqual([parada.id]);
+      expect(await idsDaSuite("?assigneeId=ninguem")).toEqual([recente.id, perdida.id, convertidaAntiga.id]);
+      expect(await idsDaSuite("?busca=papelaria")).toEqual([recente.id]);
+      expect(await idsDaSuite("?busca=4433221100")).toEqual([recente.id]);
+      expect(await idsDaSuite("?busca=Mirassol&status=NEW")).toEqual([recente.id]);
+      // Filtro inválido é ignorado, não é erro.
+      expect(await idsDaSuite("?status=QUALQUER&dias=x")).toHaveLength(4);
+
+      const [primeira] = (await (await listar("?status=parada")).json()) as Record<string, unknown>[];
+      expect(primeira).toMatchObject({ number: null, channel: "SITE", lostReason: null, assignee: { id: ids.COMMERCIAL, name: "COMMERCIAL" }, collection: null });
+      expect(primeira).not.toHaveProperty("password");
+    });
+
+    it("busca pelo número acha a cotação registrada", async () => {
+      entrarComo("OPERATION");
+      const criada = (await (await registrar(pedidoDoPainel({ companyName: "Busca Por Número" }))).json()) as { id: string; number: number };
+      const achados = (await (await listar(`?busca=${criada.number}`)).json()) as { id: string }[];
+      expect(achados.map((l) => l.id)).toContain(criada.id);
+    });
+
+    it("a equipe comercial são os usuários desta empresa com a capacidade crm, por nome", async () => {
+      const res = await crmEquipe.GET();
+      expect(res.status).toBe(200);
+      const equipe = (await res.json()) as { id: string; name: string }[];
+      const daSuite = equipe.filter((u) => Object.values(ids).includes(u.id));
+      expect(daSuite.map((u) => u.name).sort()).toEqual(["ADMIN", "COMMERCIAL", "OPERATION"]);
+      expect(equipe.map((u) => u.id)).not.toContain(ids.daOutra);
+      expect(Object.keys(equipe[0]).sort()).toEqual(["id", "name"]);
+    });
+  });
+
+  describe("PATCH: responsável, motivo da perda e contato", () => {
+    it("responsável: aceita quem é da equipe comercial desta empresa; vazio ou null tira; os outros → 400", async () => {
+      const lead = await criarLead();
+      const com = await alterar(lead.id, { assigneeId: ids.COMMERCIAL });
+      expect(com.status).toBe(200);
+      expect(await com.json()).toMatchObject({ assignee: { id: ids.COMMERCIAL, name: "COMMERCIAL" } });
+
+      for (const assigneeId of [ids.FINANCE, ids.CLIENT, ids.DRIVER, ids.daOutra, SEM_ID]) {
+        const res = await alterar(lead.id, { assigneeId });
+        expect(res.status, assigneeId).toBe(400);
+        expect(await res.json(), assigneeId).toEqual({ error: "O responsável precisa ser um usuário da equipe comercial." });
+      }
+      expect((await noBanco(lead.id)).assigneeId).toBe(ids.COMMERCIAL);
+
+      expect(await (await alterar(lead.id, { assigneeId: "" })).json()).toMatchObject({ assignee: null });
+      await alterar(lead.id, { assigneeId: ids.ADMIN });
+      expect(await (await alterar(lead.id, { assigneeId: null })).json()).toMatchObject({ assignee: null });
+    });
+
+    it("motivo da perda: só fica com status Perdida, e sair de Perdidos apaga", async () => {
+      const lead = await criarLead();
+      expect((await alterar(lead.id, { lostReason: "QUALQUER" })).status).toBe(400);
+
+      // Em cotação aberta o motivo não gruda.
+      expect(await (await alterar(lead.id, { lostReason: "PRECO" })).json()).toMatchObject({ status: "NEW", lostReason: null });
+
+      const perdida = await alterar(lead.id, { status: "LOST", lostReason: "PRAZO" });
+      expect(await perdida.json()).toMatchObject({ status: "LOST", lostReason: "PRAZO" });
+      // Só o motivo, já perdida.
+      expect(await (await alterar(lead.id, { lostReason: "SEM_RETORNO" })).json()).toMatchObject({ status: "LOST", lostReason: "SEM_RETORNO" });
+      expect(await (await alterar(lead.id, { lostReason: null })).json()).toMatchObject({ status: "LOST", lostReason: null });
+      await alterar(lead.id, { lostReason: "OUTRO" });
+
+      expect(await (await alterar(lead.id, { status: "CONTACTED" })).json()).toMatchObject({ status: "CONTACTED", lostReason: null });
+      expect((await noBanco(lead.id)).lostReason).toBeNull();
+    });
+
+    it("contato e troca de status renovam a última atividade; valor e responsável, não", async () => {
+      const haDias = (dias: number) => new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+      const lead = await criarLead({ lastActivityAt: haDias(5) });
+      const atividade = async () => (await noBanco(lead.id)).lastActivityAt.getTime();
+      const antiga = await atividade();
+
+      expect((await alterar(lead.id, { estimatedValue: 99 })).status).toBe(200);
+      expect((await alterar(lead.id, { assigneeId: ids.ADMIN })).status).toBe(200);
+      expect(await atividade()).toBe(antiga);
+
+      const contato = await alterar(lead.id, { contato: true });
+      expect(contato.status).toBe(200);
+      const depoisDoContato = await atividade();
+      expect(depoisDoContato).toBeGreaterThan(Date.now() - 5000);
+      expect(await contato.json()).toMatchObject({ status: "NEW", estimatedValue: 99, assignee: { id: ids.ADMIN } });
+
+      const linhas = await banco.sistema.auditLog.findMany({ where: { entityId: lead.id }, orderBy: { createdAt: "asc" } });
+      expect(linhas.map((l) => l.action)).toEqual(["cotacao.alterar", "cotacao.alterar", "cotacao.contato"]);
+      expect(linhas[2]).toMatchObject({ userId: ids.OPERATION, summary: "Contato com Indústria Interessada registrado" });
+
+      await banco.sistema.quoteLead.update({ where: { id: lead.id }, data: { lastActivityAt: haDias(5) } });
+      // Mesmo status de novo não é troca: a atividade fica.
+      expect((await alterar(lead.id, { status: "NEW" })).status).toBe(200);
+      expect(await atividade()).toBe(haDias(5).getTime() - (haDias(5).getTime() % 1000) + ((await atividade()) % 1000));
+      expect((await alterar(lead.id, { status: "CONTACTED" })).status).toBe(200);
+      expect(await atividade()).toBeGreaterThan(Date.now() - 5000);
+
+      // `contato` só aceita `true`.
+      expect((await alterar(lead.id, { contato: false })).status).toBe(400);
+      expect((await alterar(lead.id, { contato: "sim" })).status).toBe(400);
+    });
+
+    it("contato em cotação convertida → 409, e nada muda", async () => {
+      const lead = await criarLead({ status: "CONVERTED" });
+      for (const body of [{ contato: true }, { assigneeId: ids.ADMIN }, { lostReason: "PRECO" }]) {
+        const res = await alterar(lead.id, body);
+        expect(res.status).toBe(409);
+      }
+      expect(await noBanco(lead.id)).toMatchObject({ status: "CONVERTED", assigneeId: null, lostReason: null });
     });
   });
 });

@@ -1,35 +1,55 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Download, Plus, RefreshCw } from "lucide-react";
 import {
+  DIAS_PARA_COBRAR,
+  LEAD_CHANNEL_LABELS,
+  LEAD_MANUAL_CHANNELS,
   LEAD_MANUAL_STATUSES,
   LEAD_STATUSES,
   LEAD_STATUS_LABELS,
+  LOST_REASONS,
+  LOST_REASON_LABELS,
+  PERIODOS_DA_LISTA,
+  csvDeCotacoes,
+  diasParada,
   divergenciaDeFrete,
   isConvertible,
+  isOpen,
+  linhasDoCsv,
+  resumoDoFunil,
+  rotuloDoCanal,
+  rotuloDaPerda,
+  type LeadDaLista,
   type LeadStatus,
 } from "@/lib/crm";
 import { formatCurrency } from "@/lib/format";
 
-type QuoteLead = {
-  id: string;
-  companyName: string;
-  email: string;
-  phone: string;
-  origin: string;
-  destination: string;
-  volumes: number;
-  weight: number;
-  estimatedValue: number | null;
-  invoiceValue: number | null;
-  status: string;
-  createdAt: string;
-  collection: { id: string; trackingCode: string | null; status: string } | null;
-};
+/**
+ * Cotações: tudo o que chegou pedindo preço (site, WhatsApp, telefone,
+ * e-mail), em duas visões sobre a mesma lista. O **funil** é o quadro por
+ * etapa, onde se troca status, valor e responsável e se converte em coleta; a
+ * **lista** é a tabela para achar, cobrar e exportar. Os filtros do topo valem
+ * para as duas, e os números do resumo são do que está filtrado.
+ *
+ * As regras ficam nas rotas (src/lib/crm.ts); aqui é só o que a tela mostra e
+ * o que ela manda em cada ação.
+ */
+
+type QuoteLead = LeadDaLista & { createdAt: string; lastActivityAt: string };
 
 type Cliente = { id: string; companyName: string; tradeName: string | null; active: boolean };
 
+type Pessoa = { id: string; name: string };
+
 type Conversao = { leadId: string; clientId: string; sender: string; receiver: string; invoiceValue: string };
+
+type Visao = "funil" | "lista";
+
+type Filtros = { busca: string; dias: string; status: string; assigneeId: string };
+
+const SEM_FILTRO: Filtros = { busca: "", dias: "", status: "", assigneeId: "" };
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   NEW: "bg-blue-100 text-blue-800",
@@ -37,6 +57,11 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
   CONVERTED: "bg-green-100 text-green-800",
   LOST: "bg-red-100 text-red-800",
 };
+
+const INPUT = "bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500";
+const LABEL = "flex flex-col gap-1 text-xs font-medium text-gray-600";
+
+const FORM_VAZIO = { companyName: "", phone: "", email: "", channel: "WHATSAPP", origin: "", destination: "", volumes: "1", weight: "", invoiceValue: "", assigneeId: "" };
 
 type Resposta<T> = { ok: true; dados: T } | { ok: false; erro: string };
 
@@ -57,8 +82,19 @@ async function chamar<T>(url: string, init?: RequestInit): Promise<Resposta<T>> 
   }
 }
 
-async function buscarLeads(): Promise<Resposta<QuoteLead[]>> {
-  const res = await chamar<QuoteLead[]>("/api/dashboard/crm");
+// Sem filtro nenhum a URL é a de sempre, sem "?".
+function urlDaLista(filtros: Filtros): string {
+  const params = new URLSearchParams();
+  if (filtros.status) params.set("status", filtros.status);
+  if (filtros.dias) params.set("dias", filtros.dias);
+  if (filtros.assigneeId) params.set("assigneeId", filtros.assigneeId);
+  if (filtros.busca.trim()) params.set("busca", filtros.busca.trim());
+  const query = params.toString();
+  return `/api/dashboard/crm${query ? `?${query}` : ""}`;
+}
+
+async function buscarLeads(filtros: Filtros): Promise<Resposta<QuoteLead[]>> {
+  const res = await chamar<QuoteLead[]>(urlDaLista(filtros));
   if (res.ok && !Array.isArray(res.dados)) return { ok: false, erro: "Não foi possível carregar as cotações." };
   return res;
 }
@@ -72,6 +108,25 @@ const json = (method: string, body: unknown): RequestInit => ({
 // Número no campo de texto como o operador digita: vírgula decimal.
 const paraCampo = (valor: number | null) => (valor === null ? "" : String(valor).replace(".", ","));
 
+const quando = (valor: string) => new Date(valor).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
+const pct = (valor: number | null) => (valor === null ? "—" : `${Math.round(valor * 100)}%`);
+
+/** Baixa o CSV do que está na tela. Fora do navegador (teste) não há o que baixar. */
+function baixarCsv(leads: QuoteLead[]) {
+  if (typeof URL.createObjectURL !== "function") return;
+  const blob = new Blob([csvDeCotacoes(linhasDoCsv(leads))], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `cotacoes-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 500);
+}
+
 export default function CRMPage() {
   const [leads, setLeads] = useState<QuoteLead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,12 +134,20 @@ export default function CRMPage() {
   const [editingLead, setEditingLead] = useState<QuoteLead | null>(null);
   const [estimatedValue, setEstimatedValue] = useState("");
   const [clientes, setClientes] = useState<Cliente[] | null>(null);
+  const [equipe, setEquipe] = useState<Pessoa[]>([]);
   const [conversao, setConversao] = useState<Conversao | null>(null);
   const [enviando, setEnviando] = useState(false);
   // Confirmação da última conversão, quando o frete da coleta não é o valor estimado do lead.
   const [confirmacao, setConfirmacao] = useState<string | null>(null);
   // No celular aparece uma coluna por vez, escolhida nas abas; no computador, as quatro lado a lado.
   const [colunaAtiva, setColunaAtiva] = useState<LeadStatus>("NEW");
+  const [visao, setVisao] = useState<Visao>("funil");
+  const [filtros, setFiltros] = useState<Filtros>(SEM_FILTRO);
+  // A busca só vai ao servidor depois de uma pausa na digitação.
+  const [buscaDigitada, setBuscaDigitada] = useState("");
+  const [formAberto, setFormAberto] = useState(false);
+  const [form, setForm] = useState(FORM_VAZIO);
+  const [erroDoForm, setErroDoForm] = useState("");
 
   function receber(res: Resposta<QuoteLead[]>) {
     if (res.ok) setLeads(res.dados);
@@ -94,17 +157,34 @@ export default function CRMPage() {
 
   useEffect(() => {
     let ativo = true;
-    buscarLeads().then((res) => {
+    buscarLeads(filtros).then((res) => {
       if (ativo) receber(res);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [filtros]);
+
+  // A equipe comercial, para os selects de responsável. Falha aqui não é erro
+  // de tela: os selects só ficam sem opções.
+  useEffect(() => {
+    let ativo = true;
+    chamar<Pessoa[]>("/api/dashboard/crm/equipe").then((res) => {
+      if (ativo && res.ok && Array.isArray(res.dados)) setEquipe(res.dados);
     });
     return () => {
       ativo = false;
     };
   }, []);
 
-  async function fetchLeads() {
-    receber(await buscarLeads());
-  }
+  useEffect(() => {
+    const t = setTimeout(() => setFiltros((atuais) => (atuais.busca === buscaDigitada ? atuais : { ...atuais, busca: buscaDigitada })), 300);
+    return () => clearTimeout(t);
+  }, [buscaDigitada]);
+
+  const fetchLeads = useCallback(async () => receber(await buscarLeads(filtros)), [filtros]);
+
+  const resumo = useMemo(() => resumoDoFunil(leads), [leads]);
 
   // Troca na lista o lead que a rota devolveu, sem buscar tudo de novo.
   function trocar(lead: QuoteLead) {
@@ -112,11 +192,13 @@ export default function CRMPage() {
     setLeads((atuais) => atuais.map((l) => (l.id === lead.id ? lead : l)));
   }
 
-  async function updateLeadStatus(id: string, newStatus: string) {
-    const res = await chamar<QuoteLead>(`/api/dashboard/crm/${id}`, json("PATCH", { status: newStatus }));
+  async function alterar(id: string, body: Record<string, unknown>) {
+    const res = await chamar<QuoteLead>(`/api/dashboard/crm/${id}`, json("PATCH", body));
     if (!res.ok) return setErro(res.erro);
     trocar(res.dados);
   }
+
+  const updateLeadStatus = (id: string, newStatus: string) => alterar(id, { status: newStatus });
 
   async function saveEstimatedValue(id: string) {
     // O texto vai como foi digitado: a rota aceita vírgula decimal, e vazio apaga o valor.
@@ -129,6 +211,8 @@ export default function CRMPage() {
   async function abrirConversao(lead: QuoteLead) {
     setEditingLead(null);
     setConfirmacao(null);
+    setVisao("funil");
+    setColunaAtiva(lead.status as LeadStatus);
     setConversao({
       leadId: lead.id,
       clientId: "",
@@ -175,24 +259,151 @@ export default function CRMPage() {
     );
   }
 
+  async function registrar(e: React.FormEvent) {
+    e.preventDefault();
+    setEnviando(true);
+    setErroDoForm("");
+    // Responsável em branco fica com quem registra (a rota decide); "ninguem" grava sem responsável.
+    const { assigneeId, ...resto } = form;
+    const corpo = assigneeId === "" ? resto : { ...resto, assigneeId: assigneeId === "ninguem" ? null : assigneeId };
+    const res = await chamar<QuoteLead>("/api/dashboard/crm", json("POST", corpo));
+    setEnviando(false);
+    if (!res.ok) return setErroDoForm(res.erro);
+    setErro(null);
+    setFormAberto(false);
+    setForm(FORM_VAZIO);
+    setLeads((atuais) => [res.dados, ...atuais]);
+    setColunaAtiva("NEW");
+  }
+
+  const campo = (nome: keyof typeof FORM_VAZIO) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((atual) => ({ ...atual, [nome]: e.target.value }));
+
+  /** O select de responsável; a pessoa atual entra mesmo se saiu da equipe. */
+  function SelectResponsavel({ lead, className }: { lead: QuoteLead; className?: string }) {
+    const opcoes = lead.assignee && !equipe.some((p) => p.id === lead.assignee!.id) ? [lead.assignee, ...equipe] : equipe;
+    return (
+      <select
+        aria-label="Responsável"
+        value={lead.assignee?.id ?? ""}
+        onChange={(e) => alterar(lead.id, { assigneeId: e.target.value })}
+        className={className ?? `w-full text-xs ${INPUT}`}
+      >
+        <option value="">Sem responsável</option>
+        {opcoes.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+    );
+  }
+
+  function SelectMotivo({ lead, className }: { lead: QuoteLead; className?: string }) {
+    return (
+      <select
+        aria-label="Motivo da perda"
+        value={lead.lostReason ?? ""}
+        onChange={(e) => alterar(lead.id, { lostReason: e.target.value || null })}
+        className={className ?? `w-full text-xs ${INPUT}`}
+      >
+        <option value="">Motivo da perda</option>
+        {LOST_REASONS.map((m) => (
+          <option key={m} value={m}>{LOST_REASON_LABELS[m]}</option>
+        ))}
+      </select>
+    );
+  }
+
+  function Parada({ lead }: { lead: QuoteLead }) {
+    const dias = diasParada(lead);
+    if (dias === null) return null;
+    return (
+      <span data-parada className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 whitespace-nowrap">
+        parada há {dias} dias
+      </span>
+    );
+  }
+
   if (loading) {
-    return <div className="md:p-8">Carregando CRM...</div>;
+    return <div className="md:p-8">Carregando cotações...</div>;
   }
 
   return (
     <div className="md:p-8 max-w-7xl mx-auto">
-      <div className="mb-4 md:mb-8 flex justify-between items-center gap-3">
+      <div className="mb-4 md:mb-6 flex justify-between items-start gap-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-black text-gray-900">CRM & Cotações</h1>
-          <p className="hidden md:block text-gray-500 mt-1">Gerencie leads e solicitações de frete</p>
+          <h1 className="text-2xl md:text-3xl font-black text-gray-900">Cotações</h1>
+          <p className="hidden md:block text-gray-500 mt-1">Pedidos de frete do site, do WhatsApp, do telefone e do e-mail: cotar, cobrar e converter em coleta</p>
         </div>
-        <button
-          onClick={fetchLeads}
-          className="shrink-0 px-3 py-2 md:px-4 text-sm md:text-base bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition"
-        >
-          Atualizar Lista
-        </button>
+        <div className="flex flex-wrap justify-end gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setErroDoForm("");
+              setFormAberto((aberto) => !aberto);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 md:px-4 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+          >
+            <Plus className="w-4 h-4" />
+            Registrar cotação
+          </button>
+          <button
+            type="button"
+            onClick={() => baixarCsv(leads)}
+            disabled={leads.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 rounded-lg font-medium transition"
+          >
+            <Download className="w-4 h-4" />
+            Exportar CSV
+          </button>
+          <button
+            onClick={fetchLeads}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Atualizar Lista
+          </button>
+        </div>
       </div>
+
+      {formAberto && (
+        <form onSubmit={registrar} aria-label="Registrar cotação" className="mb-4 md:mb-6 bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+          <p className="font-semibold text-gray-900">Registrar cotação</p>
+          <p className="text-xs text-gray-500">Pedido que chegou fora do site. O valor estimado sai da tabela de frete padrão; sem tabela para o destino, fica para você preencher.</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <label className={`${LABEL} col-span-2`}>Empresa ou cliente<input name="companyName" required value={form.companyName} onChange={campo("companyName")} className={INPUT} /></label>
+            <label className={LABEL}>Telefone<input name="phone" inputMode="tel" value={form.phone} onChange={campo("phone")} className={INPUT} /></label>
+            <label className={LABEL}>E-mail<input name="email" type="email" value={form.email} onChange={campo("email")} className={INPUT} /></label>
+            <label className={LABEL}>Chegou por
+              <select name="channel" value={form.channel} onChange={campo("channel")} className={INPUT}>
+                {LEAD_MANUAL_CHANNELS.map((c) => (
+                  <option key={c} value={c}>{LEAD_CHANNEL_LABELS[c]}</option>
+                ))}
+              </select>
+            </label>
+            <label className={LABEL}>Origem<input name="origin" required value={form.origin} onChange={campo("origin")} placeholder="Cidade" className={INPUT} /></label>
+            <label className={LABEL}>Destino<input name="destination" required value={form.destination} onChange={campo("destination")} placeholder="Cidade" className={INPUT} /></label>
+            <label className={LABEL}>Volumes<input name="volumes" inputMode="numeric" value={form.volumes} onChange={campo("volumes")} className={INPUT} /></label>
+            <label className={LABEL}>Peso (kg)<input name="weight" required inputMode="decimal" value={form.weight} onChange={campo("weight")} className={INPUT} /></label>
+            <label className={LABEL}>Valor da nota (R$)<input name="invoiceValue" inputMode="decimal" value={form.invoiceValue} onChange={campo("invoiceValue")} className={INPUT} /></label>
+            <label className={`${LABEL} col-span-2`}>Responsável
+              <select name="assigneeId" value={form.assigneeId} onChange={campo("assigneeId")} className={INPUT}>
+                <option value="">Quem registra</option>
+                <option value="ninguem">Sem responsável</option>
+                {equipe.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {erroDoForm && (
+            <p role="alert" className="px-3 py-2 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50">{erroDoForm}</p>
+          )}
+          <div className="flex gap-2">
+            <button type="submit" disabled={enviando} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg font-medium">Salvar cotação</button>
+            <button type="button" onClick={() => setFormAberto(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-600">Cancelar</button>
+          </div>
+        </form>
+      )}
 
       {erro && (
         <div role="alert" className="mb-6 px-4 py-3 text-sm text-red-700 border border-red-200 rounded-lg bg-red-50">
@@ -206,6 +417,160 @@ export default function CRMPage() {
         </div>
       )}
 
+      <div data-resumo className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-4">
+          <p className="text-xs text-gray-500">Cotações</p>
+          <p className="text-xl md:text-2xl font-bold text-gray-900">{resumo.total}</p>
+          <p className="text-xs text-gray-500">{resumo.abertas} em aberto</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-4">
+          <p className="text-xs text-gray-500">Conversão</p>
+          <p className="text-xl md:text-2xl font-bold text-gray-900">{pct(resumo.conversao)}</p>
+          <p className="text-xs text-gray-500">{resumo.ganhas} de {resumo.ganhas + resumo.perdidas} decididas</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-4">
+          <p className="text-xs text-gray-500">Fechado × cotado</p>
+          <p className="text-xl md:text-2xl font-bold text-gray-900">{formatCurrency(resumo.fechado)}</p>
+          <p className="text-xs text-gray-500">de {formatCurrency(resumo.cotado)} cotados</p>
+        </div>
+        <button
+          type="button"
+          data-paradas
+          onClick={() => setFiltros((f) => ({ ...f, status: f.status === "parada" ? "" : "parada" }))}
+          className={`text-left rounded-xl border p-3 md:p-4 ${filtros.status === "parada" ? "bg-amber-50 border-amber-300" : "bg-white border-gray-200 hover:bg-gray-50"}`}
+        >
+          <p className="text-xs text-gray-500">Paradas</p>
+          <p className={`text-xl md:text-2xl font-bold ${resumo.paradas ? "text-amber-700" : "text-gray-900"}`}>{resumo.paradas}</p>
+          <p className="text-xs text-gray-500">sem atividade há {DIAS_PARA_COBRAR}+ dias</p>
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <input
+          type="search"
+          aria-label="Buscar cotação"
+          placeholder="Buscar por nº, empresa, cidade, telefone"
+          value={buscaDigitada}
+          onChange={(e) => setBuscaDigitada(e.target.value)}
+          className={`${INPUT} w-full md:w-64`}
+        />
+        <select aria-label="Período" value={filtros.dias} onChange={(e) => setFiltros({ ...filtros, dias: e.target.value })} className={INPUT}>
+          <option value="">Todo o período</option>
+          {PERIODOS_DA_LISTA.map((d) => (
+            <option key={d} value={d}>Últimos {d} dias</option>
+          ))}
+        </select>
+        <select aria-label="Etapa" value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })} className={INPUT}>
+          <option value="">Todas as etapas</option>
+          {LEAD_STATUSES.map((s) => (
+            <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>
+          ))}
+          <option value="parada">Paradas</option>
+        </select>
+        <select aria-label="Filtrar por responsável" value={filtros.assigneeId} onChange={(e) => setFiltros({ ...filtros, assigneeId: e.target.value })} className={INPUT}>
+          <option value="">Qualquer responsável</option>
+          <option value="ninguem">Sem responsável</option>
+          {equipe.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <div role="group" aria-label="Visão" className="ml-auto inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5 text-sm">
+          {(["funil", "lista"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={visao === v}
+              data-visao={v}
+              onClick={() => setVisao(v)}
+              className={`px-3 py-1 rounded-md font-medium ${visao === v ? "bg-white text-blue-700 shadow-sm" : "text-gray-600"}`}
+            >
+              {v === "funil" ? "Funil" : "Lista"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {visao === "lista" && (
+        <div data-lista className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+          {leads.length === 0 ? (
+            <p className="p-6 text-center text-sm text-gray-400">Nenhuma cotação com estes filtros</p>
+          ) : (
+            <table className="w-full min-w-[1040px] text-sm">
+              <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-3 py-2">Nº</th>
+                  <th className="px-3 py-2">Criada</th>
+                  <th className="px-3 py-2">Empresa</th>
+                  <th className="px-3 py-2">Rota</th>
+                  <th className="px-3 py-2">Carga</th>
+                  <th className="px-3 py-2 text-right">Valor</th>
+                  <th className="px-3 py-2">Canal</th>
+                  <th className="px-3 py-2">Etapa</th>
+                  <th className="px-3 py-2">Responsável</th>
+                  <th className="px-3 py-2 whitespace-nowrap">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {leads.map((lead) => {
+                  const convertido = lead.status === "CONVERTED";
+                  return (
+                    <tr key={lead.id} data-linha={lead.id} className="align-top">
+                      <td className="px-3 py-2 tabular-nums text-xs text-gray-700">{lead.number ?? "—"}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">{quando(lead.createdAt)}</td>
+                      <td className="px-3 py-2">
+                        <p className="font-semibold text-gray-900">{lead.companyName}</p>
+                        <p className="text-xs text-gray-500">{lead.phone || lead.email}</p>
+                      </td>
+                      <td className="px-3 py-2 text-gray-700">{lead.origin} ➔ {lead.destination}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">{lead.volumes} vol · {lead.weight} kg</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap font-semibold text-gray-900">{lead.estimatedValue === null ? "—" : formatCurrency(lead.estimatedValue)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">{rotuloDoCanal(lead.channel)}</td>
+                      <td className="px-3 py-2">
+                        {convertido ? (
+                          <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_COLORS.CONVERTED}`}>
+                            {LEAD_STATUS_LABELS.CONVERTED}
+                            {lead.collection?.trackingCode && <span className="font-mono font-normal ml-1">{lead.collection.trackingCode}</span>}
+                          </span>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            <select aria-label="Status da cotação" value={lead.status} onChange={(e) => updateLeadStatus(lead.id, e.target.value)} className={`text-xs ${INPUT}`}>
+                              {LEAD_MANUAL_STATUSES.map((s) => (
+                                <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>
+                              ))}
+                            </select>
+                            {lead.status === "LOST" && <SelectMotivo lead={lead} className={`text-xs ${INPUT}`} />}
+                            <Parada lead={lead} />
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">{convertido ? <span className="text-gray-600">{lead.assignee?.name ?? "—"}</span> : <SelectResponsavel lead={lead} className={`text-xs ${INPUT}`} />}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {!convertido && (
+                          <div className="flex flex-col gap-1">
+                            {isOpen(lead.status) && (
+                              <button type="button" onClick={() => alterar(lead.id, { contato: true })} className="text-xs text-blue-600 hover:underline text-left">
+                                Registrar contato
+                              </button>
+                            )}
+                            {isConvertible(lead.status) && (
+                              <button type="button" onClick={() => abrirConversao(lead)} className="text-xs text-green-700 hover:underline text-left">
+                                Converter em coleta
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {visao === "funil" && (
+        <>
       <div role="tablist" aria-label="Etapa" className="md:hidden grid grid-cols-4 gap-1 mb-3 p-1 bg-gray-100 rounded-xl">
         {LEAD_STATUSES.map((status) => {
           const ativa = colunaAtiva === status;
@@ -246,7 +611,7 @@ export default function CRMPage() {
 
                   return (
                     <div key={lead.id} data-lead={lead.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                      <div className="flex justify-between items-start gap-2 mb-2">
+                      <div className="flex justify-between items-start gap-2 mb-1">
                         <h4 className="min-w-0 font-bold text-gray-900 text-sm truncate" title={lead.companyName}>
                           {lead.companyName}
                         </h4>
@@ -254,12 +619,19 @@ export default function CRMPage() {
                           {LEAD_STATUS_LABELS[status]}
                         </span>
                       </div>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500 mb-2">
+                        {lead.number !== null && lead.number !== undefined && <span className="tabular-nums">nº {lead.number}</span>}
+                        <span>{rotuloDoCanal(lead.channel)}</span>
+                        <span>{quando(lead.createdAt)}</span>
+                        <Parada lead={lead} />
+                      </div>
 
                       <div className="text-xs text-gray-500 mb-3">
-                        <p>📧 {lead.email}</p>
+                        <p>📧 {lead.email || "Não informado"}</p>
                         <p>📞 {lead.phone || "Não informado"}</p>
                         <p className="mt-1">📍 {lead.origin} ➔ {lead.destination}</p>
                         <p>📦 {lead.volumes} vol | ⚖️ {lead.weight} kg</p>
+                        {lead.status === "LOST" && lead.lostReason && <p className="mt-1 text-red-700">Perdida: {rotuloDaPerda(lead.lostReason)}</p>}
                       </div>
 
                       {/* Preço Estimado */}
@@ -304,14 +676,17 @@ export default function CRMPage() {
 
                       {convertido ? (
                         // Lead convertido está travado: só mostra a coleta que nasceu dele.
-                        <p className="text-xs text-gray-600">
-                          Rastreio:{" "}
-                          {lead.collection?.trackingCode ? (
-                            <span className="font-mono font-semibold text-gray-900">{lead.collection.trackingCode}</span>
-                          ) : (
-                            "sem coleta vinculada"
-                          )}
-                        </p>
+                        <div className="text-xs text-gray-600 space-y-1">
+                          <p>
+                            Rastreio:{" "}
+                            {lead.collection?.trackingCode ? (
+                              <span className="font-mono font-semibold text-gray-900">{lead.collection.trackingCode}</span>
+                            ) : (
+                              "sem coleta vinculada"
+                            )}
+                          </p>
+                          {lead.assignee && <p>Responsável: {lead.assignee.name}</p>}
+                        </div>
                       ) : (
                         <>
                           {/* Ações de Status */}
@@ -327,6 +702,24 @@ export default function CRMPage() {
                               ))}
                             </select>
                           </div>
+                          {lead.status === "LOST" && (
+                            <div className="mt-2">
+                              <SelectMotivo lead={lead} className="w-full text-xs bg-gray-50 border border-gray-200 rounded p-1 outline-none" />
+                            </div>
+                          )}
+                          <div className="mt-2">
+                            <SelectResponsavel lead={lead} className="w-full text-xs bg-gray-50 border border-gray-200 rounded p-1 outline-none" />
+                          </div>
+                          {isOpen(lead.status) && (
+                            <button
+                              type="button"
+                              onClick={() => alterar(lead.id, { contato: true })}
+                              className="mt-2 w-full text-xs text-blue-700 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded"
+                              title="Falei com o cliente: renova a atividade e tira a cotação de parada"
+                            >
+                              Registrar contato
+                            </button>
+                          )}
 
                           {isConvertible(lead.status) && !form && (
                             <button
@@ -425,6 +818,8 @@ export default function CRMPage() {
           );
         })}
       </div>
+        </>
+      )}
     </div>
   );
 }

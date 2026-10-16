@@ -2,6 +2,7 @@ import { z } from "zod";
 import { paraEmpresa } from "@/lib/prisma";
 import { empresaPublica } from "@/lib/empresas";
 import { calcularFrete, tabelaVigente } from "@/lib/frete";
+import { criarCotacao } from "@/lib/crm-db";
 
 /**
  * Pedido de cotação vindo de fora (site da transportadora), sem sessão.
@@ -9,7 +10,8 @@ import { calcularFrete, tabelaVigente } from "@/lib/frete";
  * As rotas `/api/leads` e `/api/cotacoes` são a mesma coisa com respostas
  * diferentes; as duas passam por aqui. O valor estimado sai da tabela de frete
  * padrão da empresa. Sem tabela, ou com a cidade fora dela, o pedido é gravado
- * do mesmo jeito, sem valor: é o comercial que responde.
+ * do mesmo jeito, sem valor: é o comercial que responde. A cotação entra no
+ * funil do painel com o próximo número da empresa e o canal SITE.
  */
 
 const numeroDoFormulario = (valor: unknown) => {
@@ -34,7 +36,7 @@ const pedidoSchema = z.object({
 
 // O que as duas rotas públicas devolvem do lead gravado. A lista é fechada de
 // propósito: o site consome este formato, e coluna nova do funil (valor da
-// nota, coleta da conversão) não sai para fora por acréscimo.
+// nota, coleta da conversão, número, responsável) não sai para fora por acréscimo.
 const LEAD_PUBLICO_SELECT = {
   tenantId: true,
   id: true,
@@ -73,35 +75,41 @@ export async function registrarCotacao(corpo: unknown, opcoes: { volumesPadrao?:
   const tenantId = await empresaPublica(pedido.empresa);
   if (!tenantId) return { ok: false, status: 404, erro: "Empresa não encontrada." };
 
-  const { db } = paraEmpresa(tenantId);
+  const { transacao } = paraEmpresa(tenantId);
 
-  const tabela = await tabelaVigente(db);
-  const frete = tabela
-    ? calcularFrete(tabela, pedido.destination, { peso: pedido.weight, volumes, valorNota: pedido.invoiceValue })
-    : null;
-  const estimatedValue = frete?.atendida ? frete.valor : null;
+  // Tabela e gravação na mesma transação: é nela que o número da cotação é
+  // reservado (src/lib/crm-db.ts).
+  return transacao(async (tx) => {
+    const tabela = await tabelaVigente(tx);
+    const frete = tabela
+      ? calcularFrete(tabela, pedido.destination, { peso: pedido.weight, volumes, valorNota: pedido.invoiceValue })
+      : null;
+    const estimatedValue = frete?.atendida ? frete.valor : null;
 
-  const lead = await db.quoteLead.create({
-    data: {
-      companyName: pedido.companyName,
-      email: pedido.email,
-      phone: pedido.phone ?? "",
-      origin: pedido.origin,
-      destination: pedido.destination,
-      volumes,
-      weight: pedido.weight,
+    const lead = await criarCotacao(
+      tx,
+      {
+        companyName: pedido.companyName,
+        email: pedido.email,
+        phone: pedido.phone ?? "",
+        origin: pedido.origin,
+        destination: pedido.destination,
+        volumes,
+        weight: pedido.weight,
+        estimatedValue,
+        invoiceValue: pedido.invoiceValue ?? null,
+        channel: "SITE",
+        assigneeId: null,
+      },
+      LEAD_PUBLICO_SELECT,
+    );
+
+    return {
+      ok: true as const,
+      lead,
       estimatedValue,
-      invoiceValue: pedido.invoiceValue ?? null,
-      status: "NEW",
-    },
-    select: LEAD_PUBLICO_SELECT,
+      prazoHoras: frete?.atendida ? frete.prazoHoras : null,
+      avisos: frete?.atendida ? frete.avisos : [],
+    };
   });
-
-  return {
-    ok: true,
-    lead,
-    estimatedValue,
-    prazoHoras: frete?.atendida ? frete.prazoHoras : null,
-    avisos: frete?.atendida ? frete.avisos : [],
-  };
 }

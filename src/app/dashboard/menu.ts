@@ -40,7 +40,7 @@ export const SECOES: SecaoDoMenu[] = [
     titulo: "Comercial",
     links: [
       { href: "/dashboard/clientes", icon: Users, label: "Clientes", pode: "clientesVer" },
-      { href: "/dashboard/crm", icon: UserPlus, label: "CRM", pode: "crm" },
+      { href: "/dashboard/crm", icon: UserPlus, label: "Cotações", pode: "crm" },
       { href: "/dashboard/tabelas-frete", icon: Calculator, label: "Tabelas de frete", pode: "tabelasFreteVer" },
     ],
   },
@@ -95,4 +95,18 @@ export function secoesDoMenu(perfil: string | null | undefined): SecaoDoMenu[] {
     ...secao,
     links: secao.links.filter((link) => pode(perfil, link.pode)),
   })).filter((secao) => secao.links.length > 0);
+}
+
+/**
+ * O título do cabeçalho: o rótulo do link do menu em que a tela está (a seção
+ * vale também nas telas de dentro). Fora do menu, o último trecho da URL com a
+ * inicial maiúscula, como era.
+ */
+export function tituloDaTela(pathname: string): string {
+  const link = SECOES.flatMap((secao) => secao.links)
+    .filter((l) => pathname === l.href || (l.href !== "/dashboard" && pathname.startsWith(`${l.href}/`)))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  if (link) return link.label;
+  const trecho = pathname.split("/").filter(Boolean).pop() ?? "";
+  return trecho ? trecho.charAt(0).toUpperCase() + trecho.slice(1) : "";
 }
