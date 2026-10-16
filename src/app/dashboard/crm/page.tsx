@@ -495,7 +495,7 @@ export default function CRMPage() {
           {leads.length === 0 ? (
             <p className="p-6 text-center text-sm text-gray-400">Nenhuma cotação com estes filtros</p>
           ) : (
-            <table className="w-full min-w-[1040px] text-sm">
+            <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="px-3 py-2">Nº</th>
@@ -517,11 +517,11 @@ export default function CRMPage() {
                     <tr key={lead.id} data-linha={lead.id} className="align-top">
                       <td className="px-3 py-2 tabular-nums text-xs text-gray-700">{lead.number ?? "—"}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-600">{quando(lead.createdAt)}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 min-w-[11rem]">
                         <p className="font-semibold text-gray-900">{lead.companyName}</p>
                         <p className="text-xs text-gray-500">{lead.phone || lead.email}</p>
                       </td>
-                      <td className="px-3 py-2 text-gray-700">{lead.origin} ➔ {lead.destination}</td>
+                      <td className="px-3 py-2 text-gray-700 min-w-[10rem]">{lead.origin} ➔ {lead.destination}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-600">{lead.volumes} vol · {lead.weight} kg</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap font-semibold text-gray-900">{lead.estimatedValue === null ? "—" : formatCurrency(lead.estimatedValue)}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-600">{rotuloDoCanal(lead.channel)}</td>
