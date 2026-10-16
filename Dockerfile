@@ -1,8 +1,11 @@
 # TMS — Next 16 (standalone) + Prisma/Postgres.
 # A imagem de producao e construida e publicada no GHCR pelo GitHub Actions.
-# Imagem oficial do Node pelo espelho publico da AWS: o Docker Hub recusa o
-# runner do GitHub por limite de downloads sem login (429).
-FROM public.ecr.aws/docker/library/node:22-alpine AS base
+# Imagem oficial do Node pelo espelho do Google (mirror.gcr.io), sem login:
+# o Docker Hub recusa o runner do GitHub por limite de downloads (429) e o
+# espelho publico da AWS passou a recusar tambem ("Data limit exceeded",
+# 16/10/2026). Para trocar de espelho sem editar o arquivo: --build-arg NODE_IMAGE=...
+ARG NODE_IMAGE=mirror.gcr.io/library/node:22-alpine
+FROM ${NODE_IMAGE} AS base
 RUN apk add --no-cache openssl libc6-compat
 
 FROM base AS deps
