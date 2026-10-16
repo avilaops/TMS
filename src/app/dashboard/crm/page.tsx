@@ -334,7 +334,8 @@ export default function CRMPage() {
           <h1 className="text-2xl md:text-3xl font-black text-gray-900">Cotações</h1>
           <p className="hidden md:block text-gray-500 mt-1">Pedidos de frete do site, do WhatsApp, do telefone e do e-mail: cotar, cobrar e converter em coleta</p>
         </div>
-        <div className="flex flex-wrap justify-end gap-2 shrink-0">
+        {/* No celular os botões secundários ficam só com o ícone: com o texto, a linha passava da largura da tela. */}
+        <div className="flex flex-wrap justify-end gap-2 min-w-0">
           <button
             type="button"
             onClick={() => {
@@ -350,17 +351,21 @@ export default function CRMPage() {
             type="button"
             onClick={() => baixarCsv(leads)}
             disabled={leads.length === 0}
+            aria-label="Exportar CSV"
+            title="Exportar CSV"
             className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 rounded-lg font-medium transition"
           >
             <Download className="w-4 h-4" />
-            Exportar CSV
+            <span className="hidden md:inline">Exportar CSV</span>
           </button>
           <button
             onClick={fetchLeads}
+            aria-label="Atualizar Lista"
+            title="Atualizar Lista"
             className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition"
           >
             <RefreshCw className="w-4 h-4" />
-            Atualizar Lista
+            <span className="hidden md:inline">Atualizar Lista</span>
           </button>
         </div>
       </div>
