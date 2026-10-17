@@ -19,6 +19,7 @@ const suite = temBanco ? describe : describe.skip;
 // Tudo o que esta suite cria usa estes marcadores, e só isso é apagado.
 const PREFIXO = "teste-frete-";
 const CNPJ = "99666555000144";
+const PLACA_FRETE = "FRT1A23";
 const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
 
 suite("tabelas de frete", () => {
@@ -59,6 +60,7 @@ suite("tabelas de frete", () => {
 
   async function limpar() {
     const { sistema } = banco;
+    await sistema.vehicle.deleteMany({ where: { plate: PLACA_FRETE } });
     await sistema.quoteLead.deleteMany({ where: { email: { startsWith: PREFIXO } } });
     await sistema.user.updateMany({ where: { email: { startsWith: PREFIXO } }, data: { clientId: null } });
     await sistema.collection.deleteMany({ where: { client: { cnpj: CNPJ } } });
@@ -116,6 +118,7 @@ suite("tabelas de frete", () => {
     await sistema.collection.deleteMany({ where: { client: { cnpj: CNPJ } } });
     await sistema.client.deleteMany({ where: { cnpj: CNPJ } });
     await sistema.freightTable.deleteMany({ where: { name: { startsWith: PREFIXO } } });
+    await sistema.vehicle.deleteMany({ where: { plate: PLACA_FRETE } });
     // A suíte parte de uma empresa sem tabela padrão, seja qual for a ordem dos arquivos.
     await sistema.freightTable.updateMany({ where: { tenantId: EMPRESA_PADRAO.id, isDefault: true }, data: { isDefault: false } });
   });
@@ -244,7 +247,15 @@ suite("tabelas de frete", () => {
     const simular = async (corpo: Record<string, unknown>) => {
       entrarComo("OPERATION");
       const res = await calcular.POST(req("POST", corpo));
-      return { status: res.status, corpo: (await res.json()) as { tabela?: { name: string }; frete?: { atendida: boolean; valor?: number }; error?: string } };
+      return {
+        status: res.status,
+        corpo: (await res.json()) as {
+          tabela?: { name: string };
+          frete?: { atendida: boolean; valor?: number };
+          adequacaoVeiculo?: { sugerido: { plate: string; type: string; capacity: number; cubicCapacity: number } | null; aviso: string | null };
+          error?: string;
+        },
+      };
     };
 
     it("sem tabela padrão o simulador diz que falta cadastrar", async () => {
@@ -281,6 +292,22 @@ suite("tabelas de frete", () => {
       // Tabela que não existe não é aceita no cadastro do cliente.
       entrarComo("ADMIN");
       expect((await clientePorId.PATCH(req("PATCH", { freightTableId: "00000000-0000-4000-8000-000000000000" }), ctx(cliente.id))).status).toBe(400);
+    });
+
+    it("devolve o menor veículo compatível com peso e cubagem", async () => {
+      await criarTabela({ isDefault: true }, CIDADES);
+      await banco.default.vehicle.create({
+        data: { plate: PLACA_FRETE, model: "Van de teste", type: "VAN", capacity: 1_500, cubicCapacity: 10 },
+      });
+
+      const { status, corpo } = await simular({ city: "Mirassol", weight: 1_000, cubicMeters: 8 });
+      expect(status).toBe(200);
+      expect(corpo).toMatchObject({
+        adequacaoVeiculo: {
+          sugerido: { plate: PLACA_FRETE, type: "VAN", capacity: 1_500, cubicCapacity: 10 },
+          aviso: null,
+        },
+      });
     });
 
     it("tabela inativa ou fora da validade não é usada; escolhida à mão no simulador, sim", async () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Calculator, Loader2, Plus, Star, Upload } from "lucide-react";
+import { Calculator, Loader2, Plus, Star, Truck, Upload } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 
 /**
@@ -34,6 +34,21 @@ type Cidade = { city: string; minimum: number; deadlineHours: number; dedicated:
 type Frete =
   | { atendida: false }
   | { atendida: true; cidade: string; valor: number; prazoHoras: number; composicao: { rotulo: string; valor: number }[]; avisos: string[] };
+
+type VeiculoDaCotacao = {
+  id: string;
+  plate: string;
+  model: string;
+  type: string;
+  capacity: number | null;
+  cubicCapacity: number | null;
+};
+
+type AdequacaoVeiculo = {
+  sugerido: VeiculoDaCotacao | null;
+  compativeis: VeiculoDaCotacao[];
+  aviso: string | null;
+};
 
 const FORM_VAZIO = {
   name: "",
@@ -126,7 +141,7 @@ export default function TabelasDeFrete() {
 
   // Simulador.
   const [sim, setSim] = useState({ city: "", weight: "", volumes: "", invoiceValue: "", cubicMeters: "", tableId: "" });
-  const [resultado, setResultado] = useState<{ tabela: { name: string }; frete: Frete } | null>(null);
+  const [resultado, setResultado] = useState<{ tabela: { name: string }; frete: Frete; adequacaoVeiculo: AdequacaoVeiculo } | null>(null);
   const [erroSim, setErroSim] = useState("");
 
   const carregar = async () => {
@@ -601,6 +616,34 @@ export default function TabelasDeFrete() {
                     {aviso}
                   </p>
                 ))}
+                <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
+                  <p className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
+                    <Truck className="h-4 w-4 text-blue-600" />
+                    Adequação do veículo
+                  </p>
+                  {resultado.adequacaoVeiculo.sugerido ? (
+                    <>
+                      <p className="mt-2 font-semibold text-gray-900 dark:text-white">
+                        Sugestão: {resultado.adequacaoVeiculo.sugerido.type} · {resultado.adequacaoVeiculo.sugerido.plate}
+                      </p>
+                      <p className="text-gray-600 dark:text-gray-300">
+                        {resultado.adequacaoVeiculo.sugerido.model} · {resultado.adequacaoVeiculo.sugerido.capacity?.toLocaleString("pt-BR")} kg
+                        {resultado.adequacaoVeiculo.sugerido.cubicCapacity
+                          ? ` · ${resultado.adequacaoVeiculo.sugerido.cubicCapacity.toLocaleString("pt-BR")} m³`
+                          : ""}
+                      </p>
+                      {resultado.adequacaoVeiculo.compativeis.length > 1 && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Mais {resultado.adequacaoVeiculo.compativeis.length - 1} veículo(s) compatível(is) na frota.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p role="alert" className="mt-2 text-amber-700 dark:text-amber-400">
+                      {resultado.adequacaoVeiculo.aviso}
+                    </p>
+                  )}
+                </div>
               </>
             )}
           </div>

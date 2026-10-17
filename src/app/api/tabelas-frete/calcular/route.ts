@@ -4,6 +4,7 @@ import { requireStaff } from '@/lib/staff';
 import { simulateFreightSchema } from '@/lib/cadastros';
 import { firstIssue } from '@/lib/usuarios';
 import { TABELA_PARA_CALCULO, calcularFrete, tabelaVigente } from '@/lib/frete';
+import { avaliarVeiculosParaCarga, VEICULO_PARA_COTACAO_SELECT } from '@/lib/adequacao-veiculo';
 
 /**
  * Simulador do painel: quanto sai um frete para uma cidade.
@@ -41,7 +42,16 @@ export async function POST(req: Request) {
       metrosCubicos: data.cubicMeters,
     });
 
-    return NextResponse.json({ tabela: { id: tabela.id, name: tabela.name }, frete });
+    const veiculos = await prisma.vehicle.findMany({
+      select: VEICULO_PARA_COTACAO_SELECT,
+      orderBy: [{ capacity: 'asc' }, { plate: 'asc' }],
+    });
+    const adequacaoVeiculo = avaliarVeiculosParaCarga(
+      { peso: data.weight, metrosCubicos: data.cubicMeters },
+      veiculos,
+    );
+
+    return NextResponse.json({ tabela: { id: tabela.id, name: tabela.name }, frete, adequacaoVeiculo });
   } catch (error) {
     console.error('Erro ao simular frete:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
