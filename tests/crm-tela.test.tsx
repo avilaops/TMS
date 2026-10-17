@@ -36,9 +36,9 @@ const lead = (extra: Record<string, unknown> = {}) => ({
 const haDias = (dias: number) => new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
 
 const CLIENTES = [
-  { id: "cli-1", companyName: "Serilon Brasil Ltda", tradeName: "Serilon", active: true },
-  { id: "cli-2", companyName: "Transportes Lima Ltda", tradeName: null, active: true },
-  { id: "cli-3", companyName: "Cliente Desativado Ltda", tradeName: "Desativado", active: false },
+  { id: "cli-1", companyName: "Serilon Brasil Ltda", tradeName: "Serilon", cnpj: "04301223000190", phone: "1732134500", email: "compras@serilon.com.br", active: true },
+  { id: "cli-2", companyName: "Transportes Lima Ltda", tradeName: null, cnpj: "11555000000144", phone: null, email: "contato@lima.com.br", active: true },
+  { id: "cli-3", companyName: "Cliente Desativado Ltda", tradeName: "Desativado", cnpj: "22999000000100", phone: "17900000000", email: "inativo@cliente.com", active: false },
 ];
 
 type Resposta = { status?: number; body: unknown } | Error;
@@ -87,7 +87,7 @@ async function preencher(campo: HTMLInputElement | HTMLSelectElement, valor: str
 }
 
 async function abrir(leads: unknown[], outras: Record<string, Resposta[]> = {}) {
-  const pedidos = api({ [LISTA]: [{ body: leads }], [EQUIPE]: [{ body: PESSOAS }], ...outras });
+  const pedidos = api({ [LISTA]: [{ body: leads }], [EQUIPE]: [{ body: PESSOAS }], "GET /api/clientes": [{ body: CLIENTES }], ...outras });
   const tela = await montar(<CRMPage />);
   await ate(() => expect(tela.textContent).not.toContain("Carregando cotações..."));
   return { tela, pedidos };
@@ -651,5 +651,47 @@ describe("tela do funil de cotações", () => {
     expect(coluna(tela, "NEW").querySelectorAll("[data-lead]")).toHaveLength(2);
     expect(coluna(tela, "NEW").querySelector("[data-lead]")!.getAttribute("data-lead")).toBe("lead-novo");
     expect(cartao(tela, "lead-novo").textContent).toContain("nº 1495");
+  });
+
+  it("registrar cotação: busca somente clientes ativos e preenche contato ao selecionar", async () => {
+    const { tela, pedidos } = await abrir([lead()]);
+
+    await clicar(botao(tela, "Registrar cotação"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Registrar cotação"]')!;
+    const empresa = form.querySelector<HTMLInputElement>('input[name="companyName"]')!;
+
+    await preencher(empresa, "Brasil Ltda");
+    await ate(() => expect(form.querySelector('[data-cliente="cli-1"]')).not.toBeNull());
+
+    await preencher(empresa, "04.301.223/0001");
+    await ate(() => expect(form.querySelector('[data-cliente="cli-1"]')).not.toBeNull());
+
+    await preencher(empresa, "seri");
+    await ate(() => expect(form.querySelector('[data-cliente="cli-1"]')).not.toBeNull());
+    expect(form.textContent).toContain("Serilon Brasil Ltda");
+    expect(form.textContent).toContain("04.301.223/0001-90");
+    expect(form.querySelector('[data-cliente="cli-3"]')).toBeNull();
+
+    await clicar(form.querySelector<HTMLElement>('[data-cliente="cli-1"]')!);
+    expect(empresa.value).toBe("Serilon");
+    expect(form.querySelector<HTMLInputElement>('input[name="phone"]')!.value).toBe("1732134500");
+    expect(form.querySelector<HTMLInputElement>('input[name="email"]')!.value).toBe("compras@serilon.com.br");
+    expect(form.querySelector('[data-lista-clientes]')).toBeNull();
+    expect(pedidos.filter((pedido) => pedido.caminho === "/api/clientes")).toHaveLength(1);
+  });
+
+  it("registrar cotação: aceita prospect digitado e continua utilizável se a busca de clientes falhar", async () => {
+    const { tela } = await abrir([lead()], {
+      "GET /api/clientes": [{ status: 500, body: { error: "Falha no cadastro" } }],
+    });
+
+    await clicar(botao(tela, "Registrar cotação"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Registrar cotação"]')!;
+    const empresa = form.querySelector<HTMLInputElement>('input[name="companyName"]')!;
+    await preencher(empresa, "Cliente ainda não cadastrado");
+
+    await ate(() => expect(form.textContent).toContain("Busca de clientes indisponível; digite os dados manualmente."));
+    expect(empresa.value).toBe("Cliente ainda não cadastrado");
+    expect(empresa.disabled).toBe(false);
   });
 });
