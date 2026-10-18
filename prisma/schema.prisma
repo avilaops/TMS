@@ -31,104 +31,108 @@ enum Role {
 // e sem ela o INSERT falha. Ver src/lib/prisma.ts.
 // ---------------------------------------------------------------------------
 model Tenant {
-  id        String   @id @default(uuid())
+  id               String   @id @default(uuid())
   // Identificador curto e estavel (URL, integracoes). So letras minusculas, numeros e hifen.
-  slug      String   @unique
-  name      String
-  cnpj      String?  @unique
+  slug             String   @unique
+  name             String
+  cnpj             String?  @unique
   // Símbolo da empresa: data URL de imagem pequena. Nulo = símbolo padrão. Ver src/lib/empresa.ts.
-  logo      String?  @db.Text
-  active    Boolean  @default(true)
+  logo             String?  @db.Text
+  active           Boolean  @default(true)
   // Encargos sugeridos na baixa de um título vencido: multa (% do valor, uma
   // vez) e juros (% ao mês, proporcional aos dias de atraso). Ver src/lib/cobranca.ts.
-  lateFinePct     Float @default(2)
-  lateInterestPct Float @default(1)
+  lateFinePct      Float    @default(2)
+  lateInterestPct  Float    @default(1)
   // Recebimento por Pix (estático, sem banco): a chave da transportadora e o
   // recebedor que vão no "Pix Copia e Cola" da fatura. Tudo nulo = sem Pix.
   // `pixKeyType`: CPF, CNPJ, EMAIL, TELEFONE, ALEATORIA. Ver src/lib/pix.ts.
-  pixKeyType      String?
-  pixKey          String?
-  pixName         String?
-  pixCity         String?
+  pixKeyType       String?
+  pixKey           String?
+  pixName          String?
+  pixCity          String?
   // O que o comprovante de entrega exige na baixa do motorista: LIVRE (foto e
   // assinatura opcionais), ECOMMERCE (foto da carga no local) ou B2B (foto do
   // canhoto assinado). Ver src/lib/comprovantes.ts.
-  podProfile      String @default("LIVRE")
+  podProfile       String   @default("LIVRE")
   // O aplicativo do motorista mostra a ele a remuneração variável das viagens
   // dele (só leitura)? Desligado por padrão: o dono pode não querer mostrar.
   // Ver src/lib/remuneracao.ts.
-  driverPayVisible Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  driverPayVisible Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  users          User[]
-  clients        Client[]
-  drivers        Driver[]
-  vehicles       Vehicle[]
-  collections    Collection[]
-  statusHistory  CollectionStatusHistory[]
-  manifests      Manifest[]
-  transactions   FinancialTransaction[]
-  maintenances   Maintenance[]
-  proofs         ProofOfDelivery[]
-  quoteLeads     QuoteLead[]
-  freightTables  FreightTable[]
-  invoices       Invoice[]
-  freightCities  FreightTableCity[]
-  articles       Article[]
-  socialPosts    SocialPost[]
-  contentMetrics ContentMetric[]
-  webhook        Webhook?
-  outboxEvents   OutboxEvent[]
-  fuelings       Fueling[]
-  vehicleDocuments VehicleDocument[]
-  tires          Tire[]
-  vehicleChecklists VehicleChecklist[]
-  occurrences    Occurrence[]
-  occurrenceMessages OccurrenceMessage[]
-  warehouseLocations WarehouseLocation[]
-  collectionVolumes  CollectionVolume[]
-  warehouseReceipts  WarehouseReceipt[]
-  fiscalDocuments    FiscalDocument[]
-  auditLogs          AuditLog[]
-  helpers            Helper[]
-  absences           Absence[]
-  crewAdvances       CrewAdvance[]
-  tripExpenses       TripExpense[]
-  carriers           Carrier[]
-  freightContracts   FreightContract[]
-  freightPayments    FreightPayment[]
+  users                User[]
+  clients              Client[]
+  drivers              Driver[]
+  vehicles             Vehicle[]
+  collections          Collection[]
+  statusHistory        CollectionStatusHistory[]
+  manifests            Manifest[]
+  transactions         FinancialTransaction[]
+  maintenances         Maintenance[]
+  proofs               ProofOfDelivery[]
+  quoteLeads           QuoteLead[]
+  freightTables        FreightTable[]
+  invoices             Invoice[]
+  freightCities        FreightTableCity[]
+  articles             Article[]
+  socialPosts          SocialPost[]
+  contentMetrics       ContentMetric[]
+  webhook              Webhook?
+  outboxEvents         OutboxEvent[]
+  fuelings             Fueling[]
+  vehicleDocuments     VehicleDocument[]
+  tires                Tire[]
+  vehicleChecklists    VehicleChecklist[]
+  occurrences          Occurrence[]
+  occurrenceMessages   OccurrenceMessage[]
+  warehouseLocations   WarehouseLocation[]
+  collectionVolumes    CollectionVolume[]
+  warehouseReceipts    WarehouseReceipt[]
+  fiscalDocuments      FiscalDocument[]
+  auditLogs            AuditLog[]
+  helpers              Helper[]
+  absences             Absence[]
+  crewAdvances         CrewAdvance[]
+  tripExpenses         TripExpense[]
+  carriers             Carrier[]
+  freightContracts     FreightContract[]
+  freightPayments      FreightPayment[]
   subcontractDocuments SubcontractDocument[]
-  clientReceivers    ClientReceiver[]
-  notifications      Notification[]
-  pushSubscriptions  PushSubscription[]
-  bankStatementLines BankStatementLine[]
-  paymentGateway     PaymentGateway?
-  paymentCharges     PaymentCharge[]
-  tripPositions      TripPosition[]
-  fiscalIssuer       FiscalIssuer?
-  cteNumberings      CteNumbering[]
-  ctes               Cte[]
-  proofPhotos        ProofPhoto[]
-  proofRejections    ProofRejection[]
-  deliveryAttempts   DeliveryAttempt[]
-  mdfeNumberings     MdfeNumbering[]
-  mdfes              Mdfe[]
-  mdfeEvents         MdfeEvent[]
-  cteEvents          CteEvent[]
-  crewPayClosings    CrewPayClosing[]
+  clientReceivers      ClientReceiver[]
+  notifications        Notification[]
+  pushSubscriptions    PushSubscription[]
+  bankStatementLines   BankStatementLine[]
+  paymentGateway       PaymentGateway?
+  paymentCharges       PaymentCharge[]
+  tripPositions        TripPosition[]
+  fiscalIssuer         FiscalIssuer?
+  cteNumberings        CteNumbering[]
+  ctes                 Cte[]
+  proofPhotos          ProofPhoto[]
+  proofRejections      ProofRejection[]
+  deliveryAttempts     DeliveryAttempt[]
+  mdfeNumberings       MdfeNumbering[]
+  mdfes                Mdfe[]
+  mdfeEvents           MdfeEvent[]
+  cteEvents            CteEvent[]
+  crewPayClosings      CrewPayClosing[]
+  lojasCredential      LojasIntegrationCredential?
+  logisticsOrders      LogisticsOrder[]
+  logisticsShipments   LogisticsShipment[]
+  integrationRequests  IntegrationRequest[]
 }
 
 model User {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id        String   @id @default(uuid())
-  name      String
-  email     String
-  password  String
-  role      Role     @default(CLIENT)
-  clientId  String?  // Empresa que este usuário representa (obrigatório na prática quando role = CLIENT)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tenantId     String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String    @id @default(uuid())
+  name         String
+  email        String
+  password     String
+  role         Role      @default(CLIENT)
+  clientId     String? // Empresa que este usuário representa (obrigatório na prática quando role = CLIENT)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
   // O que aconteceu com o convite por e-mail pedido ao login único
   // (ENVIADO | FALHOU | PENDENTE), o motivo e quando. O endereço de criar a
   // senha nunca é guardado. Ver src/lib/acessos.ts.
@@ -137,71 +141,73 @@ model User {
   inviteAt     DateTime?
 
   // Relations
-  driver    Driver?
-  client    Client?  @relation(fields: [clientId], references: [id])
-  statusChanges CollectionStatusHistory[]
-  proofsReviewed ProofOfDelivery[]
-  proofRejections ProofRejection[]
-  vehicleChecklists VehicleChecklist[]
-  occurrencesOpened   Occurrence[] @relation("OccurrenceOpenedBy")
-  occurrencesAssigned Occurrence[] @relation("OccurrenceAssignee")
-  occurrenceMessages  OccurrenceMessage[]
-  volumesChecked      CollectionVolume[]
-  warehouseReceipts   WarehouseReceipt[]
-  fiscalDocuments     FiscalDocument[]
-  auditLogs           AuditLog[]
-  tripExpensesCreated  TripExpense[] @relation("TripExpenseCreatedBy")
-  tripExpensesReviewed TripExpense[] @relation("TripExpenseReviewedBy")
-  notifications        Notification[]
-  pushSubscriptions    PushSubscription[]
-  ctesIssued           Cte[]
-  mdfesIssued          Mdfe[]
-  mdfeEventsCreated    MdfeEvent[]
-  cteEventsCreated     CteEvent[]
+  driver                      Driver?
+  client                      Client?                   @relation(fields: [clientId], references: [id])
+  statusChanges               CollectionStatusHistory[]
+  proofsReviewed              ProofOfDelivery[]
+  proofRejections             ProofRejection[]
+  vehicleChecklists           VehicleChecklist[]
+  occurrencesOpened           Occurrence[]              @relation("OccurrenceOpenedBy")
+  occurrencesAssigned         Occurrence[]              @relation("OccurrenceAssignee")
+  occurrenceMessages          OccurrenceMessage[]
+  volumesChecked              CollectionVolume[]
+  warehouseReceipts           WarehouseReceipt[]
+  fiscalDocuments             FiscalDocument[]
+  auditLogs                   AuditLog[]
+  tripExpensesCreated         TripExpense[]             @relation("TripExpenseCreatedBy")
+  tripExpensesReviewed        TripExpense[]             @relation("TripExpenseReviewedBy")
+  notifications               Notification[]
+  pushSubscriptions           PushSubscription[]
+  ctesIssued                  Cte[]
+  mdfesIssued                 Mdfe[]
+  mdfeEventsCreated           MdfeEvent[]
+  cteEventsCreated            CteEvent[]
   subcontractDocumentsCreated SubcontractDocument[]
-  crewPayClosings      CrewPayClosing[] @relation("CrewPayClosingClosedBy")
-  quoteLeadsAssigned   QuoteLead[] @relation("QuoteLeadAssignee")
+  crewPayClosings             CrewPayClosing[]          @relation("CrewPayClosingClosedBy")
+  quoteLeadsAssigned          QuoteLead[]               @relation("QuoteLeadAssignee")
 
-  @@index([clientId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
   @@unique([tenantId, email])
+  @@index([clientId])
+  @@index([tenantId])
 }
 
 model Client {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id              String   @id @default(uuid())
-  companyName     String   // Razão social
-  tradeName       String?  // Nome fantasia
-  cnpj            String
-  ie              String?
-  contactName     String?
-  email           String?
-  phone           String?
-  address         String?
+  tenantId         String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id               String   @id @default(uuid())
+  companyName      String // Razão social
+  tradeName        String? // Nome fantasia
+  cnpj             String
+  ie               String?
+  contactName      String?
+  email            String?
+  phone            String?
+  address          String?
   paymentCondition String?
-  creditLimit     Float?
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  creditLimit      Float?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
   // Relations
-  collections     Collection[]
-  users           User[]
-  transactions    FinancialTransaction[]
+  collections  Collection[]
+  users        User[]
+  transactions FinancialTransaction[]
 
   invoices        Invoice[]
   occurrences     Occurrence[]
   receivers       ClientReceiver[]
+  logisticsOrders LogisticsOrder[]
 
   // Tabela de frete negociada com este cliente. Sem ela vale a padrão da transportadora.
-  freightTableId  String?
-  freightTable    FreightTable? @relation(fields: [freightTableId], references: [id], onDelete: SetNull)
+  freightTableId String?
+  freightTable   FreightTable? @relation(fields: [freightTableId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, cnpj])
+  @@index([tenantId])
   @@index([freightTableId])
 }
 
@@ -223,9 +229,9 @@ model Client {
 // que o cliente vê no portal; pagar e cancelar andam juntos nos dois.
 // ---------------------------------------------------------------------------
 model Invoice {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  tenantId  String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id        String    @id @default(uuid())
-  number    Int       // sequencial por empresa
+  number    Int // sequencial por empresa
   clientId  String
   status    String    @default("OPEN") // OPEN, PAID, CANCELLED
   total     Float
@@ -236,102 +242,106 @@ model Invoice {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  client      Client       @relation(fields: [clientId], references: [id])
+  client      Client                @relation(fields: [clientId], references: [id])
   collections Collection[]
   transaction FinancialTransaction?
   charges     PaymentCharge[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, number])
+  @@index([tenantId])
   @@index([clientId])
 }
 
 // Destinatário frequente de um cliente: ele cadastra pelo portal e escolhe ao
 // pedir coleta. Cada cliente só enxerga os seus (filtro por `clientId`).
 model ClientReceiver {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   clientId    String
   name        String
-  document    String?  // CNPJ ou CPF, só dígitos
-  city        String   // cidade-UF, como vai no destino da coleta
+  document    String? // CNPJ ou CPF, só dígitos
+  city        String // cidade-UF, como vai no destino da coleta
   address     String?
   contactName String?
   phone       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([tenantId, clientId])
 }
 
 model FreightTable {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id               String    @id @default(uuid())
-  name             String
-  active           Boolean   @default(true)
+  tenantId  String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String    @id @default(uuid())
+  name      String
+  active    Boolean   @default(true)
   // A tabela usada quando o cliente não tem uma própria. No máximo uma por
   // empresa: a rota desmarca a anterior na mesma transação.
-  isDefault        Boolean   @default(false)
-  validFrom        DateTime?
-  validTo          DateTime?
+  isDefault Boolean   @default(false)
+  validFrom DateTime?
+  validTo   DateTime?
 
-  includedWeightKg Float     @default(0) // peso coberto pelo frete mínimo da cidade
-  excessPerKg      Float     @default(0) // R$ por kg acima do peso coberto
-  cubageFactor     Float?    // kg por m³; nulo = não cubar
-  invoiceLimit     Float?    // valor de nota coberto pelo frete; nulo = sem limite
-  adValoremPct     Float?    // % sobre o que passa do limite; nulo = consultar o comercial
-  maxVolumes       Int?      // acima disso a cotação sai com aviso
-  redeliveryPct    Float?    // reentrega, % do frete original
-  returnPct        Float?    // devolução, % do frete original
+  includedWeightKg Float   @default(0) // peso coberto pelo frete mínimo da cidade
+  excessPerKg      Float   @default(0) // R$ por kg acima do peso coberto
+  cubageFactor     Float? // kg por m³; nulo = não cubar
+  invoiceLimit     Float? // valor de nota coberto pelo frete; nulo = sem limite
+  adValoremPct     Float? // % sobre o que passa do limite; nulo = consultar o comercial
+  maxVolumes       Int? // acima disso a cotação sai com aviso
+  redeliveryPct    Float? // reentrega, % do frete original
+  returnPct        Float? // devolução, % do frete original
   notes            String?
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  cities           FreightTableCity[]
-  clients          Client[]
-  collections      Collection[]
+  cities      FreightTableCity[]
+  clients     Client[]
+  collections Collection[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 model FreightTableCity {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id            String   @id @default(uuid())
+  tenantId      String  @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String  @id @default(uuid())
   tableId       String
-  city          String   // como a transportadora escreveu
-  cityKey       String   // sem acento, caixa nem pontuação: é por aqui que a cotação acha a cidade
-  minimum       Float    // frete mínimo para esta cidade
-  deadlineHours Int      @default(24)
-  dedicated     Boolean  @default(false) // só com veículo dedicado: a cotação avisa
+  city          String // como a transportadora escreveu
+  cityKey       String // sem acento, caixa nem pontuação: é por aqui que a cotação acha a cidade
+  minimum       Float // frete mínimo para esta cidade
+  deadlineHours Int     @default(24)
+  dedicated     Boolean @default(false) // só com veículo dedicado: a cotação avisa
 
-  table         FreightTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  table FreightTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tableId, cityKey])
+  @@index([tenantId])
 }
 
 model Driver {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  cpf       String
-  cnh       String
-  cnhExpiry DateTime
-  category  String
-  phone     String?
-  active    Boolean  @default(true)
+  tenantId        String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  cpf             String
+  cnh             String
+  cnhExpiry       DateTime
+  category        String
+  phone           String?
+  active          Boolean  @default(true)
   // Percentual do frete entregue que vira comissão. Nulo = sem comissão. Só o
   // administrador lê e altera (src/lib/equipe.ts).
-  commissionPct Float?
+  commissionPct   Float?
   // As outras formas de remuneração variável, todas opcionais e somadas à
   // comissão: R$ por dia de viagem, por km rodado, por entrega feita e fixo
   // por viagem. Nulo = não usa a forma. Dinheiro, como a comissão: só lê e
@@ -342,66 +352,67 @@ model Driver {
   perTripRate     Float?
   // O parceiro de transporte de quem este motorista é (agregado ou terceiro).
   // Nulo = motorista da própria empresa.
-  carrierId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  carrierId       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Relations
-  carrier   Carrier?  @relation(fields: [carrierId], references: [id], onDelete: SetNull)
-  user      User      @relation(fields: [userId], references: [id])
-  vehicles  Vehicle[]
-  manifests Manifest[]
+  carrier     Carrier?         @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  user        User             @relation(fields: [userId], references: [id])
+  vehicles    Vehicle[]
+  manifests   Manifest[]
   collections Collection[]
-  fuelings  Fueling[]
-  absences  Absence[]
-  advances  CrewAdvance[]
+  fuelings    Fueling[]
+  absences    Absence[]
+  advances    CrewAdvance[]
   payClosings CrewPayClosing[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, cpf])
+  @@index([tenantId])
 }
 
 model Vehicle {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id           String   @id @default(uuid())
-  plate        String
-  model        String
-  type         String
-  capacity     Float?
-  maxWeight    Float?
+  tenantId      String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String   @id @default(uuid())
+  plate         String
+  model         String
+  type          String
+  capacity      Float?
+  maxWeight     Float?
   // Cubagem útil do baú ou da carroceria, em m³. Com `capacity` (kg), é o que
   // a montagem da viagem confere contra as cargas (src/lib/ocupacao.ts).
   cubicCapacity Float?
-  year         Int?
-  driverId     String?
-  status       String   @default("AVAILABLE") // AVAILABLE, ON_ROUTE, MAINTENANCE
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  year          Int?
+  driverId      String?
+  status        String   @default("AVAILABLE") // AVAILABLE, ON_ROUTE, MAINTENANCE
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // O que o MDF-e pede do veículo (grupos veicTracao e veicReboque do modal
   // rodoviário), tudo opcional no cadastro: a emissão lista o que falta
   // (src/lib/mdfe/preparar.ts). A capacidade em kg é `capacity`.
-  renavam      String?  // 9 a 11 dígitos
-  tareKg       Int?     // tara, em kg
-  wheelType    String?  // tpRod: 01 truck, 02 toco, 03 cavalo mecânico, 04 van, 05 utilitário, 06 outros
-  bodyType     String?  // tpCar: 00 não aplicável, 01 aberta, 02 fechada/baú, 03 graneleira, 04 porta-contêiner, 05 sider
-  licenseState String?  // UF em que o veículo está licenciado
+  renavam      String? // 9 a 11 dígitos
+  tareKg       Int? // tara, em kg
+  wheelType    String? // tpRod: 01 truck, 02 toco, 03 cavalo mecânico, 04 van, 05 utilitário, 06 outros
+  bodyType     String? // tpCar: 00 não aplicável, 01 aberta, 02 fechada/baú, 03 graneleira, 04 porta-contêiner, 05 sider
+  licenseState String? // UF em que o veículo está licenciado
   // Proprietário, só quando o veículo NÃO é da empresa emitente (grupo `prop`).
-  ownerTaxId   String?  // CPF ou CNPJ, sem pontuação
+  ownerTaxId   String? // CPF ou CNPJ, sem pontuação
   ownerName    String?
-  ownerRntrc   String?  // 8 dígitos
-  ownerIe      String?  // só dígitos, "ISENTO" ou vazio
+  ownerRntrc   String? // 8 dígitos
+  ownerIe      String? // só dígitos, "ISENTO" ou vazio
   ownerState   String?
-  ownerType    String?  // tpProp: 0 TAC agregado, 1 TAC independente, 2 outros
+  ownerType    String? // tpProp: 0 TAC agregado, 1 TAC independente, 2 outros
   // O parceiro de transporte dono do veículo (src/lib/parceiros.ts). Com ele,
   // o MDF-e lê o proprietário do cadastro do parceiro e os campos `owner*`
   // acima ficam sem uso; sem ele, valem os campos `owner*`.
   carrierId    String?
 
   // Relations
-  carrier      Carrier? @relation(fields: [carrierId], references: [id], onDelete: SetNull)
-  driver       Driver?  @relation(fields: [driverId], references: [id])
+  carrier      Carrier?           @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  driver       Driver?            @relation(fields: [driverId], references: [id])
   manifests    Manifest[]
   maintenances Maintenance[]
   fuelings     Fueling[]
@@ -409,29 +420,30 @@ model Vehicle {
   tires        Tire[]
   checklists   VehicleChecklist[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, plate])
+  @@index([tenantId])
 }
 
 model Collection {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id          String   @id @default(uuid())
-  clientId    String
-  sender      String
-  receiver    String
-  origin      String
-  destination String
-  volumes     Int
-  weight      Float
-  invoiceKey  String?
-  invoiceValue Float?
-  driverId    String?
-  manifestId  String?
+  tenantId         String  @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id               String  @id @default(uuid())
+  clientId         String
+  sender           String
+  receiver         String
+  origin           String
+  destination      String
+  volumes          Int
+  weight           Float
+  invoiceKey       String?
+  invoiceValue     Float?
+  driverId         String?
+  manifestId       String?
   // Ordem desta entrega na viagem (1, 2, 3...). Nulo = sem ordem definida: vai
   // para o fim, pela data de criação. Volta a nulo quando a carga sai da viagem.
   manifestSequence Int?
-  status      String   @default("PENDING") // PENDING, CONFIRMED, COLLECTED, ROUTE, DELIVERED
+  status           String  @default("PENDING") // PENDING, CONFIRMED, COLLECTED, ROUTE, DELIVERED
 
   // Frete desta carga. Calculado pela tabela de frete quando a coleta nasce e
   // refeito quando destino, peso, volumes ou valor da nota mudam; se o operador
@@ -439,7 +451,7 @@ model Collection {
   // a cotar (sem tabela em vigor, ou cidade fora dela). Ver src/lib/frete-coleta.ts.
   freightValue         Float?
   freightDeadlineHours Int?
-  freightManual        Boolean  @default(false)
+  freightManual        Boolean       @default(false)
   // Tabela que deu o valor, e a composição e os avisos da conta naquele momento.
   freightTableId       String?
   freightDetails       Json?
@@ -447,20 +459,20 @@ model Collection {
 
   // Fatura em que o frete desta carga foi cobrado. Uma carga entra em no
   // máximo uma fatura; cancelar a fatura solta a carga.
-  invoiceId            String?
-  invoice              Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoiceId    String?
+  invoice      Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   receiverName String?
 
   // Pedido de coleta: quando buscar, com que urgência e o que o motorista
   // precisa saber. Tudo opcional. `pickupDate` é um dia do calendário (meia-noite
   // UTC); a janela são horas do relógio ("08:00"). `cubicMeters` entra no frete
   // quando a tabela tem fator de cubagem. Ver src/lib/coletas.ts.
-  pickupDate   DateTime?
-  pickupFrom   String?
-  pickupTo     String?
-  priority     String   @default("NORMAL") // NORMAL, URGENT
-  cubicMeters  Float?
-  pickupNotes  String?
+  pickupDate  DateTime?
+  pickupFrom  String?
+  pickupTo    String?
+  priority    String    @default("NORMAL") // NORMAL, URGENT
+  cubicMeters Float?
+  pickupNotes String?
 
   // Endereço da entrega, além da cidade (`destination`). Tudo opcional: vem do
   // pedido (painel e portal) ou da NF-e. `deliveryZip` guarda só os 8 dígitos.
@@ -507,34 +519,36 @@ model Collection {
   // E o segundo fator do rastreio publico, junto do CNPJ do cliente. Opcional no
   // schema porque as coletas criadas antes desta mudanca recebem o codigo por
   // backfill; toda coleta nova ja nasce com ele.
-  trackingCode String?  @unique
-  
+  trackingCode String? @unique
+
   // CT-e da carga: o registrado à mão (emitido em outro sistema) ou o que este
   // sistema emitiu e a SEFAZ autorizou EM PRODUÇÃO (tabela "Cte"). CT-e de
   // homologação não tem valor fiscal e não chega a estes campos.
-  cteKey      String?  @unique
-  cteNumber   Int?
-  cteStatus   String?  @default("PENDING") // PENDING, ISSUED, CANCELLED
+  cteKey    String? @unique
+  cteNumber Int?
+  cteStatus String? @default("PENDING") // PENDING, ISSUED, CANCELLED
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  client      Client   @relation(fields: [clientId], references: [id])
-  driver      Driver?  @relation(fields: [driverId], references: [id])
-  manifest    Manifest? @relation(fields: [manifestId], references: [id])
-  statusHistory CollectionStatusHistory[]
-  proof       ProofOfDelivery?
-  deliveryAttempts DeliveryAttempt[]
-  quoteLead   QuoteLead?
-  occurrences Occurrence[]
-  volumeItems CollectionVolume[]
-  warehouseReceipt WarehouseReceipt?
-  fiscalDocuments FiscalDocument[]
-  ctes        Cte[]
+  client               Client                    @relation(fields: [clientId], references: [id])
+  driver               Driver?                   @relation(fields: [driverId], references: [id])
+  manifest             Manifest?                 @relation(fields: [manifestId], references: [id])
+  statusHistory        CollectionStatusHistory[]
+  proof                ProofOfDelivery?
+  deliveryAttempts     DeliveryAttempt[]
+  quoteLead            QuoteLead?
+  occurrences          Occurrence[]
+  volumeItems          CollectionVolume[]
+  warehouseReceipt     WarehouseReceipt?
+  fiscalDocuments      FiscalDocument[]
+  ctes                 Cte[]
   subcontractDocuments SubcontractDocument[]
+  logisticsShipment    LogisticsShipment?
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, clientId])
@@ -544,37 +558,133 @@ model Collection {
   @@index([invoiceId])
 }
 
+// Integração versionada com o Lojas. A chave só aparece quando é rotacionada;
+// no banco ficam apenas o hash e os quatro últimos caracteres.
+model LojasIntegrationCredential {
+  tenantId  String   @unique @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id        String   @id @default(uuid())
+  keyHash   String   @unique
+  keyLast4  String
+  active    Boolean  @default(true)
+  rotatedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests IntegrationRequest[]
+  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+}
+
+model LogisticsOrder {
+  tenantId       String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id             String    @id @default(uuid())
+  externalId     String
+  clientId       String?
+  mode           String
+  state          String    @default("QUOTED")
+  direction      String    @default("OUTBOUND")
+  rma            String?
+  reverseOfId    String?
+  payload        Json
+  quote          Json?
+  quotedAmount   Float?
+  quotedDeadline Int?
+  inspection     Json?
+  inspectedAt    DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  client    Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  reverseOf LogisticsOrder?     @relation("LogisticsOrderReverse", fields: [reverseOfId], references: [id], onDelete: Restrict)
+  reverses  LogisticsOrder[]    @relation("LogisticsOrderReverse")
+  shipments LogisticsShipment[]
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, externalId])
+  @@unique([tenantId, rma])
+  @@index([tenantId, state])
+  @@index([clientId])
+  @@index([reverseOfId])
+}
+
+model LogisticsShipment {
+  tenantId     String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String    @id @default(uuid())
+  orderId      String
+  collectionId String?   @unique
+  externalId   String
+  originKey    String
+  state        String    @default("PENDING")
+  promisedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  order      LogisticsOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  collection Collection?    @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, externalId])
+  @@unique([orderId, originKey])
+  @@index([tenantId, state])
+  @@index([orderId])
+}
+
+model IntegrationRequest {
+  tenantId       String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id             String   @id @default(uuid())
+  credentialId   String
+  idempotencyKey String
+  method         String
+  path           String
+  requestHash    String
+  status         String   @default("PROCESSING")
+  responseStatus Int?
+  responseBody   Json?
+  lastError      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  credential LojasIntegrationCredential @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  tenant     Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status])
+  @@index([credentialId])
+}
+
 // Uma linha por status que a coleta assumiu, com quando e quem. `fromStatus`
 // e nulo na criacao. Quem grava e `recordStatusChanges` (src/lib/historico.ts)
 // ou a criacao aninhada da propria coleta; coleta anterior a esta tabela fica
 // sem historico, porque nao ha de onde tirar a data real de cada troca.
 model CollectionStatusHistory {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id           String   @id @default(uuid())
   collectionId String
   fromStatus   String?
   toStatus     String
-  userId       String?  // nulo quando a troca nao tem pessoa, ou o usuario foi apagado
+  userId       String? // nulo quando a troca nao tem pessoa, ou o usuario foi apagado
   createdAt    DateTime @default(now())
 
   // Relations
-  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([collectionId, createdAt])
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
 }
 
 model Manifest {
   tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id          String   @id @default(uuid())
-  driverId    String
-  vehicleId   String
-  status      String   @default("ASSEMBLING") // ASSEMBLING, ROUTE, FINISHED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  driverId  String
+  vehicleId String
+  status    String   @default("ASSEMBLING") // ASSEMBLING, ROUTE, FINISHED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Dados da viagem, todos opcionais (src/lib/viagem.ts). O hodômetro de saída
   // e o de retorno dão os km rodados; as previsões são só informação.
@@ -593,24 +703,25 @@ model Manifest {
   // Última posição que o motorista compartilhou pelo app, com a viagem em rota
   // (src/lib/posicao.ts). `lastAccuracy` é a precisão em metros que o aparelho
   // informou. Só o painel lê: o rastreio público e o portal não mostram.
-  lastLat            Float?
-  lastLon            Float?
-  lastAccuracy       Float?
-  lastPositionAt     DateTime?
+  lastLat        Float?
+  lastLon        Float?
+  lastAccuracy   Float?
+  lastPositionAt DateTime?
 
   // Relations
-  driver      Driver    @relation(fields: [driverId], references: [id])
-  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
-  helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: SetNull)
-  collections Collection[]
-  mdfes       Mdfe[]
-  advances    CrewAdvance[]
-  expenses    TripExpense[]
-  freightContract FreightContract?
-  positions   TripPosition[]
+  driver           Driver            @relation(fields: [driverId], references: [id])
+  vehicle          Vehicle           @relation(fields: [vehicleId], references: [id])
+  helper           Helper?           @relation(fields: [helperId], references: [id], onDelete: SetNull)
+  collections      Collection[]
+  mdfes            Mdfe[]
+  advances         CrewAdvance[]
+  expenses         TripExpense[]
+  freightContract  FreightContract?
+  positions        TripPosition[]
   deliveryAttempts DeliveryAttempt[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([tenantId, status])
 }
@@ -627,64 +738,65 @@ model TripPosition {
   accuracy   Float?
   recordedAt DateTime @default(now())
 
-  manifest   Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  manifest Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([manifestId, recordedAt])
 }
 
 model FinancialTransaction {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id          String   @id @default(uuid())
-  type        String   // INCOME, EXPENSE
+  tenantId    String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String    @id @default(uuid())
+  type        String // INCOME, EXPENSE
   amount      Float
   description String
   dueDate     DateTime?
-  status      String   @default("PENDING") // PENDING, PAID
+  status      String    @default("PENDING") // PENDING, PAID
   clientId    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Quando e como foi pago (ou recebido). `paidAt` é o que o fluxo de caixa
   // realizado usa; nulo enquanto o lançamento está em aberto.
   paidAt        DateTime?
-  paymentMethod String?  // PIX, BOLETO, DINHEIRO, TRANSFERENCIA, CARTAO, OUTRO
-  category      String?  // livre: combustível, manutenção, pedágio, folha…
-  counterparty  String?  // fornecedor ou pagador que não é cliente cadastrado
+  paymentMethod String? // PIX, BOLETO, DINHEIRO, TRANSFERENCIA, CARTAO, OUTRO
+  category      String? // livre: combustível, manutenção, pedágio, folha…
+  counterparty  String? // fornecedor ou pagador que não é cliente cadastrado
   notes         String?
-  costCenter    String?  // livre: filial, rota, veículo… Agrupa as despesas no relatório.
+  costCenter    String? // livre: filial, rota, veículo… Agrupa as despesas no relatório.
 
   // Baixa de título a receber com encargos. `amount` continua sendo o valor
   // original; `paidAmount` é o que entrou de fato (original + juros + multa −
   // desconto). Os quatro ficam nulos em aberto e na baixa pelo valor cheio.
-  interest      Float?
-  fine          Float?
-  discount      Float?
-  paidAmount    Float?
+  interest   Float?
+  fine       Float?
+  discount   Float?
+  paidAmount Float?
 
   // Lançamento gerado por uma fatura: nasce, é pago e some junto com ela.
-  invoiceId   String?  @unique
-  invoice     Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String?  @unique
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   // Relations
-  client      Client?  @relation(fields: [clientId], references: [id])
-  tripExpense TripExpense?
+  client         Client?            @relation(fields: [clientId], references: [id])
+  tripExpense    TripExpense?
   // O pagamento de frete contratado que lançou esta despesa (src/lib/frete-contratado.ts).
   freightPayment FreightPayment?
   // O fechamento mensal de remuneração variável que lançou esta despesa (src/lib/remuneracao.ts).
   crewPayClosing CrewPayClosing?
   // A linha do extrato bancário com que este lançamento foi conciliado.
-  statementLine BankStatementLine?
+  statementLine  BankStatementLine?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([clientId])
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
 }
 
 model Maintenance {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   vehicleId   String
   description String
@@ -693,14 +805,15 @@ model Maintenance {
   status      String   @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED
   // PREVENTIVE ou CORRECTIVE. Nulo nas manutenções anteriores a esta coluna.
   kind        String?
-  odometer    Int?     // km no hodômetro quando o serviço foi feito
+  odometer    Int? // km no hodômetro quando o serviço foi feito
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
-  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
 }
 
@@ -722,18 +835,19 @@ model Fueling {
   date      DateTime // dia do calendário, gravado à meia-noite UTC
   liters    Float
   totalCost Float
-  odometer  Int      // km no hodômetro na hora de abastecer
-  station   String?  // posto
+  odometer  Int // km no hodômetro na hora de abastecer
+  station   String? // posto
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
-  driver    Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicle     Vehicle      @relation(fields: [vehicleId], references: [id])
+  driver      Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
   // A despesa de viagem que gerou este abastecimento, quando ele nasceu de uma.
   tripExpense TripExpense?
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([vehicleId, date])
 }
@@ -742,7 +856,7 @@ model VehicleDocument {
   tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id        String   @id @default(uuid())
   vehicleId String
-  type      String   // LICENSING, INSURANCE, ANTT, TACHOGRAPH, OTHER
+  type      String // LICENSING, INSURANCE, ANTT, TACHOGRAPH, OTHER
   number    String?
   expiresAt DateTime // dia do calendário, gravado à meia-noite UTC
   notes     String?
@@ -750,9 +864,10 @@ model VehicleDocument {
   updatedAt DateTime @updatedAt
 
   // Relations
-  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([vehicleId])
   @@index([tenantId, expiresAt])
@@ -764,19 +879,20 @@ model Tire {
   tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   vehicleId   String
-  position    String   // livre: "Dianteiro esquerdo", "Eixo 2 direito interno"…
+  position    String // livre: "Dianteiro esquerdo", "Eixo 2 direito interno"…
   brandModel  String
   installedAt DateTime // dia do calendário, gravado à meia-noite UTC
   installedKm Int
-  removedKm   Int?     // nulo enquanto o pneu está no veículo
+  removedKm   Int? // nulo enquanto o pneu está no veículo
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
-  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([vehicleId])
 }
@@ -795,10 +911,11 @@ model VehicleChecklist {
   createdAt DateTime @default(now())
 
   // Relations
-  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([vehicleId, date])
 }
@@ -813,28 +930,29 @@ model VehicleChecklist {
 // saem das contas de src/lib/equipe.ts.
 // ---------------------------------------------------------------------------
 model Helper {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id        String   @id @default(uuid())
-  name      String
-  cpf       String   // só dígitos
-  phone     String?
-  active    Boolean  @default(true)
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String   @id @default(uuid())
+  name        String
+  cpf         String // só dígitos
+  phone       String?
+  active      Boolean  @default(true)
   // Remuneração variável do ajudante: R$ por dia de viagem e fixo por viagem.
   // Nulo = não usa a forma. Dinheiro: só quem lê os valores da equipe recebe.
   dailyRate   Float?
   perTripRate Float?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  absences  Absence[]
-  advances  CrewAdvance[]
-  manifests Manifest[]
+  absences    Absence[]
+  advances    CrewAdvance[]
+  manifests   Manifest[]
   payClosings CrewPayClosing[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, cpf])
+  @@index([tenantId])
 }
 
 model Absence {
@@ -842,7 +960,7 @@ model Absence {
   id        String   @id @default(uuid())
   driverId  String?
   helperId  String?
-  type      String   // VACATION, DAY_OFF, SICK_NOTE, MISSED, OTHER
+  type      String // VACATION, DAY_OFF, SICK_NOTE, MISSED, OTHER
   // Primeiro e último dia, os dois inclusive: dias do calendário, gravados à meia-noite UTC.
   startDate DateTime
   endDate   DateTime
@@ -851,10 +969,11 @@ model Absence {
   updatedAt DateTime @updatedAt
 
   // Relations
-  driver    Driver?  @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  helper    Helper?  @relation(fields: [helperId], references: [id], onDelete: Cascade)
+  driver Driver? @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  helper Helper? @relation(fields: [helperId], references: [id], onDelete: Cascade)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([tenantId, startDate, endDate])
   @@index([driverId])
@@ -868,10 +987,10 @@ model CrewAdvance {
   id          String    @id @default(uuid())
   driverId    String?
   helperId    String?
-  date        DateTime  // dia do calendário, gravado à meia-noite UTC
+  date        DateTime // dia do calendário, gravado à meia-noite UTC
   amount      Float
-  reason      String    // TRIP, VOUCHER, OTHER
-  manifestId  String?   // a viagem do adiantamento, quando é de uma
+  reason      String // TRIP, VOUCHER, OTHER
+  manifestId  String? // a viagem do adiantamento, quando é de uma
   status      String    @default("OPEN") // OPEN, SETTLED
   // No acerto: quanto do adiantamento foi gasto com comprovante, e quando se acertou.
   spentAmount Float?
@@ -885,12 +1004,13 @@ model CrewAdvance {
   updatedAt   DateTime  @updatedAt
 
   // Relations
-  driver      Driver?   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: Cascade)
-  manifest    Manifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
-  closing     CrewPayClosing? @relation(fields: [closingId], references: [id], onDelete: SetNull)
+  driver   Driver?         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  helper   Helper?         @relation(fields: [helperId], references: [id], onDelete: Cascade)
+  manifest Manifest?       @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  closing  CrewPayClosing? @relation(fields: [closingId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([driverId])
@@ -906,34 +1026,35 @@ model CrewAdvance {
 // Reabrir apaga a linha e o lançamento que ela fez no Financeiro, e a
 // auditoria guarda o que havia. Um por pessoa e mês.
 model CrewPayClosing {
-  tenantId    String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id          String    @id @default(uuid())
-  driverId    String?
-  helperId    String?
-  month       String    // AAAA-MM, no relógio do Brasil
-  variableTotal Float   // a soma do variável das viagens finalizadas no mês
-  advancesTotal Float   // tudo o que foi descontado: vales, sobras de acerto e o saldo devedor do fechamento anterior
-  balance     Float     // variável − descontos (negativo quando a pessoa ficou devendo: o próximo fechamento traz a dívida)
-  details     Json      // { formas, viagens, adiantamentos, semAcerto, saldoAnterior } como estavam no fechamento
-  closedById  String?
-  closedByName String
-  closedAt    DateTime  @default(now())
+  tenantId      String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String   @id @default(uuid())
+  driverId      String?
+  helperId      String?
+  month         String // AAAA-MM, no relógio do Brasil
+  variableTotal Float // a soma do variável das viagens finalizadas no mês
+  advancesTotal Float // tudo o que foi descontado: vales, sobras de acerto e o saldo devedor do fechamento anterior
+  balance       Float // variável − descontos (negativo quando a pessoa ficou devendo: o próximo fechamento traz a dívida)
+  details       Json // { formas, viagens, adiantamentos, semAcerto, saldoAnterior } como estavam no fechamento
+  closedById    String?
+  closedByName  String
+  closedAt      DateTime @default(now())
   // A despesa que o fechamento lançou no Financeiro (o saldo a pagar). Nulo
   // quando não havia saldo a pagar, ou se o lançamento foi apagado por lá.
-  transactionId String? @unique
+  transactionId String?  @unique
 
   // Relations
-  driver      Driver?   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  helper      Helper?   @relation(fields: [helperId], references: [id], onDelete: Cascade)
-  closedBy    User?     @relation("CrewPayClosingClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  driver      Driver?               @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  helper      Helper?               @relation(fields: [helperId], references: [id], onDelete: Cascade)
+  closedBy    User?                 @relation("CrewPayClosingClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
   transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
   // Os adiantamentos que este fechamento descontou.
   advances    CrewAdvance[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, driverId, month])
   @@unique([tenantId, helperId, month])
+  @@index([tenantId])
 }
 
 // Comprovante da entrega de uma carga, registrado pelo motorista na baixa.
@@ -942,37 +1063,38 @@ model CrewPayClosing {
 // painel ou pelo motorista no aplicativo. Nasce pendente; o administrador
 // aprova (e ela vira lançamento no Financeiro) ou recusa. Ver src/lib/viagem.ts.
 model TripExpense {
-  tenantId   String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id         String   @id @default(uuid())
-  manifestId String
-  type       String   // TOLL, FUEL, FOOD, LODGING, PARKING, MAINTENANCE, OTHER
-  amount     Float
-  date       DateTime // dia do calendário, gravado à meia-noite UTC
-  notes      String?
-  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  tenantId      String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String    @id @default(uuid())
+  manifestId    String
+  type          String // TOLL, FUEL, FOOD, LODGING, PARKING, MAINTENANCE, OTHER
+  amount        Float
+  date          DateTime // dia do calendário, gravado à meia-noite UTC
+  notes         String?
+  status        String    @default("PENDING") // PENDING, APPROVED, REJECTED
   // Quem lançou: é por aqui que o motorista só vê as dele.
-  createdById String?
+  createdById   String?
   // Quem aprovou ou recusou, e quando.
-  reviewedById String?
-  reviewedAt   DateTime?
+  reviewedById  String?
+  reviewedAt    DateTime?
   // Só no combustível: com litros e hodômetro a despesa gera o abastecimento
   // da frota (`fuelingId`), e o consumo do veículo sai dele.
-  liters     Float?
-  odometer   Int?
-  fuelingId  String?  @unique
+  liters        Float?
+  odometer      Int?
+  fuelingId     String?   @unique
   // O lançamento que a aprovação criou no Financeiro.
-  transactionId String? @unique
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  transactionId String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   // Relations
-  manifest    Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
-  createdBy   User?    @relation("TripExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  reviewedBy  User?    @relation("TripExpenseReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  fueling     Fueling? @relation(fields: [fuelingId], references: [id], onDelete: SetNull)
+  manifest    Manifest              @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  createdBy   User?                 @relation("TripExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedBy  User?                 @relation("TripExpenseReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  fueling     Fueling?              @relation(fields: [fuelingId], references: [id], onDelete: SetNull)
   transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([manifestId])
   @@index([tenantId, status])
@@ -992,65 +1114,67 @@ model TripExpense {
 // não calcula imposto.
 // ---------------------------------------------------------------------------
 model Carrier {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id        String   @id @default(uuid())
-  type      String   // TAC_AGREGADO, TAC_INDEPENDENTE, TRANSPORTADORA (tpProp 0, 1 e 2 do MDF-e)
-  name      String   // nome ou razão social
-  taxId     String   // CPF ou CNPJ, sem pontuação
-  rntrc     String?  // 8 dígitos
-  ie        String?
-  state     String?  // UF
-  phone     String?
-  email     String?
-  pixKey    String?
-  bankInfo  String?  // banco, agência e conta, em texto
-  notes     String?
-  active    Boolean  @default(true)
+  tenantId        String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id              String   @id @default(uuid())
+  type            String // TAC_AGREGADO, TAC_INDEPENDENTE, TRANSPORTADORA (tpProp 0, 1 e 2 do MDF-e)
+  name            String // nome ou razão social
+  taxId           String // CPF ou CNPJ, sem pontuação
+  rntrc           String? // 8 dígitos
+  ie              String?
+  state           String? // UF
+  phone           String?
+  email           String?
+  pixKey          String?
+  bankInfo        String? // banco, agência e conta, em texto
+  notes           String?
+  active          Boolean  @default(true)
   // Forma padrão de contratação, copiada para o contrato de cada viagem.
   // É dinheiro: só quem lê o frete contratado recebe (src/lib/permissoes.ts).
-  defaultCalcMode String?  // FIXO, PERCENTUAL, POR_KM, POR_ENTREGA
-  defaultCalcBase Float?   // R$ por viagem, % do frete das cargas, R$ por km ou R$ por entrega
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  defaultCalcMode String? // FIXO, PERCENTUAL, POR_KM, POR_ENTREGA
+  defaultCalcBase Float? // R$ por viagem, % do frete das cargas, R$ por km ou R$ por entrega
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Relations
   vehicles  Vehicle[]
   drivers   Driver[]
   contracts FreightContract[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, taxId])
+  @@index([tenantId])
 }
 
 model FreightContract {
-  tenantId   String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id         String   @id @default(uuid())
-  manifestId String   @unique // um contrato por viagem
-  carrierId  String
-  calcMode   String   // FIXO, PERCENTUAL, POR_KM, POR_ENTREGA
-  calcBase   Float?   // a base da forma de cálculo, copiada do parceiro e editável
-  grossAmount       Float @default(0) // valor bruto do frete contratado
-  tollAmount        Float @default(0) // pedágio ou vale-pedágio pago à parte
-  otherAdditions    Float @default(0)
-  discounts         Float @default(0)
+  tenantId          String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id                String   @id @default(uuid())
+  manifestId        String   @unique // um contrato por viagem
+  carrierId         String
+  calcMode          String // FIXO, PERCENTUAL, POR_KM, POR_ENTREGA
+  calcBase          Float? // a base da forma de cálculo, copiada do parceiro e editável
+  grossAmount       Float    @default(0) // valor bruto do frete contratado
+  tollAmount        Float    @default(0) // pedágio ou vale-pedágio pago à parte
+  otherAdditions    Float    @default(0)
+  discounts         Float    @default(0)
   // Retenções: valores informados por quem paga. O sistema não calcula.
-  inss              Float @default(0)
-  irrf              Float @default(0)
-  sestSenat         Float @default(0)
-  otherWithholdings Float @default(0)
-  status     String   @default("ABERTO") // ABERTO, ADIANTADO, QUITADO, CANCELADO
-  notes      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  inss              Float    @default(0)
+  irrf              Float    @default(0)
+  sestSenat         Float    @default(0)
+  otherWithholdings Float    @default(0)
+  status            String   @default("ABERTO") // ABERTO, ADIANTADO, QUITADO, CANCELADO
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
-  manifest   Manifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
-  carrier    Carrier  @relation(fields: [carrierId], references: [id], onDelete: Restrict)
-  payments   FreightPayment[]
+  manifest             Manifest              @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  carrier              Carrier               @relation(fields: [carrierId], references: [id], onDelete: Restrict)
+  payments             FreightPayment[]
   subcontractDocuments SubcontractDocument[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([carrierId])
   @@index([tenantId, status])
@@ -1059,23 +1183,24 @@ model FreightContract {
 // Pagamento de um contrato de frete: adiantamento ou saldo. Registrar lança a
 // despesa no Financeiro (categoria "Frete contratado") na mesma transação.
 model FreightPayment {
-  tenantId   String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id         String   @id @default(uuid())
-  contractId String
-  kind       String   // ADIANTAMENTO, SALDO
-  date       DateTime // dia do calendário, gravado à meia-noite UTC
-  amount     Float
-  method     String   // PIX, TRANSFERENCIA, DINHEIRO, CARTAO, OUTRO
-  notes      String?
+  tenantId      String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String   @id @default(uuid())
+  contractId    String
+  kind          String // ADIANTAMENTO, SALDO
+  date          DateTime // dia do calendário, gravado à meia-noite UTC
+  amount        Float
+  method        String // PIX, TRANSFERENCIA, DINHEIRO, CARTAO, OUTRO
+  notes         String?
   // O lançamento que este pagamento criou no Financeiro. Nulo se ele foi apagado por lá.
-  transactionId String? @unique
-  createdAt  DateTime @default(now())
+  transactionId String?  @unique
+  createdAt     DateTime @default(now())
 
   // Relations
-  contract    FreightContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract    FreightContract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
   transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([contractId])
 }
@@ -1088,10 +1213,10 @@ model SubcontractDocument {
   tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id           String   @id @default(uuid())
   contractId   String
-  kind         String   // CTE, MDFE
-  accessKey    String   // 44 posições, com o CNPJ do parceiro
-  collectionId String?  // CTE: a carga que o CT-e do subcontratado cobre
-  unloadState  String?  // MDFE: a UF de descarregamento
+  kind         String // CTE, MDFE
+  accessKey    String // 44 posições, com o CNPJ do parceiro
+  collectionId String? // CTE: a carga que o CT-e do subcontratado cobre
+  unloadState  String? // MDFE: a UF de descarregamento
   issuedAt     DateTime // dia da emissão, gravado à meia-noite UTC
   createdById  String?
   createdAt    DateTime @default(now())
@@ -1101,51 +1226,52 @@ model SubcontractDocument {
   collection Collection?     @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   createdBy  User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([contractId])
   @@index([collectionId])
 }
 
 model ProofOfDelivery {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id              String   @id @default(uuid())
-  collectionId    String   @unique
-  photoBase64     String?  @db.Text
-  signatureBase64 String?  @db.Text
-  receiverName    String
-  receiverDoc     String
-  latitude        Float?
-  longitude       Float?
+  tenantId         String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id               String    @id @default(uuid())
+  collectionId     String    @unique
+  photoBase64      String?   @db.Text
+  signatureBase64  String?   @db.Text
+  receiverName     String
+  receiverDoc      String
+  latitude         Float?
+  longitude        Float?
   // Quem recebeu em relação ao destinatário: DESTINATARIO, FUNCIONARIO,
   // PORTARIA, FAMILIAR, VIZINHO, OUTRO. Nulo nos comprovantes antigos.
   receiverRelation String?
   // Ressalva no ato da entrega: AVARIA, FALTA, VIOLADA, OUTRA, com a descrição
   // de quem entregou. Os dois nulos = entrega sem ressalva.
-  exceptionType   String?
-  exceptionNote   String?
+  exceptionType    String?
+  exceptionNote    String?
   // Distância, em metros, entre a posição da baixa e a coordenada do endereço
   // de entrega. Nulo = sem posição ou sem coordenada. Só o painel lê.
-  distanceMeters  Int?
+  distanceMeters   Int?
   // SUBMITTED, APPROVED, REJECTED. REJECTED = devolvido ao motorista, que manda
   // fotos novas e o comprovante volta para SUBMITTED. APPROVED é final.
-  status          String   @default("SUBMITTED")
+  status           String    @default("SUBMITTED")
   // Conferência no painel: quem decidiu, quando e, na devolução, o motivo.
-  reviewedAt      DateTime?
-  reviewedById    String?
-  rejectionReason String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  reviewedAt       DateTime?
+  reviewedById     String?
+  rejectionReason  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   // Relations
-  collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  reviewedBy      User?      @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
-  photos          ProofPhoto[]
-  rejections      ProofRejection[]
+  collection Collection       @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  reviewedBy User?            @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+  photos     ProofPhoto[]
+  rejections ProofRejection[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([status, createdAt])
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
 }
 
@@ -1159,16 +1285,17 @@ model ProofPhoto {
   id         String    @id @default(uuid())
   proofId    String?
   attemptId  String?
-  kind       String    // ENTREGA, CANHOTO, AVARIA, FACHADA
+  kind       String // ENTREGA, CANHOTO, AVARIA, FACHADA
   dataUrl    String    @db.Text
   sha256     String
   createdAt  DateTime  @default(now())
   replacedAt DateTime?
 
-  proof      ProofOfDelivery? @relation(fields: [proofId], references: [id], onDelete: Cascade)
-  attempt    DeliveryAttempt? @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  proof   ProofOfDelivery? @relation(fields: [proofId], references: [id], onDelete: Cascade)
+  attempt DeliveryAttempt? @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([proofId])
   @@index([attemptId])
@@ -1186,10 +1313,11 @@ model ProofRejection {
   rejectedAt    DateTime  @default(now())
   resubmittedAt DateTime?
 
-  proof         ProofOfDelivery @relation(fields: [proofId], references: [id], onDelete: Cascade)
-  rejectedBy    User?           @relation(fields: [rejectedById], references: [id], onDelete: SetNull)
+  proof      ProofOfDelivery @relation(fields: [proofId], references: [id], onDelete: Cascade)
+  rejectedBy User?           @relation(fields: [rejectedById], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([proofId, rejectedAt])
 }
@@ -1213,55 +1341,57 @@ model DeliveryAttempt {
   clientKey      String?
   createdAt      DateTime @default(now())
 
-  collection     Collection  @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  manifest       Manifest?   @relation(fields: [manifestId], references: [id], onDelete: SetNull)
-  occurrence     Occurrence? @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
-  photos         ProofPhoto[]
+  collection Collection   @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  manifest   Manifest?    @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  occurrence Occurrence?  @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
+  photos     ProofPhoto[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, clientKey])
+  @@index([tenantId])
   @@index([collectionId, createdAt])
 }
 
 model QuoteLead {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id              String   @id @default(uuid())
+  tenantId       String      @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id             String      @id @default(uuid())
   // Número sequencial por empresa, dado na criação (src/lib/crm-db.ts). É por
   // ele que a equipe fala da cotação com o cliente. Nulo só em linha criada
   // fora do caminho normal (teste, script).
-  number          Int?
-  companyName     String
-  email           String
-  phone           String
-  origin          String
-  destination     String
-  volumes         Int
-  weight          Float
-  estimatedValue  Float?
+  number         Int?
+  companyName    String
+  email          String
+  phone          String
+  origin         String
+  destination    String
+  volumes        Int
+  weight         Float
+  estimatedValue Float?
   // Valor da nota informado no pedido de cotação; segue para a coleta na conversão.
-  invoiceValue    Float?
-  status          String   @default("NEW") // NEW, CONTACTED, CONVERTED, LOST
+  invoiceValue   Float?
+  status         String      @default("NEW") // NEW, CONTACTED, CONVERTED, LOST
   // Por onde o pedido chegou: SITE (formulário público), WHATSAPP, EMAIL ou
   // TELEFONE (registrado pela equipe no painel). Ver src/lib/crm.ts.
-  channel         String   @default("SITE")
+  channel        String      @default("SITE")
   // Quem da equipe cuida desta cotação. Nulo = ninguém assumiu ainda.
-  assigneeId      String?
-  assignee        User?    @relation("QuoteLeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeId     String?
+  assignee       User?       @relation("QuoteLeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   // Por que foi perdida (lista fechada em src/lib/crm.ts). Só com status LOST.
-  lostReason      String?
+  lostReason     String?
   // Última vez que alguém mexeu nela ou falou com o cliente: troca de status,
   // contato registrado. É por aqui que a tela acha cotação parada.
-  lastActivityAt  DateTime @default(now())
+  lastActivityAt DateTime    @default(now())
   // Coleta criada na conversão do lead (src/lib/crm.ts). Uma coleta por lead.
-  collectionId    String?  @unique
-  collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  collectionId   String?     @unique
+  collection     Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, number])
+  @@index([tenantId])
   @@index([tenantId, status])
   @@index([assigneeId])
 }
@@ -1277,8 +1407,8 @@ model QuoteLead {
 model Occurrence {
   tenantId     String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id           String    @id @default(uuid())
-  number       Int       // sequencial por empresa
-  type         String    // DELAY, DAMAGE, LOSS, BILLING, REDELIVERY, OTHER
+  number       Int // sequencial por empresa
+  type         String // DELAY, DAMAGE, LOSS, BILLING, REDELIVERY, OTHER
   title        String
   description  String    @db.Text
   status       String    @default("OPEN") // OPEN, ANALYSIS, IN_PROGRESS, RESOLVED, CLOSED
@@ -1299,16 +1429,17 @@ model Occurrence {
   updatedAt    DateTime  @updatedAt
 
   // Relations
-  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-  client       Client?     @relation(fields: [clientId], references: [id])
-  openedBy     User?       @relation("OccurrenceOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
-  assignee     User?       @relation("OccurrenceAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  messages     OccurrenceMessage[]
+  collection      Collection?         @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  client          Client?             @relation(fields: [clientId], references: [id])
+  openedBy        User?               @relation("OccurrenceOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  assignee        User?               @relation("OccurrenceAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  messages        OccurrenceMessage[]
   deliveryAttempt DeliveryAttempt?
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, number])
+  @@index([tenantId])
   @@index([tenantId, status])
   @@index([clientId])
   @@index([collectionId])
@@ -1319,7 +1450,7 @@ model OccurrenceMessage {
   tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id           String   @id @default(uuid())
   occurrenceId String
-  authorId     String?  // nulo se o usuário foi apagado
+  authorId     String? // nulo se o usuário foi apagado
   // De que lado veio, gravado na hora: o perfil do autor pode mudar depois.
   fromClient   Boolean  @default(false)
   // Nota interna: só a equipe lê. O portal nunca recebe estas linhas.
@@ -1328,10 +1459,11 @@ model OccurrenceMessage {
   createdAt    DateTime @default(now())
 
   // Relations
-  occurrence   Occurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
-  author       User?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  occurrence Occurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  author     User?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([occurrenceId, createdAt])
 }
@@ -1357,37 +1489,39 @@ model WarehouseLocation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  volumes     CollectionVolume[]
+  volumes CollectionVolume[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, code])
+  @@index([tenantId])
 }
 
 model CollectionVolume {
   tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id           String   @id @default(uuid())
   collectionId String
-  sequence     Int      // 1 até Collection.volumes
-  code         String   // código de rastreio + "-" + sequência
+  sequence     Int // 1 até Collection.volumes
+  code         String // código de rastreio + "-" + sequência
   status       String   @default("RECEIVED") // RECEIVED, DAMAGED, MISSING
-  weight       Float?   // peso conferido, em kg
-  damageNote   String?  // o que há de errado, quando avariado
-  locationId   String?  // posição no depósito
+  weight       Float? // peso conferido, em kg
+  damageNote   String? // o que há de errado, quando avariado
+  locationId   String? // posição no depósito
   checkedAt    DateTime @default(now())
-  checkedById  String?  // nulo se o usuário foi apagado
+  checkedById  String? // nulo se o usuário foi apagado
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   // Relations
-  collection   Collection         @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  location     WarehouseLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  checkedBy    User?              @relation(fields: [checkedById], references: [id], onDelete: SetNull)
+  collection Collection         @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  location   WarehouseLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  checkedBy  User?              @relation(fields: [checkedById], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, code])
   @@unique([collectionId, sequence])
+  @@index([tenantId])
   @@index([locationId])
 }
 
@@ -1395,27 +1529,28 @@ model CollectionVolume {
 // foi concluída, e são refeitos se um volume mudar depois (um faltante que
 // apareceu). Peso conferido é nulo quando nem todo volume presente foi pesado.
 model WarehouseReceipt {
-  tenantId        String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id              String   @id @default(uuid())
-  collectionId    String   @unique
-  userId          String?  // quem concluiu; nulo se o usuário foi apagado
-  concludedAt     DateTime @default(now())
-  expectedVolumes Int      // o declarado na carga
-  receivedVolumes Int      // presentes sem avaria
-  damagedVolumes  Int      // presentes com avaria
-  missingVolumes  Int
-  declaredWeight  Float
-  checkedWeight   Float?
-  quantityDivergence Boolean @default(false)
-  weightDivergence   Boolean @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  tenantId           String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id                 String   @id @default(uuid())
+  collectionId       String   @unique
+  userId             String? // quem concluiu; nulo se o usuário foi apagado
+  concludedAt        DateTime @default(now())
+  expectedVolumes    Int // o declarado na carga
+  receivedVolumes    Int // presentes sem avaria
+  damagedVolumes     Int // presentes com avaria
+  missingVolumes     Int
+  declaredWeight     Float
+  checkedWeight      Float?
+  quantityDivergence Boolean  @default(false)
+  weightDivergence   Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   // Relations
-  collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
 }
 
@@ -1424,9 +1559,9 @@ model WarehouseReceipt {
 // acesso é única por empresa: a mesma nota não entra duas vezes. A carga é
 // opcional: a nota pode ser importada antes de existir carga para ela.
 model FiscalDocument {
-  tenantId        String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id              String   @id @default(uuid())
-  accessKey       String   // 44 dígitos, com o dígito verificador conferido
+  tenantId        String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id              String    @id @default(uuid())
+  accessKey       String // 44 dígitos, com o dígito verificador conferido
   number          Int
   series          Int
   issuedAt        DateTime?
@@ -1434,36 +1569,37 @@ model FiscalDocument {
   // 0 = frete por conta do emitente, 1 = do destinatário (campo modFrete da nota).
   freightMode     Int?
 
-  issuerTaxId     String   // CNPJ ou CPF, só dígitos
-  issuerName      String
-  issuerCity      String?
-  issuerState     String?
-  issuerAddress   String?
+  issuerTaxId   String // CNPJ ou CPF, só dígitos
+  issuerName    String
+  issuerCity    String?
+  issuerState   String?
+  issuerAddress String?
 
-  recipientTaxId  String?
-  recipientName   String?
-  recipientCity   String?
-  recipientState  String?
+  recipientTaxId   String?
+  recipientName    String?
+  recipientCity    String?
+  recipientState   String?
   recipientAddress String?
 
-  totalValue      Float    // vNF
-  grossWeight     Float?   // soma de transp/vol/pesoB
-  volumes         Int?     // soma de transp/vol/qVol
+  totalValue  Float // vNF
+  grossWeight Float? // soma de transp/vol/pesoB
+  volumes     Int? // soma de transp/vol/qVol
 
-  xml             String   @db.Text
+  xml String @db.Text
 
-  collectionId    String?
-  importedById    String?  // quem importou; nulo se o usuário foi apagado
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  collectionId String?
+  importedById String? // quem importou; nulo se o usuário foi apagado
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relations
-  collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-  importedBy      User?       @relation(fields: [importedById], references: [id], onDelete: SetNull)
+  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  importedBy User?       @relation(fields: [importedById], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, accessKey])
+  @@index([tenantId])
   @@index([tenantId, createdAt])
   @@index([collectionId])
 }
@@ -1491,16 +1627,16 @@ enum Channel {
 }
 
 enum PostStatus {
-  DRAFT     // escrito, ninguém aprovou
-  APPROVED  // liberado pelo comercial, esperando a hora
+  DRAFT // escrito, ninguém aprovou
+  APPROVED // liberado pelo comercial, esperando a hora
   SCHEDULED // tem data marcada
   PUBLISHED // saiu
-  FAILED    // tentou sair e a API recusou
-  CANCELED  // desistiu-se antes de publicar
+  FAILED // tentou sair e a API recusou
+  CANCELED // desistiu-se antes de publicar
 }
 
 model Article {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
   slug        String   @unique // o mesmo slug de src/content/blog.ts
   title       String
@@ -1514,30 +1650,30 @@ model Article {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  posts       SocialPost[]
-  metrics     ContentMetric[]
+  posts   SocialPost[]
+  metrics ContentMetric[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([publishedAt])
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
 }
 
 model SocialPost {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id          String     @id @default(uuid())
-  channel     Channel
-  status      PostStatus @default(DRAFT)
+  tenantId String     @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id       String     @id @default(uuid())
+  channel  Channel
+  status   PostStatus @default(DRAFT)
 
   // O texto que vai para a rede. Cada canal tem o seu, porque a legenda do
   // Instagram não é o resumo do Google Meu Negócio.
-  body        String     @db.Text
-  imageUrl    String?
-  linkUrl     String?    // para onde o post aponta: a matéria, a cotação, o site
+  body     String  @db.Text
+  imageUrl String?
+  linkUrl  String? // para onde o post aponta: a matéria, a cotação, o site
 
-  articleId   String?    // post que divulga uma matéria; nulo quando é post avulso
+  articleId    String? // post que divulga uma matéria; nulo quando é post avulso
   scheduledFor DateTime? // quando deve sair
-  publishedAt DateTime?  // quando saiu de fato
+  publishedAt  DateTime? // quando saiu de fato
 
   // Devolvido pela API da rede no momento em que o post sai. Guardado para
   // conseguir achar o post de volta e para não republicar o mesmo duas vezes.
@@ -1546,48 +1682,48 @@ model SocialPost {
 
   // Preenchido só quando status = FAILED. Erro sem texto vira falha invisível,
   // e falha invisível é a que ninguém conserta.
-  failureReason String?  @db.Text
-  attempts    Int        @default(0)
+  failureReason String? @db.Text
+  attempts      Int     @default(0)
 
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  article     Article?   @relation(fields: [articleId], references: [id])
+  article Article? @relation(fields: [articleId], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   // O mesmo post não sai duas vezes no mesmo canal, nem quando o fluxo do n8n
   // repete a chamada.
   @@unique([channel, externalId])
   @@index([status, scheduledFor])
   @@index([articleId])
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
 }
 
 model ContentMetric {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id          String   @id @default(uuid())
-  articleId   String
-  measuredOn  DateTime @db.Date // a data da medição, não o instante
+  tenantId   String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id         String   @id @default(uuid())
+  articleId  String
+  measuredOn DateTime @db.Date // a data da medição, não o instante
 
   // Search Console, últimos 28 dias na data da medição.
-  impressions Int      @default(0)
-  clicks      Int      @default(0)
+  impressions Int    @default(0)
+  clicks      Int    @default(0)
   position    Float?
   ctr         Float?
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   // Relations
-  article     Article  @relation(fields: [articleId], references: [id])
+  article Article @relation(fields: [articleId], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   // Uma medição por matéria por dia: rodar o fluxo duas vezes na mesma terça
   // não pode dobrar o número.
   @@unique([articleId, measuredOn])
   @@index([measuredOn])
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@index([tenantId])
 }
 
@@ -1610,13 +1746,13 @@ model Webhook {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 }
 
 model OutboxEvent {
   tenantId      String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id            String    @id @default(uuid())
-  type          String    // coleta.status, fatura.emitida|paga|reaberta|cancelada, cobranca.vencida, ocorrencia.aberta|status, teste
+  type          String // coleta.status, fatura.emitida|paga|reaberta|cancelada, cobranca.vencida, ocorrencia.aberta|status, teste
   payload       Json
   createdAt     DateTime  @default(now())
   // Próxima tentativa de entrega. Cada tentativa empurra para a frente (1, 2, 4... minutos).
@@ -1627,7 +1763,8 @@ model OutboxEvent {
   // Evento que só pode existir uma vez (o aviso de um título vencido): a chave repetida é ignorada.
   dedupeKey     String?   @unique
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId, createdAt])
   @@index([deliveredAt, nextAttemptAt])
 }
@@ -1644,21 +1781,22 @@ model AuditLog {
   tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
-  userId    String?  // nulo se o usuário foi apagado depois
+  userId    String? // nulo se o usuário foi apagado depois
   userName  String
   userRole  String?
-  action    String   // texto curto e estável: cliente.criar, fatura.pagar, usuario.perfil...
-  entity    String   // cliente, fatura, usuario...
+  action    String // texto curto e estável: cliente.criar, fatura.pagar, usuario.perfil...
+  entity    String // cliente, fatura, usuario...
   entityId  String?
-  summary   String   // frase em português, para a lista
-  before    Json?    // só os campos que mudaram, sem segredo nem imagem
+  summary   String // frase em português, para a lista
+  before    Json? // só os campos que mudaram, sem segredo nem imagem
   after     Json?
   ip        String?
-  device    String?  // resumo do navegador e do aparelho
+  device    String? // resumo do navegador e do aparelho
 
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([tenantId, createdAt])
   @@index([tenantId, entity, entityId])
@@ -1676,20 +1814,21 @@ model AuditLog {
 model Notification {
   tenantId  String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id        String    @id @default(uuid())
-  userId    String    // o destinatário
-  type      String    // texto curto e estável: viagem.liberada, coleta.entregue, chamado.novo...
+  userId    String // o destinatário
+  type      String // texto curto e estável: viagem.liberada, coleta.entregue, chamado.novo...
   title     String
   body      String
-  url       String    // caminho interno que o aviso abre, ex. /dashboard/ocorrencias/<id>
+  url       String // caminho interno que o aviso abre, ex. /dashboard/ocorrencias/<id>
   createdAt DateTime  @default(now())
   readAt    DateTime?
   // Quando o despachante pegou o aviso para mandar por push. Nulo = ainda não
   // pegou. Uma tentativa por aviso: marcado antes do envio, não volta para a fila.
   pushedAt  DateTime?
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([userId, createdAt])
   @@index([userId, readAt])
@@ -1706,12 +1845,13 @@ model PushSubscription {
   endpoint  String   @unique @db.Text
   p256dh    String
   auth      String
-  userAgent String?  // resumo do navegador e do aparelho, como na auditoria
+  userAgent String? // resumo do navegador e do aparelho, como na auditoria
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([userId])
 }
@@ -1729,30 +1869,31 @@ model PushSubscription {
 // uma conta da outra na unicidade.
 // ---------------------------------------------------------------------------
 model BankStatementLine {
-  tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id          String   @id @default(uuid())
-  accountKey  String
-  bankId      String?  // código do banco, como veio no arquivo
-  account     String   // conta mascarada: só o fim do número
-  fitId       String
-  postedAt    DateTime // dia do calendário, gravado à meia-noite UTC
-  amount      Float    // com sinal: positivo entrou, negativo saiu
-  kind        String?  // TRNTYPE do OFX: CREDIT, DEBIT, XFER, FEE...
-  description String
-  status      String   @default("PENDING") // PENDING, RECONCILED, IGNORED
+  tenantId      String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id            String    @id @default(uuid())
+  accountKey    String
+  bankId        String? // código do banco, como veio no arquivo
+  account       String // conta mascarada: só o fim do número
+  fitId         String
+  postedAt      DateTime // dia do calendário, gravado à meia-noite UTC
+  amount        Float // com sinal: positivo entrou, negativo saiu
+  kind          String? // TRNTYPE do OFX: CREDIT, DEBIT, XFER, FEE...
+  description   String
+  status        String    @default("PENDING") // PENDING, RECONCILED, IGNORED
   // O lançamento com que a linha foi conciliada. Um lançamento casa com uma linha só.
-  transactionId String? @unique
+  transactionId String?   @unique
   // A baixa do lançamento veio desta conciliação (ele estava em aberto):
   // desfazer a conciliação reabre o título. Falso quando ele já estava pago
   // ou nasceu pago a partir da linha.
-  settled     Boolean  @default(false)
-  reconciledAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  settled       Boolean   @default(false)
+  reconciledAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   transaction FinancialTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, accountKey, fitId])
   @@index([tenantId])
   @@index([tenantId, status, postedAt])
@@ -1767,54 +1908,55 @@ model BankStatementLine {
 // qual credencial está cadastrada. Ver src/lib/cobranca-gateway-db.ts.
 // ---------------------------------------------------------------------------
 model PaymentGateway {
-  tenantId  String   @unique @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id        String   @id @default(uuid())
-  provider  String   @default("MERCADO_PAGO")
-  accessTokenEnc    String @db.Text
-  accessTokenEnd    String // 4 últimos caracteres
-  webhookSecretEnc  String @db.Text
-  webhookSecretEnd  String // 4 últimos caracteres
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tenantId         String   @unique @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id               String   @id @default(uuid())
+  provider         String   @default("MERCADO_PAGO")
+  accessTokenEnc   String   @db.Text
+  accessTokenEnd   String // 4 últimos caracteres
+  webhookSecretEnc String   @db.Text
+  webhookSecretEnd String // 4 últimos caracteres
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 }
 
 // Uma cobrança criada no gateway para uma fatura. A fatura pode ter várias
 // (gerou de novo depois de vencer), mas só uma em aberto por tipo: quem garante
 // é a criação, que trava a fatura antes de conferir.
 model PaymentCharge {
-  tenantId  String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id        String   @id @default(uuid())
-  invoiceId String
-  provider  String   @default("MERCADO_PAGO")
-  kind      String   // PIX, BOLETO
+  tenantId       String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id             String    @id @default(uuid())
+  invoiceId      String
+  provider       String    @default("MERCADO_PAGO")
+  kind           String // PIX, BOLETO
   // CREATING (pedido enviado, sem resposta ainda), PENDING (em aberto), PAID,
   // CANCELLED, EXPIRED, FAILED (o gateway recusou criar), REVIEW (a conferir:
   // o gateway disse algo que o sistema não aplica sozinho).
-  status    String   @default("CREATING")
+  status         String    @default("CREATING")
   // Id do pagamento no gateway. Nulo enquanto a criação não foi confirmada.
-  gatewayId String?
+  gatewayId      String?
   // Chave de idempotência da tentativa: repetir o pedido com ela não cria outro pagamento.
   idempotencyKey String
-  amount    Float
+  amount         Float
   // Quanto o gateway diz que foi pago (pode diferir do valor: juros ou desconto).
-  paidAmount Float?
-  pixCode    String? @db.Text // Pix Copia e Cola
-  qrCodeBase64 String? @db.Text // imagem do QR Code, como o gateway devolve
-  ticketUrl  String? @db.Text // página do Pix ou do boleto no gateway
-  digitableLine String? // linha digitável do boleto, se o gateway devolver
-  expiresAt DateTime // vencimento da cobrança no gateway
-  paidAt    DateTime?
+  paidAmount     Float?
+  pixCode        String?   @db.Text // Pix Copia e Cola
+  qrCodeBase64   String?   @db.Text // imagem do QR Code, como o gateway devolve
+  ticketUrl      String?   @db.Text // página do Pix ou do boleto no gateway
+  digitableLine  String? // linha digitável do boleto, se o gateway devolver
+  expiresAt      DateTime // vencimento da cobrança no gateway
+  paidAt         DateTime?
   // Por que está "a conferir" ou não foi criada: texto para a tela, sem dado sensível.
-  note      String?
-  checkedAt DateTime? // última consulta ao gateway
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  note           String?
+  checkedAt      DateTime? // última consulta ao gateway
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, gatewayId])
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId])
@@ -1850,44 +1992,44 @@ model GeoCache {
 // em claro ficam só o titular, o CNPJ e a validade, que a tela mostra. Os cinco
 // campos `cert*` nulos = sem certificado.
 model FiscalIssuer {
-  tenantId     String   @unique @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id           String   @id @default(uuid())
-  cnpj         String   // só dígitos
-  ie           String   // só dígitos
-  legalName    String
-  tradeName    String?
-  street       String
-  number       String
-  complement   String?
-  district     String
-  cityCode     String   // código IBGE do município, 7 dígitos
-  cityName     String
-  state        String
-  zip          String   // só dígitos
-  phone        String?
+  tenantId                String  @unique @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id                      String  @id @default(uuid())
+  cnpj                    String // só dígitos
+  ie                      String // só dígitos
+  legalName               String
+  tradeName               String?
+  street                  String
+  number                  String
+  complement              String?
+  district                String
+  cityCode                String // código IBGE do município, 7 dígitos
+  cityName                String
+  state                   String
+  zip                     String // só dígitos
+  phone                   String?
   // Quem responde pelo sistema na empresa: com o CNPJ e o telefone acima, forma
   // o responsável técnico (infRespTec) do CT-e e do MDF-e.
-  contactName  String?
-  contactEmail String?
-  rntrc        String
-  taxRegime    String   // CRT: 1, 2, 3 ou 4
-  cteSeries    Int      @default(1)
+  contactName             String?
+  contactEmail            String?
+  rntrc                   String
+  taxRegime               String // CRT: 1, 2, 3 ou 4
+  cteSeries               Int     @default(1)
   // MDF-e (src/lib/mdfe.ts): a série, o tipo de emitente (1 = prestador de
   // serviço de transporte, relaciona CT-e; 2 = carga própria, relaciona NF-e) e
   // o seguro da carga que a empresa usa por padrão (a averbação é de cada viagem).
-  mdfeSeries       Int     @default(1)
-  mdfeEmitterType  String  @default("1")
-  insurerName      String?
-  insurerTaxId     String?
-  insurancePolicy  String?
-  environment  String   @default("HOMOLOGACAO") // HOMOLOGACAO, PRODUCAO
-  cfopInState  String
-  cfopOutState String
-  icmsCst      String   // 00, 20, 40, 41, 60, 90 ou SN (Simples Nacional)
+  mdfeSeries              Int     @default(1)
+  mdfeEmitterType         String  @default("1")
+  insurerName             String?
+  insurerTaxId            String?
+  insurancePolicy         String?
+  environment             String  @default("HOMOLOGACAO") // HOMOLOGACAO, PRODUCAO
+  cfopInState             String
+  cfopOutState            String
+  icmsCst                 String // 00, 20, 40, 41, 60, 90 ou SN (Simples Nacional)
   // A alíquota INTERNA, em %; a interestadual é calculada (Resolução do Senado 22/1989).
-  icmsRate     Float    @default(0)
+  icmsRate                Float   @default(0)
   // Percentual de redução da base de cálculo (pRedBC), só na situação 20.
-  icmsBaseReduction Float?
+  icmsBaseReduction       Float?
   // A redução da base (situação 20) também vale na prestação interestadual? Quem
   // diz é o contador: o benefício é de cada estado ou convênio. Desligado, a
   // prestação interestadual na situação 20 não é emitida.
@@ -1898,16 +2040,16 @@ model FiscalIssuer {
   // ano (2026: 0,1 / 0 / 0,9). PIS e COFINS só entram na base de cálculo.
   ibsCbsCst    String?
   ibsCbsClass  String?
-  ibsStateRate Float    @default(0.1)
-  ibsCityRate  Float    @default(0)
-  cbsRate      Float    @default(0.9)
-  pisRate      Float    @default(0)
-  cofinsRate   Float    @default(0)
+  ibsStateRate Float   @default(0.1)
+  ibsCityRate  Float   @default(0)
+  cbsRate      Float   @default(0.9)
+  pisRate      Float   @default(0)
+  cofinsRate   Float   @default(0)
 
   certPfxEnc      String?   @db.Text
   certPasswordEnc String?   @db.Text
-  certSubject     String?   // nome comum (CN) do certificado
-  certTaxId       String?   // CNPJ do certificado
+  certSubject     String? // nome comum (CN) do certificado
+  certTaxId       String? // CNPJ do certificado
   certNotBefore   DateTime?
   certNotAfter    DateTime?
   certUploadedAt  DateTime?
@@ -1915,7 +2057,7 @@ model FiscalIssuer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 }
 
 // Próximo número de CT-e de cada série, por ambiente: homologação e produção
@@ -1924,14 +2066,15 @@ model FiscalIssuer {
 model CteNumbering {
   tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
-  environment String   // HOMOLOGACAO, PRODUCAO
+  environment String // HOMOLOGACAO, PRODUCAO
   series      Int
   nextNumber  Int      @default(1)
   updatedAt   DateTime @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, environment, series])
+  @@index([tenantId])
 }
 
 // Cada CT-e que este sistema montou para uma carga. `status`:
@@ -1944,48 +2087,49 @@ model CteNumbering {
 // Uma carga tem no máximo um CT-e em andamento (DRAFT/REJECTED) e um autorizado
 // por ambiente; os cancelados ficam como histórico.
 model Cte {
-  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id           String   @id @default(uuid())
+  tenantId     String @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String @id @default(uuid())
   collectionId String
-  environment  String   // HOMOLOGACAO, PRODUCAO
+  environment  String // HOMOLOGACAO, PRODUCAO
   series       Int
   number       Int
-  accessKey    String   // 44 dígitos
-  status       String   @default("DRAFT")
+  accessKey    String // 44 dígitos
+  status       String @default("DRAFT")
 
-  xmlSent      String   @db.Text  // o CT-e assinado, como foi (ou vai ser) enviado
-  xmlReturn    String?  @db.Text  // o cteProc: CT-e + protocolo de autorização
+  xmlSent      String    @db.Text // o CT-e assinado, como foi (ou vai ser) enviado
+  xmlReturn    String?   @db.Text // o cteProc: CT-e + protocolo de autorização
   protocol     String?
-  statusCode   Int?     // cStat da última resposta
-  statusReason String?  // xMotivo da última resposta, ou o problema do envio
+  statusCode   Int? // cStat da última resposta
+  statusReason String? // xMotivo da última resposta, ou o problema do envio
   issuedAt     DateTime // dhEmi
   authorizedAt DateTime?
 
   cancelledAt    DateTime?
   cancelProtocol String?
   cancelReason   String?
-  cancelXml      String?  @db.Text // o evento assinado e o retorno da SEFAZ
+  cancelXml      String?   @db.Text // o evento assinado e o retorno da SEFAZ
 
   // Envio em andamento (uma emissão por vez por carga) e envio que ficou sem
   // resposta: a próxima tentativa consulta a SEFAZ pela chave antes de reenviar.
   sendingAt    DateTime?
-  unanswered   Boolean  @default(false)
+  unanswered   Boolean   @default(false)
   // A SEFAZ disse que o número já foi usado por outro documento (rejeição 539):
   // a próxima tentativa desta carga pega número novo.
-  numberBurned Boolean  @default(false)
+  numberBurned Boolean   @default(false)
 
-  issuedById   String?  // quem emitiu; nulo se o usuário foi apagado
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  issuedById String? // quem emitiu; nulo se o usuário foi apagado
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Restrict)
-  issuedBy     User?      @relation(fields: [issuedById], references: [id], onDelete: SetNull)
-  events       CteEvent[]
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  issuedBy   User?      @relation(fields: [issuedById], references: [id], onDelete: SetNull)
+  events     CteEvent[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, accessKey])
   @@unique([tenantId, environment, series, number])
+  @@index([tenantId])
   @@index([tenantId, collectionId])
   @@index([collectionId])
 }
@@ -1999,14 +2143,14 @@ model Cte {
 // O cancelamento do CT-e continua também nas colunas `cancel*` do `Cte`, que é
 // onde os cancelamentos anteriores a esta tabela estão.
 model CteEvent {
-  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id           String   @id @default(uuid())
+  tenantId     String    @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id           String    @id @default(uuid())
   cteId        String
-  type         String   // tpEvento
-  sequence     Int      // nSeqEvento
-  xmlSent      String   @db.Text
-  xmlReturn    String   @db.Text
-  protocol     String?  // nulo quando a SEFAZ só confirmou que o evento já estava lá
+  type         String // tpEvento
+  sequence     Int // nSeqEvento
+  xmlSent      String    @db.Text
+  xmlReturn    String    @db.Text
+  protocol     String? // nulo quando a SEFAZ só confirmou que o evento já estava lá
   statusCode   Int
   statusReason String
   registeredAt DateTime
@@ -2015,14 +2159,15 @@ model CteEvent {
   // Só no comprovante de entrega (110180): quando a SEFAZ registrou o cancelamento dele (110181).
   cancelledAt  DateTime?
   createdById  String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
-  cte          Cte      @relation(fields: [cteId], references: [id], onDelete: Restrict)
-  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  cte       Cte   @relation(fields: [cteId], references: [id], onDelete: Restrict)
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, cteId, type, sequence])
+  @@index([tenantId])
   @@index([cteId])
 }
 
@@ -2031,14 +2176,15 @@ model CteEvent {
 model MdfeNumbering {
   tenantId    String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id          String   @id @default(uuid())
-  environment String   // HOMOLOGACAO, PRODUCAO
+  environment String // HOMOLOGACAO, PRODUCAO
   series      Int
   nextNumber  Int      @default(1)
   updatedAt   DateTime @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, environment, series])
+  @@index([tenantId])
 }
 
 // Um MDF-e (modelo 58, modal rodoviário) montado para uma viagem. A viagem tem
@@ -2047,28 +2193,28 @@ model MdfeNumbering {
 // AUTHORIZED, CLOSED (encerrado) e CANCELLED. Só fica AUTHORIZED com o
 // protocolo que a SEFAZ devolveu (src/lib/mdfe-db.ts).
 model Mdfe {
-  tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
-  id           String   @id @default(uuid())
-  manifestId   String
-  environment  String   // HOMOLOGACAO, PRODUCAO
-  series       Int
-  number       Int
-  accessKey    String   // 44 posições
-  status       String   @default("DRAFT")
-  emitterType  String   // tpEmit: 1 ou 2
-  loadState    String   // UFIni
-  unloadState  String   // UFFim
-  plate        String   // placa do veículo de tração, como foi no documento
+  tenantId    String @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  id          String @id @default(uuid())
+  manifestId  String
+  environment String // HOMOLOGACAO, PRODUCAO
+  series      Int
+  number      Int
+  accessKey   String // 44 posições
+  status      String @default("DRAFT")
+  emitterType String // tpEmit: 1 ou 2
+  loadState   String // UFIni
+  unloadState String // UFFim
+  plate       String // placa do veículo de tração, como foi no documento
 
   // O que a pessoa informou para este documento (percurso, CIOT, seguro,
   // produto predominante...), para a tela reabrir como estava.
-  inputs       Json?
+  inputs Json?
 
-  xmlSent      String   @db.Text  // o MDF-e assinado, como foi (ou vai ser) enviado
-  xmlReturn    String?  @db.Text  // o mdfeProc: MDF-e + protocolo de autorização
+  xmlSent      String    @db.Text // o MDF-e assinado, como foi (ou vai ser) enviado
+  xmlReturn    String?   @db.Text // o mdfeProc: MDF-e + protocolo de autorização
   protocol     String?
-  statusCode   Int?     // cStat da última resposta
-  statusReason String?  // xMotivo da última resposta, ou o problema do envio
+  statusCode   Int? // cStat da última resposta
+  statusReason String? // xMotivo da última resposta, ou o problema do envio
   issuedAt     DateTime // dhEmi
   authorizedAt DateTime?
 
@@ -2080,25 +2226,26 @@ model Mdfe {
 
   // Envio em andamento e envio que ficou sem resposta: a próxima tentativa
   // consulta a SEFAZ pela chave antes de reenviar (como no CT-e).
-  sendingAt    DateTime?
-  unanswered   Boolean  @default(false)
+  sendingAt       DateTime?
+  unanswered      Boolean   @default(false)
   // Rejeição 539: o número já foi usado por outro documento.
-  numberBurned Boolean  @default(false)
+  numberBurned    Boolean   @default(false)
   // Quando o aviso de "autorizado há dias e não encerrado" foi dado: um por MDF-e.
   closeReminderAt DateTime?
 
-  issuedById   String?  // quem emitiu; nulo se o usuário foi apagado
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  issuedById String? // quem emitiu; nulo se o usuário foi apagado
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  manifest     Manifest @relation(fields: [manifestId], references: [id], onDelete: Restrict)
-  issuedBy     User?    @relation(fields: [issuedById], references: [id], onDelete: SetNull)
-  events       MdfeEvent[]
+  manifest Manifest    @relation(fields: [manifestId], references: [id], onDelete: Restrict)
+  issuedBy User?       @relation(fields: [issuedById], references: [id], onDelete: SetNull)
+  events   MdfeEvent[]
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, accessKey])
   @@unique([tenantId, environment, series, number])
+  @@index([tenantId])
   @@index([tenantId, manifestId])
   @@index([manifestId])
   @@index([status, authorizedAt])
@@ -2112,11 +2259,11 @@ model MdfeEvent {
   tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
   id           String   @id @default(uuid())
   mdfeId       String
-  type         String   // tpEvento
-  sequence     Int      // nSeqEvento
+  type         String // tpEvento
+  sequence     Int // nSeqEvento
   xmlSent      String   @db.Text
   xmlReturn    String   @db.Text
-  protocol     String?  // nulo quando a SEFAZ só confirmou que o evento já estava lá
+  protocol     String? // nulo quando a SEFAZ só confirmou que o evento já estava lá
   statusCode   Int
   statusReason String
   registeredAt DateTime
@@ -2125,11 +2272,12 @@ model MdfeEvent {
   createdById  String?
   createdAt    DateTime @default(now())
 
-  mdfe         Mdfe     @relation(fields: [mdfeId], references: [id], onDelete: Restrict)
-  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  mdfe      Mdfe  @relation(fields: [mdfeId], references: [id], onDelete: Restrict)
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  @@index([tenantId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([tenantId, mdfeId, type, sequence])
+  @@index([tenantId])
   @@index([mdfeId])
 }
