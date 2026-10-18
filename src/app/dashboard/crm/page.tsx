@@ -25,6 +25,7 @@ import {
   type LeadStatus,
 } from "@/lib/crm";
 import { formatCurrency } from "@/lib/format";
+import { PropostaDaCotacao } from "@/components/cotacao/PropostaDaCotacao";
 
 /**
  * Cotações: tudo o que chegou pedindo preço (site, WhatsApp, telefone,
@@ -148,6 +149,7 @@ export default function CRMPage() {
   const [formAberto, setFormAberto] = useState(false);
   const [form, setForm] = useState(FORM_VAZIO);
   const [erroDoForm, setErroDoForm] = useState("");
+  const [propostaId, setPropostaId] = useState<string | null>(null);
 
   function receber(res: Resposta<QuoteLead[]>) {
     if (res.ok) setLeads(res.dados);
@@ -185,6 +187,7 @@ export default function CRMPage() {
   const fetchLeads = useCallback(async () => receber(await buscarLeads(filtros)), [filtros]);
 
   const resumo = useMemo(() => resumoDoFunil(leads), [leads]);
+  const proposta = propostaId === null ? null : leads.find((lead) => lead.id === propostaId && isOpen(lead.status)) ?? null;
 
   // Troca na lista o lead que a rota devolveu, sem buscar tudo de novo.
   function trocar(lead: QuoteLead) {
@@ -422,6 +425,14 @@ export default function CRMPage() {
         </div>
       )}
 
+      {proposta && (
+        <PropostaDaCotacao
+          key={proposta.id}
+          cotacao={proposta}
+          onClose={() => setPropostaId(null)}
+        />
+      )}
+
       <div data-resumo className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-4">
           <p className="text-xs text-gray-500">Cotações</p>
@@ -553,9 +564,14 @@ export default function CRMPage() {
                         {!convertido && (
                           <div className="flex flex-col gap-1">
                             {isOpen(lead.status) && (
-                              <button type="button" onClick={() => alterar(lead.id, { contato: true })} className="text-xs text-blue-600 hover:underline text-left">
-                                Registrar contato
-                              </button>
+                              <>
+                                <button type="button" onClick={() => setPropostaId(lead.id)} className="text-xs text-blue-600 hover:underline text-left">
+                                  Preparar proposta
+                                </button>
+                                <button type="button" onClick={() => alterar(lead.id, { contato: true })} className="text-xs text-blue-600 hover:underline text-left">
+                                  Registrar contato
+                                </button>
+                              </>
                             )}
                             {isConvertible(lead.status) && (
                               <button type="button" onClick={() => abrirConversao(lead)} className="text-xs text-green-700 hover:underline text-left">
@@ -716,14 +732,23 @@ export default function CRMPage() {
                             <SelectResponsavel lead={lead} className="w-full text-xs bg-gray-50 border border-gray-200 rounded p-1 outline-none" />
                           </div>
                           {isOpen(lead.status) && (
-                            <button
-                              type="button"
-                              onClick={() => alterar(lead.id, { contato: true })}
-                              className="mt-2 w-full text-xs text-blue-700 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded"
-                              title="Falei com o cliente: renova a atividade e tira a cotação de parada"
-                            >
-                              Registrar contato
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setPropostaId(lead.id)}
+                                className="mt-2 w-full text-xs text-blue-700 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded"
+                              >
+                                Preparar proposta
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => alterar(lead.id, { contato: true })}
+                                className="mt-2 w-full text-xs text-blue-700 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded"
+                                title="Falei com o cliente: renova a atividade e tira a cotação de parada"
+                              >
+                                Registrar contato
+                              </button>
+                            </>
                           )}
 
                           {isConvertible(lead.status) && !form && (
