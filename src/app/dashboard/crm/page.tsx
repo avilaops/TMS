@@ -25,6 +25,7 @@ import {
   type LeadStatus,
 } from "@/lib/crm";
 import { formatCurrency } from "@/lib/format";
+import { PropostaDaCotacao } from "@/components/cotacao/PropostaDaCotacao";
 
 /**
  * Cotações: tudo o que chegou pedindo preço (site, WhatsApp, telefone,
@@ -39,7 +40,15 @@ import { formatCurrency } from "@/lib/format";
 
 type QuoteLead = LeadDaLista & { createdAt: string; lastActivityAt: string };
 
-type Cliente = { id: string; companyName: string; tradeName: string | null; active: boolean };
+type Cliente = {
+  id: string;
+  companyName: string;
+  tradeName: string | null;
+  cnpj: string;
+  phone: string | null;
+  email: string | null;
+  active: boolean;
+};
 
 type Pessoa = { id: string; name: string };
 
@@ -112,6 +121,13 @@ const quando = (valor: string) => new Date(valor).toLocaleDateString("pt-BR", { 
 
 const pct = (valor: number | null) => (valor === null ? "—" : `${Math.round(valor * 100)}%`);
 
+const normalizarBusca = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+
+const formatarCnpj = (valor: string) => {
+  const digitos = valor.replace(/\D/g, "");
+  return digitos.length === 14 ? digitos.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5") : valor;
+};
+
 /** Baixa o CSV do que está na tela. Fora do navegador (teste) não há o que baixar. */
 function baixarCsv(leads: QuoteLead[]) {
   if (typeof URL.createObjectURL !== "function") return;
@@ -148,6 +164,9 @@ export default function CRMPage() {
   const [formAberto, setFormAberto] = useState(false);
   const [form, setForm] = useState(FORM_VAZIO);
   const [erroDoForm, setErroDoForm] = useState("");
+  const [propostaId, setPropostaId] = useState<string | null>(null);
+  const [erroDosClientes, setErroDosClientes] = useState(false);
+  const [listaClientesAberta, setListaClientesAberta] = useState(false);
 
   function receber(res: Resposta<QuoteLead[]>) {
     if (res.ok) setLeads(res.dados);
@@ -185,6 +204,20 @@ export default function CRMPage() {
   const fetchLeads = useCallback(async () => receber(await buscarLeads(filtros)), [filtros]);
 
   const resumo = useMemo(() => resumoDoFunil(leads), [leads]);
+  const proposta = propostaId === null ? null : leads.find((lead) => lead.id === propostaId && isOpen(lead.status)) ?? null;
+
+  const clientesEncontrados = useMemo(() => {
+    const busca = normalizarBusca(form.companyName.trim());
+    const documento = form.companyName.replace(/\D/g, "");
+    if (!busca || !clientes) return [];
+    return clientes
+      .filter((cliente) => cliente.active)
+      .filter((cliente) =>
+        normalizarBusca([cliente.tradeName, cliente.companyName].filter(Boolean).join(" ")).includes(busca) ||
+        (documento.length >= 3 && cliente.cnpj.replace(/\D/g, "").includes(documento)),
+      )
+      .slice(0, 6);
+  }, [clientes, form.companyName]);
 
   // Troca na lista o lead que a rota devolveu, sem buscar tudo de novo.
   function trocar(lead: QuoteLead) {
@@ -227,6 +260,35 @@ export default function CRMPage() {
     }
     // Coleta só nasce para cliente ativo.
     setClientes(res.dados.filter((c) => c.active));
+  }
+
+  async function carregarClientesDaCotacao() {
+    if (clientes) return;
+    setErroDosClientes(false);
+    const res = await chamar<Cliente[]>("/api/clientes");
+    if (!res.ok || !Array.isArray(res.dados)) {
+      setErroDosClientes(true);
+      return;
+    }
+    setClientes(res.dados.filter((cliente) => cliente.active));
+  }
+
+  function alternarFormulario() {
+    const abrir = !formAberto;
+    setErroDoForm("");
+    setListaClientesAberta(false);
+    setFormAberto(abrir);
+    if (abrir) void carregarClientesDaCotacao();
+  }
+
+  function selecionarCliente(cliente: Cliente) {
+    setForm((atual) => ({
+      ...atual,
+      companyName: cliente.tradeName || cliente.companyName,
+      phone: cliente.phone || "",
+      email: cliente.email || "",
+    }));
+    setListaClientesAberta(false);
   }
 
   async function converter(form: Conversao) {
@@ -338,10 +400,7 @@ export default function CRMPage() {
         <div className="flex flex-wrap justify-end gap-2 min-w-0">
           <button
             type="button"
-            onClick={() => {
-              setErroDoForm("");
-              setFormAberto((aberto) => !aberto);
-            }}
+            onClick={alternarFormulario}
             className="inline-flex items-center gap-1.5 px-3 py-2 md:px-4 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
           >
             <Plus className="w-4 h-4" />
@@ -375,7 +434,49 @@ export default function CRMPage() {
           <p className="font-semibold text-gray-900">Registrar cotação</p>
           <p className="text-xs text-gray-500">Pedido que chegou fora do site. O valor estimado sai da tabela de frete padrão; sem tabela para o destino, fica para você preencher.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <label className={`${LABEL} col-span-2`}>Empresa ou cliente<input name="companyName" required value={form.companyName} onChange={campo("companyName")} className={INPUT} /></label>
+            <label
+              className={`${LABEL} col-span-2 relative`}
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setListaClientesAberta(false);
+              }}
+            >
+              Empresa ou cliente
+              <input
+                name="companyName"
+                required
+                autoComplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="clientes-da-cotacao"
+                aria-expanded={listaClientesAberta && clientesEncontrados.length > 0}
+                value={form.companyName}
+                onFocus={() => setListaClientesAberta(true)}
+                onChange={(e) => {
+                  campo("companyName")(e);
+                  setListaClientesAberta(true);
+                }}
+                className={INPUT}
+              />
+              {listaClientesAberta && clientesEncontrados.length > 0 && (
+                <div id="clientes-da-cotacao" role="listbox" data-lista-clientes className="absolute z-20 top-full left-0 right-0 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+                  {clientesEncontrados.map((cliente) => (
+                    <button
+                      key={cliente.id}
+                      type="button"
+                      role="option"
+                      aria-selected="false"
+                      data-cliente={cliente.id}
+                      onClick={() => selecionarCliente(cliente)}
+                      className="block w-full px-3 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
+                    >
+                      <span className="block text-sm font-semibold text-gray-900">{cliente.tradeName || cliente.companyName}</span>
+                      <span className="block text-xs font-normal text-gray-500">{cliente.companyName} · {formatarCnpj(cliente.cnpj)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {erroDosClientes && <span className="font-normal text-amber-700">Busca de clientes indisponível; digite os dados manualmente.</span>}
+            </label>
             <label className={LABEL}>Telefone<input name="phone" inputMode="tel" value={form.phone} onChange={campo("phone")} className={INPUT} /></label>
             <label className={LABEL}>E-mail<input name="email" type="email" value={form.email} onChange={campo("email")} className={INPUT} /></label>
             <label className={LABEL}>Chegou por
@@ -420,6 +521,14 @@ export default function CRMPage() {
         <div role="status" className="mb-6 px-4 py-3 text-sm text-amber-800 border border-amber-200 rounded-lg bg-amber-50">
           {confirmacao}
         </div>
+      )}
+
+      {proposta && (
+        <PropostaDaCotacao
+          key={proposta.id}
+          cotacao={proposta}
+          onClose={() => setPropostaId(null)}
+        />
       )}
 
       <div data-resumo className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4 md:mb-6">
@@ -553,9 +662,14 @@ export default function CRMPage() {
                         {!convertido && (
                           <div className="flex flex-col gap-1">
                             {isOpen(lead.status) && (
-                              <button type="button" onClick={() => alterar(lead.id, { contato: true })} className="text-xs text-blue-600 hover:underline text-left">
-                                Registrar contato
-                              </button>
+                              <>
+                                <button type="button" onClick={() => setPropostaId(lead.id)} className="text-xs text-blue-600 hover:underline text-left">
+                                  Preparar proposta
+                                </button>
+                                <button type="button" onClick={() => alterar(lead.id, { contato: true })} className="text-xs text-blue-600 hover:underline text-left">
+                                  Registrar contato
+                                </button>
+                              </>
                             )}
                             {isConvertible(lead.status) && (
                               <button type="button" onClick={() => abrirConversao(lead)} className="text-xs text-green-700 hover:underline text-left">
@@ -716,14 +830,23 @@ export default function CRMPage() {
                             <SelectResponsavel lead={lead} className="w-full text-xs bg-gray-50 border border-gray-200 rounded p-1 outline-none" />
                           </div>
                           {isOpen(lead.status) && (
-                            <button
-                              type="button"
-                              onClick={() => alterar(lead.id, { contato: true })}
-                              className="mt-2 w-full text-xs text-blue-700 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded"
-                              title="Falei com o cliente: renova a atividade e tira a cotação de parada"
-                            >
-                              Registrar contato
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setPropostaId(lead.id)}
+                                className="mt-2 w-full text-xs text-blue-700 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded"
+                              >
+                                Preparar proposta
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => alterar(lead.id, { contato: true })}
+                                className="mt-2 w-full text-xs text-blue-700 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded"
+                                title="Falei com o cliente: renova a atividade e tira a cotação de parada"
+                              >
+                                Registrar contato
+                              </button>
+                            </>
                           )}
 
                           {isConvertible(lead.status) && !form && (

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Calculator, Loader2, Plus, Star, Upload } from "lucide-react";
+import { Calculator, Loader2, Plus, Star, Truck, Upload } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
+import { EditorDeDimensoes, type TotaisDasDimensoes } from "@/components/cotacao/EditorDeDimensoes";
 
 /**
  * Tabelas de frete: as regras gerais de cada tabela, o preço por cidade e o
@@ -34,6 +35,21 @@ type Cidade = { city: string; minimum: number; deadlineHours: number; dedicated:
 type Frete =
   | { atendida: false }
   | { atendida: true; cidade: string; valor: number; prazoHoras: number; composicao: { rotulo: string; valor: number }[]; avisos: string[] };
+
+type VeiculoDaCotacao = {
+  id: string;
+  plate: string;
+  model: string;
+  type: string;
+  capacity: number | null;
+  cubicCapacity: number | null;
+};
+
+type AdequacaoVeiculo = {
+  sugerido: VeiculoDaCotacao | null;
+  compativeis: VeiculoDaCotacao[];
+  aviso: string | null;
+};
 
 const FORM_VAZIO = {
   name: "",
@@ -126,8 +142,10 @@ export default function TabelasDeFrete() {
 
   // Simulador.
   const [sim, setSim] = useState({ city: "", weight: "", volumes: "", invoiceValue: "", cubicMeters: "", tableId: "" });
-  const [resultado, setResultado] = useState<{ tabela: { name: string }; frete: Frete } | null>(null);
+  const [resultado, setResultado] = useState<{ tabela: { name: string }; frete: Frete; adequacaoVeiculo: AdequacaoVeiculo } | null>(null);
   const [erroSim, setErroSim] = useState("");
+  const [dimensoes, setDimensoes] = useState<TotaisDasDimensoes | null>(null);
+  const [dimensoesInvalidas, setDimensoesInvalidas] = useState(false);
 
   const carregar = async () => {
     try {
@@ -249,6 +267,10 @@ export default function TabelasDeFrete() {
     e.preventDefault();
     setErroSim("");
     setResultado(null);
+    if (dimensoesInvalidas) {
+      setErroSim("Corrija ou oculte as dimensões antes de calcular.");
+      return;
+    }
     const res = await fetch("/api/tabelas-frete/calcular", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -545,15 +567,15 @@ export default function TabelasDeFrete() {
           </label>
           <label className={CAMPO}>
             <span className={LABEL}>Volumes</span>
-            <input inputMode="numeric" value={sim.volumes} onChange={(e) => setSim({ ...sim, volumes: e.target.value })} className={INPUT} />
+            <input inputMode="numeric" readOnly={dimensoes !== null} value={sim.volumes} onChange={(e) => setSim({ ...sim, volumes: e.target.value })} className={INPUT} />
           </label>
           <label className={CAMPO}>
             <span className={LABEL}>Valor da nota (R$)</span>
             <input inputMode="decimal" value={sim.invoiceValue} onChange={(e) => setSim({ ...sim, invoiceValue: e.target.value })} className={INPUT} />
           </label>
           <label className={CAMPO}>
-            <span className={LABEL}>Volume (m³)</span>
-            <input inputMode="decimal" value={sim.cubicMeters} onChange={(e) => setSim({ ...sim, cubicMeters: e.target.value })} className={INPUT} />
+            <span className={LABEL}>{dimensoes ? "Cubagem calculada (m³)" : "Volume (m³)"}</span>
+            <input inputMode="decimal" readOnly={dimensoes !== null} value={sim.cubicMeters} onChange={(e) => setSim({ ...sim, cubicMeters: e.target.value })} className={INPUT} />
           </label>
           <label className={`${CAMPO} col-span-2`}>
             <span className={LABEL}>Tabela</span>
@@ -566,6 +588,17 @@ export default function TabelasDeFrete() {
               ))}
             </select>
           </label>
+          <EditorDeDimensoes
+            onInvalidChange={setDimensoesInvalidas}
+            onChange={(totais) => {
+              setDimensoes(totais);
+              setSim((atual) => ({
+                ...atual,
+                ...(totais ? { volumes: String(totais.volumes), cubicMeters: String(totais.cubicMeters) } : { cubicMeters: "" }),
+              }));
+              setResultado(null);
+            }}
+          />
         </div>
         <button type="submit" className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium">
           Calcular
@@ -601,6 +634,34 @@ export default function TabelasDeFrete() {
                     {aviso}
                   </p>
                 ))}
+                <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
+                  <p className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
+                    <Truck className="h-4 w-4 text-blue-600" />
+                    Adequação do veículo
+                  </p>
+                  {resultado.adequacaoVeiculo.sugerido ? (
+                    <>
+                      <p className="mt-2 font-semibold text-gray-900 dark:text-white">
+                        Sugestão: {resultado.adequacaoVeiculo.sugerido.type} · {resultado.adequacaoVeiculo.sugerido.plate}
+                      </p>
+                      <p className="text-gray-600 dark:text-gray-300">
+                        {resultado.adequacaoVeiculo.sugerido.model} · {resultado.adequacaoVeiculo.sugerido.capacity?.toLocaleString("pt-BR")} kg
+                        {resultado.adequacaoVeiculo.sugerido.cubicCapacity
+                          ? ` · ${resultado.adequacaoVeiculo.sugerido.cubicCapacity.toLocaleString("pt-BR")} m³`
+                          : ""}
+                      </p>
+                      {resultado.adequacaoVeiculo.compativeis.length > 1 && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Mais {resultado.adequacaoVeiculo.compativeis.length - 1} veículo(s) compatível(is) na frota.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p role="alert" className="mt-2 text-amber-700 dark:text-amber-400">
+                      {resultado.adequacaoVeiculo.aviso}
+                    </p>
+                  )}
+                </div>
               </>
             )}
           </div>

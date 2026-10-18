@@ -36,9 +36,9 @@ const lead = (extra: Record<string, unknown> = {}) => ({
 const haDias = (dias: number) => new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
 
 const CLIENTES = [
-  { id: "cli-1", companyName: "Serilon Brasil Ltda", tradeName: "Serilon", active: true },
-  { id: "cli-2", companyName: "Transportes Lima Ltda", tradeName: null, active: true },
-  { id: "cli-3", companyName: "Cliente Desativado Ltda", tradeName: "Desativado", active: false },
+  { id: "cli-1", companyName: "Serilon Brasil Ltda", tradeName: "Serilon", cnpj: "04301223000190", phone: "1732134500", email: "compras@serilon.com.br", active: true },
+  { id: "cli-2", companyName: "Transportes Lima Ltda", tradeName: null, cnpj: "11555000000144", phone: null, email: "contato@lima.com.br", active: true },
+  { id: "cli-3", companyName: "Cliente Desativado Ltda", tradeName: "Desativado", cnpj: "22999000000100", phone: "17900000000", email: "inativo@cliente.com", active: false },
 ];
 
 type Resposta = { status?: number; body: unknown } | Error;
@@ -87,7 +87,7 @@ async function preencher(campo: HTMLInputElement | HTMLSelectElement, valor: str
 }
 
 async function abrir(leads: unknown[], outras: Record<string, Resposta[]> = {}) {
-  const pedidos = api({ [LISTA]: [{ body: leads }], [EQUIPE]: [{ body: PESSOAS }], ...outras });
+  const pedidos = api({ [LISTA]: [{ body: leads }], [EQUIPE]: [{ body: PESSOAS }], "GET /api/clientes": [{ body: CLIENTES }], ...outras });
   const tela = await montar(<CRMPage />);
   await ate(() => expect(tela.textContent).not.toContain("Carregando cotações..."));
   return { tela, pedidos };
@@ -98,6 +98,7 @@ const selectStatus = (onde: ParentNode) => onde.querySelector<HTMLSelectElement>
 afterEach(async () => {
   await desmontarTudo();
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(navigator, "clipboard");
 });
 
 describe("tela do funil de cotações", () => {
@@ -161,6 +162,29 @@ describe("tela do funil de cotações", () => {
     expect(pedidos.at(-1)).toEqual({ metodo: "PATCH", caminho: "/api/dashboard/crm/lead-1", corpo: { status: "CONTACTED" } });
   });
 
+  it("fecha a proposta quando a cotação deixa de estar aberta", async () => {
+    const { tela } = await abrir([lead()], {
+      "PATCH /api/dashboard/crm/lead-1": [{ body: lead({ status: "LOST" }) }],
+    });
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+    expect(tela.querySelector('form[aria-label="Preparar proposta da cotação 1494"]')).not.toBeNull();
+
+    await preencher(selectStatus(cartao(tela)), "LOST");
+    await ate(() => expect(tela.querySelector('form[aria-label="Preparar proposta da cotação 1494"]')).toBeNull());
+  });
+
+  it("usa diálogo modal e fecha a proposta pelo Escape", async () => {
+    const { tela } = await abrir([lead()]);
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+    const dialogo = tela.querySelector<HTMLDialogElement>('dialog[aria-label="Proposta comercial"]')!;
+    expect(dialogo).not.toBeNull();
+
+    await act(async () => {
+      dialogo.dispatchEvent(new Event("cancel", { bubbles: false, cancelable: true }));
+    });
+    expect(tela.querySelector('form[aria-label="Preparar proposta da cotação 1494"]')).toBeNull();
+  });
+
   it("editar o valor manda o texto digitado, com vírgula, e mostra o valor gravado", async () => {
     const { tela, pedidos } = await abrir([lead()], {
       "PATCH /api/dashboard/crm/lead-1": [{ body: lead({ estimatedValue: 199.9 }) }],
@@ -175,6 +199,85 @@ describe("tela do funil de cotações", () => {
     await ate(() => expect(cartao(tela).textContent!.replace(/ /g, " ")).toContain("Preço: R$ 199,90"));
     expect(pedidos.at(-1)!.corpo).toEqual({ estimatedValue: "199,90" });
     expect(cartao(tela).querySelector('input[aria-label="Preço estimado"]')).toBeNull();
+  });
+
+  it("prepara e copia a proposta sem alterar a cotação nem registrar contato", async () => {
+    const copiados: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (texto: string) => void copiados.push(texto) },
+    });
+    const { tela, pedidos } = await abrir([lead()]);
+
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Preparar proposta da cotação 1494"]')!;
+    expect(form).not.toBeNull();
+    await preencher(form.querySelector<HTMLInputElement>('input[name="deadline"]')!, "até 2 dias úteis");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="validUntil"]')!, "2026-10-25");
+
+    const previa = form.querySelector<HTMLTextAreaElement>('textarea[aria-label="Prévia da proposta"]')!;
+    expect(previa.value).toContain("cotação nº 1494");
+    expect(previa.value).toContain("Frete estimado: R$ 150,00");
+    await clicar(botao(form, "Copiar proposta"));
+
+    await ate(() => expect(form.querySelector('[role="status"]')?.textContent).toContain("Proposta copiada"));
+    expect(copiados).toEqual([previa.value]);
+    expect(pedidos).toHaveLength(2);
+  });
+
+  it("sem valor impede a proposta e orienta editar o preço", async () => {
+    const { tela } = await abrir([lead({ estimatedValue: null })]);
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+
+    const form = tela.querySelector('form[aria-label="Preparar proposta da cotação 1494"]')!;
+    expect(form.querySelector('[role="alert"]')?.textContent).toContain("Informe o preço estimado");
+    expect(botao(form, "Copiar proposta").hasAttribute("disabled")).toBe(true);
+  });
+
+  it("falha da área de transferência mantém a proposta disponível para cópia manual", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => { throw new Error("negado"); } },
+    });
+    const { tela } = await abrir([lead()]);
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Preparar proposta da cotação 1494"]')!;
+    await preencher(form.querySelector<HTMLInputElement>('input[name="deadline"]')!, "24 horas");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="validUntil"]')!, "2026-10-25");
+    await clicar(botao(form, "Copiar proposta"));
+
+    await ate(() => expect(form.querySelector('[role="alert"]')?.textContent).toContain("Selecione o texto"));
+    expect(form.querySelector<HTMLTextAreaElement>('textarea[aria-label="Prévia da proposta"]')!.readOnly).toBe(true);
+  });
+
+  it("trocar de cotação limpa os termos comerciais da proposta", async () => {
+    const { tela } = await abrir([lead(), lead({ id: "lead-2", number: 1495, companyName: "Outro cliente" })]);
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+    let form = tela.querySelector<HTMLFormElement>('form[aria-label="Preparar proposta da cotação 1494"]')!;
+    await preencher(form.querySelector<HTMLInputElement>('input[name="deadline"]')!, "24 horas");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="validUntil"]')!, "2026-10-25");
+
+    await clicar(botao(cartao(tela, "lead-2"), "Preparar proposta"));
+    form = tela.querySelector<HTMLFormElement>('form[aria-label="Preparar proposta da cotação 1495"]')!;
+    expect(form.querySelector<HTMLInputElement>('input[name="deadline"]')!.value).toBe("");
+    expect(form.querySelector<HTMLInputElement>('input[name="validUntil"]')!.value).toBe("");
+    expect(form.querySelector<HTMLTextAreaElement>('textarea[aria-label="Prévia da proposta"]')!.value).toBe("");
+  });
+
+  it("proposta aberta acompanha o preço atualizado da cotação", async () => {
+    const { tela } = await abrir([lead()], {
+      "PATCH /api/dashboard/crm/lead-1": [{ body: lead({ estimatedValue: 199.9 }) }],
+    });
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Preparar proposta da cotação 1494"]')!;
+    await preencher(form.querySelector<HTMLInputElement>('input[name="deadline"]')!, "24 horas");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="validUntil"]')!, "2026-10-25");
+
+    await clicar(botao(cartao(tela), "Editar"));
+    await preencher(cartao(tela).querySelector<HTMLInputElement>('input[aria-label="Preço estimado"]')!, "199,90");
+    await clicar(botao(cartao(tela), "Salvar"));
+
+    await ate(() => expect(form.querySelector<HTMLTextAreaElement>('textarea[aria-label="Prévia da proposta"]')!.value).toContain("R$ 199,90"));
   });
 
   it("Converter em coleta só aparece em Novos e Em contato", async () => {
@@ -598,6 +701,7 @@ describe("tela do funil de cotações", () => {
     expect(semNbsp(aberta.textContent)).toContain("R$ 150,00");
     expect(aberta.querySelector("[data-parada]")!.textContent).toBe("parada há 2 dias");
     expect(aberta.querySelector<HTMLSelectElement>('select[aria-label="Responsável"]')!.value).toBe("u-ana");
+    expect(botao(aberta, "Preparar proposta")).toBeDefined();
 
     const convertida = linhas[1] as HTMLElement;
     expect(convertida.textContent).toContain("9184726350");
@@ -651,5 +755,47 @@ describe("tela do funil de cotações", () => {
     expect(coluna(tela, "NEW").querySelectorAll("[data-lead]")).toHaveLength(2);
     expect(coluna(tela, "NEW").querySelector("[data-lead]")!.getAttribute("data-lead")).toBe("lead-novo");
     expect(cartao(tela, "lead-novo").textContent).toContain("nº 1495");
+  });
+
+  it("registrar cotação: busca somente clientes ativos e preenche contato ao selecionar", async () => {
+    const { tela, pedidos } = await abrir([lead()]);
+
+    await clicar(botao(tela, "Registrar cotação"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Registrar cotação"]')!;
+    const empresa = form.querySelector<HTMLInputElement>('input[name="companyName"]')!;
+
+    await preencher(empresa, "Brasil Ltda");
+    await ate(() => expect(form.querySelector('[data-cliente="cli-1"]')).not.toBeNull());
+
+    await preencher(empresa, "04.301.223/0001");
+    await ate(() => expect(form.querySelector('[data-cliente="cli-1"]')).not.toBeNull());
+
+    await preencher(empresa, "seri");
+    await ate(() => expect(form.querySelector('[data-cliente="cli-1"]')).not.toBeNull());
+    expect(form.textContent).toContain("Serilon Brasil Ltda");
+    expect(form.textContent).toContain("04.301.223/0001-90");
+    expect(form.querySelector('[data-cliente="cli-3"]')).toBeNull();
+
+    await clicar(form.querySelector<HTMLElement>('[data-cliente="cli-1"]')!);
+    expect(empresa.value).toBe("Serilon");
+    expect(form.querySelector<HTMLInputElement>('input[name="phone"]')!.value).toBe("1732134500");
+    expect(form.querySelector<HTMLInputElement>('input[name="email"]')!.value).toBe("compras@serilon.com.br");
+    expect(form.querySelector('[data-lista-clientes]')).toBeNull();
+    expect(pedidos.filter((pedido) => pedido.caminho === "/api/clientes")).toHaveLength(1);
+  });
+
+  it("registrar cotação: aceita prospect digitado e continua utilizável se a busca de clientes falhar", async () => {
+    const { tela } = await abrir([lead()], {
+      "GET /api/clientes": [{ status: 500, body: { error: "Falha no cadastro" } }],
+    });
+
+    await clicar(botao(tela, "Registrar cotação"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Registrar cotação"]')!;
+    const empresa = form.querySelector<HTMLInputElement>('input[name="companyName"]')!;
+    await preencher(empresa, "Cliente ainda não cadastrado");
+
+    await ate(() => expect(form.textContent).toContain("Busca de clientes indisponível; digite os dados manualmente."));
+    expect(empresa.value).toBe("Cliente ainda não cadastrado");
+    expect(empresa.disabled).toBe(false);
   });
 });
