@@ -526,7 +526,7 @@ export default function CRMPage() {
       {proposta && (
         <PropostaDaCotacao
           key={proposta.id}
-          cotacao={proposta}
+          cotacao={{ ...proposta, phone: proposta.phone }}
           onClose={() => setPropostaId(null)}
         />
       )}

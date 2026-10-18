@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ImagePlus, Loader2, LogIn, ShieldAlert, Trash2, Truck } from "lucide-react";
+import { CheckCircle2, Copy, ImagePlus, KeyRound, Loader2, LogIn, ShieldAlert, Trash2, Truck } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { IDENTIDADE_ALTERADA, LADO_DO_SIMBOLO, TAMANHO_MAXIMO_DO_SIMBOLO, type Identidade, type PixDaEmpresa } from "@/lib/empresa";
 import type { ParametrosDeCobranca } from "@/lib/cobranca";
@@ -54,7 +54,7 @@ export default function EmpresaPage() {
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
   const arquivo = useRef<HTMLInputElement>(null);
-  // No celular aparece uma parte por vez; no computador, as três.
+  // Uma área por vez evita a página interminável, no celular e no computador.
   const [aba, setAba] = useState<"identidade" | "cobranca" | "integracao" | "fiscal">("identidade");
   const [parteDaCobranca, setParteDaCobranca] = useState<"encargos" | "mercado-pago">("encargos");
 
@@ -172,13 +172,13 @@ export default function EmpresaPage() {
   }
 
   return (
-    <div className="space-y-3 md:space-y-6 max-w-xl">
+    <div className="max-w-6xl space-y-4 md:space-y-6">
       <div>
         <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Empresa</h1>
-        <p className="hidden md:block text-gray-500 text-sm mt-1">Nome e símbolo que aparecem no topo do painel</p>
+        <p className="mt-1 text-sm text-gray-500">Configurações da transportadora, cobrança, conexões e emissão fiscal.</p>
       </div>
 
-      <div role="tablist" aria-label="Parte" className="md:hidden grid grid-cols-4 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+      <div role="tablist" aria-label="Parte" className="grid grid-cols-4 gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-800 md:max-w-2xl">
         {(
           [
             ["identidade", "Identidade"],
@@ -194,14 +194,15 @@ export default function EmpresaPage() {
             aria-selected={aba === chave}
             data-aba={chave}
             onClick={() => setAba(chave)}
-            className={`py-1.5 rounded-lg text-[13px] font-semibold ${aba === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+            className={`rounded-lg px-2 py-2 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:text-sm ${aba === chave ? "bg-white text-blue-700 shadow-sm dark:bg-gray-900 dark:text-blue-400" : "text-gray-600 dark:text-gray-300"}`}
           >
             {rotulo}
           </button>
         ))}
       </div>
 
-      <form onSubmit={salvar} className={`${aba === "identidade" ? "" : "hidden md:block "}${CARD} p-3 md:p-6 space-y-4`}>
+      <div className={`${aba === "identidade" ? "grid" : "hidden"} gap-4 lg:grid-cols-2 lg:items-start`}>
+      <form aria-label="Identidade da empresa" onSubmit={salvar} className={`${CARD} p-4 md:p-6 space-y-4`}>
         <label className="block space-y-1">
           <span className={LABEL}>Nome da empresa</span>
           <input required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
@@ -255,11 +256,12 @@ export default function EmpresaPage() {
       </form>
 
       {/* Perfil do comprovante de entrega: fica na aba Identidade, sem aba própria. */}
-      <Entrega escondida={aba !== "identidade"} />
+      <Entrega escondida={false} />
+      </div>
 
       {/* No celular a aba Cobrança tem duas partes, para cada uma caber na tela. */}
       {aba === "cobranca" && (
-        <div role="tablist" aria-label="Parte da cobrança" className="md:hidden grid grid-cols-2 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+        <div role="tablist" aria-label="Parte da cobrança" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-800 md:max-w-md">
           {(
             [
               ["encargos", "Encargos e Pix"],
@@ -285,9 +287,10 @@ export default function EmpresaPage() {
 
       <MercadoPago escondida={aba !== "cobranca" || parteDaCobranca !== "mercado-pago"} />
 
-      <Integracao escondida={aba !== "integracao"} />
-
-      <IntegracaoLojas escondida={aba !== "integracao"} />
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <Integracao escondida={aba !== "integracao"} />
+        <IntegracaoLojas escondida={aba !== "integracao"} />
+      </div>
 
       <Fiscal escondida={aba !== "fiscal"} />
     </div>
@@ -306,6 +309,7 @@ function IntegracaoLojas({ escondida }: { escondida: boolean }) {
   const [chave, setChave] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [copiada, setCopiada] = useState(false);
 
   const ler = () => fetch("/api/empresa/integracoes/lojas")
     .then((res) => res.ok ? res.json() : null)
@@ -316,7 +320,9 @@ function IntegracaoLojas({ escondida }: { escondida: boolean }) {
   useEffect(() => { void ler(); }, []);
 
   const rotacionar = async () => {
-    setOcupado(true); setErro(null); setChave(null);
+    if (estado === null) return;
+    if (estado?.configurado && !window.confirm("Trocar a chave desativa imediatamente a chave atual. Deseja continuar?")) return;
+    setOcupado(true); setErro(null); setChave(null); setCopiada(false);
     try {
       const res = await fetch("/api/empresa/integracoes/lojas", { method: "POST" });
       const corpo = await res.json() as EstadoLojas & { chave?: string; error?: string };
@@ -325,26 +331,45 @@ function IntegracaoLojas({ escondida }: { escondida: boolean }) {
     } catch { setErro(FALHA_AO_SALVAR); } finally { setOcupado(false); }
   };
 
+  const copiarChave = async () => {
+    if (!chave) return;
+    try {
+      await navigator.clipboard.writeText(chave);
+      setCopiada(true);
+    } catch {
+      setErro("Não foi possível copiar. Selecione a chave e copie manualmente.");
+    }
+  };
+
+  const rotacionadaEm = estado?.rotacionadaEm
+    ? new Date(estado.rotacionadaEm).toLocaleDateString("pt-BR", { timeZone: "UTC" })
+    : null;
+
   return (
-    <section aria-label="Integração Lojas" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-4`}>
+    <section aria-label="Integração Lojas" className={`${escondida ? "hidden " : ""}${CARD} space-y-4 p-4 md:p-6`}>
       <div>
         <h2 className="font-semibold text-gray-900 dark:text-white">Integração Lojas</h2>
         <p className="text-xs md:text-sm text-gray-500 mt-0.5">Cotações, pedidos multi-origem, rastreio e logística reversa por empresa.</p>
       </div>
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-        <div>
-          <p className="text-sm font-medium">{estado?.configurado ? `Chave ativa •••• ${estado.final}` : "Chave ainda não criada"}</p>
-          <p className="text-xs text-gray-500">A chave completa aparece uma única vez.</p>
+      <div className="flex flex-col gap-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-2">
+          {estado?.configurado ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> : <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />}
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">{estado === null ? "Carregando configuração" : estado.configurado ? "Ativa" : "Não configurada"}</p>
+            <p className="text-xs text-gray-500">
+              {estado?.configurado ? `Chave •••• ${estado.final}${rotacionadaEm ? ` · criada em ${rotacionadaEm}` : ""}` : estado === null ? "Aguarde a consulta antes de gerar uma chave." : "A chave completa aparece uma única vez."}
+            </p>
+          </div>
         </div>
-        <button type="button" disabled={ocupado} onClick={() => void rotacionar()} className="shrink-0 px-3 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-60">
-          {estado?.configurado ? "Trocar chave" : "Criar chave"}
+        <button type="button" disabled={ocupado || estado === null} onClick={() => void rotacionar()} className="shrink-0 px-3 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-60">
+          {estado === null ? "Carregando chave" : estado.configurado ? "Trocar chave" : "Criar chave"}
         </button>
       </div>
-      {chave && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">Copie agora. Ela não será mostrada novamente.</p><code className="mt-1 block break-all text-xs text-amber-950">{chave}</code></div>}
+      {chave && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">Copie agora. Ela não será mostrada novamente.</p><code className="mt-1 block break-all text-xs text-amber-950">{chave}</code><button type="button" onClick={() => void copiarChave()} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-950"><Copy className="h-3.5 w-3.5" />{copiada ? "Chave copiada" : "Copiar chave"}</button></div>}
       {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
       <div>
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Pedidos recentes</h3>
-        {!estado?.ordens.length ? <p className="mt-2 text-sm text-gray-500">Nenhum pedido recebido.</p> : <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">{estado.ordens.map((ordem) => <div key={ordem.externalId} className="py-2 flex items-center justify-between gap-3 text-sm"><div className="min-w-0"><p className="font-medium truncate">{ordem.externalId}</p><p className="text-xs text-gray-500">{ordem.direction === "REVERSE" ? `Reversa • RMA ${ordem.rma}` : ordem.mode}</p></div><span className="rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs">{ordem.state}</span></div>)}</div>}
+        {!estado?.ordens.length ? <p className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600 dark:bg-gray-800 dark:text-gray-300">Nenhum pedido recebido ainda. Crie a chave e envie um pedido de teste.</p> : <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">{estado.ordens.map((ordem) => <div key={ordem.externalId} className="py-2 flex items-center justify-between gap-3 text-sm"><div className="min-w-0"><p className="font-medium truncate">{ordem.externalId}</p><p className="text-xs text-gray-500">{ordem.direction === "REVERSE" ? `Reversa • RMA ${ordem.rma}` : ordem.mode}</p></div><span className="rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs">{ordem.state}</span></div>)}</div>}
       </div>
     </section>
   );
@@ -423,7 +448,7 @@ function Cobranca({ escondida }: { escondida: boolean }) {
   };
 
   return (
-    <form onSubmit={salvar} aria-label="Cobrança" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
+    <form onSubmit={salvar} aria-label="Cobrança" className={`${escondida ? "hidden " : ""}${CARD} p-3 md:p-6 space-y-3`}>
       <div>
         <h2 className="font-semibold text-gray-900 dark:text-white">Cobrança</h2>
         <p className="text-xs md:text-sm text-gray-500 mt-0.5">
@@ -539,7 +564,7 @@ function MercadoPago({ escondida }: { escondida: boolean }) {
   if (!gateway) return null;
 
   return (
-    <section aria-label="Mercado Pago" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
+    <section aria-label="Mercado Pago" className={`${escondida ? "hidden " : ""}${CARD} p-3 md:p-6 space-y-3`}>
       <div>
         <h2 className="font-semibold text-gray-900 dark:text-white">Mercado Pago</h2>
         <p className="text-xs md:text-sm text-gray-500 mt-0.5">
@@ -702,9 +727,12 @@ function Integracao({ escondida }: { escondida: boolean }) {
   const cadastrado = Boolean(webhook?.url);
 
   return (
-    <section aria-label="Integração" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
+    <section aria-label="Avisos automáticos" className={`${escondida ? "hidden " : ""}${CARD} p-4 md:p-6 space-y-3`}>
       <div>
-        <h2 className="font-semibold text-gray-900 dark:text-white">Integração</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-semibold text-gray-900 dark:text-white">Avisos automáticos</h2>
+          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${cadastrado ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{cadastrado ? "Ativo" : "Não configurado"}</span>
+        </div>
         <p className="text-xs md:text-sm text-gray-500 mt-0.5">
           O TMS avisa este endereço (um fluxo do n8n, por exemplo) a cada troca de status de carga, fatura emitida, paga ou cancelada, e título que venceu.
         </p>
