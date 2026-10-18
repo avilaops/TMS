@@ -6,6 +6,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { prazoPorExtenso, type CotacaoDoPortal } from "@/lib/portal-cliente";
 import { BOTAO, BOTAO_SECUNDARIO, Campo } from "../comum";
+import { EditorDeDimensoes, type TotaisDasDimensoes } from "@/components/cotacao/EditorDeDimensoes";
 
 /**
  * Cotação pelo portal: o cliente informa a carga e vê o valor e o prazo pela
@@ -24,6 +25,8 @@ export default function PortalCotacaoPage() {
   const [form, setForm] = useState(VAZIO);
   const [calculando, setCalculando] = useState(false);
   const [erro, setErro] = useState("");
+  const [dimensoes, setDimensoes] = useState<TotaisDasDimensoes | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
   // O resultado guarda os dados com que foi calculado: é com eles que o pedido de coleta abre.
   const [resultado, setResultado] = useState<{ cotacao: CotacaoDoPortal; dados: typeof VAZIO } | null>(null);
 
@@ -69,9 +72,20 @@ export default function PortalCotacaoPage() {
         <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
           <Campo rotulo="Cidade de destino" className="col-span-2" required value={form.destination} onChange={campo("destination")} placeholder="Ex.: Mirassol - SP" />
           <Campo rotulo="Peso (kg)" required inputMode="decimal" value={form.weight} onChange={campo("weight")} />
-          <Campo rotulo="Volumes" required inputMode="numeric" value={form.volumes} onChange={campo("volumes")} />
+          <Campo rotulo="Volumes" required inputMode="numeric" readOnly={dimensoes !== null} value={form.volumes} onChange={campo("volumes")} />
           <Campo rotulo="Valor da nota (R$)" inputMode="decimal" value={form.invoiceValue} onChange={campo("invoiceValue")} />
-          <Campo rotulo="Cubagem (m³, opcional)" inputMode="decimal" value={form.cubicMeters} onChange={campo("cubicMeters")} />
+          <Campo rotulo={dimensoes ? "Cubagem calculada (m³)" : "Cubagem (m³, opcional)"} inputMode="decimal" readOnly={dimensoes !== null} value={form.cubicMeters} onChange={campo("cubicMeters")} />
+          <EditorDeDimensoes
+            key={editorKey}
+            onChange={(totais) => {
+              setDimensoes(totais);
+              setForm((atual) => ({
+                ...atual,
+                ...(totais ? { volumes: String(totais.volumes), cubicMeters: String(totais.cubicMeters) } : { cubicMeters: "" }),
+              }));
+              setResultado(null);
+            }}
+          />
         </div>
 
         {erro && (
@@ -120,7 +134,7 @@ export default function PortalCotacaoPage() {
             <Link href={pedido} className={BOTAO}>
               Pedir coleta com estes dados
             </Link>
-            <button type="button" onClick={() => { setForm(VAZIO); setResultado(null); }} className={BOTAO_SECUNDARIO}>
+            <button type="button" onClick={() => { setForm(VAZIO); setDimensoes(null); setEditorKey((atual) => atual + 1); setResultado(null); }} className={BOTAO_SECUNDARIO}>
               Nova cotação
             </button>
           </div>

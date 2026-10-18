@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Calculator, Loader2, Plus, Star, Truck, Upload } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
+import { EditorDeDimensoes, type TotaisDasDimensoes } from "@/components/cotacao/EditorDeDimensoes";
 
 /**
  * Tabelas de frete: as regras gerais de cada tabela, o preço por cidade e o
@@ -143,6 +144,7 @@ export default function TabelasDeFrete() {
   const [sim, setSim] = useState({ city: "", weight: "", volumes: "", invoiceValue: "", cubicMeters: "", tableId: "" });
   const [resultado, setResultado] = useState<{ tabela: { name: string }; frete: Frete; adequacaoVeiculo: AdequacaoVeiculo } | null>(null);
   const [erroSim, setErroSim] = useState("");
+  const [dimensoes, setDimensoes] = useState<TotaisDasDimensoes | null>(null);
 
   const carregar = async () => {
     try {
@@ -560,15 +562,15 @@ export default function TabelasDeFrete() {
           </label>
           <label className={CAMPO}>
             <span className={LABEL}>Volumes</span>
-            <input inputMode="numeric" value={sim.volumes} onChange={(e) => setSim({ ...sim, volumes: e.target.value })} className={INPUT} />
+            <input inputMode="numeric" readOnly={dimensoes !== null} value={sim.volumes} onChange={(e) => setSim({ ...sim, volumes: e.target.value })} className={INPUT} />
           </label>
           <label className={CAMPO}>
             <span className={LABEL}>Valor da nota (R$)</span>
             <input inputMode="decimal" value={sim.invoiceValue} onChange={(e) => setSim({ ...sim, invoiceValue: e.target.value })} className={INPUT} />
           </label>
           <label className={CAMPO}>
-            <span className={LABEL}>Volume (m³)</span>
-            <input inputMode="decimal" value={sim.cubicMeters} onChange={(e) => setSim({ ...sim, cubicMeters: e.target.value })} className={INPUT} />
+            <span className={LABEL}>{dimensoes ? "Cubagem calculada (m³)" : "Volume (m³)"}</span>
+            <input inputMode="decimal" readOnly={dimensoes !== null} value={sim.cubicMeters} onChange={(e) => setSim({ ...sim, cubicMeters: e.target.value })} className={INPUT} />
           </label>
           <label className={`${CAMPO} col-span-2`}>
             <span className={LABEL}>Tabela</span>
@@ -581,6 +583,16 @@ export default function TabelasDeFrete() {
               ))}
             </select>
           </label>
+          <EditorDeDimensoes
+            onChange={(totais) => {
+              setDimensoes(totais);
+              setSim((atual) => ({
+                ...atual,
+                ...(totais ? { volumes: String(totais.volumes), cubicMeters: String(totais.cubicMeters) } : { cubicMeters: "" }),
+              }));
+              setResultado(null);
+            }}
+          />
         </div>
         <button type="submit" className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium">
           Calcular

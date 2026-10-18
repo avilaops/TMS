@@ -142,6 +142,24 @@ describe("cotação pelo portal", () => {
     expect(Object.fromEntries(destino.searchParams)).toEqual({ destination: "Mirassol - SP", weight: "12,5", volumes: "3", invoiceValue: "1500" });
   });
 
+  it("calcula volumes e cubagem pelas dimensões e leva os totais ao pedido de coleta", async () => {
+    const pedidos = api({ [COTACAO]: { body: { atendida: true, cidade: "Mirassol", valor: 180.5, prazoHoras: 24, avisos: [] } } });
+    const tela = await montar(<PortalCotacaoPage />);
+    await digitar(campo(tela, "Cidade de destino"), "Mirassol - SP");
+    await digitar(campo(tela, "Peso (kg)"), "50");
+    await clicar(porTexto(tela, "button", "Informar dimensões")[0]);
+    await digitar(tela.querySelector('[aria-label="Quantidade do tipo 1"]')!, "4");
+    await digitar(tela.querySelector('[aria-label="Comprimento do tipo 1"]')!, "60");
+    await digitar(tela.querySelector('[aria-label="Largura do tipo 1"]')!, "40");
+    await digitar(tela.querySelector('[aria-label="Altura do tipo 1"]')!, "50");
+    await enviar(tela.querySelector("form")!);
+
+    await ate(() => expect(tela.querySelector("[data-resultado]")).not.toBeNull());
+    expect(pedidos[0].corpo).toMatchObject({ volumes: "4", cubicMeters: "0.48" });
+    const destino = new URL(porTexto(tela, "a", "Pedir coleta com estes dados")[0].getAttribute("href")!, "http://x");
+    expect(Object.fromEntries(destino.searchParams)).toMatchObject({ volumes: "4", cubicMeters: "0.48" });
+  });
+
   it("cidade fora da tabela: explica e ainda deixa pedir a coleta; erro da rota aparece na tela", async () => {
     const fora = await cotar({ body: { atendida: false, motivo: "fora_da_tabela" } });
     await ate(() => expect(fora.tela.querySelector("[data-sem-valor]")).not.toBeNull());
