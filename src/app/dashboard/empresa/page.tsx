@@ -287,8 +287,66 @@ export default function EmpresaPage() {
 
       <Integracao escondida={aba !== "integracao"} />
 
+      <IntegracaoLojas escondida={aba !== "integracao"} />
+
       <Fiscal escondida={aba !== "fiscal"} />
     </div>
+  );
+}
+
+type EstadoLojas = {
+  configurado: boolean;
+  final: string | null;
+  rotacionadaEm: string | null;
+  ordens: { externalId: string; mode: string; state: string; direction: string; rma: string | null; createdAt: string }[];
+};
+
+function IntegracaoLojas({ escondida }: { escondida: boolean }) {
+  const [estado, setEstado] = useState<EstadoLojas | null>(null);
+  const [chave, setChave] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const ler = () => fetch("/api/empresa/integracoes/lojas")
+    .then((res) => res.ok ? res.json() : null)
+    .then((corpo: EstadoLojas | null) => corpo && setEstado(corpo))
+    .catch(() => {
+      // A seção fica indisponível sem derrubar as demais configurações da empresa.
+    });
+  useEffect(() => { void ler(); }, []);
+
+  const rotacionar = async () => {
+    setOcupado(true); setErro(null); setChave(null);
+    try {
+      const res = await fetch("/api/empresa/integracoes/lojas", { method: "POST" });
+      const corpo = await res.json() as EstadoLojas & { chave?: string; error?: string };
+      if (!res.ok || !corpo.chave) return setErro(corpo.error ?? FALHA_AO_SALVAR);
+      setChave(corpo.chave); await ler();
+    } catch { setErro(FALHA_AO_SALVAR); } finally { setOcupado(false); }
+  };
+
+  return (
+    <section aria-label="Integração Lojas" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-4`}>
+      <div>
+        <h2 className="font-semibold text-gray-900 dark:text-white">Integração Lojas</h2>
+        <p className="text-xs md:text-sm text-gray-500 mt-0.5">Cotações, pedidos multi-origem, rastreio e logística reversa por empresa.</p>
+      </div>
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+        <div>
+          <p className="text-sm font-medium">{estado?.configurado ? `Chave ativa •••• ${estado.final}` : "Chave ainda não criada"}</p>
+          <p className="text-xs text-gray-500">A chave completa aparece uma única vez.</p>
+        </div>
+        <button type="button" disabled={ocupado} onClick={() => void rotacionar()} className="shrink-0 px-3 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-60">
+          {estado?.configurado ? "Trocar chave" : "Criar chave"}
+        </button>
+      </div>
+      {chave && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">Copie agora. Ela não será mostrada novamente.</p><code className="mt-1 block break-all text-xs text-amber-950">{chave}</code></div>}
+      {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Pedidos recentes</h3>
+        {!estado?.ordens.length ? <p className="mt-2 text-sm text-gray-500">Nenhum pedido recebido.</p> : <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">{estado.ordens.map((ordem) => <div key={ordem.externalId} className="py-2 flex items-center justify-between gap-3 text-sm"><div className="min-w-0"><p className="font-medium truncate">{ordem.externalId}</p><p className="text-xs text-gray-500">{ordem.direction === "REVERSE" ? `Reversa • RMA ${ordem.rma}` : ordem.mode}</p></div><span className="rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs">{ordem.state}</span></div>)}</div>}
+      </div>
+    </section>
   );
 }
 

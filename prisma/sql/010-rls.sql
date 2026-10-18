@@ -115,7 +115,10 @@ DECLARE
     "Mdfe": ["manifestId", "Manifest", "issuedById", "User"],
     "MdfeEvent": ["mdfeId", "Mdfe", "createdById", "User"],
     "SocialPost": ["articleId", "Article"],
-    "ContentMetric": ["articleId", "Article"]
+    "ContentMetric": ["articleId", "Article"],
+    "LogisticsOrder": ["clientId", "Client", "reverseOfId", "LogisticsOrder"],
+    "LogisticsShipment": ["orderId", "LogisticsOrder", "collectionId", "Collection"],
+    "IntegrationRequest": ["credentialId", "LojasIntegrationCredential"]
   }';
   argumentos text;
 BEGIN

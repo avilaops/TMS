@@ -71,6 +71,21 @@
         "Testes e prints desktop/mobile antes do único commit"
       ],
       "evidence": "45 testes direcionados, suíte completa com 1317 aprovados, lint do escopo, typecheck, build e prints desktop/mobile."
+    },
+    {
+      "id": "T-0005",
+      "title": "Integrar Lojas ao ciclo logístico do TMS",
+      "objective": "Entregar cotação multi-origem, modalidades comerciais, rastreio, cancelamento e logística reversa com isolamento por empresa.",
+      "assignee": "agent-code",
+      "priority": "high",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "Contrato versionado e idempotente com credencial por tenant",
+        "Pedido gera remessas por origem e devolve rastreio, ocorrências, POD e SLA",
+        "Reversa ligada ao RMA com inspeção final única",
+        "Testes PostgreSQL e prints desktop/mobile antes do único commit"
+      ],
+      "evidence": "20 testes do módulo em PostgreSQL 18 com RLS, testes de tela e perfis, typecheck, lint do escopo e prints desktop/mobile em artifacts/avl-248-lojas-*.png; build reservado ao GitHub Actions."
     }
   ],
   "decisions": [

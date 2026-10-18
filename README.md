@@ -1127,6 +1127,21 @@ Ainda não existe no portal: QR Code do Pix estático, o cliente gerar a própri
 
 As colunas e a tabela deste módulo (pedido de coleta, destinatários e chave Pix) são criadas por [prisma/sql/021-portal-pix.sql](prisma/sql/021-portal-pix.sql); rode `npm run db:rls` depois dela.
 
+## Integração Lojas
+
+O contrato servidor a servidor fica em `/api/integracoes/lojas/v1/empresas/{slug}`. A chave é criada em **Empresa → Integração → Integração Lojas**, aparece uma vez e deve ser enviada como `Authorization: Bearer ...`. Toda mutação também exige `Idempotency-Key` com 8 a 120 caracteres.
+
+| Operação | Rota |
+| --- | --- |
+| Cotar | `POST /cotacoes` |
+| Confirmar e separar por origem | `POST /ordens` |
+| Consultar rastreio, ocorrências, POD e SLA | `GET /ordens/{externalId}` |
+| Cancelar antes do início operacional | `POST /ordens/{externalId}/cancelamento` |
+| Criar reversa ligada ao RMA | `POST /reversas` |
+| Registrar inspeção final | `POST /reversas/{externalId}/inspecao` |
+
+O corpo da cotação aceita `CIF`, `FOB`, `PICKUP` e `OWN_CARRIER`, uma ou mais origens e volumes com quantidade, peso, dimensões e indicação de pallet. `npm run db:push` aplica o schema, as constraints do contrato e o RLS; nenhum segredo é salvo em texto aberto.
+
 ## Estrutura
 
 ```text
