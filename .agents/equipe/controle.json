@@ -25,12 +25,22 @@
       "objective": "Avaliar as lacunas documentadas e propor o próximo módulo coerente após as PRs 19 e 20.",
       "assignee": "agent-product",
       "priority": "high",
-      "status": "completed",
+      "status": "concluida",
       "acceptanceCriteria": [
         "Proposta baseada em README, ROADMAP e estado das PRs",
         "Escopo fechado e verificável sem serviço externo"
       ],
-      "evidence": "README.md:196 e ROADMAP.md:28; módulo escolhido: proposta comercial copiável no CRM."
+      "evidence": "README.md:196 e ROADMAP.md:28; módulo escolhido: proposta comercial copiável no CRM.",
+      "owner": "agent-product",
+      "acceptance": "Proposta baseada em README, ROADMAP e estado das PRs\nEscopo fechado e verificável sem serviço externo",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-10-18",
+          "status": "concluida",
+          "note": "Registro legado normalizado para o contrato central."
+        }
+      ]
     },
     {
       "id": "T-0002",
@@ -38,12 +48,22 @@
       "objective": "Inspecionar o fluxo de cotações e identificar arquivos, testes e riscos para a evolução mais direta.",
       "assignee": "agent-code",
       "priority": "high",
-      "status": "completed",
+      "status": "concluida",
       "acceptanceCriteria": [
         "Mapa de arquivos e dados confirmado no código",
         "Plano compatível com a regra de um único commit após testes e prints"
       ],
-      "evidence": "Mapeados CRM, simulador, portal, cálculo comum e testes; prazo e validade não são persistidos em QuoteLead."
+      "evidence": "Mapeados CRM, simulador, portal, cálculo comum e testes; prazo e validade não são persistidos em QuoteLead.",
+      "owner": "agent-code",
+      "acceptance": "Mapa de arquivos e dados confirmado no código\nPlano compatível com a regra de um único commit após testes e prints",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-10-18",
+          "status": "concluida",
+          "note": "Registro legado normalizado para o contrato central."
+        }
+      ]
     },
     {
       "id": "T-0003",
@@ -51,12 +71,22 @@
       "objective": "Revisar as PRs empilhadas e apontar riscos de regressão ou dependência para o próximo módulo.",
       "assignee": "agent-review",
       "priority": "medium",
-      "status": "completed",
+      "status": "concluida",
       "acceptanceCriteria": [
         "Riscos concretos com evidência",
         "Recomendação sobre base da nova branch"
       ],
-      "evidence": "Revisão confirmou a cadeia main -> PR19 -> PR20 e reproduziu envio de dimensões inválidas; correção coberta por testes."
+      "evidence": "Revisão confirmou a cadeia main -> PR19 -> PR20 e reproduziu envio de dimensões inválidas; correção coberta por testes.",
+      "owner": "agent-review",
+      "acceptance": "Riscos concretos com evidência\nRecomendação sobre base da nova branch",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-10-18",
+          "status": "concluida",
+          "note": "Registro legado normalizado para o contrato central."
+        }
+      ]
     },
     {
       "id": "T-0004",
@@ -64,13 +94,23 @@
       "objective": "Montar e copiar no CRM uma mensagem com valor, prazo e validade sem alterar o lead.",
       "assignee": "agent-code",
       "priority": "high",
-      "status": "completed",
+      "status": "concluida",
       "acceptanceCriteria": [
         "Mensagem inclui número, rota, carga, valor, prazo, validade e ressalva",
         "Cópia não registra contato nem altera etapa",
         "Testes e prints desktop/mobile antes do único commit"
       ],
-      "evidence": "45 testes direcionados, suíte completa com 1317 aprovados, lint do escopo, typecheck, build e prints desktop/mobile."
+      "evidence": "45 testes direcionados, suíte completa com 1317 aprovados, lint do escopo, typecheck, build e prints desktop/mobile.",
+      "owner": "agent-code",
+      "acceptance": "Mensagem inclui número, rota, carga, valor, prazo, validade e ressalva\nCópia não registra contato nem altera etapa\nTestes e prints desktop/mobile antes do único commit",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-10-18",
+          "status": "concluida",
+          "note": "Registro legado normalizado para o contrato central."
+        }
+      ]
     },
     {
       "id": "T-0005",
@@ -78,14 +118,24 @@
       "objective": "Entregar cotação multi-origem, modalidades comerciais, rastreio, cancelamento e logística reversa com isolamento por empresa.",
       "assignee": "agent-code",
       "priority": "high",
-      "status": "completed",
+      "status": "concluida",
       "acceptanceCriteria": [
         "Contrato versionado e idempotente com credencial por tenant",
         "Pedido gera remessas por origem e devolve rastreio, ocorrências, POD e SLA",
         "Reversa ligada ao RMA com inspeção final única",
         "Testes PostgreSQL e prints desktop/mobile antes do único commit"
       ],
-      "evidence": "20 testes do módulo em PostgreSQL 18 com RLS, testes de tela e perfis, typecheck, lint do escopo e prints desktop/mobile em artifacts/avl-248-lojas-*.png; build reservado ao GitHub Actions."
+      "evidence": "20 testes do módulo em PostgreSQL 18 com RLS, testes de tela e perfis, typecheck, lint do escopo e prints desktop/mobile em artifacts/avl-248-lojas-*.png; build reservado ao GitHub Actions.",
+      "owner": "agent-code",
+      "acceptance": "Contrato versionado e idempotente com credencial por tenant\nPedido gera remessas por origem e devolve rastreio, ocorrências, POD e SLA\nReversa ligada ao RMA com inspeção final única\nTestes PostgreSQL e prints desktop/mobile antes do único commit",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-10-18",
+          "status": "concluida",
+          "note": "Registro legado normalizado para o contrato central."
+        }
+      ]
     }
   ],
   "decisions": [
@@ -93,13 +143,17 @@
       "id": "D-0001",
       "decision": "Corrigir a integridade da PR20 antes de iniciar o próximo módulo.",
       "reason": "O editor aberto com dimensões inválidas permitia enviar volumes antigos sem cubagem.",
-      "status": "active"
+      "status": "active",
+      "summary": "Corrigir a integridade da PR20 antes de iniciar o próximo módulo.",
+      "evidence": "Estado registrado: active"
     },
     {
       "id": "D-0002",
       "decision": "O próximo módulo será Preparar proposta comercial no CRM, com prazo e validade informados pelo operador.",
       "reason": "É a lacuna comercial explícita mais direta e não exige presumir condições nem alterar o banco.",
-      "status": "planned"
+      "status": "planned",
+      "summary": "O próximo módulo será Preparar proposta comercial no CRM, com prazo e validade informados pelo operador.",
+      "evidence": "Estado registrado: planned"
     }
   ],
   "integrations": []
