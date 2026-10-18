@@ -216,7 +216,7 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
   const simples = REGIMES_DO_SIMPLES.includes(form.regime as Regime);
   // Passar a produção pede o CNPJ digitado de novo: é a confirmação explícita.
   const indoParaProducao = form.ambiente === "PRODUCAO" && fiscal.dados?.ambiente !== "PRODUCAO";
-  const visivel = (qual: Parte) => (parte === qual ? "" : "hidden md:block ");
+  const visivel = (qual: Parte) => (parte === qual ? "" : "hidden ");
   const GRADE = "grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4";
 
   // As listas só têm o que vale; o valor guardado que deixou de valer entra marcado, para a pessoa ver e trocar.
@@ -242,13 +242,13 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
   const comReducao = form.icms === "20";
 
   return (
-    <section aria-label="Fiscal" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
-      <div className="hidden md:block">
+    <section aria-label="Fiscal" className={`${escondida ? "hidden " : ""}${CARD} p-3 md:p-6 space-y-3`}>
+      <div>
         <h2 className="font-semibold text-gray-900 dark:text-white">Fiscal: emissão de CT-e</h2>
         <p className="text-sm text-gray-500 mt-0.5">Dados do emitente, tributos e o certificado digital A1 que assina e transmite o CT-e.</p>
       </div>
 
-      <div role="tablist" aria-label="Parte do fiscal" className="md:hidden grid grid-cols-5 gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+      <div role="tablist" aria-label="Parte do fiscal" className="grid grid-cols-5 gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-800 md:max-w-2xl">
         {(
           [
             ["emitente", "Emitente"],
@@ -265,7 +265,7 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
             aria-selected={parte === chave}
             data-parte-fiscal={chave}
             onClick={() => setParte(chave)}
-            className={`py-1 rounded-lg text-[11px] font-semibold ${parte === chave ? "bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-400 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+            className={`rounded-lg px-1 py-1.5 text-[11px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:text-xs ${parte === chave ? "bg-white text-blue-700 shadow-sm dark:bg-gray-900 dark:text-blue-400" : "text-gray-600 dark:text-gray-300"}`}
           >
             {rotulo}
           </button>
@@ -278,7 +278,7 @@ export function Fiscal({ escondida }: { escondida: boolean }) {
           e.preventDefault();
           void chamar("/api/empresa/fiscal", "PUT", form, "Dados fiscais salvos.");
         }}
-        className={`${parte === "certificado" ? "hidden md:block " : ""}space-y-3`}
+        className={`${parte === "certificado" ? "hidden " : ""}space-y-3`}
       >
         <div className={`${visivel("emitente")}${GRADE}`}>
           {campo("cnpj", "CNPJ")}
