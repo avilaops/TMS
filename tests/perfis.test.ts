@@ -328,6 +328,7 @@ const ROTAS: Record<string, Capacidade> = {
   "PATCH /api/usuarios/[id]": "usuarios",
   "GET /api/usuarios": "usuarios",
   "POST /api/usuarios": "usuarios",
+  "DELETE /api/usuarios/[id]": "usuarios",
   "DELETE /api/veiculos/[id]/abastecimentos/[registroId]": "frota",
   "GET /api/veiculos/[id]/abastecimentos": "frotaVer",
   "POST /api/veiculos/[id]/abastecimentos": "frota",

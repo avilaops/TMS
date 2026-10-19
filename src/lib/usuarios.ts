@@ -35,13 +35,14 @@ export const DRIVER_ROLE_MESSAGE =
 // Todos os perfis do enum `Role`. DRIVER passa na validação para a rota poder
 // responder com a mensagem certa (`DRIVER_ROLE_MESSAGE`).
 const role = z.enum(PERFIS);
+const email = z.string().trim().toLowerCase().max(254).pipe(z.email("E-mail inválido."));
 const name = z.string().trim().min(2, "Informe o nome.").max(120);
 const clientId = z.string().trim().min(1);
 
 export const createUserSchema = z.object({
   name,
   // Normaliza antes de validar: espaço nas pontas e maiúsculas não criam um segundo usuário.
-  email: z.string().trim().toLowerCase().max(254).pipe(z.email("E-mail inválido.")),
+  email,
   role,
   clientId: clientId.nullish(),
 });
@@ -49,11 +50,12 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z
   .object({
     name: name.optional(),
+    email: email.optional(),
     role: role.optional(),
     clientId: clientId.nullish(),
   })
-  .refine((data) => data.name !== undefined || data.role !== undefined, {
-    message: "Informe nome ou perfil para alterar.",
+  .refine((data) => data.name !== undefined || data.email !== undefined || data.role !== undefined, {
+    message: "Informe nome, e-mail ou perfil para alterar.",
   });
 
 export function firstIssue(error: z.ZodError): string {

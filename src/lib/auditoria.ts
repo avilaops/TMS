@@ -67,6 +67,7 @@ export const ACOES = {
   "checklist.registrar": "Checklist de veículo registrado",
   "usuario.criar": "Usuário criado",
   "usuario.alterar": "Usuário alterado",
+  "usuario.excluir": "Usuário excluído",
   "usuario.perfil": "Perfil de usuário trocado",
   "usuario.acesso.liberar": "Liberação de acesso",
   "usuario.acesso.revogar": "Acesso revogado",
