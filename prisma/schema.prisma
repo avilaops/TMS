@@ -181,6 +181,8 @@ model Client {
   cnpj             String
   ie               String?
   contactName      String?
+  notificationRecipients Json @default("[]")
+  notificationPreferences Json @default("{}")
   email            String?
   phone            String?
   address          String?

@@ -4,6 +4,15 @@ import { useState, useEffect } from "react";
 import { Plus, Search, Loader2, Users } from "lucide-react";
 import { getCompanyByCnpj } from "@/lib/brasilApi";
 
+type DocumentType = "nfeXml" | "cteXml" | "danfePdf" | "dactePdf" | "boletoPdf" | "comprovantePdf" | "faturaPdf" | "vencimento";
+type Recipient = { email: string; category: "principal" | "fiscal" | "financeiro" | "logistica" | "outro"; documents: DocumentType[] };
+type NotificationPreferences = { enabled: boolean; sendWhen: "disponivel" | "faturamento" };
+const DOCUMENT_OPTIONS: { key: DocumentType; title: string }[] = [
+  { key: "nfeXml", title: "XML da NF-e" }, { key: "cteXml", title: "XML do CT-e" },
+  { key: "danfePdf", title: "DANFE (PDF)" }, { key: "dactePdf", title: "DACTE (PDF)" },
+  { key: "boletoPdf", title: "Boleto (PDF)" }, { key: "comprovantePdf", title: "Comprovante de entrega" },
+  { key: "faturaPdf", title: "Fatura de transporte" }, { key: "vencimento", title: "Aviso de vencimento" },
+];
 interface Cliente {
   id: string;
   cnpj: string;
@@ -11,6 +20,8 @@ interface Cliente {
   tradeName: string | null;
   ie: string | null;
   contactName: string | null;
+  notificationRecipients: Recipient[];
+  notificationPreferences: NotificationPreferences;
   email: string | null;
   phone: string | null;
   address: string | null;
@@ -26,6 +37,8 @@ const FORM_VAZIO = {
   tradeName: "",
   ie: "",
   contactName: "",
+  notificationRecipients: [] as Recipient[],
+  notificationPreferences: { enabled: false, sendWhen: "disponivel" } as NotificationPreferences,
   email: "",
   phone: "",
   address: "",
@@ -42,6 +55,8 @@ const toForm = (cliente: Cliente): Form => ({
   tradeName: cliente.tradeName ?? "",
   ie: cliente.ie ?? "",
   contactName: cliente.contactName ?? "",
+  notificationRecipients: cliente.notificationRecipients ?? [],
+  notificationPreferences: cliente.notificationPreferences ?? { enabled: false, sendWhen: "disponivel" },
   email: cliente.email ?? "",
   phone: cliente.phone ?? "",
   address: cliente.address ?? "",
@@ -64,7 +79,8 @@ export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [formData, setFormData] = useState(FORM_VAZIO);
+  const [formData, setFormData] = useState<Form>(FORM_VAZIO);
+  const [modalTab, setModalTab] = useState<"cadastro" | "comercial" | "notificacoes">("cadastro");
   // Tabelas de frete para o seletor do formulário.
   const [tabelas, setTabelas] = useState<{ id: string; name: string; isDefault: boolean; active: boolean }[]>([]);
 
@@ -92,12 +108,14 @@ export default function ClientesPage() {
   };
 
   const openCreate = () => {
+    setModalTab("cadastro");
     setEditingId(null);
     setFormData(FORM_VAZIO);
     setIsModalOpen(true);
   };
 
   const openEdit = (cliente: Cliente) => {
+    setModalTab("cadastro");
     setEditingId(cliente.id);
     setFormData(toForm(cliente));
     setIsModalOpen(true);
@@ -117,11 +135,11 @@ export default function ClientesPage() {
           ...atual,
           cnpj: data.cnpj,
           companyName: data.razao_social,
-          tradeName: data.nome_fantasia || "",
-          email: data.email || "",
-          phone: data.ddd_telefone_1 || "",
+          tradeName: data.nome_fantasia || atual.tradeName,
+          email: data.email || atual.email,
+          phone: data.ddd_telefone_1 || atual.phone,
           // Neste formato, com o CEP, o endereço serve para gerar boleto (src/lib/cobranca-gateway.ts).
-          address: `${data.logradouro}, ${data.numero} - ${data.bairro}, ${data.municipio} - ${data.uf}${data.cep ? `, CEP ${String(data.cep).replace(/\D/g, "").replace(/^(\d{5})(\d{3})$/, "$1-$2")}` : ""}`,
+          address: `${data.logradouro}, ${data.numero}${data.complemento ? ` - ${data.complemento}` : ""} - ${data.bairro}, ${data.municipio} - ${data.uf}${data.cep ? `, CEP ${String(data.cep).replace(/\D/g, "").replace(/^(\d{5})(\d{3})$/, "$1-$2")}` : ""}`,
         }));
       } else {
         alert("CNPJ não encontrado");
@@ -148,7 +166,7 @@ export default function ClientesPage() {
       if (original) {
         corpo = Object.fromEntries(
           (Object.keys(formData) as (keyof Form)[])
-            .filter((campo) => formData[campo] !== original[campo])
+            .filter((campo) => JSON.stringify(formData[campo]) !== JSON.stringify(original[campo]))
             .map((campo) => [campo, formData[campo]]),
         );
         if (Object.keys(corpo).length === 0) {
@@ -306,7 +324,14 @@ export default function ClientesPage() {
               </button>
             </div>
 
+            <div className="px-3 md:px-6 pt-3 flex gap-2 border-b border-gray-100 dark:border-gray-800" role="tablist" aria-label="Seções do cliente">
+              {([{ id: "cadastro", title: "Dados cadastrais" }, { id: "comercial", title: "Comercial" }, { id: "notificacoes", title: "Documentos e notificações" }] as const).map((tab) => (
+                <button key={tab.id} type="button" role="tab" aria-selected={modalTab === tab.id} onClick={() => setModalTab(tab.id)}
+                  className={`px-2 py-2 text-xs md:text-sm border-b-2 ${modalTab === tab.id ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500"}`}>{tab.title}</button>
+              ))}
+            </div>
             <div className="p-3 md:p-6 space-y-2 md:space-y-4 overflow-y-auto">
+              {modalTab === "cadastro" && (<div className="space-y-3">
               <div className="flex space-x-2">
                 <div className="flex-1 space-y-1.5">
                   <label className={LABEL}>CNPJ / CPF</label>
@@ -397,7 +422,8 @@ export default function ClientesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
+              </div>)}
+              {modalTab === "comercial" && (<div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
                 <div className="space-y-0.5 md:space-y-1.5 min-w-0">
                   <label className={LABEL}>Condição de Pagamento</label>
                   <input
@@ -438,8 +464,48 @@ export default function ClientesPage() {
                       ))}
                   </select>
                 </div>
-              </div>
-
+              </div>)}
+              {modalTab === "notificacoes" && (<div className="space-y-4">
+                <label className="flex gap-2 items-center text-sm">
+                  <input type="checkbox" checked={formData.notificationPreferences.enabled}
+                    onChange={(event) => setFormData((v) => ({ ...v, notificationPreferences: { ...v.notificationPreferences, enabled: event.target.checked } }))} />
+                  Habilitar envios automáticos para este cliente
+                </label>
+                <div className="space-y-1">
+                  <label className={LABEL}>Regra de envio</label>
+                  <select className={INPUT} value={formData.notificationPreferences.sendWhen}
+                    onChange={(event) => setFormData((v) => ({ ...v, notificationPreferences: { ...v.notificationPreferences, sendWhen: event.target.value as NotificationPreferences["sendWhen"] } }))}>
+                    <option value="disponivel">Assim que cada documento estiver disponível/autorizado</option>
+                    <option value="faturamento">Durante o faturamento (quando aplicável)</option>
+                  </select>
+                </div>
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold text-sm">Destinatários e documentos</h3>
+                  <button type="button" className="text-blue-600 text-sm" onClick={() => setFormData((v) => ({...v, notificationRecipients: [...v.notificationRecipients, { email: "", category: "outro", documents: [] }] }))} disabled={formData.notificationRecipients.length >= 20}>+ Adicionar e-mail</button>
+                </div>
+                {formData.notificationRecipients.map((recipient, index) => (
+                  <div key={index} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+                    <div className="flex gap-2">
+                      <input aria-label={`E-mail destinatário ${index + 1}`} className={INPUT} type="email" placeholder="fiscal@empresa.com.br"
+                        value={recipient.email} onChange={(event) => setFormData((v) => ({...v, notificationRecipients: v.notificationRecipients.map((r, i) => i === index ? {...r, email: event.target.value} : r)}))}/>
+                      <button type="button" className="text-red-600 text-sm" onClick={() => setFormData((v) => ({...v, notificationRecipients: v.notificationRecipients.filter((_,i) => i !== index)}))}>Remover</button>
+                    </div>
+                    <select aria-label="Finalidade do destinatário" className={INPUT} value={recipient.category}
+                      onChange={(event) => setFormData((v) => ({...v, notificationRecipients: v.notificationRecipients.map((r,i) => i === index ? {...r, category: event.target.value as Recipient["category"]} : r)}))}>
+                      <option value="principal">Principal</option><option value="fiscal">Fiscal</option><option value="financeiro">Financeiro</option>
+                      <option value="logistica">Logística</option><option value="outro">Outro</option>
+                    </select>
+                    <div className="grid grid-cols-2 gap-2">{DOCUMENT_OPTIONS.map(({key,title}) => (
+                      <label key={key} className="flex gap-2 items-center text-xs">
+                        <input type="checkbox" checked={recipient.documents.includes(key)}
+                          onChange={(event) => setFormData((v) => ({...v, notificationRecipients: v.notificationRecipients.map((r,i) => i === index ? {...r, documents: event.target.checked ? [...r.documents, key] : r.documents.filter((d) => d !== key)} : r)}))}/>
+                        {title}
+                      </label>
+                    ))}</div>
+                  </div>
+                ))}
+                <p className="text-xs text-gray-500">Estas preferências não geram envios sem um documento disponível, uma integração de entrega e registro de auditoria.</p>
+              </div>)}
             </div>
 
             <div className="p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">

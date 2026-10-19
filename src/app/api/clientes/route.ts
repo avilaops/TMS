@@ -59,6 +59,8 @@ export async function POST(req: Request) {
           tradeName: data.tradeName,
           ie: data.ie,
           contactName: data.contactName,
+          notificationRecipients: data.notificationRecipients,
+          notificationPreferences: data.notificationPreferences,
           email: data.email,
           phone: data.phone,
           address: data.address,
