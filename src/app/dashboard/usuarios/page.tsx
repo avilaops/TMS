@@ -70,6 +70,8 @@ export default function UsuariosPage() {
   const [editing, setEditing] = useState<{ id: string } | null>(null);
   // Resultado da liberação no login único do último cadastro (ou de "Liberar acesso").
   const [acesso, setAcesso] = useState<{ nome: string; acesso: Acesso } | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("OPERATION");
   const [editClientId, setEditClientId] = useState("");
 
@@ -139,6 +141,8 @@ export default function UsuariosPage() {
   const startEdit = (usuario: Usuario) => {
     setFeedback(null);
     setEditing({ id: usuario.id });
+    setEditName(usuario.name);
+    setEditEmail(usuario.email);
     setEditRole(usuario.role);
     setEditClientId(usuario.clientId ?? "");
   };
@@ -163,19 +167,40 @@ export default function UsuariosPage() {
     }
   };
 
+  const handleDelete = async (usuario: Usuario) => {
+    if (!window.confirm(`Excluir ${usuario.name} (${usuario.email})? Esta ação só funciona se não houver registros operacionais vinculados. O convite antigo pode continuar válido no Auth caso a revogação falhe.`)) return;
+    setFeedback(null);
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/usuarios/${usuario.id}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setFeedback({ ok: false, text: body.error ?? "Não foi possível excluir." });
+      else {
+        setFeedback({ ok: !body.aviso, text: body.aviso ?? "Usuário excluído." });
+        reload();
+      }
+    } catch {
+      setFeedback({ ok: false, text: "Erro ao excluir usuário." });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleUpdate = async () => {
     if (!editing) return;
     setFeedback(null);
     setIsSaving(true);
     try {
-      const body = { role: editRole, clientId: editRole === "CLIENT" ? editClientId || null : null };
+      const body = { name: editName, email: editEmail, role: editRole, clientId: editRole === "CLIENT" ? editClientId || null : null };
       const res = await fetch(`/api/usuarios/${editing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        setFeedback({ ok: true, text: "Perfil alterado." });
+        const atualizado = await res.json();
+        if (atualizado.acesso) setAcesso({ nome: atualizado.name, acesso: atualizado.acesso });
+        setFeedback({ ok: !atualizado.aviso, text: atualizado.aviso ?? "Usuário atualizado." });
         setEditing(null);
         reload();
       } else {
@@ -356,6 +381,8 @@ export default function UsuariosPage() {
                         {isEditing ? (
                           <div className="flex flex-wrap items-center justify-end gap-2">
                               <>
+                                <Input aria-label="Editar nome" className="w-36" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                                <Input aria-label="Editar e-mail" type="email" className="w-56" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
                                 <select
                                   aria-label="Novo perfil"
                                   className={`${SELECT_CLASS} w-40`}
@@ -395,9 +422,12 @@ export default function UsuariosPage() {
                           <div className="flex flex-wrap justify-end gap-2">
                             {usuario.role !== "DRIVER" && (
                               <Button size="sm" variant="outline" onClick={() => startEdit(usuario)}>
-                                Trocar perfil
+                                Editar
                               </Button>
                             )}
+                            {usuario.role !== "DRIVER" && <Button size="sm" variant="outline" disabled={isSaving} onClick={() => handleDelete(usuario)}>
+                              Excluir
+                            </Button>}
                             <Button size="sm" variant="outline" disabled={isSaving} onClick={() => liberar(usuario)}>
                               Liberar acesso
                             </Button>
