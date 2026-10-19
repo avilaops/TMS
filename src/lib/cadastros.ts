@@ -24,6 +24,8 @@ export const CLIENT_PUBLIC_SELECT = {
   cnpj: true,
   ie: true,
   contactName: true,
+  notificationRecipients: true,
+  notificationPreferences: true,
   email: true,
   phone: true,
   address: true,
@@ -83,7 +85,27 @@ const companyName = z
   .min(2, "Informe a razão social.")
   .max(200, "Razão social muito longa.");
 
+export const DOCUMENT_TYPES = ["nfeXml", "cteXml", "danfePdf", "dactePdf", "boletoPdf", "comprovantePdf", "faturaPdf", "vencimento"] as const;
+const documentType = z.enum(DOCUMENT_TYPES);
+const notificationRecipientsSchema = z.array(z.object({
+  email: z.email().max(254).transform((v) => v.trim().toLowerCase()),
+  category: z.enum(["principal", "fiscal", "financeiro", "logistica", "outro"]),
+  documents: z.array(documentType).max(8),
+})).max(20).superRefine((items, ctx) => {
+  const seen = new Set<string>();
+  items.forEach((item, index) => {
+    if (seen.has(item.email)) ctx.addIssue({ code: "custom", message: "E-mails de destinatários duplicados.", path: [index, "email"] });
+    seen.add(item.email);
+  });
+});
+const notificationPreferencesSchema = z.object({
+  enabled: z.boolean(),
+  sendWhen: z.enum(["disponivel", "faturamento"]),
+}).strict();
+
 const clientOptionalFields = {
+  notificationRecipients: notificationRecipientsSchema.optional(),
+  notificationPreferences: notificationPreferencesSchema.optional(),
   tradeName: optionalText(200, "Nome fantasia muito longo."),
   ie: optionalText(30, "Inscrição estadual muito longa."),
   contactName: optionalText(120, "Nome do contato muito longo."),

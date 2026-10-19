@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { sistema } from "@/lib/prisma";
 import { conferirEnderecoPublico } from "@/lib/url-publica";
 import { TENTATIVAS } from "@/lib/mensageria";
+import { selecionarDestinatarios } from "@/lib/roteamento-documentos";
 import { RECEBEDOR_SELECT, pixCopiaECola, pixDoTitulo, recebedorDaEmpresa, txidDaFatura } from "@/lib/pix";
 import { enviarPushPendentes } from "@/lib/notificacoes-push";
 import { cobrancasEmAberto } from "@/lib/cobranca-gateway";
@@ -360,12 +361,26 @@ async function entregar(evento: Pendente): Promise<string | null> {
   const destino = await conferirEnderecoPublico(webhook.url);
   if (!destino.ok) return destino.erro;
 
+  const dados = await dadosDoEvento(evento);
+  // A seleção não executa envios. Destinos externos recebem uma intenção
+  // auditável, sujeita à verificação dos anexos e à disponibilidade do documento.
+  const objeto = (dados.cte || dados.fatura || dados.titulo || dados.coleta) as Record<string, unknown> | undefined;
+  const carga = objeto?.carga as Record<string, unknown> | undefined;
+  const referencia = (carga?.cliente ?? objeto?.cliente) as { id?: string } | undefined;
+  const cadastro = referencia?.id
+    ? await sistema.client.findFirst({
+        where: { id: referencia.id, tenantId: evento.tenantId },
+        select: { notificationRecipients: true, notificationPreferences: true },
+      })
+    : null;
+  const destinatarios = selecionarDestinatarios(evento.type, dados, cadastro?.notificationRecipients, cadastro?.notificationPreferences);
   const corpo = JSON.stringify({
     id: evento.id,
     tipo: evento.type,
     criadoEm: evento.createdAt.toISOString(),
     empresa: { id: webhook.tenant.id, slug: webhook.tenant.slug, nome: webhook.tenant.name },
-    dados: await dadosDoEvento(evento),
+    dados,
+    notificacaoDocumental: { destinatarios, requerConfirmacaoDeDocumento: true, envioExecutado: false },
   });
 
   try {
