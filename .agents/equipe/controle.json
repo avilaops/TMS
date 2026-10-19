@@ -136,6 +136,35 @@
           "note": "Registro legado normalizado para o contrato central."
         }
       ]
+      "evidence": "20 testes do módulo em PostgreSQL 18 com RLS, testes de tela e perfis, typecheck, lint do escopo e prints desktop/mobile em artifacts/avl-248-lojas-*.png; build reservado ao GitHub Actions."
+    },
+    {
+      "id": "T-0006",
+      "title": "Melhorar Empresa e proposta comercial",
+      "objective": "Reorganizar as configurações da empresa e tornar a proposta responsiva, segura e compartilhável.",
+      "assignee": "agent-code",
+      "priority": "high",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "Empresa usa navegação por seção no desktop e no celular",
+        "Integrações mostram estado, orientação e rotação segura de chave",
+        "Proposta mostra resumo, validade rápida, cópia e WhatsApp responsivos",
+        "Testes completos e prints desktop/mobile antes de qualquer commit"
+      ],
+      "evidence": "1341 testes aprovados, typecheck, lint do escopo e git diff --check; prints em artifacts/empresa-integracoes-*.png e artifacts/cotacao-proposta-ux-*.png; revisão independente corrigida sem commit ou push."
+    },
+    {
+      "id": "T-0007",
+      "title": "Registrar melhoria de Empresa e proposta no Linear",
+      "objective": "Resolver a rastreabilidade do módulo antes do único commit e push.",
+      "assignee": "agent-product",
+      "priority": "high",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "Issue criada no projeto TMS ou exceção explícita registrada quando o Linear impedir a criação",
+        "Branch, commit e futura PR vinculados ao roadmap e ao registro local"
+      ],
+      "evidence": "Linear recusou a criação por limite gratuito e o conector não oferece arquivamento ou alteração de plano. Em 2026-10-18, o usuário determinou seguir e finalizar; a entrega fica vinculada ao roadmap do projeto TMS e à exceção D-0003."
     }
   ],
   "decisions": [
@@ -154,6 +183,13 @@
       "status": "planned",
       "summary": "O próximo módulo será Preparar proposta comercial no CRM, com prazo e validade informados pelo operador.",
       "evidence": "Estado registrado: planned"
+      "status": "implemented"
+    },
+    {
+      "id": "D-0003",
+      "decision": "Publicar a melhoria de Empresa e proposta sem issue individual no Linear.",
+      "reason": "O workspace atingiu o limite gratuito, o conector não arquiva issues nem altera o plano, e o usuário determinou executar e finalizar. O escopo permanece documentado no roadmap do projeto TMS, no plano versionado e em T-0006/T-0007.",
+      "status": "active"
     }
   ],
   "integrations": []

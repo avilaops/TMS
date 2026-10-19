@@ -215,6 +215,12 @@ describe("tela do funil de cotações", () => {
     await preencher(form.querySelector<HTMLInputElement>('input[name="deadline"]')!, "até 2 dias úteis");
     await preencher(form.querySelector<HTMLInputElement>('input[name="validUntil"]')!, "2026-10-25");
 
+    const resumo = form.querySelector('[data-resumo-proposta]')!;
+    expect(resumo.textContent).toContain("São José do Rio Preto → Mirassol");
+    expect(resumo.textContent).toContain("3 volumes");
+    expect(resumo.textContent).toContain("120,5 kg");
+    expect(resumo.textContent!.replace(/ /g, " ")).toContain("R$ 150,00");
+
     const previa = form.querySelector<HTMLTextAreaElement>('textarea[aria-label="Prévia da proposta"]')!;
     expect(previa.value).toContain("cotação nº 1494");
     expect(previa.value).toContain("Frete estimado: R$ 150,00");
@@ -225,6 +231,40 @@ describe("tela do funil de cotações", () => {
     expect(pedidos).toHaveLength(2);
   });
 
+  it("oferece validade rápida e abre a proposta no WhatsApp do cliente", async () => {
+    const abrirWhatsApp = vi.fn();
+    vi.stubGlobal("open", abrirWhatsApp);
+    const { tela, pedidos } = await abrir([lead({ phone: "+55 (17) 99999-0000" })]);
+
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Preparar proposta da cotação 1494"]')!;
+    await preencher(form.querySelector<HTMLInputElement>('input[name="deadline"]')!, "até 2 dias úteis");
+    await clicar(botao(form, "7 dias"));
+    expect(form.querySelector<HTMLInputElement>('input[name="validUntil"]')!.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    await clicar(botao(form, "Enviar pelo WhatsApp"));
+    expect(abrirWhatsApp).toHaveBeenCalledOnce();
+    const [endereco, alvo, recursos] = abrirWhatsApp.mock.calls[0];
+    expect(endereco).toContain("https://wa.me/5517999990000?text=");
+    expect(decodeURIComponent(String(endereco))).toContain("cotação nº 1494");
+    expect([alvo, recursos]).toEqual(["_blank", "noopener,noreferrer"]);
+    expect(pedidos).toHaveLength(2);
+  });
+
+  it("não confunde o DDD 55 com o código do país ao abrir o WhatsApp", async () => {
+    const abrirWhatsApp = vi.fn();
+    vi.stubGlobal("open", abrirWhatsApp);
+    const { tela } = await abrir([lead({ phone: "(55) 99999-0000" })]);
+
+    await clicar(botao(cartao(tela), "Preparar proposta"));
+    const form = tela.querySelector<HTMLFormElement>('form[aria-label="Preparar proposta da cotação 1494"]')!;
+    await preencher(form.querySelector<HTMLInputElement>('input[name="deadline"]')!, "até 2 dias úteis");
+    await preencher(form.querySelector<HTMLInputElement>('input[name="validUntil"]')!, "2026-10-25");
+    await clicar(botao(form, "Enviar pelo WhatsApp"));
+
+    expect(abrirWhatsApp.mock.calls[0][0]).toContain("https://wa.me/5555999990000?text=");
+  });
+
   it("sem valor impede a proposta e orienta editar o preço", async () => {
     const { tela } = await abrir([lead({ estimatedValue: null })]);
     await clicar(botao(cartao(tela), "Preparar proposta"));
@@ -232,6 +272,7 @@ describe("tela do funil de cotações", () => {
     const form = tela.querySelector('form[aria-label="Preparar proposta da cotação 1494"]')!;
     expect(form.querySelector('[role="alert"]')?.textContent).toContain("Informe o preço estimado");
     expect(botao(form, "Copiar proposta").hasAttribute("disabled")).toBe(true);
+    expect(botao(form, "Enviar pelo WhatsApp").hasAttribute("disabled")).toBe(true);
   });
 
   it("falha da área de transferência mantém a proposta disponível para cópia manual", async () => {

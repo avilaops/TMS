@@ -123,7 +123,7 @@ export function Entrega({ escondida }: { escondida: boolean }) {
   };
 
   return (
-    <form onSubmit={salvar} aria-label="Comprovante de entrega" className={`${escondida ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-3`}>
+    <form onSubmit={salvar} aria-label="Comprovante de entrega" className={`${escondida ? "hidden " : ""}${CARD} p-3 md:p-6 space-y-3`}>
       <div>
         <h2 className="font-semibold text-gray-900 dark:text-white">Comprovante de entrega</h2>
         <p className="text-xs md:text-sm text-gray-500 mt-0.5">O que o motorista precisa fotografar para dar baixa.</p>

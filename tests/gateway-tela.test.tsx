@@ -285,13 +285,14 @@ describe("Empresa > Cobrança > Mercado Pago", () => {
     await clicar(porTexto(secao, "button", "Testar conexão")[0]);
     await ate(() => expect(secao.querySelector('[role="alert"]')?.textContent).toContain("recusou o Access Token"));
 
-    // Fora da aba Cobrança a seção fica escondida no celular.
-    expect(secao.className).toContain("hidden md:block");
+    // Fora da aba Cobrança a seção fica escondida em qualquer tamanho.
+    expect(secao.className).toContain("hidden");
+    expect(secao.className).not.toContain("md:block");
     await clicar(tela.querySelector('[data-aba="cobranca"]')!);
-    expect(tela.querySelector('form[aria-label="Cobrança"]')?.className).not.toContain("hidden md:block");
-    expect(secao.className).toContain("hidden md:block");
+    expect(tela.querySelector('form[aria-label="Cobrança"]')?.className).not.toContain("hidden");
+    expect(secao.className).toContain("hidden");
     await clicar(tela.querySelector('[data-parte="mercado-pago"]')!);
-    expect(secao.className).not.toContain("hidden md:block");
-    expect(tela.querySelector('form[aria-label="Cobrança"]')?.className).toContain("hidden md:block");
+    expect(secao.className).not.toContain("hidden");
+    expect(tela.querySelector('form[aria-label="Cobrança"]')?.className).toContain("hidden");
   });
 });

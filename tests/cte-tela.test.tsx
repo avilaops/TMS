@@ -419,11 +419,14 @@ describe("Empresa → Fiscal", () => {
     const tela = await montar(<EmpresaPage />);
     await ate(() => expect(secao(tela)).not.toBeNull());
     expect([...tela.querySelectorAll('[role="tablist"][aria-label="Parte"] [role="tab"]')].map((aba) => aba.textContent)).toEqual(["Identidade", "Cobrança", "Integração", "Fiscal"]);
-    // No celular a seção só aparece na aba dela.
-    expect(secao(tela).className).toContain("hidden md:block");
+    // Em qualquer tamanho a seção só aparece na aba dela.
+    expect(secao(tela).className).toContain("hidden");
+    expect(secao(tela).className).not.toContain("md:block");
     await clicar(tela.querySelector('[data-aba="fiscal"]')!);
-    expect(secao(tela).className).not.toContain("hidden md:block");
-    expect([...secao(tela).querySelectorAll("[data-parte-fiscal]")].map((parte) => parte.textContent)).toEqual(["Emitente", "Endereço", "ICMS", "IBS/CBS", "Certificado"]);
+    expect(secao(tela).className).not.toContain("hidden");
+    const navegacaoFiscal = secao(tela).querySelector('[role="tablist"]')!;
+    expect(navegacaoFiscal.className).not.toContain("md:hidden");
+    expect([...navegacaoFiscal.querySelectorAll("[data-parte-fiscal]")].map((parte) => parte.textContent)).toEqual(["Emitente", "Endereço", "ICMS", "IBS/CBS", "Certificado"]);
 
     expect(campo(tela, "cnpj").value).toBe("99000108000141");
     expect(campo(tela, "cidade").value).toBe("Mirassol");
