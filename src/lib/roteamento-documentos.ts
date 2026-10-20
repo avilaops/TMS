@@ -21,6 +21,8 @@ export function selecionarDestinatarios(
   preferencias: unknown,
 ) {
   const prefs = preferencias as Partial<Preferencias> | null;
+  if (!dados || typeof dados !== "object") return [];
+  if (!Array.isArray(destinatarios) || destinatarios.length > 20) return [];
   if (!prefs?.enabled) return [];
   const permitidos = EVENTOS[tipo];
   if (!permitidos || !Array.isArray(destinatarios)) return [];
@@ -39,7 +41,7 @@ export function selecionarDestinatarios(
     if (!fatura || fatura.status !== "OPEN") return [];
   }
   return (destinatarios as Destinatario[]).flatMap((destinatario) => {
-    if (typeof destinatario.email !== "string" || !Array.isArray(destinatario.documents)) return [];
+    if (!destinatario || typeof destinatario.email !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(destinatario.email.trim()) || !Array.isArray(destinatario.documents)) return [];
     let tipos = destinatario.documents.filter((d) => permitidos.includes(d));
     // Boleto somente se o gateway disponibilizou cobrança efetiva.
     if (tipo === "fatura.emitida") {
@@ -47,6 +49,6 @@ export function selecionarDestinatarios(
       if (!fatura.cobranca?.boleto) tipos = tipos.filter((d) => d !== "boletoPdf");
     }
     if (!tipos.length) return [];
-    return [{ email: destinatario.email, categoria: destinatario.category, documentosSolicitados: tipos }];
+    return [{ email: destinatario.email.trim().toLowerCase(), categoria: destinatario.category, documentosSolicitados: [...new Set(tipos)] }];
   });
 }
