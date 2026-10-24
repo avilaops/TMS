@@ -136,7 +136,6 @@
           "note": "Registro legado normalizado para o contrato central."
         }
       ]
-      "evidence": "20 testes do módulo em PostgreSQL 18 com RLS, testes de tela e perfis, typecheck, lint do escopo e prints desktop/mobile em artifacts/avl-248-lojas-*.png; build reservado ao GitHub Actions."
     },
     {
       "id": "T-0006",
@@ -165,6 +164,21 @@
         "Branch, commit e futura PR vinculados ao roadmap e ao registro local"
       ],
       "evidence": "Linear recusou a criação por limite gratuito e o conector não oferece arquivamento ou alteração de plano. Em 2026-10-18, o usuário determinou seguir e finalizar; a entrega fica vinculada ao roadmap do projeto TMS e à exceção D-0003."
+    },
+    {
+      "id": "T-0008",
+      "title": "Expor CT-e canônico ao Lojas",
+      "objective": "Publicar projeção isolada e privada dos CT-e do TMS para consumo pelo Lojas sem compartilhar XML bruto com automações.",
+      "assignee": "agent-code",
+      "priority": "high",
+      "status": "em_revisao",
+      "acceptanceCriteria": [
+        "Contrato versionado com autenticação por tenant e RLS",
+        "XML e DACTE disponíveis apenas por downloads privados",
+        "Nenhum consumidor adicional de NSU ou agendador fiscal"
+      ],
+      "evidence": "Contrato avila.fiscal.cte.v1, rotas privadas e testes direcionados aprovados; typecheck aprovado.",
+      "blocker": "CI, merge, deploy e homologação em produção pendentes."
     }
   ],
   "decisions": [
@@ -182,15 +196,30 @@
       "reason": "É a lacuna comercial explícita mais direta e não exige presumir condições nem alterar o banco.",
       "status": "planned",
       "summary": "O próximo módulo será Preparar proposta comercial no CRM, com prazo e validade informados pelo operador.",
-      "evidence": "Estado registrado: planned"
-      "status": "implemented"
+      "evidence": "Estado registrado: planned",
+      "statusFinal": "implemented"
     },
     {
       "id": "D-0003",
       "decision": "Publicar a melhoria de Empresa e proposta sem issue individual no Linear.",
       "reason": "O workspace atingiu o limite gratuito, o conector não arquiva issues nem altera o plano, e o usuário determinou executar e finalizar. O escopo permanece documentado no roadmap do projeto TMS, no plano versionado e em T-0006/T-0007.",
       "status": "active"
+    },
+    {
+      "id": "D-0004",
+      "decision": "O TMS é a fonte canônica de CT-e e o Lojas consome somente uma projeção operacional.",
+      "reason": "Evita consumidor concorrente de NSU, duplicidade de agenda e trânsito desnecessário de XML bruto.",
+      "status": "active"
     }
   ],
-  "integrations": []
+  "integrations": [
+    {
+      "id": "I-TMS-LOJAS-FISCAL",
+      "name": "CT-e canônico TMS para Lojas",
+      "contractVersion": "avila.fiscal.cte.v1",
+      "status": "implemented_local",
+      "authentication": "credencial server-to-server por tenant",
+      "evidence": "API de listagem e downloads privados de XML/DACTE implementados e testados localmente."
+    }
+  ]
 }
