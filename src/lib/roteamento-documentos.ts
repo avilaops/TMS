@@ -41,7 +41,7 @@ export function selecionarDestinatarios(
     if (!fatura || fatura.status !== "OPEN") return [];
   }
   return (destinatarios as Destinatario[]).flatMap((destinatario) => {
-    if (!destinatario || typeof destinatario.email !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(destinatario.email.trim()) || !Array.isArray(destinatario.documents)) return [];
+    if (!destinatario || typeof destinatario.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destinatario.email.trim()) || !Array.isArray(destinatario.documents)) return [];
     let tipos = destinatario.documents.filter((d) => permitidos.includes(d));
     // Boleto somente se o gateway disponibilizou cobrança efetiva.
     if (tipo === "fatura.emitida") {
