@@ -155,6 +155,7 @@ const ROTAS: Record<string, Capacidade> = {
   "GET /api/auditoria": "auditoria",
   "PATCH /api/clientes/[id]": "clientesCondicoes",
   "GET /api/clientes": "clientesVer",
+  "GET /api/clientes/[id]/entregas": "clientesVer",
   "POST /api/clientes": "clientes",
   "PATCH /api/coletas/[id]/frete": "coletasFrete",
   "GET /api/coletas/[id]/historico": "coletasVer",
