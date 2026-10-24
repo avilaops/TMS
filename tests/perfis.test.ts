@@ -378,6 +378,9 @@ const FORA_DA_MATRIZ = [
   "/api/health",
   // Contrato servidor-a-servidor do Lojas: autenticado por chave SHA-256 do tenant.
   "/api/integracoes/lojas/v1/empresas/[empresa]/cotacoes",
+  "/api/integracoes/lojas/v1/empresas/[empresa]/documentos-fiscais/cte",
+  "/api/integracoes/lojas/v1/empresas/[empresa]/documentos-fiscais/cte/[id]/dacte",
+  "/api/integracoes/lojas/v1/empresas/[empresa]/documentos-fiscais/cte/[id]/xml",
   "/api/integracoes/lojas/v1/empresas/[empresa]/ordens",
   "/api/integracoes/lojas/v1/empresas/[empresa]/ordens/[externalId]",
   "/api/integracoes/lojas/v1/empresas/[empresa]/ordens/[externalId]/cancelamento",
