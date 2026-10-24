@@ -31,6 +31,7 @@ enum Role {
 // e sem ela o INSERT falha. Ver src/lib/prisma.ts.
 // ---------------------------------------------------------------------------
 model Tenant {
+  documentDeliveries DocumentDelivery[]
   id               String   @id @default(uuid())
   // Identificador curto e estavel (URL, integracoes). So letras minusculas, numeros e hifen.
   slug             String   @unique
@@ -193,6 +194,7 @@ model Client {
   updatedAt        DateTime @updatedAt
 
   // Relations
+  deliveries   DocumentDelivery[]
   collections  Collection[]
   users        User[]
   transactions FinancialTransaction[]
@@ -211,6 +213,32 @@ model Client {
   @@unique([tenantId, cnpj])
   @@index([tenantId])
   @@index([freightTableId])
+}
+
+// Tentativas de envio documental: aceito pelo provedor NÃO significa entregue.
+model DocumentDelivery {
+  id             String   @id @default(uuid())
+  tenantId       String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  clientId       String
+  eventId        String
+  documentType   String
+  recipientEmail String
+  status         String   @default("PENDING") // PENDING, QUEUED, SENT, DELIVERED, FAILED
+  attempts       Int      @default(0)
+  providerId     String?
+  errorMessage   String?
+  objectKey      String?
+  checksumSha256 String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, eventId, documentType, recipientEmail])
+  @@index([tenantId, clientId, createdAt])
+  @@index([tenantId, status, createdAt])
 }
 
 // ---------------------------------------------------------------------------
