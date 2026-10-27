@@ -186,7 +186,7 @@
       "objective": "Organizar README, arquitetura, roadmap e contratos do Monitor de Notas com referências verificadas no código.",
       "assignee": "agent-code",
       "priority": "high",
-      "status": "em_revisao",
+      "status": "concluida",
       "acceptanceCriteria": [
         "README direciona para arquitetura e índice da documentação",
         "Roadmap preservado em docs/ROADMAP.md com distinção entre planejamento e implementação",
@@ -194,8 +194,8 @@
         "Monitor documenta NF-e do TMS, CT-e para Lojas, MCP e dependências de uma extração funcional",
         "Links locais, Markdown e CI verificados sem build local ou execução em applications"
       ],
-      "evidence": "Revisão local dos contratos TMS e do Lojas na revisão 0d38de822696d8314bc86ed3e773ff9b0f317fbe; 293 links locais válidos, 125 arquivos de src/lib mapeados e conteúdo anterior do roadmap preservado em docs/ROADMAP.md. Login documentado conforme OIDC implementado. Nenhuma alteração no runtime.",
-      "blocker": "CI da PR, merge e verificação do deploy pendentes.",
+      "evidence": "PR https://github.com/avilaops/TMS/pull/31 integrada em 785ba93506cff6310b0caa4879b164f63c28ed2e. CI https://github.com/avilaops/TMS/actions/runs/40424693594 aprovada: typecheck, 2507 testes em 95 arquivos e build Docker. Revisão local: 293 links relativos válidos, 125 arquivos de src/lib mapeados, roadmap anterior preservado e Markdownlint sem erros nos três documentos novos. Contratos conferidos no TMS e no Lojas em 0d38de822696d8314bc86ed3e773ff9b0f317fbe. Entrega documental concluída; o deploy automático da main é acompanhado separadamente.",
+      "blocker": "",
       "history": [
         {
           "at": "2026-10-26",
@@ -206,6 +206,11 @@
           "at": "2026-10-26",
           "status": "em_revisao",
           "note": "Usuário autorizou o merge em avilaops/TMS. Revisão documental e verificações locais concluídas; publicação e CI em andamento."
+        },
+        {
+          "at": "2026-10-26",
+          "status": "concluida",
+          "note": "PR #31 mergeada após aprovação da CI completa. Checkout principal sincronizado; alterações locais preexistentes preservadas e conferidas por SHA-256."
         }
       ]
     }
