@@ -179,6 +179,35 @@
       ],
       "evidence": "Contrato avila.fiscal.cte.v1, rotas privadas e testes direcionados aprovados; typecheck aprovado.",
       "blocker": "CI, merge, deploy e homologação em produção pendentes."
+    },
+    {
+      "id": "T-0009",
+      "title": "AVL-322 — Atualizar documentação e arquitetura do TMS",
+      "objective": "Organizar README, arquitetura, roadmap e contratos do Monitor de Notas com referências verificadas no código.",
+      "assignee": "agent-code",
+      "priority": "high",
+      "status": "em_revisao",
+      "acceptanceCriteria": [
+        "README direciona para arquitetura e índice da documentação",
+        "Roadmap preservado em docs/ROADMAP.md com distinção entre planejamento e implementação",
+        "Arquitetura referencia os 125 arquivos TypeScript de src/lib por módulo ou subdiretório",
+        "Monitor documenta NF-e do TMS, CT-e para Lojas, MCP e dependências de uma extração funcional",
+        "Links locais, Markdown e CI verificados sem build local ou execução em applications"
+      ],
+      "evidence": "Revisão local dos contratos TMS e do Lojas na revisão 0d38de822696d8314bc86ed3e773ff9b0f317fbe; 293 links locais válidos, 125 arquivos de src/lib mapeados e conteúdo anterior do roadmap preservado em docs/ROADMAP.md. Login documentado conforme OIDC implementado. Nenhuma alteração no runtime.",
+      "blocker": "CI da PR, merge e verificação do deploy pendentes.",
+      "history": [
+        {
+          "at": "2026-10-26",
+          "status": "em-andamento",
+          "note": "Demanda delegada ao Codex no Linear: AVL-322. Builds somente no GitHub CI."
+        },
+        {
+          "at": "2026-10-26",
+          "status": "em_revisao",
+          "note": "Usuário autorizou o merge em avilaops/TMS. Revisão documental e verificações locais concluídas; publicação e CI em andamento."
+        }
+      ]
     }
   ],
   "decisions": [

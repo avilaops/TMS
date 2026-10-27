@@ -1,5 +1,15 @@
 # Mello Gestão - Sistema Central da Mello Transportes
 
+Este é o planejamento do produto, preservado ao reorganizar a documentação
+na AVL-322. A arquitetura implementada está em
+[ARCHITECTURE.md](../ARCHITECTURE.md); os limites do Monitor de Notas estão em
+[MONITOR-NOTAS.md](MONITOR-NOTAS.md). Uma marca de conclusão neste histórico
+não substitui validação da CI, configuração de integração ou homologação fiscal.
+
+As fases abaixo contêm o contexto histórico da Mello. A aplicação atual já
+possui isolamento por empresa; consulte a arquitetura antes de usar a seção
+de recomendações técnicas como referência de implementação.
+
 A Mello Transportes necessita de um **sistema central completo**, não apenas de um aplicativo operacional isolado. O sistema deve gerenciar toda a empresa e transformar em operação prática o posicionamento da marca: prazo, confiança, comunicação e compromisso com coleta e entrega.
 
 O sistema deverá concentrar:

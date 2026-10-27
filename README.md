@@ -6,7 +6,15 @@ Nasceu como o sistema da Mello Transportes Rio Preto (este repositório se chama
 
 - Endereço: https://tms.avilaops.com
 - Site da Mello (consome a API pública): https://mellotransportesriopreto.com.br
-- Roadmap: [ROADMAP.md](ROADMAP.md)
+- Documentação: [índice técnico](docs/README.md)
+- Arquitetura e funções de cada módulo: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Monitor de Notas e integração fiscal: [docs/MONITOR-NOTAS.md](docs/MONITOR-NOTAS.md)
+- Roadmap do produto: [docs/ROADMAP.md](docs/ROADMAP.md)
+
+O README descreve o uso e as regras funcionais. A arquitetura descreve os
+componentes existentes e suas dependências; o roadmap preserva o planejamento
+do produto. Código implementado não comprova autorização fiscal nem operação
+de uma integração em produção.
 
 ## O que tem aqui
 
@@ -79,7 +87,7 @@ O site do transportador não chama o TMS do navegador: o servidor do site repass
 - **Next.js 16** (App Router, `output: "standalone"`), **React 19**, **TypeScript**
 - **Tailwind CSS 4** e componentes shadcn/Base UI
 - **Prisma 7** com `@prisma/adapter-pg` e **PostgreSQL 18**
-- **NextAuth 4** com login por e-mail e senha (bcrypt) e sessão JWT
+- **NextAuth 4** com login único da Ávila Ops por OIDC e sessão JWT
 - **Vitest** contra Postgres real
 - Docker, GitHub Actions (GHCR) e Caddy no Hetzner
 
@@ -87,7 +95,9 @@ O site do transportador não chama o TMS do navegador: o servidor do site repass
 
 ## Rodando localmente
 
-Requisitos: Node 22+ e um Postgres acessível. Tudo aqui precisa do banco.
+Requisitos: Node 22.22.2 ou superior na linha 22 usada pela CI e um PostgreSQL
+isolado de desenvolvimento/teste. Consulte o lockfile antes de atualizar versões.
+As rotas persistentes e a suíte de integração precisam do banco.
 
 ```bash
 npm install
@@ -98,6 +108,12 @@ TENANT_SLUG=minha-transportadora TENANT_NAME="Minha Transportadora" \
   ADMIN_EMAIL=voce@exemplo.com ADMIN_PASSWORD=troque-por-12-caracteres npx tsx prisma/seed.ts
 npm run dev
 ```
+
+O login exige `AVILAOPS_CLIENT_ID`, `AVILAOPS_CLIENT_SECRET` e `NEXTAUTH_URL`
+configurados para desenvolvimento. O serviço de autenticação precisa autorizar
+o endereço de retorno `<NEXTAUTH_URL>/api/auth/callback/avilaops`; para a porta
+local padrão, `http://localhost:3000/api/auth/callback/avilaops`. O seed cria o
+cadastro local da empresa e do administrador, mas não substitui o login único.
 
 Para subir só o banco com Docker:
 
@@ -110,8 +126,8 @@ docker compose -f docker-compose.dev.yml up -d   # expõe em 127.0.0.1:5436 (usu
 | Comando | O que faz |
 | --- | --- |
 | `npm run dev` | Servidor de desenvolvimento |
-| `npm run build` | Build de produção (standalone) |
-| `npm start` | Sobe o build |
+| `npm run build` | Build standalone, executado exclusivamente pelo GitHub CI |
+| `npm start` | Inicia um artefato já construído; não faz build |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest; exige `DATABASE_URL` apontando para um Postgres de teste |
@@ -587,6 +603,11 @@ As tabelas são criadas por [prisma/sql/016-deposito.sql](prisma/sql/016-deposit
 Ainda não existe: leitura pela câmera do celular (só leitor que digita, ou digitação), impressão direta em impressora térmica (ZPL), inventário cíclico, mais de uma unidade (um depósito por empresa), foto da avaria, vínculo do volume com a NF-e, conferência de embarque no manifesto, e histórico de movimentação entre posições (fica só a posição atual). Carga com mais de 999 volumes não é conferida nem etiquetada volume a volume. O volume continua com a posição gravada depois que a carga sai para entrega; ela só deixa de contar na ocupação da posição.
 
 ## Documentos fiscais (NF-e por XML)
+
+Para a fronteira entre importação no TMS, Monitor de Notas do Lojas, ERP,
+MCP e uma possível extração do módulo, consulte
+[Monitor de Notas](docs/MONITOR-NOTAS.md). O TMS não implementa um coletor
+NF-e por NSU: a lista abaixo recebe XML importado pelo operador.
 
 Importação do XML da NF-e para guardar a nota e criar a carga com os dados dela. No menu em Operação, "Notas fiscais" (`/dashboard/fiscal`), para `ADMIN` e `OPERATION`. As regras ficam em [src/lib/nfe.ts](src/lib/nfe.ts).
 
@@ -1163,7 +1184,10 @@ A separação tirou o site, não a marca. Para virar produto de mercado ainda fa
 - **Cidades atendidas:** [src/data/serviceAreas.csv](src/data/serviceAreas.csv) é a malha da Mello, usada no mapa do motorista. Existe uma cópia no repositório do site.
 - **Tabelas `Article`, `SocialPost` e `ContentMetric`:** guardam a distribuição do blog da Mello. Continuam no schema para não mexer em dado; o script que as alimentava (`prisma/sincronizar-artigos.ts`) saiu junto com as matérias.
 - **Material comercial:** `TABELA FRETES 2026 A ABRIL 2027.xlsx`, `tabela_frete_serilon*.csv`, `regras_frete_serilon.txt`, `Cidades.pdf` e [pdf-generator/](pdf-generator/README.md) são da operação da Mello e ficaram aqui porque o repositório do site é público.
-- **Um banco, um transportador:** não há separação por empresa (multi-tenant).
+- **Isolamento por empresa:** o schema já possui `Tenant` e as tabelas de
+  negócio usam `tenantId` e políticas RLS. A identidade visual e a malha
+  comercial da Mello são questões distintas desse isolamento; consulte
+  [Várias empresas no mesmo sistema](#várias-empresas-no-mesmo-sistema-multi-tenant).
 
 ## Deploy
 
@@ -1181,6 +1205,11 @@ O sistema roda no servidor `applications`, em `/opt/tms-avilaops-com`, atrás do
 O banco não é um container deste projeto: é o PostgreSQL do próprio servidor, o mesmo dos outros sistemas, coberto pelo backup diário de lá. O container o alcança por `host.docker.internal`.
 
 ### Automático (GitHub Actions)
+
+Builds são feitos somente pelo GitHub CI. Não executar código de aplicação,
+scripts de teste, migrações nem build diretamente no servidor `applications`.
+O destino recebe a imagem pronta pelo digest. Os procedimentos locais abaixo
+não autorizam alteração do banco de produção durante uma consulta ou revisão.
 
 [.github/workflows/deploy-production.yml](.github/workflows/deploy-production.yml):
 
