@@ -11,8 +11,8 @@
  * `text/event-stream` com uma linha `data: {json}`). A conversa tem três
  * passos: `initialize` (devolve o cabeçalho `mcp-session-id`),
  * `notifications/initialized` e `tools/call`; no fim, um `DELETE` encerra a
- * sessão, para ela não ficar aberta no servidor. Não há dependência nova: é
- * `fetch` e um leitor pequeno da resposta.
+ * sessão, para ela não ficar aberta no servidor. O transporte usa `fetch` e
+ * um leitor pequeno da resposta; a observabilidade opcional não recebe XML.
  *
  * Variáveis de ambiente:
  * - `FISCAL_MCP_URL`: o endereço do MCP único (`https://mcp.avilaops.com/mcp`).
@@ -25,6 +25,8 @@
  *
  * Só o servidor importa este arquivo.
  */
+
+import { observarFerramentaFiscal } from "@/lib/langfuse";
 
 /** Tempo máximo da conversa inteira (os três passos), em milissegundos. */
 export const TEMPO_LIMITE_MS = 20_000;
@@ -299,6 +301,10 @@ export const respostaDoDamdfe = (chave: string, xml: string, homologacao: boolea
  * devolve o resultado dela, cru. Quem chama tira dele o que precisa.
  */
 async function chamarFerramenta(ferramenta: "gerar_danfe" | "gerar_dacte" | "gerar_damdfe", xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<unknown> {
+  return observarFerramentaFiscal(ferramenta, () => executarFerramenta(ferramenta, xml, opcoes));
+}
+
+async function executarFerramenta(ferramenta: "gerar_danfe" | "gerar_dacte" | "gerar_damdfe", xml: string, opcoes: { tempoLimiteMs?: number } = {}): Promise<unknown> {
   const endereco = enderecoDoFiscal();
   if (!endereco) throw new FiscalMcpError("desligado", DANFE_DESLIGADO);
 
