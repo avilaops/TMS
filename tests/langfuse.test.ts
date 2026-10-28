@@ -23,7 +23,7 @@ vi.mock("@opentelemetry/sdk-node", () => ({
   NodeSDK: vi.fn(function () { return { start: mocks.start, shutdown: mocks.shutdown }; }),
 }));
 
-let listeners: ReturnType<typeof process.listeners>;
+let listeners: Array<(code: number) => void>;
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
