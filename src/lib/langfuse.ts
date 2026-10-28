@@ -27,7 +27,8 @@ async function criarRuntime(): Promise<Runtime | undefined> {
     baseUrl: baseUrl.toString(),
     timeout: 3,
     mediaUploadEnabled: false,
-    shouldExportSpan: ({ otelSpan }) => otelSpan.name.startsWith("tms.fiscal."),
+    shouldExportSpan: ({ otelSpan }) => otelSpan.instrumentationScope.name === "langfuse-sdk"
+      && ["tms.fiscal.gerar_danfe", "tms.fiscal.gerar_dacte", "tms.fiscal.gerar_damdfe"].includes(otelSpan.name),
   });
   const sdk = new NodeSDK({
     autoDetectResources: false,
@@ -59,6 +60,7 @@ export async function observarFerramentaFiscal(
   let observacao: ReturnType<Runtime["startObservation"]> | undefined;
   try {
     observacao = runtime?.startObservation(`tms.fiscal.${ferramenta}`, {
+      input: { content: "omitted" },
       metadata: { application: "tms", tool: `fiscal_${ferramenta}` },
     }, { asType: "tool" });
   } catch { /* Telemetria indisponível: a ferramenta continua. */ }
@@ -70,6 +72,7 @@ export async function observarFerramentaFiscal(
   } finally {
     try {
       observacao?.update({
+        output: { status: falhou ? "failed" : "completed" },
         level: falhou ? "ERROR" : "DEFAULT",
         statusMessage: falhou ? "Fiscal tool failed" : "Fiscal tool completed",
       }).end();

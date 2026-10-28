@@ -13,11 +13,12 @@ mantém compatibilidade com os peers OpenTelemetry 2 do Langfuse; o Node SDK
 Cada conversa fiscal gera uma observação `tool`, identificada por
 `tms.fiscal.gerar_danfe`, `tms.fiscal.gerar_dacte` ou
 `tms.fiscal.gerar_damdfe`. São registrados duração, nome fixo da ferramenta e
-estado de transporte/ferramenta. Não são registrados XML, PDF, argumentos,
+estado de transporte/ferramenta. A entrada informa apenas `content: omitted` e
+a saída apenas `status: completed/failed`. Não são registrados XML, PDF, argumentos,
 resultados, identificadores de pessoas/empresas, tokens, URLs do MCP ou erros
 brutos. A validação posterior do documento permanece no cliente fiscal.
 
-O exportador aceita apenas os spans `tms.fiscal.*`, sem instrumentação automática
+O exportador aceita apenas os três nomes fiscais acima no escopo `langfuse-sdk`, sem instrumentação automática
 de HTTP/banco nem detecção de recursos do servidor. Falhas na telemetria não
 alteram a resposta nem repetem a ferramenta. Cada chamada descarrega o lote,
 com espera limitada a três segundos; a saída natural do processo encerra o SDK.

@@ -59,17 +59,19 @@ describe("observabilidade fiscal opcional", () => {
     const resultado = { xml: "conteudo-confidencial", pdf_base64: "pdf-confidencial" };
     expect(await observarFerramentaFiscal("gerar_dacte", async () => resultado)).toBe(resultado);
     expect(mocks.observation).toHaveBeenCalledWith("tms.fiscal.gerar_dacte", {
+      input: { content: "omitted" },
       metadata: { application: "tms", tool: "fiscal_gerar_dacte" },
     }, { asType: "tool" });
-    expect(mocks.update).toHaveBeenCalledWith({ level: "DEFAULT", statusMessage: "Fiscal tool completed" });
+    expect(mocks.update).toHaveBeenCalledWith({ output: { status: "completed" }, level: "DEFAULT", statusMessage: "Fiscal tool completed" });
     expect(JSON.stringify([mocks.observation.mock.calls, mocks.update.mock.calls])).not.toContain("confidencial");
     expect(mocks.end).toHaveBeenCalledTimes(1);
     expect(mocks.flush).toHaveBeenCalledTimes(1);
     const options = mocks.processor.mock.calls[0][0] as {
-      shouldExportSpan: (params: { otelSpan: { name: string } }) => boolean;
+      shouldExportSpan: (params: { otelSpan: { name: string; instrumentationScope: { name: string } } }) => boolean;
     };
-    expect(options.shouldExportSpan({ otelSpan: { name: "http.request" } })).toBe(false);
-    expect(options.shouldExportSpan({ otelSpan: { name: "tms.fiscal.gerar_dacte" } })).toBe(true);
+    expect(options.shouldExportSpan({ otelSpan: { name: "http.request", instrumentationScope: { name: "langfuse-sdk" } } })).toBe(false);
+    expect(options.shouldExportSpan({ otelSpan: { name: "tms.fiscal.gerar_dacte", instrumentationScope: { name: "langfuse-sdk" } } })).toBe(true);
+    expect(options.shouldExportSpan({ otelSpan: { name: "tms.fiscal.gerar_dacte", instrumentationScope: { name: "other" } } })).toBe(false);
   });
 
   it("preserva a exceção sem capturar sua mensagem", async () => {
@@ -78,7 +80,7 @@ describe("observabilidade fiscal opcional", () => {
     const executar = vi.fn(async () => { throw erro; });
     await expect(observarFerramentaFiscal("gerar_damdfe", executar)).rejects.toBe(erro);
     expect(executar).toHaveBeenCalledTimes(1);
-    expect(mocks.update).toHaveBeenCalledWith({ level: "ERROR", statusMessage: "Fiscal tool failed" });
+    expect(mocks.update).toHaveBeenCalledWith({ output: { status: "failed" }, level: "ERROR", statusMessage: "Fiscal tool failed" });
     expect(JSON.stringify(mocks.update.mock.calls)).not.toContain("confidenciais");
     expect(mocks.end).toHaveBeenCalledTimes(1);
   });
@@ -87,7 +89,7 @@ describe("observabilidade fiscal opcional", () => {
     const { observarFerramentaFiscal } = await import("../src/lib/langfuse");
     const resposta = { isError: true, content: [{ text: "confidencial" }] };
     expect(await observarFerramentaFiscal("gerar_danfe", async () => resposta)).toBe(resposta);
-    expect(mocks.update).toHaveBeenCalledWith({ level: "ERROR", statusMessage: "Fiscal tool failed" });
+    expect(mocks.update).toHaveBeenCalledWith({ output: { status: "failed" }, level: "ERROR", statusMessage: "Fiscal tool failed" });
   });
 
   it("falhas de início não repetem a ferramenta", async () => {
@@ -117,5 +119,16 @@ describe("observabilidade fiscal opcional", () => {
     await vi.advanceTimersByTimeAsync(3_000);
     expect(await operacao).toBe("ok");
     expect(mocks.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("encerra o SDK na saída natural sem instalar handlers de sinais", async () => {
+    const sinais = [process.listenerCount("SIGTERM"), process.listenerCount("SIGINT")];
+    const { iniciarLangfuse } = await import("../src/lib/langfuse");
+    await iniciarLangfuse();
+    const novo = process.listeners("beforeExit").find((listener) => !listeners.includes(listener));
+    expect(novo).toBeDefined();
+    novo!(0);
+    expect(mocks.shutdown).toHaveBeenCalledTimes(1);
+    expect([process.listenerCount("SIGTERM"), process.listenerCount("SIGINT")]).toEqual(sinais);
   });
 });
