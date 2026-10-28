@@ -389,6 +389,16 @@ Ainda não existe: folha de pagamento, ponto e jornada, banco de horas, saldo e 
 
 ## Viagem: dados, rota, despesas e acerto
 
+**Capacidade na sugestão de ordem (AVL-371).** A resposta de
+`POST /api/manifestos/[id]/roteiro` inclui `ocupacao.inicial` e
+`ocupacao.aposEntrega`, por ID de carga. A tela mostra peso e cubagem das cargas
+que faltam entregar e o saldo projetado após cada descarga completa, na ordem
+sugerida. Cargas `DELIVERED` ficam fora do saldo; as sem localização continuam
+contadas até sua parada. Medida ausente e capacidade não cadastrada são avisadas,
+sem presumir espaço livre. A conta reutiliza os arredondamentos de `ocupacao.ts`.
+Reordenar entregas não elimina excesso inicial. A projeção não inclui coletas
+intermediárias e não altera a liberação de saída ou grava a viagem.
+
 Em `/dashboard/manifestos`, o botão **Viagem** de cada cartão abre a tela da viagem, com uma aba por assunto. As regras e as contas ficam em [src/lib/viagem.ts](src/lib/viagem.ts) (funções puras: o link da rota, a ordem das paradas e o acerto são calculados na leitura).
 
 - **Dados** (`PATCH /api/manifestos/[id]/dados`): ajudante (do cadastro da Equipe, ativo), hodômetro de saída e de retorno, previsão de saída e de retorno e observação. Todos opcionais; campo em branco apaga. Vale com a viagem em montagem, em rota e finalizada (o hodômetro de retorno chega no fim); só a cancelada não recebe. Os mesmos campos são aceitos na montagem (`POST /api/manifestos`). Liberar a saída grava `departedAt` e finalizar grava `finishedAt`.

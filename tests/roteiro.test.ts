@@ -332,7 +332,7 @@ const HASH_FALSO = "$2b$10$hashfalsoparateste000000000000000000000000000000000";
 const SEM_ID = "00000000-0000-0000-0000-000000000000";
 
 type Perfil = "ADMIN" | "OPERATION" | "EXPEDITION" | "FINANCE" | "CLIENT" | "DRIVER";
-type Resposta = { ordem: string[]; mudou: boolean; distanciaAntesKm: number; distanciaDepoisKm: number; naoLocalizadas: string[]; origem: string | null; voltar: boolean; cidades: Record<string, string | null>; error?: string };
+type Resposta = { ordem: string[]; mudou: boolean; distanciaAntesKm: number; distanciaDepoisKm: number; naoLocalizadas: string[]; origem: string | null; voltar: boolean; cidades: Record<string, string | null>; error?: string; ocupacao?: { inicial: import("../src/lib/ocupacao").Ocupacao; aposEntrega: Record<string, import("../src/lib/ocupacao").Ocupacao> } };
 
 suite("rota da ordem sugerida", () => {
   let banco: typeof import("../src/lib/prisma");
@@ -448,6 +448,28 @@ suite("rota da ordem sugerida", () => {
     }
     for (const perfil of ["ADMIN", "OPERATION", "EXPEDITION"] as const) {
       expect((await sugerir(viagem.id, {}, perfil)).status, perfil).toBe(200);
+    }
+  });
+
+  it("projeta peso e cubagem na ordem sugerida sem contar carga entregue nem gravar", async () => {
+    const viagem = await viajar("ROUTE", ["Votuporanga - SP", "Catanduva - SP", "Fernandópolis - SP"]);
+    const [entregue, primeira, segunda] = viagem.cargaIds;
+    await banco.default.vehicle.update({ where: { id: veiculoId }, data: { capacity: 15, cubicCapacity: 3 } });
+    try {
+      await banco.default.collection.update({ where: { id: entregue }, data: { status: "DELIVERED", weight: 500, cubicMeters: 50 } });
+      await banco.default.collection.update({ where: { id: primeira }, data: { weight: 12, cubicMeters: 2 } });
+      await banco.default.collection.update({ where: { id: segunda }, data: { weight: 8, cubicMeters: null } });
+      const { status, corpo } = await sugerir(viagem.id);
+      expect(status).toBe(200);
+      expect(corpo.ocupacao?.inicial).toMatchObject({ excesso: true, peso: { total: 20, capacidade: 15 }, cubagem: { total: 2, semMedida: 1 } });
+      expect(corpo.ocupacao?.aposEntrega[entregue]).toBeUndefined();
+      const pendentes = corpo.ordem.filter(id => id !== entregue);
+      const ultima = pendentes[pendentes.length - 1];
+      expect(corpo.ocupacao?.aposEntrega[ultima]).toMatchObject({ excesso: false, peso: { total: 0, semMedida: 0 }, cubagem: { total: 0, semMedida: 0 } });
+      expect(await ordemGravada(viagem.id)).toEqual(viagem.cargaIds);
+      expect(await banco.sistema.auditLog.count({ where: { entityId: viagem.id } })).toBe(0);
+    } finally {
+      await banco.default.vehicle.update({ where: { id: veiculoId }, data: { capacity: null, cubicCapacity: null } });
     }
   });
 

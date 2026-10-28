@@ -7,6 +7,7 @@ import { ORDER_LOCKED, ordenarParadas } from '@/lib/viagem';
 import { lugaresDaViagem, pontosDaConta, roteiroDaViagem, roteiroSchema } from '@/lib/roteiro';
 import { distanciaPorEstrada } from '@/lib/rota-osrm';
 import { municipios } from '@/lib/municipios';
+import { ocupacaoDoRoteiro, VEICULO_DA_OCUPACAO_SELECT, CARGA_DA_OCUPACAO_SELECT } from '@/lib/ocupacao';
 
 /**
  * A ordem sugerida das entregas da viagem: pelo endereço localizado de cada
@@ -36,8 +37,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       where: { id: manifestId },
       select: {
         status: true,
+        vehicle: { select: VEICULO_DA_OCUPACAO_SELECT },
         collections: {
-          select: { id: true, origin: true, destination: true, status: true, manifestSequence: true, createdAt: true, deliveryLat: true, deliveryLon: true },
+          select: { id: true, origin: true, destination: true, status: true, manifestSequence: true, createdAt: true, deliveryLat: true, deliveryLon: true, ...CARGA_DA_OCUPACAO_SELECT },
         },
       },
     });
@@ -51,7 +53,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // `null` sem `ROTA_URL` ou em qualquer falha do servidor de rotas: vale a linha reta.
     const distancia = await distanciaPorEstrada(pontosDaConta(lugares));
 
-    return NextResponse.json(roteiroDaViagem(cargas, municipios(), { voltar: parsed.data.voltar, distancia, lugares }));
+    const roteiro = roteiroDaViagem(cargas, municipios(), { voltar: parsed.data.voltar, distancia, lugares });
+    return NextResponse.json({ ...roteiro, ocupacao: ocupacaoDoRoteiro(cargas, roteiro.ordem, viagem.vehicle) });
   } catch (error) {
     console.error('Erro ao sugerir a ordem das entregas:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

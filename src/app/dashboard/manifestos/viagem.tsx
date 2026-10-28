@@ -18,6 +18,7 @@ import {
   type AcertoDaViagem,
 } from "@/lib/viagem";
 import { AVISO_DO_TRANSITO, avisoDaDistancia, type RespostaDoRoteiro } from "@/lib/roteiro";
+import { OcupacaoNaSugestao } from "./ocupacao-roteiro";
 import { enderecoCompleto } from "@/lib/endereco";
 import { rotuloDaRessalva, textoDasTentativas } from "@/lib/comprovantes";
 import type { MapaDaViagem } from "@/lib/mapa";
@@ -458,6 +459,7 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
             Contar a volta à origem
           </label>
         </div>
+        {sugestao.ocupacao && <OcupacaoNaSugestao ocupacao={sugestao.ocupacao.inicial} inicial />}
         {semLocal.size > 0 && (
           <p className="text-xs text-amber-700 dark:text-amber-400" data-sem-localizacao>
             {semLocal.size === 1 ? "1 entrega sem localização ficou" : `${semLocal.size} entregas sem localização ficaram`} no fim: nem o endereço nem a cidade do
@@ -484,6 +486,7 @@ function Rota({ manifesto, podeSugerir, onChange }: { manifesto: Manifesto; pode
                   <p className={`text-xs truncate ${semLocal.has(id) ? "text-amber-700 dark:text-amber-400" : "text-gray-500"}`}>
                     {sugestao.cidades[id] ?? `${carga.destination} · sem localização`}
                   </p>
+                  {sugestao.ocupacao?.aposEntrega[id] && <OcupacaoNaSugestao ocupacao={sugestao.ocupacao.aposEntrega[id]} />}
                 </div>
                 <span className="shrink-0 text-[11px] text-gray-500">era {ordem.indexOf(id) + 1}</span>
               </li>
