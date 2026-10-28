@@ -90,13 +90,22 @@ describe("observabilidade fiscal opcional", () => {
     expect(mocks.update).toHaveBeenCalledWith({ level: "ERROR", statusMessage: "Fiscal tool failed" });
   });
 
-  it("falhas de início ou exportação não repetem a ferramenta", async () => {
+  it("falhas de início não repetem a ferramenta", async () => {
     mocks.start.mockImplementation(() => { throw new Error("indisponivel"); });
     const { observarFerramentaFiscal } = await import("../src/lib/langfuse");
     const executar = vi.fn(async () => "ok");
     expect(await observarFerramentaFiscal("gerar_danfe", executar)).toBe("ok");
     expect(executar).toHaveBeenCalledTimes(1);
     expect(mocks.observation).not.toHaveBeenCalled();
+  });
+
+  it("falhas de exportação preservam resultado e execução única", async () => {
+    mocks.flush.mockRejectedValue(new Error("exportador indisponivel"));
+    const { observarFerramentaFiscal } = await import("../src/lib/langfuse");
+    const executar = vi.fn(async () => "ok");
+    expect(await observarFerramentaFiscal("gerar_danfe", executar)).toBe("ok");
+    expect(executar).toHaveBeenCalledTimes(1);
+    expect(mocks.end).toHaveBeenCalledTimes(1);
   });
 
   it("limita a espera pelo exportador e inicializa uma única vez", async () => {
