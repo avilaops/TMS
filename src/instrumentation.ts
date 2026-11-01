@@ -6,7 +6,10 @@
  * entregar nada.
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.TMS_EVENTOS === "off") return;
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const { iniciarLangfuse } = await import("@/lib/langfuse");
+  await iniciarLangfuse();
+  if (process.env.TMS_EVENTOS === "off") return;
   const { iniciarDespacho } = await import("@/lib/eventos");
   iniciarDespacho();
 }
