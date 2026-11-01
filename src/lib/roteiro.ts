@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { chaveDaCidade } from "@/lib/frete";
 import { normalizeText } from "@/lib/normalization";
+import type { OcupacaoDoRoteiro } from "@/lib/ocupacao";
 
 /**
  * Roteirização: a ordem sugerida das entregas de uma viagem.
@@ -349,6 +350,8 @@ export type MedidaDaDistancia = "reta" | "estrada";
 
 /** O que `POST /api/manifestos/[id]/roteiro` devolve. Não grava nada: quem aplica é `PUT .../ordem`. */
 export type RespostaDoRoteiro = Roteiro & {
+  /** Incluído pela rota; opcional para compatibilidade com respostas anteriores. */
+  ocupacao?: OcupacaoDoRoteiro;
   /** A cidade de origem achada ("Mirassol/SP"), ou `null`. */
   origem: string | null;
   voltar: boolean;

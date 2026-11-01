@@ -4,6 +4,7 @@ import { ate, clicar, desmontarTudo, montar, porTexto } from "./tela";
 import type { Manifesto } from "../src/app/dashboard/manifestos/carregar";
 import type { LinhaDaTela, RespostaDaConciliacao, TituloDaTela } from "../src/lib/conciliacao";
 import type { RespostaDoRoteiro } from "../src/lib/roteiro";
+import { ocupacaoDaViagem } from "../src/lib/ocupacao";
 
 /**
  * As duas telas novas: a sugestão de ordem na aba Rota da viagem e a
@@ -120,6 +121,28 @@ describe("aba Rota: sugerir ordem", () => {
     expect(pedidos.find((p) => p.method === "PUT")).toMatchObject({ url: "/api/manifestos/viagem-1/ordem", body: { collectionIds: ["b", "a", "c"] } });
     expect(paradas(tela, "data-parada")).toEqual(["b", "a", "c"]);
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("mostra excesso inicial e ocupação restante sem tratar medida ausente como capacidade livre", async () => {
+    const veiculo = { capacity: 15, cubicCapacity: 3 };
+    const inicial = ocupacaoDaViagem([{ weight: 12, cubicMeters: 2 }, { weight: 8 }], veiculo);
+    const pedidos = api(({ url }) => {
+      if (url === "/api/equipe/ajudantes") return { body: [] };
+      if (url.endsWith("/roteiro")) return { body: { ...SUGESTAO, ocupacao: {
+        inicial,
+        aposEntrega: { b: ocupacaoDaViagem([{ weight: 8 }], veiculo), a: ocupacaoDaViagem([], veiculo) },
+      } } };
+      return undefined;
+    });
+    const tela = await abrirRota(manifesto());
+    await clicar(tela.querySelector("[data-sugerir-ordem]")!);
+    await ate(() => expect(tela.querySelector("[data-ocupacao-inicial]")).not.toBeNull());
+    expect(tela.querySelector("[data-ocupacao-inicial]")!.textContent).toContain("Peso 20 de 15 kg (134%)");
+    expect(tela.querySelector("[data-ocupacao-inicial]")!.textContent).toContain("Excesso de peso");
+    expect(tela.querySelector("[data-ocupacao-inicial]")!.textContent).toContain("1 carga sem cubagem");
+    expect(tela.querySelector('[data-parada-sugerida="b"]')!.textContent).toContain("Após a entrega: Peso 8 de 15 kg (53%)");
+    expect(tela.textContent).toContain("Reordenar as entregas não elimina o excesso inicial");
+    expect(pedidos.some(pedido => pedido.method === "PUT")).toBe(false);
   });
 
   it("Cancelar fecha sem gravar; ordem que já é a melhor não tem o que aplicar", async () => {
