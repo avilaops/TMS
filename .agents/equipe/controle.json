@@ -213,6 +213,29 @@
           "note": "PR #31 mergeada após aprovação da CI completa. Checkout principal sincronizado; alterações locais preexistentes preservadas e conferidas por SHA-256."
         }
       ]
+    },
+    {
+      "id": "T-0010",
+      "title": "AVL-371 — Capacidade na sugestão do roteiro",
+      "objective": "Exibir peso e cubagem das cargas a entregar e saldo após cada descarga na ordem sugerida.",
+      "assignee": "agent-code",
+      "priority": "medium",
+      "status": "em_revisao",
+      "acceptanceCriteria": [
+        "Excluir entregues e preservar avisos de medidas e capacidades ausentes",
+        "Reutilizar arredondamento de ocupacao.ts sem gravar durante a sugestão",
+        "Preservar autorização e isolamento por empresa",
+        "Validar testes puros, API, tela, typecheck e build na CI"
+      ],
+      "evidence": "PR https://github.com/avilaops/TMS/pull/33, código bb6f70d. CI https://github.com/avilaops/TMS/actions/runs/40648354236 aprovada: 2512 testes em 96 arquivos, typecheck e build Docker. Baseline 40647574350 confirmou as duas falhas esperadas. Revisão independente sem achados bloqueantes. Linear In Review; sem merge ou deploy.",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-10-28",
+          "status": "em_revisao",
+          "note": "Implementação concluída em branch e validada no GitHub CI. Projeção de descargas, sem otimização com restrição de capacidade ou coletas intermediárias."
+        }
+      ]
     }
   ],
   "decisions": [

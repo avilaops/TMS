@@ -81,6 +81,29 @@ export function ocupacaoDaViagem(cargas: readonly CargaDaOcupacao[], veiculo: Ve
   return { peso, cubagem, excesso: peso.excesso || cubagem.excesso, semCapacidade: peso.capacidade === null && cubagem.capacidade === null };
 }
 
+export type OcupacaoDoRoteiro = {
+  inicial: Ocupacao;
+  /** Saldo após a descarga completa; cargas já entregues não têm projeção. */
+  aposEntrega: Record<string, Ocupacao>;
+};
+
+/** Projeção somente de entregas: não inventa coletas intermediárias ou medidas. */
+export function ocupacaoDoRoteiro(
+  cargas: readonly (CargaDaOcupacao & { id: string; status: string })[],
+  ordem: readonly string[],
+  veiculo: VeiculoDaOcupacao | null | undefined,
+): OcupacaoDoRoteiro {
+  const pendentes = new Map(cargas.filter(carga => carga.status !== "DELIVERED").map(carga => [carga.id, carga]));
+  const inicial = ocupacaoDaViagem([...pendentes.values()], veiculo);
+  const aposEntrega: Record<string, Ocupacao> = {};
+  for (const id of ordem) {
+    if (!pendentes.delete(id)) continue;
+    // Recalcular com os valores originais evita subtrair totais arredondados.
+    aposEntrega[id] = ocupacaoDaViagem([...pendentes.values()], veiculo);
+  }
+  return { inicial, aposEntrega };
+}
+
 const numero = (valor: number, maximo = 1) => valor.toLocaleString("pt-BR", { maximumFractionDigits: maximo });
 
 function textoDaMedida(rotulo: string, unidade: string, medida: Medida): string | null {
