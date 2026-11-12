@@ -21,6 +21,8 @@ existentes para o código.
 - [Dimensões dos volumes](superpowers/plans/2026-10-18-dimensoes-volumes.md).
 - [Proposta comercial da cotação](superpowers/plans/2026-10-18-proposta-comercial-cotacao.md).
 - [Empresa e proposta comercial](superpowers/plans/2026-10-18-ux-empresa-proposta.md).
+- [XML de subcontratadas e consulta à SEFAZ](superpowers/plans/2026-11-12-avl-412-xml-subcontratadas.md).
+- [Validação integral em jobs de um minuto](superpowers/plans/2026-11-12-avl-412-ci-curta.md).
 
 Esses documentos registram decisões de entregas específicas. Para descobrir o
 comportamento atual, confira os arquivos vinculados na arquitetura, seus testes

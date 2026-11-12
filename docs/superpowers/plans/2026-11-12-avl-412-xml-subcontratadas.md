@@ -67,7 +67,7 @@ documento. Consulta ocorre fora da transação e revalida vínculo ao gravar.
   malformada e timeout; confirmar que falha não apaga evidência anterior.
 - [x] Testar resposta tardia em documento excluído/contrato alterado.
 - [x] Aplicar cobertura de MDF-e à saída e testar homologação/invalidação.
-- [ ] Verificar SQL reaplicável e integração com PostgreSQL no GitHub.
+- [x] Verificar SQL reaplicável e integração com PostgreSQL no GitHub.
 
 ## Task 3: tela, documentação e verificação
 
@@ -81,7 +81,7 @@ documento. Consulta ocorre fora da transação e revalida vínculo ao gravar.
 - [x] Conferir desktop/celular e registrar evidências reproduzíveis.
 - [x] Atualizar limites no README/roadmap e registrar estado local/Linear.
 - [x] Executar lint do escopo, typecheck e `git diff --check`.
-- [ ] Enviar branch e PR de revisão; executar testes completos e build no
+- [x] Enviar branch e PR de revisão; executar testes completos e build no
   GitHub, sem polling contínuo. Registrar os resultados reais.
 - [x] Revisar o diff inteiro e corrigir achados antes de concluir.
 
@@ -95,7 +95,10 @@ SQL aplicado e reaplicado. Capturas desktop/mobile e limites da validação em
 Continuação solicitada pelo usuário: resolver a CI cumprindo o limite de
 90 segundos por job, sem presumir aprovação de exceção. Execução detalhada
 em [CI curta](2026-11-12-avl-412-ci-curta.md). Não declarar CI aprovada nem
-encerrar a AVL-412 sem evidência integral. Sem merge, migração ou deploy.
+encerrar a AVL-412 sem evidência integral. Run 43312304738, tentativa 2,
+aprovou 2.613 casos distintos, tipos, build e imagem no código 64e4b41.
+Resultados e limites em [evidência da CI](../../../artifacts/avl-412-ci-43312304738.md).
+Ajustes posteriores mantêm os gates da PR #35. Sem merge, migração ou deploy.
 
 O usuário aprovou implementar o desenho neste checkout. Este plano detalha a
 execução já autorizada; não adiciona outra etapa de autorização.

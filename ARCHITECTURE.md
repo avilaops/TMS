@@ -75,7 +75,7 @@ negócio detalhadas, matrizes de perfis e limites de cada fluxo.
 | Cobrança | Vencimentos, Pix, gateway por empresa e conferência dos pagamentos | [cobranca](src/lib/cobranca.ts), [pix](src/lib/pix.ts), [gateway](src/lib/cobranca-gateway.ts), [gateway-db](src/lib/cobranca-gateway-db.ts), [mercado-pago](src/lib/mercado-pago.ts) |
 | Frota | Manutenção, abastecimento, pneus, documentos e checklist | [frota](src/lib/frota.ts), [frota-db](src/lib/frota-db.ts) |
 | Equipe | Ajudantes, ausências, adiantamentos, remuneração e fechamento | [equipe](src/lib/equipe.ts), [equipe-db](src/lib/equipe-db.ts), [remuneracao](src/lib/remuneracao.ts), [remuneracao-db](src/lib/remuneracao-db.ts) |
-| Parceiros | Cadastro de terceiros, frete contratado e documentos de subcontratação | [parceiros](src/lib/parceiros.ts), [frete-contratado](src/lib/frete-contratado.ts), [frete-contratado-db](src/lib/frete-contratado-db.ts), [subcontratacao](src/lib/subcontratacao.ts), [subcontratacao-db](src/lib/subcontratacao-db.ts), [redespacho](src/lib/redespacho.ts) |
+| Parceiros | Cadastro de terceiros, frete contratado e documentos de subcontratação | [parceiros](src/lib/parceiros.ts), [frete-contratado](src/lib/frete-contratado.ts), [frete-contratado-db](src/lib/frete-contratado-db.ts), [subcontratacao](src/lib/subcontratacao.ts), [subcontratacao-db](src/lib/subcontratacao-db.ts), [subcontratacao-xml](src/lib/subcontratacao-xml.ts), [subcontratacao-consulta](src/lib/subcontratacao-consulta.ts), [subcontratacao-fiscal-db](src/lib/subcontratacao-fiscal-db.ts), [redespacho](src/lib/redespacho.ts) |
 | Ocorrências | Abertura, mensagens e tratamento dos chamados | [ocorrencias](src/lib/ocorrencias.ts), [ocorrencias-db](src/lib/ocorrencias-db.ts) |
 | NF-e | Parser XML, conferência da chave, sugestão de carga, importação e vínculo da nota à carga | [nfe](src/lib/nfe.ts), [nfe-db](src/lib/nfe-db.ts), [chave-dfe](src/lib/chave-dfe.ts), [rotas](src/app/api/fiscal/notas/route.ts) |
 | CT-e | Preparação, XML, assinatura, transmissão, consultas, eventos e persistência | [cte](src/lib/cte.ts), [cte-db](src/lib/cte-db.ts), [protocolo e construção](src/lib/cte) |
@@ -116,12 +116,21 @@ Monitor de Notas, suas fontes e a separação de responsabilidades, consulte
 
 ## Construção, testes e publicação
 
-O [workflow](.github/workflows/deploy-production.yml) possui a cadeia
-`checks → image → deploy`. `checks` prepara PostgreSQL 18 isolado, gera o
-cliente Prisma, aplica o schema/políticas e executa typecheck e Vitest.
-`image` constrói a imagem do [Dockerfile](Dockerfile) e, fora de PR, publica no
-GHCR. O deploy exige a branch principal, a variável `DEPLOY_ENABLED` e os
-segredos de SSH configurados; usa a imagem por digest e verifica saúde.
+O [workflow](.github/workflows/deploy-production.yml) limita cada job a um
+minuto. `dependencies` instala e gera Prisma com cache exato de pacotes/schema.
+Os grupos de testes usam PostgreSQL 18 e RLS. A suíte longa de MDF-e é dividida
+por cenários; a inspeção acumulada dos segredos roda em ambas as partes.
+`build` produz standalone e tipos Next. `source-typecheck` confere a fonte;
+`typecheck` aproveita seu estado incremental e confere também os tipos gerados
+nesse build. `checks` exige aprovação de todos os testes e tipos.
+
+Após `checks`, `image` usa [Dockerfile.ci](Dockerfile.ci) para empacotar o
+standalone em Node 22/Debian e testa Sharp e saúde com PostgreSQL. Artefatos
+pertencem ao mesmo run/commit. O [Dockerfile](Dockerfile) mantém a receita
+completa de construção; a CI usa a receita de runtime para separar os tempos.
+Publicação no GHCR exige a branch padrão e evento fora de PR. O deploy exige
+também `DEPLOY_ENABLED` e os segredos SSH; usa a imagem por digest e verifica
+saúde. Nenhuma imagem é publicada por uma pull request.
 
 Builds de aplicação são executados somente pelo GitHub CI. Não executar código
 de aplicação, testes, migrações ou build no servidor `applications`. Nenhuma

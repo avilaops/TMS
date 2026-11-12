@@ -62,10 +62,21 @@ conferência acumulada de segredos. Nenhum caso foi retirado da suíte.
   54 jobs aprovados, incluindo ambos typechecks e build. Os 57 casos do grupo
   1 passaram, mas o job excedeu o minuto e foi corretamente reprovado.
 - Matriz corrigida: 101 arquivos em 52 grupos; MDF-e dividido por cenários.
-  17 testes locais do planejador aprovados; validação integral ainda pendente.
+  17 testes locais do planejador aprovados.
+- Run [43312304738](https://github.com/avilaops/TMS/actions/runs/43312304738):
+  primeira tentativa aprovou MDF-e em 49/54 s e 55 jobs. Outro grupo atingiu
+  timeout após 32 s na preparação do PostgreSQL; os casos de baixa passaram,
+  mas driver-shell não terminou. Jobs falhos/dependentes reexecutados no mesmo
+  SHA. O timeout inicial permanece como falha observada. A tentativa 2 ficou
+  **success**: 2.613 casos distintos, ambos typechecks, build e imagem.
+  Foram 2.615 execuções porque dois testes de segredo se repetem; nenhum
+  cenário ficou sem cobertura. Maior job aprovado: 56 s; imagem: 35 s.
+  [Resultado por job](avl-412-ci-43312304738.md).
 
-PR de revisão: [#35](https://github.com/avilaops/TMS/pull/35). A imagem
-e a aprovação final dependem de uma execução integral bem-sucedida.
+PR de revisão: [#35](https://github.com/avilaops/TMS/pull/35). O ajuste
+seguinte coloca o PostgreSQL descartável em tmpfs de até 512 MiB e reaplica
+duas vezes o SQL 043 no runner. A confirmação dessa revisão fica nos
+[checks da PR](https://github.com/avilaops/TMS/pull/35/checks).
 
 Revisão de código realizada pelo próprio agente com o checklist de revisão;
 não houve revisão independente nem autorização para agentes adicionais.
