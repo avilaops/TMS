@@ -11,104 +11,188 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  # As rotas conversam com um Postgres de verdade: autorizacao e rastreio se
-  # provam pelo que o banco devolve, nao pelo typecheck. Sem este job,
-  # `npm test` nunca rodaria fora da maquina de quem escreveu.
-  checks:
+  dependencies:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 1
+    outputs:
+      key: ${{ steps.identity.outputs.key }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          check-latest: true
+          cache: npm
+      - id: identity
+        env:
+          MODULES_KEY: tms-modules-v1-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('package-lock.json', 'package.json', 'prisma/schema.prisma') }}
+        run: echo "key=$MODULES_KEY" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: modules
+        with:
+          path: node_modules
+          key: ${{ steps.identity.outputs.key }}
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npx prisma generate --schema=prisma/schema.prisma
+
+  tests:
+    needs: dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
     services:
       postgres:
-        # Mesma versao do PostgreSQL do servidor de producao. Vem do espelho
-        # publico da AWS: o Docker Hub recusa o runner por limite de downloads
-        # sem login ("toomanyrequests"), e a publicacao parava aqui.
         image: mirror.gcr.io/library/postgres:18-alpine
         env:
           POSTGRES_USER: tms
           POSTGRES_PASSWORD: tms
           POSTGRES_DB: tms_test
-        ports:
-          - 5432:5432
+        ports: ['5432:5432']
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 1s
+          --health-timeout 2s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://tms:tms@127.0.0.1:5432/tms_test?schema=public
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/restore-ci
         with:
-          node-version: 22
-          # O jsdom dos testes de tela exige Node >= 22.22.2. Sem isto vale a 22
-          # que estiver em cache no runner, que pode ser mais antiga.
-          check-latest: true
-          cache: npm
-      - run: npm ci
-      - run: npx prisma generate --schema=prisma/schema.prisma
+          modules-key: ${{ needs.dependencies.outputs.key }}
       - run: npx prisma db push --schema=prisma/schema.prisma
       - run: npm run db:lojas-logistica
-      # Papel, politicas de isolamento por empresa e gatilhos (prisma/sql/010-rls.sql).
       - run: npm run db:rls
-      - run: npm run typecheck
-      - run: npm test
+      # Todos os arquivos entram em exatamente um shard, com Postgres isolado.
+      - run: npm test -- --shard=${{ matrix.shard }}/32
 
-  # Construcao e implantacao moram aqui, e nao em `uses: avilaops/infra/...`:
-  # este repositorio e publico e o avilaops/infra e privado, e o GitHub nao
-  # deixa repositorio publico chamar workflow reutilizavel de repositorio
-  # privado: o run termina em falha de inicializacao sem executar nada. Foi o
-  # que derrubou todo push daqui entre 05 e 06/10/2026.
-  #
-  # Os dois jobs abaixo sao copia de avilaops/infra
-  # (`.github/workflows/container.yml` e `deploy-ssh.yml`), com as mesmas
-  # actions fixadas por SHA. Mudou la, traga para ca.
-  #
-  # `image` depende de `checks` para que teste vermelho barre a publicacao da
-  # imagem e, por tabela, o deploy.
+  build:
+    needs: dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      # O typecheck posterior inclui os validadores gerados por este build.
+      TMS_CI_TYPECHECKED: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/restore-ci
+        with:
+          modules-key: ${{ needs.dependencies.outputs.key }}
+      - run: npm run build
+      - name: Preparar standalone e tipos deste commit
+        run: |
+          set -euo pipefail
+          test -f .next/standalone/server.js
+          mkdir -p ci-standalone/.next/static ci-standalone/public
+          cp -a .next/standalone/. ci-standalone/
+          cp -a .next/static/. ci-standalone/.next/static/
+          cp -a public/. ci-standalone/public/
+          tar -czf standalone.tgz -C ci-standalone .
+          tar -czf next-types.tgz .next/types next-env.d.ts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: standalone-${{ github.sha }}
+          path: standalone.tgz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: next-types-${{ github.sha }}
+          path: next-types.tgz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+
+  typecheck:
+    needs: [dependencies, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/restore-ci
+        with:
+          modules-key: ${{ needs.dependencies.outputs.key }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: next-types-${{ github.sha }}
+      - run: tar -xzf next-types.tgz
+      - run: npm run typecheck
+
+  checks:
+    if: always()
+    needs: [tests, typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Exigir suite integral e tipos aprovados
+        env:
+          TESTS_RESULT: ${{ needs.tests.result }}
+          TYPES_RESULT: ${{ needs.typecheck.result }}
+        run: |
+          test "$TESTS_RESULT" = success
+          test "$TYPES_RESULT" = success
+
   image:
     name: image / build
-    needs: checks
+    needs: [checks, build]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 1
     permissions:
       contents: read
       packages: write
+    services:
+      postgres:
+        image: mirror.gcr.io/library/postgres:18-alpine
+        env:
+          POSTGRES_USER: tms
+          POSTGRES_PASSWORD: tms
+          POSTGRES_DB: tms_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 1s
+          --health-timeout 2s
+          --health-retries 10
     env:
-      # Pull request constroi e valida; so o push na main publica a imagem.
-      PUBLISH: ${{ github.event_name != 'pull_request' }}
-      # Vazios quando o repositorio nao tem os segredos: o login e pulado.
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     outputs:
-      image: ${{ steps.result.outputs.image }}
+      image: ${{ steps.publish.outputs.image }}
     steps:
-      - name: Obter codigo do commit
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Validar publicacao
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: standalone-${{ github.sha }}
+      - name: Construir imagem do standalone aprovado
         run: |
           set -euo pipefail
-          if [[ "$PUBLISH" == true ]]; then
-            [[ "$GITHUB_EVENT_NAME" != pull_request* ]]
-            [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]]
-          fi
-          printf 'IMAGE_NAME=ghcr.io/%s\n' "${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
-      # O construtor de imagens (moby/buildkit) so existe no Docker Hub, que
-      # recusa ou demora a responder ao runner sem login. Com os segredos
-      # DOCKERHUB_USERNAME e DOCKERHUB_TOKEN no repositorio, o login acontece
-      # antes; sem eles o passo e pulado e tudo segue como antes.
-      - name: Autenticar no Docker Hub
-        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
-        with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_TOKEN }}
-      - name: Preparar Docker
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+          mkdir ci-runtime
+          tar -xzf standalone.tgz -C ci-runtime
+          docker build -f Dockerfile.ci --build-arg GIT_SHA="$GITHUB_SHA" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            -t "tms-ci:$GITHUB_SHA" ci-runtime
+      - name: Conferir Sharp e saude com PostgreSQL real
+        run: |
+          set -euo pipefail
+          docker run --rm "tms-ci:$GITHUB_SHA" node -e \
+            'require("sharp")({create:{width:1,height:1,channels:3,background:"#fff"}}).png().toBuffer().then(b=>{if(!b.length)process.exit(1)})'
+          docker run -d --name tms-ci --network host \
+            -e 'DATABASE_URL=postgresql://tms:tms@127.0.0.1:5432/tms_test?schema=public' \
+            "tms-ci:$GITHUB_SHA"
+          for _ in {1..15}; do
+            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/tms-health.json; then break; fi
+            sleep 0.5
+          done
+          node -e 'const d=JSON.parse(require("fs").readFileSync("/tmp/tms-health.json","utf8"));if(d.status!=="ok"||d.commit!==process.env.GITHUB_SHA)process.exit(1)'
       - name: Autenticar no GHCR
         if: env.PUBLISH == 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
@@ -116,43 +200,36 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Construir e validar imagem
-        id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64
-          push: ${{ env.PUBLISH == 'true' }}
-          tags: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-          build-args: |
-            GIT_SHA=${{ github.sha }}
-          cache-from: type=gha,scope=container
-          cache-to: type=gha,mode=max,scope=container
-      - name: Identificar imagem publicada
+      - name: Publicar somente na branch padrao
+        id: publish
         if: env.PUBLISH == 'true'
-        id: result
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
-          printf 'image=%s@%s\n' "$IMAGE_NAME" "$DIGEST" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" != pull_request* ]]
+          [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]]
+          image_name="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker tag "tms-ci:$GITHUB_SHA" "$image_name:sha-$GITHUB_SHA"
+          docker push "$image_name:sha-$GITHUB_SHA"
+          published=$(docker image inspect "$image_name:sha-$GITHUB_SHA" --format '{{index .RepoDigests 0}}')
+          [[ "$published" =~ ^ghcr\.io/avilaops/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
+          printf 'image=%s\n' "$published" >> "$GITHUB_OUTPUT"
+      - name: Logs e limpeza do container de teste
+        if: always()
+        run: |
+          docker logs tms-ci 2>&1 || true
+          docker rm -f tms-ci >/dev/null 2>&1 || true
 
   deploy:
     name: deploy
     needs: image
-    # So a main, so por push ou disparo manual, e so com o deploy ligado na
-    # variavel do repositorio. Pull request, inclusive de fork (o repositorio e
-    # publico), nunca chega aqui nem ve os segredos.
     if: >-
       github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
       && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 1
     environment: production
     permissions:
       contents: read

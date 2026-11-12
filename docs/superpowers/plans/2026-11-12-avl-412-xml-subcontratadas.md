@@ -92,9 +92,10 @@ PostgreSQL real; typecheck, lint do escopo sem avisos e diff sem erros.
 SQL aplicado e reaplicado. Capturas desktop/mobile e limites da validação em
 [avl-412-verificacao.md](../../../artifacts/avl-412-verificacao.md).
 
-Pendente: decisão do usuário sobre a CI atual exceder o limite de 90 segundos
-por job. Não executar workflow, declarar CI aprovada ou encerrar a AVL-412
-sem resolver essa decisão. Sem merge, migração ou deploy em produção.
+Continuação solicitada pelo usuário: resolver a CI cumprindo o limite de
+90 segundos por job, sem presumir aprovação de exceção. Execução detalhada
+em [CI curta](2026-11-12-avl-412-ci-curta.md). Não declarar CI aprovada nem
+encerrar a AVL-412 sem evidência integral. Sem merge, migração ou deploy.
 
 O usuário aprovou implementar o desenho neste checkout. Este plano detalha a
 execução já autorizada; não adiciona outra etapa de autorização.
