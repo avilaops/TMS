@@ -1237,7 +1237,7 @@ model FreightPayment {
 
 // Documento fiscal que a transportadora subcontratada emitiu para a viagem: o
 // CT-e de subcontratação dela (um ou mais por carga) e o MDF-e dela (um por UF
-// de descarregamento). Só a chave e a data: nada daqui é emitido por este
+// de descarregamento). Chave, XML privado e evidência de consulta: nada daqui é emitido por este
 // sistema (src/lib/subcontratacao.ts).
 model SubcontractDocument {
   tenantId     String   @default(dbgenerated("current_setting('app.tenant_id'::text)"))
@@ -1248,6 +1248,15 @@ model SubcontractDocument {
   collectionId String? // CTE: a carga que o CT-e do subcontratado cobre
   unloadState  String? // MDFE: a UF de descarregamento
   issuedAt     DateTime // dia da emissão, gravado à meia-noite UTC
+  xml           String?   @db.Text
+  xmlImportedAt DateTime?
+  environment   String? // HOMOLOGACAO, PRODUCAO; nulo no registro manual legado
+  protocol      String? // protocolo recebido no XML, sem declarar consulta real
+  sefazCode     Int?
+  sefazReason   String?
+  sefazProtocol String?
+  sefazCheckedAt DateTime?
+  sefazRevision  Int       @default(0) // impede respostas tardias de sobrescrever uma consulta nova
   createdById  String?
   createdAt    DateTime @default(now())
 

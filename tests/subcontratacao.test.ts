@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getServerSession } from "next-auth";
 import { aplicarSugestao, camposDaSugestao, entradasDoFormulario, FORMULARIO_EM_BRANCO } from "../src/app/dashboard/fiscal/mdfe/formulario";
 import { digitoDaChave } from "../src/lib/chave-dfe";
@@ -34,6 +34,7 @@ import {
 } from "../src/lib/subcontratacao";
 import { MANIFEST_NOT_FOUND_MESSAGE } from "../src/lib/manifestos";
 import { EMPRESA_OUTRA, EMPRESA_PADRAO } from "./empresas-de-teste";
+import { CHAVE_CTE_SUB, CHAVE_MDFE_SUB, xmlDaSubcontratada } from "./subcontratacao-xml-apoio";
 
 vi.mock("next-auth", () => ({ getServerSession: vi.fn() }));
 
@@ -309,10 +310,172 @@ suite("rotas da subcontratação contratada", () => {
   let banco: typeof import("../src/lib/prisma");
   let rota: typeof import("../src/app/api/manifestos/[id]/subcontratacao/route");
   let documentoRota: typeof import("../src/app/api/manifestos/[id]/subcontratacao/[documentoId]/route");
+  let importarRota: typeof import("../src/app/api/manifestos/[id]/subcontratacao/importar/route");
+  let xmlRota: typeof import("../src/app/api/manifestos/[id]/subcontratacao/[documentoId]/xml/route");
+  let consultarRota: typeof import("../src/app/api/manifestos/[id]/subcontratacao/[documentoId]/consultar/route");
   let freteRota: typeof import("../src/app/api/manifestos/[id]/frete/route");
   let pagamentosRota: typeof import("../src/app/api/manifestos/[id]/frete/pagamentos/route");
   let reciboRota: typeof import("../src/app/api/manifestos/[id]/frete/recibo/route");
   let sugestaoRota: typeof import("../src/app/api/manifestos/[id]/frete/sugestao-mdfe/route");
+
+  describe("XML privado da subcontratada", () => {
+    const importar = (viagemId: string, corpo: Record<string, unknown>) => importarRota.POST(req("POST", corpo), ctx(viagemId));
+
+    it("importa CT-e com vínculo, guarda arquivo privado e audita sem XML", async () => {
+      const viagem = await viajar();
+      entrarComo("OPERATION");
+      const xml = xmlDaSubcontratada();
+      const resposta = await chamar(importar(viagem.id, { xml, collectionId: viagem.cargas[0].id }));
+      expect(resposta).toMatchObject({ status: 201, corpo: { accessKey: CHAVE_CTE_SUB, hasXml: true, environment: "PRODUCAO", protocol: "135260000000300", sefazCode: null } });
+      expect(resposta.corpo).not.toHaveProperty("xml");
+      expect((await documentosDe(viagem.id))[0]).toMatchObject({ xml, collectionId: viagem.cargas[0].id });
+      const lista = await ler(viagem.id);
+      expect(JSON.stringify(lista.corpo)).not.toContain("<cteProc");
+      const auditoria = await trilha(viagem.contratoId);
+      expect(auditoria.at(-1)?.action).toBe("subcontratacao.importar");
+      expect(JSON.stringify(auditoria)).not.toContain("<cteProc");
+      const download = await xmlRota.GET(req(), ctxDocumento(viagem.id, resposta.corpo.id));
+      expect(download.status).toBe(200);
+      expect(await download.text()).toBe(xml);
+      expect(download.headers.get("cache-control")).toBe("private, no-store");
+      expect(download.headers.get("content-disposition")).toContain("attachment;");
+      expect(download.headers.get("x-content-type-options")).toBe("nosniff");
+    });
+
+    it("anexa XML ao registro manual correspondente sem duplicar nem mudar a carga", async () => {
+      const viagem = await viajar();
+      const manual = await registrar(viagem.id, { kind: "CTE", accessKey: CHAVE_CTE_SUB, collectionId: viagem.cargas[0].id, issuedAt: "2026-10-03" });
+      const importado = await chamar(importar(viagem.id, { xml: xmlDaSubcontratada(), collectionId: viagem.cargas[0].id }));
+      expect(importado.status).toBe(200);
+      expect(importado.corpo.id).toBe(manual.corpo.id);
+      expect(await documentosDe(viagem.id)).toHaveLength(1);
+      expect((await chamar(importar(viagem.id, { xml: xmlDaSubcontratada(), collectionId: viagem.cargas[0].id }))).status).toBe(409);
+    });
+
+    it("MDF-e obtém UF do arquivo e registra homologação sem cobrir produção", async () => {
+      const viagem = await viajar();
+      entrarComo("OPERATION");
+      expect(await chamar(importar(viagem.id, { xml: xmlDaSubcontratada("MDFE", "2"), unloadState: "RJ" }))).toMatchObject({ status: 201, corpo: { kind: "MDFE", accessKey: CHAVE_MDFE_SUB, unloadState: "MG", environment: "HOMOLOGACAO" } });
+      const { exigenciaSemMdfe } = await import("../src/lib/mdfe-db");
+      expect(await exigenciaSemMdfe(banco.default, viagem.id)).toMatchObject({ ufs: ["MG", "SP"] });
+    });
+
+    it("recusa CNPJ de outro parceiro, carga de outra viagem, XML grande e viagem cancelada", async () => {
+      const viagem = await viajar({ parceiroId: segundaId });
+      entrarComo("OPERATION");
+      expect((await chamar(importar(viagem.id, { xml: xmlDaSubcontratada(), collectionId: viagem.cargas[0].id }))).status).toBe(400);
+      const nossa = await viajar();
+      expect((await chamar(importar(nossa.id, { xml: xmlDaSubcontratada(), collectionId: daOutra.cargaId }))).status).toBe(400);
+      expect((await chamar(importar(nossa.id, { xml: "ç".repeat(600_000) }))).status).toBe(413);
+      expect((await chamar(importar(nossa.id, { xml: xmlDaSubcontratada() }))).status).toBe(400);
+      const cancelada = await viajar({ status: "CANCELLED" });
+      expect((await chamar(importar(cancelada.id, { xml: xmlDaSubcontratada("MDFE") }))).status).toBe(409);
+    });
+
+    it("serializa importações concorrentes da mesma chave", async () => {
+      const viagem = await viajar();
+      entrarComo("OPERATION");
+      const resultados = await Promise.all([importar(viagem.id, { xml: xmlDaSubcontratada("MDFE") }), importar(viagem.id, { xml: xmlDaSubcontratada("MDFE") })]);
+      expect(resultados.map((res) => res.status).sort()).toEqual([201, 409]);
+      expect(await documentosDe(viagem.id)).toHaveLength(1);
+    });
+
+    it("perfil de leitura não importa nem consulta, e documento de outra empresa é 404", async () => {
+      const viagem = await viajar();
+      entrarComo("FINANCE");
+      expect((await importar(viagem.id, { xml: xmlDaSubcontratada("MDFE") })).status).toBe(403);
+      expect((await consultarRota.POST(req("POST"), ctxDocumento(viagem.id, SEM_ID))).status).toBe(403);
+      entrarComo("OPERATION");
+      expect((await importar(daOutra.viagemId, { xml: xmlDaSubcontratada("MDFE") })).status).toBe(404);
+      expect((await xmlRota.GET(req(), ctxDocumento(daOutra.viagemId, daOutra.documentoId))).status).toBe(404);
+      expect((await consultarRota.POST(req("POST"), ctxDocumento(daOutra.viagemId, daOutra.documentoId))).status).toBe(404);
+    });
+  });
+
+  describe("consulta da subcontratada com banco real", () => {
+    afterEach(() => vi.restoreAllMocks());
+    const resposta = (cStat = 100) => ({
+      cStat, motivo: cStat === 100 ? "Autorizado" : "Situação consultada", ambiente: "PRODUCAO" as const,
+      protocolo: cStat === 217 ? null : { cStat: 100, motivo: "Autorizado", ambiente: "PRODUCAO" as const, chave: CHAVE_MDFE_SUB, numero: "135260000000300", recebidoEm: null, resumo: null, xml: "<protMDFe/>" },
+    });
+    async function preparar() {
+      const viagem = await viajar();
+      entrarComo("OPERATION");
+      const documento = await chamar(importarRota.POST(req("POST", { xml: xmlDaSubcontratada("MDFE") }), ctx(viagem.id)));
+      const credenciais = await import("../src/lib/cte-db");
+      vi.spyOn(credenciais, "credencialDaEmpresa").mockResolvedValue({ chavePem: "chave de teste", certificadoPem: "certificado de teste", titularPem: "titular de teste" });
+      const sefaz = await import("../src/lib/mdfe/sefaz");
+      const consulta = vi.spyOn(sefaz, "consultarMdfe").mockResolvedValue(resposta());
+      return { viagem, documentoId: documento.corpo.id, consulta };
+    }
+    it.each([100, 101, 132, 217])("grava evidência %i e só mantém a cobertura quando autorizado", async (codigo) => {
+      const { viagem, documentoId, consulta } = await preparar();
+      consulta.mockResolvedValue(resposta(codigo));
+      const retorno = await chamar(consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId)));
+      expect(retorno).toMatchObject({ status: 200, corpo: { sefazCode: codigo, environment: "PRODUCAO", sefazCheckedAt: expect.any(String) } });
+      const { exigenciaSemMdfe } = await import("../src/lib/mdfe-db");
+      expect((await exigenciaSemMdfe(banco.default, viagem.id))?.ufs).toEqual(codigo === 100 ? ["SP"] : ["MG", "SP"]);
+      expect((await trilha(viagem.contratoId)).at(-1)?.action).toBe("subcontratacao.consultar");
+    });
+    it("falha de transporte e resposta divergente preservam a última consulta válida", async () => {
+      const { viagem, documentoId, consulta } = await preparar();
+      await consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId));
+      consulta.mockResolvedValue({ ...resposta(), protocolo: { ...resposta().protocolo!, chave: CHAVE_CTE_SUB } });
+      expect((await consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId))).status).toBe(502);
+      const { SefazError } = await import("../src/lib/cte/soap");
+      consulta.mockRejectedValue(new SefazError("conexao", "Sem conexão com a SEFAZ", false));
+      expect((await consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId))).status).toBeGreaterThanOrEqual(500);
+      expect((await documentosDe(viagem.id))[0]).toMatchObject({ sefazCode: 100, sefazProtocol: "135260000000300" });
+      expect((await trilha(viagem.contratoId)).filter((linha) => linha.action === "subcontratacao.consultar")).toHaveLength(1);
+    });
+    it("consulta antiga não sobrescreve uma mais recente mesmo com relógio parado", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-12T18:00:00Z"));
+      try {
+        const { viagem, documentoId, consulta } = await preparar();
+        await consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId));
+        let terminar!: (value: ReturnType<typeof resposta>) => void;
+        let iniciou!: () => void;
+        const inicio = new Promise<void>((resolve) => { iniciou = resolve; });
+        consulta.mockImplementationOnce(() => { iniciou(); return new Promise((resolve) => { terminar = resolve; }); });
+        const antiga = consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId));
+        await inicio;
+        consulta.mockResolvedValueOnce(resposta(101));
+        expect((await consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId))).status).toBe(200);
+        terminar(resposta());
+        expect((await antiga).status).toBe(409);
+        expect((await documentosDe(viagem.id))[0].sefazCode).toBe(101);
+      } finally { vi.useRealTimers(); }
+    });
+
+    it("contrato cancelado durante a chamada recusa a resposta tardia", async () => {
+      const { viagem, documentoId, consulta } = await preparar();
+      let terminar!: (value: ReturnType<typeof resposta>) => void;
+      let iniciou!: () => void;
+      const inicio = new Promise<void>((resolve) => { iniciou = resolve; });
+      consulta.mockImplementationOnce(() => { iniciou(); return new Promise((resolve) => { terminar = resolve; }); });
+      const pendente = consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId));
+      await inicio;
+      await banco.default.freightContract.update({ where: { id: viagem.contratoId }, data: { status: "CANCELADO" } });
+      terminar(resposta());
+      expect((await pendente).status).toBe(409);
+      expect((await documentosDe(viagem.id))[0].sefazCode).toBeNull();
+    });
+
+    it("documento excluído durante a chamada não recebe resposta tardia", async () => {
+      const { viagem, documentoId, consulta } = await preparar();
+      let terminar!: (value: ReturnType<typeof resposta>) => void;
+      let iniciou!: () => void;
+      const inicio = new Promise<void>((resolve) => { iniciou = resolve; });
+      consulta.mockImplementation(() => { iniciou(); return new Promise((resolve) => { terminar = resolve; }); });
+      const pendente = consultarRota.POST(req("POST"), ctxDocumento(viagem.id, documentoId));
+      await inicio;
+      expect((await documentoRota.DELETE(req("DELETE"), ctxDocumento(viagem.id, documentoId))).status).toBe(200);
+      terminar(resposta());
+      expect((await pendente).status).toBe(404);
+      expect(await documentosDe(viagem.id)).toHaveLength(0);
+    });
+  });
 
   const sessao = vi.mocked(getServerSession);
   const ids = {} as Record<Perfil, string>;
@@ -409,6 +572,9 @@ suite("rotas da subcontratação contratada", () => {
     banco = await import("../src/lib/prisma");
     rota = await import("../src/app/api/manifestos/[id]/subcontratacao/route");
     documentoRota = await import("../src/app/api/manifestos/[id]/subcontratacao/[documentoId]/route");
+    importarRota = await import("../src/app/api/manifestos/[id]/subcontratacao/importar/route");
+    xmlRota = await import("../src/app/api/manifestos/[id]/subcontratacao/[documentoId]/xml/route");
+    consultarRota = await import("../src/app/api/manifestos/[id]/subcontratacao/[documentoId]/consultar/route");
     freteRota = await import("../src/app/api/manifestos/[id]/frete/route");
     pagamentosRota = await import("../src/app/api/manifestos/[id]/frete/pagamentos/route");
     reciboRota = await import("../src/app/api/manifestos/[id]/frete/recibo/route");
@@ -468,6 +634,9 @@ suite("rotas da subcontratação contratada", () => {
         ["GET /api/manifestos/[id]/subcontratacao", () => rota.GET(req(), ctx(viagem.id))],
         ["POST /api/manifestos/[id]/subcontratacao", () => rota.POST(req("POST", {}), ctx(viagem.id))],
         ["DELETE /api/manifestos/[id]/subcontratacao/[documentoId]", () => documentoRota.DELETE(req("DELETE"), ctxDocumento(viagem.id, SEM_ID))],
+        ["POST importar", () => importarRota.POST(req("POST", {}), ctx(viagem.id))],
+        ["GET XML", () => xmlRota.GET(req(), ctxDocumento(viagem.id, SEM_ID))],
+        ["POST consultar", () => consultarRota.POST(req("POST"), ctxDocumento(viagem.id, SEM_ID))],
         ["GET /api/manifestos/[id]/frete/sugestao-mdfe", () => sugestaoRota.GET(req(), ctx(viagem.id))],
       ];
       entrarComo(null);

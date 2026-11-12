@@ -19,7 +19,12 @@ type LeituraDb = Pick<Prisma.TransactionClient, "manifest" | "fiscalIssuer" | "v
 type LinhaDoDocumento = Prisma.SubcontractDocumentGetPayload<{ select: typeof DOCUMENT_SELECT }>;
 
 /** O documento como as rotas o devolvem: a data vira texto. */
-export const documentoParaATela = (linha: LinhaDoDocumento): DocumentoDaSubcontratada => ({ ...linha, issuedAt: linha.issuedAt.toISOString() });
+export const documentoParaATela = ({ xmlImportedAt, environment, protocol, sefazCode, sefazReason, sefazProtocol, sefazCheckedAt, ...linha }: LinhaDoDocumento): DocumentoDaSubcontratada => {
+  const base = { ...linha, issuedAt: linha.issuedAt.toISOString() };
+  // Mantém o contrato da resposta dos registros manuais antigos.
+  if (xmlImportedAt === null && environment === null && sefazCheckedAt === null) return base;
+  return { ...base, hasXml: xmlImportedAt !== null, environment, protocol, sefazCode, sefazReason, sefazProtocol, sefazCheckedAt: sefazCheckedAt?.toISOString() ?? null };
+};
 
 /**
  * A subcontratação da viagem: a transportadora do contrato de frete (quando há

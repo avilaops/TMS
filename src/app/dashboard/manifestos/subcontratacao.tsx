@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
+import { ImportarXmlDaSubcontratada } from "./subcontratacao-xml";
 import { diaNoBrasil } from "@/lib/financeiro";
 import { formatCalendarDate } from "@/lib/format";
 import { chaveEmBlocos } from "@/lib/minuta";
@@ -9,8 +10,8 @@ import { QUEM_EMITE_O_MDFE, ROTULO_DO_DOCUMENTO, UFS_DE_DESCARGA, avisoDeMdfeEmD
 
 /**
  * Os documentos da transportadora subcontratada numa viagem: o CT-e dela por
- * carga e o MDF-e dela por UF de descarregamento. Só guarda a chave e a data
- * (nada é emitido por aqui). Aparece na aba MDF-e da viagem (é a chave do
+ * carga e o MDF-e dela por UF de descarregamento. Guarda chave, XML privado
+ * e evidência da consulta explícita. Aparece na aba MDF-e da viagem (é a chave do
  * MDF-e dela que libera a saída quando é ela quem o emite) e na aba Frete, e
  * some quando a viagem não tem contrato de frete valendo com uma transportadora.
  *
@@ -173,6 +174,18 @@ export function DocumentosDaSubcontratada({
     }
   };
 
+  const consultar = async (documento: DocumentoDaSubcontratada) => {
+    setOcupado(`consultar:${documento.id}`); setErro("");
+    try {
+      const res = await fetch(`/api/manifestos/${manifestId}/subcontratacao/${documento.id}/consultar`, { method: "POST" });
+      if (!res.ok) setErro(await mensagemDeErro(res, "Não foi possível consultar a situação na SEFAZ."));
+      else { await ler(); aoMudar?.(); }
+    } catch { setErro("Não foi possível consultar a SEFAZ. A evidência anterior foi preservada."); }
+    finally { setOcupado(null); }
+  };
+
+  const situacao = (documento: DocumentoDaSubcontratada) => ({ 100: "Autorizado", 101: "Cancelado", 132: "Encerrado", 217: "Não consta" }[documento.sefazCode ?? 0] ?? "Não consultado");
+
   const linha = (documento: DocumentoDaSubcontratada, titulo: string) => (
     <li key={`${documento.id}:${titulo}`} data-documento-da-subcontratada={documento.accessKey} className="flex items-center gap-2 py-1">
       <div className="min-w-0 flex-1">
@@ -180,6 +193,16 @@ export function DocumentosDaSubcontratada({
           {titulo} · {formatCalendarDate(documento.issuedAt)}
         </p>
         <p className="font-mono text-[10px] text-gray-500 break-all">{chaveEmBlocos(documento.accessKey)}</p>
+        <p className="text-xs text-gray-600 dark:text-gray-400">
+          {documento.environment === "HOMOLOGACAO" ? "Homologação · " : documento.environment === "PRODUCAO" ? "Produção · " : ""}
+          {documento.protocol ? "Protocolo no XML · " : ""}{situacao(documento)}
+          {documento.sefazCheckedAt ? ` · ${new Date(documento.sefazCheckedAt).toLocaleString("pt-BR")}` : ""}
+        </p>
+        {documento.sefazCode && <p className="text-[11px] text-gray-500 break-words">{documento.sefazCode} · {documento.sefazReason}</p>}
+        <div className="mt-1 flex flex-wrap gap-2">
+          {documento.hasXml && <a href={`/api/manifestos/${manifestId}/subcontratacao/${documento.id}/xml`} download className="rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs text-blue-700 dark:text-blue-300">Baixar XML</a>}
+          {escreve && <button type="button" data-consultar-documento={documento.id} disabled={ocupado !== null} onClick={() => void consultar(documento)} className="rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs text-blue-700 dark:text-blue-300 disabled:opacity-50">{ocupado === `consultar:${documento.id}` ? "Consultando…" : "Consultar na SEFAZ"}</button>}
+        </div>
       </div>
       {escreve && (
         <button type="button" aria-label="Excluir documento" disabled={ocupado !== null} onClick={() => excluir(documento)} className="shrink-0 p-1 text-gray-400 hover:text-red-600 disabled:opacity-50">
@@ -196,7 +219,7 @@ export function DocumentosDaSubcontratada({
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate" title={parceiro.name}>
             Subcontratada: {parceiro.name}
           </h3>
-          <p className="text-[11px] leading-tight text-gray-500">Só a chave é guardada: quem emite o CT-e e o MDF-e dela é ela.</p>
+          <p className="text-[11px] leading-tight text-gray-500">Registre a chave ou importe o XML. Quem emite os documentos da parceira é ela.</p>
         </div>
         {recolhido && (
           <button type="button" data-fechar-subcontratacao onClick={() => alternar(false)} className={`${BOTAO_CLARO} shrink-0`}>
@@ -237,6 +260,8 @@ export function DocumentosDaSubcontratada({
         </p>
       )}
 
+      {escreve && <ImportarXmlDaSubcontratada key={manifestId} manifestId={manifestId} cargas={dados.cargas} ocupado={ocupado !== null} aoOcupar={setOcupado} aoImportar={async () => { await ler(); aoMudar?.(); }} />}
+      {escreve && <p className="text-[11px] text-gray-500">Chaves registradas à mão são consultadas no ambiente fiscal configurado na empresa.</p>}
       {escreve && (
         <form onSubmit={registrar} data-registrar-documento className="grid grid-cols-2 gap-x-3 gap-y-1.5 md:gap-3 border-t border-gray-100 dark:border-gray-800 pt-2">
           <label className="block min-w-0 space-y-0.5">

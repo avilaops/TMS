@@ -236,6 +236,30 @@
           "note": "Implementação concluída em branch e validada no GitHub CI. Projeção de descargas, sem otimização com restrição de capacidade ou coletas intermediárias."
         }
       ]
+    },
+    {
+      "id": "T-0011",
+      "title": "AVL-412 — XML de subcontratadas e consulta à SEFAZ",
+      "objective": "Importar CT-e/MDF-e privados no contrato da viagem e consultar situação sem emitir em nome da parceira.",
+      "assignee": "agent-code",
+      "priority": "high",
+      "status": "em-andamento",
+      "acceptanceCriteria": [
+        "Conferir XML, chave completa, CNPJ, emissão, ambiente e protocolo",
+        "Download privado, auditoria sem XML, deduplicação e isolamento por tenant",
+        "Consulta explícita com A1 da empresa, sem transação aberta na rede",
+        "Recusar resposta tardia e retirar cobertura de documento conhecido como inválido",
+        "Testes PostgreSQL, parser, perfis e tela; prints desktop/mobile; typecheck, lint e CI"
+      ],
+      "evidence": "Escopo e desenho aprovados pelo usuário em 12/11/2026. Branch codex/avl-412-xml-subcontratadas. Rodada final com 230 testes aprovados em sete arquivos, PostgreSQL 19 descartável, lint sem avisos, typecheck e git diff --check. Dois testes usam HTTPS com certificado de teste e os servidores SEFAZ locais. Capturas em artifacts/avl-412-*.png são fixtures do componente real com API simulada. SQL 043 aditivo e reaplicável. Revisão pelo próprio agente; não houve revisão independente. Detalhes em artifacts/avl-412-verificacao.md.",
+      "blocker": "CI completa e imagem pendentes da decisão sobre exceção ao limite de 90 segundos por job do Linear. Subtarefa técnica recusada por limite gratuito; rastreabilidade mantida na AVL-412.",
+      "history": [
+        {
+          "at": "2026-11-12",
+          "status": "em-andamento",
+          "note": "Usuário aprovou importação e consulta SEFAZ, o desenho detalhado e a execução neste checkout. Nenhuma operação fiscal real, migração ou deploy em produção."
+        }
+      ]
     }
   ],
   "decisions": [
