@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planTestGroups, ciTestFiles } from "../.github/scripts/test-matrix.mjs";
+import { planTestGroups, ciTestFiles, ciTestNamePattern } from "../.github/scripts/test-matrix.mjs";
 
 describe("distribuição completa dos testes na CI", () => {
   it("separa os arquivos maiores e os combina com os menores", () => {
@@ -23,6 +23,35 @@ describe("distribuição completa dos testes na CI", () => {
   it("falha quando a descoberta está vazia ou contém arquivo repetido", () => {
     expect(() => planTestGroups([])).toThrow();
     expect(() => planTestGroups([{ file: "tests/a.test.ts", size: 1 }, { file: "tests/a.test.ts", size: 2 }])).toThrow();
+  });
+
+  it("divide a suíte longa de MDF-e em duas partes e mantém os demais arquivos integrais", () => {
+    const grupos = planTestGroups([
+      { file: "tests/mdfe-rotas.test.ts", size: 120000 },
+      { file: "tests/outro.test.ts", size: 20 },
+    ]).include;
+    expect(grupos.filter((grupo) => grupo.files.includes("tests/outro.test.ts"))).toHaveLength(1);
+    const mdfe = grupos.filter((grupo) => grupo.files.includes("tests/mdfe-rotas.test.ts"));
+    expect(mdfe.map((grupo) => grupo.part).sort()).toEqual(["mdfe-demais", "mdfe-emissao"]);
+    expect(mdfe.every((grupo) => grupo.files.length === 1)).toBe(true);
+  });
+
+  it("as partes são complementares, cobrem grupos futuros e repetem a conferência dos segredos", () => {
+    const emissao = ciTestNamePattern("mdfe-emissao")!;
+    const demais = ciTestNamePattern("mdfe-demais")!;
+    for (const grupo of ["emitir", "encerrar, cancelar e incluir condutor", "contingência off-line (MOC)", "grupo novo ainda desconhecido"]) {
+      const nome = `tests/mdfe-rotas.test.ts rotas da emissão de MDF-e ${grupo} um cenário`;
+      expect(Number(emissao.test(nome)) + Number(demais.test(nome))).toBe(1);
+    }
+    const segredo = "tests/mdfe-rotas.test.ts rotas da emissão de MDF-e isolamento entre empresas e segredo do certificado o certificado nunca aparece";
+    expect(emissao.test(segredo)).toBe(true);
+    expect(demais.test(segredo)).toBe(true);
+  });
+
+  it("não filtra a execução padrão e recusa uma parte desconhecida", () => {
+    expect(ciTestNamePattern(undefined)).toBeUndefined();
+    expect(ciTestNamePattern("")).toBeUndefined();
+    expect(() => ciTestNamePattern("parte-inexistente")).toThrow();
   });
 
   it("a execução normal preserva a suíte padrão; a CI seleciona os arquivos exatos", () => {

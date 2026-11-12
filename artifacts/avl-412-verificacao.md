@@ -47,13 +47,25 @@ As capturas não representam uma sessão autenticada completa nem uma consulta
 à SEFAZ real. Nenhum certificado real, XML empresarial, emissão, migração ou
 deploy em produção foi usado nesta implementação.
 
-## Validação pendente
+## Validação na CI
 
-O projeto no Linear exige até 90 segundos por job de CI. O workflow atual
-declara 15/45/15 minutos; no run `41277769603`, checks levou 7m01s e imagem
-6m18s. A decisão solicitada ao usuário é executar a CI atual como exceção
-nesta entrega ou refatorá-la antes da validação. Nenhuma das opções foi
-presumida como aprovada.
+A continuação respeita a política de até 90 segundos do Linear: todos os
+jobs declaram `timeout-minutes: 1`. Dependências/Prisma usam cache exato;
+o build standalone, os tipos fonte e os tipos Next têm jobs separados.
+Os testes usam bancos descartáveis com RLS e seleção exata de arquivos.
+A suíte longa de MDF-e tem duas partes complementares, ambas repetindo a
+conferência acumulada de segredos. Nenhum caso foi retirado da suíte.
+
+- Run [43298174756](https://github.com/avilaops/TMS/actions/runs/43298174756):
+  dependências 41 s e build 53 s; shards vazios e timeouts bloquearam checks.
+- Run [43300512016](https://github.com/avilaops/TMS/actions/runs/43300512016):
+  54 jobs aprovados, incluindo ambos typechecks e build. Os 57 casos do grupo
+  1 passaram, mas o job excedeu o minuto e foi corretamente reprovado.
+- Matriz corrigida: 101 arquivos em 52 grupos; MDF-e dividido por cenários.
+  17 testes locais do planejador aprovados; validação integral ainda pendente.
+
+PR de revisão: [#35](https://github.com/avilaops/TMS/pull/35). A imagem
+e a aprovação final dependem de uma execução integral bem-sucedida.
 
 Revisão de código realizada pelo próprio agente com o checklist de revisão;
 não houve revisão independente nem autorização para agentes adicionais.

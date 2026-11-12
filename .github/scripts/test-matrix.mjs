@@ -15,12 +15,30 @@ export function ciTestFiles(value) {
   return files;
 }
 
+/** @param {string | undefined} part */
+export function ciTestNamePattern(part) {
+  if (!part) return undefined;
+  const emissao = "rotas da emissão de MDF-e (?:emitir|encerrar, cancelar e incluir condutor) ";
+  // Esta conferência examina todas as respostas acumuladas no processo.
+  // Repeti-la nas duas partes preserva a inspeção dos segredos de toda a suíte.
+  const segredos = "rotas da emissão de MDF-e isolamento entre empresas e segredo do certificado ";
+  if (part === "mdfe-emissao") return new RegExp(`${emissao}|${segredos}`);
+  if (part === "mdfe-demais") return new RegExp(`^(?!.*${emissao})`);
+  throw new Error("Parte de testes desconhecida.");
+}
+
 /** @param {{file: string, size: number}[]} files */
 export function planTestGroups(files) {
   ciTestFiles(JSON.stringify(files.map((file) => file.file)));
   if (files.some((file) => !Number.isFinite(file.size) || file.size < 0)) throw new Error("Tamanho inválido.");
-  const ordered = [...files].sort((a, b) => b.size - a.size || a.file.localeCompare(b.file, "en"));
+  const mdfe = "tests/mdfe-rotas.test.ts";
+  const ordered = files.filter(({ file }) => file !== mdfe).sort((a, b) => b.size - a.size || a.file.localeCompare(b.file, "en"));
   const include = [];
+  if (files.some(({ file }) => file === mdfe)) {
+    for (const part of ["mdfe-emissao", "mdfe-demais"]) {
+      include.push({ id: String(include.length + 1), files: [mdfe], part });
+    }
+  }
   for (let left = 0, right = ordered.length - 1; left <= right; left++, right--) {
     const group = [ordered[left].file];
     if (left < right) group.push(ordered[right].file);

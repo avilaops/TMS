@@ -252,12 +252,17 @@
         "Testes PostgreSQL, parser, perfis e tela; prints desktop/mobile; typecheck, lint e CI"
       ],
       "evidence": "Escopo e desenho aprovados pelo usuário em 12/11/2026. Branch codex/avl-412-xml-subcontratadas. Rodada final com 230 testes aprovados em sete arquivos, PostgreSQL 19 descartável, lint sem avisos, typecheck e git diff --check. Dois testes usam HTTPS com certificado de teste e os servidores SEFAZ locais. Capturas em artifacts/avl-412-*.png são fixtures do componente real com API simulada. SQL 043 aditivo e reaplicável. Revisão pelo próprio agente; não houve revisão independente. Detalhes em artifacts/avl-412-verificacao.md.",
-      "blocker": "CI completa e imagem pendentes da decisão sobre exceção ao limite de 90 segundos por job do Linear. Subtarefa técnica recusada por limite gratuito; rastreabilidade mantida na AVL-412.",
+      "blocker": "CI completa e imagem pendentes na PR #35. Política atendida com timeout de um minuto em todos os jobs. Run 43300512016 aprovou 54 jobs, mas a suíte longa de MDF-e atingiu o limite; divisão por cenários implementada para nova validação. Subtarefa técnica recusada por limite gratuito; rastreabilidade mantida na AVL-412.",
       "history": [
         {
           "at": "2026-11-12",
           "status": "em-andamento",
           "note": "Usuário aprovou importação e consulta SEFAZ, o desenho detalhado e a execução neste checkout. Nenhuma operação fiscal real, migração ou deploy em produção."
+        },
+        {
+          "at": "2026-11-12",
+          "status": "em-andamento",
+          "note": "Continuação solicitada no Linear: refatoração da CI para jobs de um minuto, PR #35 em rascunho. Sem inferir aprovação da exceção de tempo. Dois runs revelaram divisão vazia e timeout de MDF-e; correções mantêm toda a cobertura."
         }
       ]
     }

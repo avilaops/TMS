@@ -59,13 +59,14 @@ jobs:
           POSTGRES_DB: tms_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U tms -d tms_test"
           --health-interval 1s
           --health-timeout 2s
           --health-retries 10
     env:
       DATABASE_URL: postgresql://tms:tms@127.0.0.1:5432/tms_test?schema=public
       TMS_CI_TEST_FILES: ${{ toJSON(matrix.files) }}
+      TMS_CI_TEST_PART: ${{ matrix.part || '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: ./.github/actions/restore-ci
@@ -182,7 +183,7 @@ jobs:
           POSTGRES_DB: tms_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U tms -d tms_test"
           --health-interval 1s
           --health-timeout 2s
           --health-retries 10
