@@ -16,12 +16,12 @@ jobs:
     timeout-minutes: 1
     outputs:
       key: ${{ steps.identity.outputs.key }}
+      matrix: ${{ steps.test-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
-          check-latest: true
+          node-version: '>=22.22.2 <23'
           cache: npm
       - id: identity
         env:
@@ -36,15 +36,20 @@ jobs:
         run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
       - if: steps.modules.outputs.cache-hit != 'true'
         run: npx prisma generate --schema=prisma/schema.prisma
+      - name: Descobrir todos os testes e distribuir sem grupos vazios
+        id: test-matrix
+        run: |
+          npx vitest list --filesOnly --json > ci-test-files.json
+          node .github/scripts/test-matrix.mjs ci-test-files.json >> "$GITHUB_OUTPUT"
 
   tests:
+    name: tests (${{ matrix.id }})
     needs: dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 1
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+      matrix: ${{ fromJSON(needs.dependencies.outputs.matrix) }}
     services:
       postgres:
         image: mirror.gcr.io/library/postgres:18-alpine
@@ -60,6 +65,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://tms:tms@127.0.0.1:5432/tms_test?schema=public
+      TMS_CI_TEST_FILES: ${{ toJSON(matrix.files) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: ./.github/actions/restore-ci
@@ -68,8 +74,8 @@ jobs:
       - run: npx prisma db push --schema=prisma/schema.prisma
       - run: npm run db:lojas-logistica
       - run: npm run db:rls
-      # Todos os arquivos entram em exatamente um shard, com Postgres isolado.
-      - run: npm test -- --shard=${{ matrix.shard }}/32
+      # A selecao exata do config preserva a cobertura, sem filtro por substring.
+      - run: npm test
 
   build:
     needs: dependencies
@@ -78,7 +84,7 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: '1'
       # O typecheck posterior inclui os validadores gerados por este build.
-      TMS_CI_TYPECHECKED: '1'
+      TMS_CI_SEPARATE_TYPECHECK: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: ./.github/actions/restore-ci
@@ -110,8 +116,25 @@ jobs:
           compression-level: 0
           retention-days: 2
 
+  source-typecheck:
+    needs: dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/restore-ci
+        with:
+          modules-key: ${{ needs.dependencies.outputs.key }}
+      - run: npm run typecheck
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: typecheck-state-${{ github.sha }}
+          path: tsconfig.tsbuildinfo
+          if-no-files-found: error
+          retention-days: 2
+
   typecheck:
-    needs: [dependencies, build]
+    needs: [dependencies, build, source-typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -123,6 +146,9 @@ jobs:
         with:
           name: next-types-${{ github.sha }}
       - run: tar -xzf next-types.tgz
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: typecheck-state-${{ github.sha }}
       - run: npm run typecheck
 
   checks:
