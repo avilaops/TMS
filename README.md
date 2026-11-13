@@ -78,7 +78,9 @@ Os valores novos do enum entram por [prisma/sql/022-perfis.sql](prisma/sql/022-p
 
 No Financeiro, a Diretoria vê a indicação "Somente leitura" e consulta resumos, lançamentos, filtros, fluxo de caixa e recibos. Criação, edição, baixa, reabertura, exclusão e acesso à conciliação aparecem somente para quem tem `financeiro` (Administrador e Financeiro). As rotas continuam validando as capacidades no servidor.
 
-Ainda não existe: perfil sob medida por empresa (a matriz é do código, igual para todas), mais de um perfil por usuário, restrição por filial ou por cliente dentro de um perfil, e tela própria de leitura em Clientes (o Financeiro ainda vê os mesmos botões; quem recusa a gravação é a API, com 403).
+Em Clientes, o Financeiro usa "Editar condições" para alterar somente a condição de pagamento e o limite de crédito. Cadastro, tabela de frete e notificações ficam disponíveis para consulta, com os campos bloqueados. Cadastro novo, consulta de CNPJ e ativação/desativação aparecem para quem tem `clientes`; o PATCH do Financeiro inclui somente as condições que mudaram, mesmo se o perfil mudar com o editor aberto. A API continua conferindo o alcance da gravação.
+
+Ainda não existe: perfil sob medida por empresa (a matriz é do código, igual para todas), mais de um perfil por usuário e restrição por filial ou por cliente dentro de um perfil.
 
 ### Quem consome a API pública
 

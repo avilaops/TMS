@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Plus, Search, Loader2, Users } from "lucide-react";
 import { getCompanyByCnpj } from "@/lib/brasilApi";
+import { CAMPOS_DE_CONDICAO, pode } from "@/lib/permissoes";
 
 type DocumentType = "nfeXml" | "cteXml" | "danfePdf" | "dactePdf" | "boletoPdf" | "comprovantePdf" | "faturaPdf" | "vencimento";
 type Recipient = { email: string; category: "principal" | "fiscal" | "financeiro" | "logistica" | "outro"; documents: DocumentType[] };
@@ -70,9 +72,13 @@ const INPUT =
 const LABEL = "text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300";
 
 export default function ClientesPage() {
+  const { data: session } = useSession();
+  const podeCadastrar = pode(session?.user?.role, "clientes");
+  const podeEditarCondicoes = pode(session?.user?.role, "clientesCondicoes");
   const [isModalOpen, setIsModalOpen] = useState(false);
   // `null` = cadastro novo; com id, o modal edita aquele cliente.
   const [editingId, setEditingId] = useState<string | null>(null);
+  const podeSalvar = editingId ? podeEditarCondicoes : podeCadastrar;
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -84,30 +90,27 @@ export default function ClientesPage() {
   // Tabelas de frete para o seletor do formulário.
   const [tabelas, setTabelas] = useState<{ id: string; name: string; isDefault: boolean; active: boolean }[]>([]);
 
+  const fetchClientes = () => fetch('/api/clientes')
+    .then(async (res) => {
+      if (res.ok) setClientes(await res.json());
+    })
+    .catch((error: unknown) => {
+      console.error("Failed to fetch clientes", error);
+    })
+    .finally(() => {
+      setIsLoading(false);
+    });
+
   useEffect(() => {
-    fetchClientes();
+    void fetchClientes();
     fetch('/api/tabelas-frete')
       .then((res) => (res.ok ? res.json() : []))
       .then(setTabelas)
       .catch(() => setTabelas([]));
   }, []);
 
-  const fetchClientes = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch('/api/clientes');
-      if (res.ok) {
-        const data = await res.json();
-        setClientes(data);
-      }
-    } catch (error) {
-      console.error("Failed to fetch clientes", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const openCreate = () => {
+    if (!podeCadastrar) return;
     setModalTab("cadastro");
     setEditingId(null);
     setFormData(FORM_VAZIO);
@@ -115,13 +118,15 @@ export default function ClientesPage() {
   };
 
   const openEdit = (cliente: Cliente) => {
-    setModalTab("cadastro");
+    if (!podeEditarCondicoes) return;
+    setModalTab(podeCadastrar ? "cadastro" : "comercial");
     setEditingId(cliente.id);
     setFormData(toForm(cliente));
     setIsModalOpen(true);
   };
 
   const handleCnpjSearch = async () => {
+    if (!podeCadastrar) return;
     const digitos = formData.cnpj.replace(/\D/g, "");
     if (digitos.length !== 14) {
       alert("Informe os 14 dígitos do CNPJ para buscar.");
@@ -152,7 +157,8 @@ export default function ClientesPage() {
   };
 
   const handleSave = async () => {
-    if (!formData.cnpj || !formData.companyName) {
+    if (!podeSalvar) return;
+    if (podeCadastrar && (!formData.cnpj || !formData.companyName)) {
       alert("CNPJ e Razão Social são obrigatórios.");
       return;
     }
@@ -162,17 +168,22 @@ export default function ClientesPage() {
     let corpo: Partial<Form> = formData;
     if (editingId) {
       const atual = clientes.find((c) => c.id === editingId);
-      const original = atual ? toForm(atual) : null;
-      if (original) {
-        corpo = Object.fromEntries(
-          (Object.keys(formData) as (keyof Form)[])
-            .filter((campo) => JSON.stringify(formData[campo]) !== JSON.stringify(original[campo]))
-            .map((campo) => [campo, formData[campo]]),
-        );
-        if (Object.keys(corpo).length === 0) {
-          setIsModalOpen(false);
-          return;
-        }
+      if (!atual) {
+        alert("Cliente não encontrado. Atualize a página e tente novamente.");
+        return;
+      }
+      const original = toForm(atual);
+      // Recalcular o alcance ao salvar também protege um editor aberto antes
+      // de a sessão mudar de perfil: campos de cadastro não entram no PATCH.
+      const campos = podeCadastrar ? Object.keys(formData) as (keyof Form)[] : CAMPOS_DE_CONDICAO;
+      corpo = Object.fromEntries(
+        campos
+          .filter((campo) => JSON.stringify(formData[campo]) !== JSON.stringify(original[campo]))
+          .map((campo) => [campo, formData[campo]]),
+      );
+      if (Object.keys(corpo).length === 0) {
+        setIsModalOpen(false);
+        return;
       }
     }
 
@@ -189,7 +200,8 @@ export default function ClientesPage() {
       if (res.ok) {
         setIsModalOpen(false);
         setFormData(FORM_VAZIO);
-        fetchClientes();
+        setIsLoading(true);
+        void fetchClientes();
       } else {
         const errData = await res.json().catch(() => ({}));
         alert(errData.error || "Erro ao salvar cliente.");
@@ -202,6 +214,7 @@ export default function ClientesPage() {
   };
 
   const handleToggleActive = async (cliente: Cliente) => {
+    if (!podeCadastrar) return;
     if (cliente.active && !confirm(`Desativar ${cliente.tradeName || cliente.companyName}?`)) return;
 
     setTogglingId(cliente.id);
@@ -213,7 +226,8 @@ export default function ClientesPage() {
       });
 
       if (res.ok) {
-        fetchClientes();
+        setIsLoading(true);
+        void fetchClientes();
       } else {
         const errData = await res.json().catch(() => ({}));
         alert(errData.error || "Erro ao alterar cliente.");
@@ -232,13 +246,13 @@ export default function ClientesPage() {
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Clientes</h1>
           <p className="text-gray-500 text-sm mt-1">Gerencie a carteira de clientes</p>
         </div>
-        <button
+        {podeCadastrar && <button
           onClick={openCreate}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
         >
           <Plus className="w-4 h-4" />
           <span>Novo Cliente</span>
-        </button>
+        </button>}
       </div>
 
       <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden md:min-h-[400px]">
@@ -293,16 +307,16 @@ export default function ClientesPage() {
                       </span>
                     </td>
                     <td className="col-span-2 min-w-0 md:table-cell md:px-6 md:py-4 md:text-right whitespace-nowrap space-x-4">
-                      <button onClick={() => openEdit(cliente)} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-                        Editar
-                      </button>
-                      <button
+                      {podeEditarCondicoes && <button onClick={() => openEdit(cliente)} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        {podeCadastrar ? "Editar" : "Editar condições"}
+                      </button>}
+                      {podeCadastrar && <button
                         onClick={() => handleToggleActive(cliente)}
                         disabled={togglingId === cliente.id}
                         className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm font-medium disabled:opacity-50"
                       >
                         {cliente.active ? "Desativar" : "Reativar"}
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}
@@ -312,14 +326,14 @@ export default function ClientesPage() {
         )}
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center md:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+      {isModalOpen && podeSalvar && (
+        <div role="dialog" aria-modal="true" aria-labelledby="cliente-titulo" className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center md:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-gray-900 md:rounded-2xl w-full max-w-2xl md:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-800">
             <div className="p-3 md:p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-              <h2 className="text-base md:text-xl font-bold font-outfit text-gray-900 dark:text-white">
-                {editingId ? "Editar Cliente" : "Cadastrar Cliente"}
+              <h2 id="cliente-titulo" className="text-base md:text-xl font-bold font-outfit text-gray-900 dark:text-white">
+                {podeCadastrar ? (editingId ? "Editar Cliente" : "Cadastrar Cliente") : "Condições do cliente"}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button aria-label="Fechar" onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 ✕
               </button>
             </div>
@@ -331,7 +345,8 @@ export default function ClientesPage() {
               ))}
             </div>
             <div className="p-3 md:p-6 space-y-2 md:space-y-4 overflow-y-auto">
-              {modalTab === "cadastro" && (<div className="space-y-3">
+              {!podeCadastrar && <p className="text-sm text-gray-500">Você pode alterar somente a condição de pagamento e o limite de crédito.</p>}
+              {modalTab === "cadastro" && (<fieldset disabled={!podeCadastrar} className="min-w-0 space-y-3">
               <div className="flex space-x-2">
                 <div className="flex-1 space-y-1.5">
                   <label className={LABEL}>CNPJ / CPF</label>
@@ -343,7 +358,7 @@ export default function ClientesPage() {
                     className={INPUT}
                   />
                 </div>
-                <div className="flex items-end">
+                {podeCadastrar && <div className="flex items-end">
                   <button
                     onClick={handleCnpjSearch}
                     disabled={loadingCnpj}
@@ -351,7 +366,7 @@ export default function ClientesPage() {
                   >
                     {loadingCnpj ? <Loader2 className="w-5 h-5 animate-spin" /> : "Buscar"}
                   </button>
-                </div>
+                </div>}
               </div>
 
               <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4 mt-4">
@@ -422,11 +437,12 @@ export default function ClientesPage() {
                 />
               </div>
 
-              </div>)}
+              </fieldset>)}
               {modalTab === "comercial" && (<div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4">
                 <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                  <label className={LABEL}>Condição de Pagamento</label>
+                  <label htmlFor="cliente-condicao" className={LABEL}>Condição de Pagamento</label>
                   <input
+                    id="cliente-condicao"
                     type="text"
                     value={formData.paymentCondition}
                     onChange={(e) => setFormData({...formData, paymentCondition: e.target.value})}
@@ -435,8 +451,9 @@ export default function ClientesPage() {
                   />
                 </div>
                 <div className="space-y-0.5 md:space-y-1.5 min-w-0">
-                  <label className={LABEL}>Limite de Crédito (R$)</label>
+                  <label htmlFor="cliente-limite" className={LABEL}>Limite de Crédito (R$)</label>
                   <input
+                    id="cliente-limite"
                     type="number"
                     min="0"
                     step="0.01"
@@ -449,6 +466,7 @@ export default function ClientesPage() {
                   <label htmlFor="cliente-tabela-frete" className={LABEL}>Tabela de frete</label>
                   <select
                     id="cliente-tabela-frete"
+                    disabled={!podeCadastrar}
                     value={formData.freightTableId}
                     onChange={(e) => setFormData({...formData, freightTableId: e.target.value})}
                     className={INPUT}
@@ -465,7 +483,7 @@ export default function ClientesPage() {
                   </select>
                 </div>
               </div>)}
-              {modalTab === "notificacoes" && (<div className="space-y-4">
+              {modalTab === "notificacoes" && (<fieldset disabled={!podeCadastrar} className="min-w-0 space-y-4">
                 <label className="flex gap-2 items-center text-sm">
                   <input type="checkbox" checked={formData.notificationPreferences.enabled}
                     onChange={(event) => setFormData((v) => ({ ...v, notificationPreferences: { ...v.notificationPreferences, enabled: event.target.checked } }))} />
@@ -505,7 +523,7 @@ export default function ClientesPage() {
                   </div>
                 ))}
                 <p className="text-xs text-gray-500">Estas preferências não geram envios sem um documento disponível, uma integração de entrega e registro de auditoria.</p>
-              </div>)}
+              </fieldset>)}
             </div>
 
             <div className="p-3 md:p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex justify-end space-x-3">
@@ -521,7 +539,7 @@ export default function ClientesPage() {
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 md:px-6 md:py-2.5 rounded-xl font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center space-x-2"
               >
                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                <span>Salvar Cliente</span>
+                <span>{podeCadastrar ? "Salvar Cliente" : "Salvar condições"}</span>
               </button>
             </div>
           </div>
