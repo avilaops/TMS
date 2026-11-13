@@ -285,6 +285,34 @@
           "note": "CI 43345352059 aprovou os 59 jobs na primeira tentativa do commit 193588d; produção e container saudáveis no digest aprovado. Rotas privadas conferidas sem sessão (401). Branches incorporadas excluídas com lease de SHA e main preservada; nenhuma PR aberta. Registro documental de encerramento segue pelos mesmos gates da main."
         }
       ]
+    },
+    {
+      "id": "T-0012",
+      "title": "AVL-412 — Financeiro de leitura para a Diretoria",
+      "objective": "Alinhar as ações da tela Financeiro à matriz existente, evitando oferecer gravações e conciliação a quem só pode consultar.",
+      "assignee": "agent-code",
+      "priority": "medium",
+      "status": "em_revisao",
+      "acceptanceCriteria": [
+        "Diretoria consulta resumo, lançamentos, filtros, fluxo e recibos sem comandos de gravação ou conciliação",
+        "Administrador e Financeiro preservam criação, edição, baixa, reabertura e exclusão",
+        "Sessão sem perfil não expõe gravações; API e matriz permanecem canônicas",
+        "Testes de regressão de tela, tipos, lint, CI, publicação e saúde verificadas"
+      ],
+      "evidence": "Regressão reproduzida antes da correção (3 falhas/6 casos aprovados). Após corrigir, 46 testes em três arquivos, typecheck e lint sem avisos aprovados. Chromium com componente real e API de fixture: Diretoria em 1440/390 px sem gravações ou rolagem horizontal; Administrador/Financeiro criam lançamentos; nenhum erro de página. Treze novos cenários de perfil, perda de permissão e recusas 401/403. Evidência em artifacts/financeiro-leitura-verificacao.md. Revisão pelo próprio agente; sem revisão independente. CI integral, publicação e limpeza ainda pendentes na data deste registro.",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-11-13",
+          "status": "em-andamento",
+          "note": "Continuação solicitada pelo usuário via Linear. Workflow Debug; regressão antes da correção, sem agentes ou worktrees adicionais."
+        },
+        {
+          "at": "2026-11-13",
+          "status": "em_revisao",
+          "note": "Implementação e verificações locais aprovadas; encaminhar para CI integral com PostgreSQL, tipos gerados, build e imagem. Publicação será conferida separadamente."
+        }
+      ]
     }
   ],
   "decisions": [

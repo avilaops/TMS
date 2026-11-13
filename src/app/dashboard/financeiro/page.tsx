@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Landmark, Loader2, LogIn, Plus, ShieldAlert, Wallet } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCalendarDate, formatCurrency, formatDate } from "@/lib/format";
+import { pode } from "@/lib/permissoes";
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABEL,
@@ -79,6 +81,9 @@ const nomeDoMes = (mes: string) => {
 };
 
 export default function FinanceiroPage() {
+  const { data: session } = useSession();
+  const podeAlterar = pode(session?.user?.role, "financeiro");
+  const somenteLeitura = pode(session?.user?.role, "financeiroVer") && !podeAlterar;
   const [aba, setAba] = useState<Aba>("INCOME");
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [fluxo, setFluxo] = useState<MesDoFluxo[]>([]);
@@ -97,21 +102,21 @@ export default function FinanceiroPage() {
   const [form, setForm] = useState(FORM_VAZIO);
   const [ocupado, setOcupado] = useState(false);
 
-  const fetchData = async () => {
-    try {
-      const result = await loadTransactions(() => fetch("/api/financeiro"));
+  const fetchData = () => loadTransactions(() => fetch("/api/financeiro"))
+    .then(async (result) => {
       if (result.denied) return setDenied(result.denied);
       setLancamentos(result.transactions as Lancamento[]);
 
       const [resFluxo, resClientes] = await Promise.all([fetch("/api/financeiro/fluxo"), fetch("/api/clientes")]);
       if (resFluxo.ok) setFluxo(((await resFluxo.json()) as { fluxo: MesDoFluxo[] }).fluxo);
       if (resClientes.ok) setClientes(await resClientes.json());
-    } catch (error) {
+    })
+    .catch((error: unknown) => {
       console.error("Erro ao buscar o financeiro", error);
-    } finally {
+    })
+    .finally(() => {
       setIsLoading(false);
-    }
-  };
+    });
 
   useEffect(() => {
     void fetchData();
@@ -165,6 +170,7 @@ export default function FinanceiroPage() {
 
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!podeAlterar) return;
     setOcupado(true);
     setMensagem(null);
     try {
@@ -188,6 +194,7 @@ export default function FinanceiroPage() {
 
   /** `encargos` só vem da baixa de um título a receber (juros, multa e desconto). */
   const agir = async (l: Lancamento, action: "pagar" | "reabrir", encargos?: EncargosDigitados) => {
+    if (!podeAlterar) return;
     setOcupado(true);
     setMensagem(null);
     try {
@@ -214,6 +221,7 @@ export default function FinanceiroPage() {
   };
 
   const excluir = async (l: Lancamento) => {
+    if (!podeAlterar) return;
     if (!window.confirm(`Excluir o lançamento "${l.description}" de ${formatCurrency(l.amount)}? Não dá para desfazer.`)) return;
     setOcupado(true);
     setMensagem(null);
@@ -272,7 +280,7 @@ export default function FinanceiroPage() {
     (l) => l.type === aba && (!filtro || situacaoDoLancamento(l) === filtro) && (!centro || l.costCenter === centro),
   );
   // Com o formulário ou a baixa abertos, o celular fica só com eles: é o que cabe numa tela.
-  const painelAberto = formAberto || baixa !== null;
+  const painelAberto = podeAlterar && (formAberto || baixa !== null);
   const pagoOuRecebido = aba === "INCOME" ? "Marcar recebido" : "Marcar pago";
 
   const campo = (rotulo: string, chave: keyof typeof FORM_VAZIO, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
@@ -288,26 +296,29 @@ export default function FinanceiroPage() {
         <div>
           <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Financeiro</h1>
           <p className="hidden md:block text-gray-500 text-sm mt-1">Contas a receber, contas a pagar e fluxo de caixa</p>
+          {somenteLeitura && <p className="text-sm text-gray-500 mt-1">Somente leitura</p>}
         </div>
-        <div className="flex items-center gap-2">
-          {/* Conciliação bancária: o extrato importado do banco, casado com estes lançamentos. */}
-          <Link
-            href="/dashboard/financeiro/conciliacao"
-            data-conciliacao
-            className="border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 md:px-4 md:py-2.5 text-sm md:text-base rounded-xl flex items-center space-x-2"
-          >
-            <Landmark className="w-4 h-4" />
-            <span>Conciliação</span>
-          </Link>
-          <button
-            onClick={abrirNovo}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 md:px-4 md:py-2.5 text-sm md:text-base rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="md:hidden">Novo</span>
-            <span className="hidden md:inline">Novo lançamento</span>
-          </button>
-        </div>
+        {podeAlterar && (
+          <div className="flex items-center gap-2">
+            {/* Conciliação bancária: o extrato importado do banco, casado com estes lançamentos. */}
+            <Link
+              href="/dashboard/financeiro/conciliacao"
+              data-conciliacao
+              className="border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 md:px-4 md:py-2.5 text-sm md:text-base rounded-xl flex items-center space-x-2"
+            >
+              <Landmark className="w-4 h-4" />
+              <span>Conciliação</span>
+            </Link>
+            <button
+              onClick={abrirNovo}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 md:px-4 md:py-2.5 text-sm md:text-base rounded-xl flex items-center space-x-2 shadow-lg shadow-blue-500/30 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="md:hidden">Novo</span>
+              <span className="hidden md:inline">Novo lançamento</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {mensagem && (
@@ -324,7 +335,7 @@ export default function FinanceiroPage() {
         <Cartao rotulo="Saldo previsto" valor={resumo.saldoPrevisto} alerta={resumo.saldoPrevisto < 0} icone={<Wallet className="w-5 h-5 text-blue-600" />} />
       </div>
 
-      {baixa && (
+      {podeAlterar && baixa && (
         <Baixa
           key={baixa.id}
           titulo={{ descricao: baixa.description, valor: baixa.amount, vencimento: baixa.dueDate }}
@@ -335,7 +346,7 @@ export default function FinanceiroPage() {
         />
       )}
 
-      {formAberto && (
+      {podeAlterar && formAberto && (
         <form onSubmit={salvar} className={`${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
           <h2 className="font-semibold text-gray-900 dark:text-white">{editandoId ? "Alterar lançamento" : "Novo lançamento"}</h2>
           <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:gap-4 lg:grid-cols-3">
@@ -567,7 +578,7 @@ export default function FinanceiroPage() {
                         )}
                         {l.invoice ? (
                           <span className="text-xs text-gray-500">pelo Faturamento</span>
-                        ) : (
+                        ) : podeAlterar && (
                           <>
                             {l.status === "PAID" ? (
                               <button disabled={ocupado} onClick={() => void agir(l, "reabrir")} className="text-blue-600 hover:underline">
