@@ -292,14 +292,14 @@
       "objective": "Alinhar as ações da tela Financeiro à matriz existente, evitando oferecer gravações e conciliação a quem só pode consultar.",
       "assignee": "agent-code",
       "priority": "medium",
-      "status": "em_revisao",
+      "status": "concluida",
       "acceptanceCriteria": [
         "Diretoria consulta resumo, lançamentos, filtros, fluxo e recibos sem comandos de gravação ou conciliação",
         "Administrador e Financeiro preservam criação, edição, baixa, reabertura e exclusão",
         "Sessão sem perfil não expõe gravações; API e matriz permanecem canônicas",
         "Testes de regressão de tela, tipos, lint, CI, publicação e saúde verificadas"
       ],
-      "evidence": "Regressão reproduzida antes da correção (3 falhas/6 casos aprovados). Após corrigir, 46 testes em três arquivos, typecheck e lint sem avisos aprovados. Chromium com componente real e API de fixture: Diretoria em 1440/390 px sem gravações ou rolagem horizontal; Administrador/Financeiro criam lançamentos; nenhum erro de página. Treze novos cenários de perfil, perda de permissão e recusas 401/403. Evidência em artifacts/financeiro-leitura-verificacao.md. Revisão pelo próprio agente; sem revisão independente. CI integral, publicação e limpeza ainda pendentes na data deste registro.",
+      "evidence": "PR https://github.com/avilaops/TMS/pull/36 integrada em c1cb0c29759d98e7f5043a2683c5b1ae3024ecfc. CI da PR 43368785831 aprovada na tentativa 2 (59 jobs e deploy pulado); timeout inicial de encerramento preservado no histórico. CI da main https://github.com/avilaops/TMS/actions/runs/43369466152 aprovada na primeira tentativa, 60 jobs incluindo suíte PostgreSQL, tipos, build, imagem e deploy, todos com timeout de um minuto. Saúde pública confirma c1cb0c2; container running/healthy no digest e3193234df7cc91c5c1917b9695c3ef1d798a9483c9271f3b86e52768cf0684f. Branch remota incorporada excluída com lease de SHA e local com git branch -d; somente main e zero PRs abertas. Local: 46 testes em três arquivos, tipos e lint; Chromium com componente real e API fictícia em desktop/mobile. Evidência em artifacts/financeiro-leitura-verificacao.md. Sem migração ou operação financeira real; revisão pelo próprio agente, sem revisão independente. Issue mensal continua In Progress. Este fechamento documental segue os mesmos gates na main; resultado final vinculado na AVL-412.",
       "blocker": "",
       "history": [
         {
@@ -311,6 +311,11 @@
           "at": "2026-11-13",
           "status": "em_revisao",
           "note": "Implementação e verificações locais aprovadas; encaminhar para CI integral com PostgreSQL, tipos gerados, build e imagem. Publicação será conferida separadamente."
+        },
+        {
+          "at": "2026-11-13",
+          "status": "concluida",
+          "note": "PR #36 mergeada e produção saudável em c1cb0c2 após 60 jobs aprovados na primeira tentativa da main. Branch incorporada excluída com lease de SHA, local removida e nenhuma PR aberta. Encerramento desta melhoria; AVL-412 mensal permanece In Progress."
         }
       ]
     }
