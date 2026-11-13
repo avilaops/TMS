@@ -9,6 +9,12 @@ const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
 
+const previa = {
+  title: "TMS · Gestão de transporte",
+  description: "Planeje rotas, organize cargas e acompanhe as entregas do embarque ao destino.",
+  image: "https://avilaops.com/og/brand-2026/tms.jpg",
+};
+
 export const metadata: Metadata = {
   title: {
     default: "TMS",
@@ -17,6 +23,21 @@ export const metadata: Metadata = {
   description:
     "Sistema de gestão de transportes: coletas, manifestos, motoristas, veículos, financeiro e fiscal.",
   applicationName: "TMS",
+  openGraph: {
+    type: "website",
+    siteName: "Avila Ops",
+    locale: "pt_BR",
+    url: "https://tms.avilaops.com",
+    title: previa.title,
+    description: previa.description,
+    images: [{ url: previa.image, width: 1200, height: 630, alt: previa.title }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: previa.title,
+    description: previa.description,
+    images: [{ url: previa.image, alt: previa.title }],
+  },
   // Sistema interno: nada aqui deve aparecer em busca.
   robots: { index: false, follow: false },
   icons: {
