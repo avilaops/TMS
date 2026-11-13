@@ -16,7 +16,7 @@ as branches incorporadas. Registro da execução em 12/11/2026 (São Paulo).
 - CI da PR: 2.613 casos distintos em 101 arquivos, tipos, build e imagem
   aprovados no [run 43314036543](https://github.com/avilaops/TMS/actions/runs/43314036543).
 
-## Publicação em avaliação
+## Publicação validada
 
 [Run da main 43343859324](https://github.com/avilaops/TMS/actions/runs/43343859324):
 um grupo excedeu o limite na preparação do runner; a reexecução pontual no
@@ -32,8 +32,23 @@ a validação do endereço e todos os gates. A consulta ao registro foi conferid
 por `imagetools` e pelo cabeçalho HTTP `Docker-Content-Digest`. Ver
 [documentação oficial de inspect](https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/).
 
-Publicação final e limpeza serão confirmadas pelo run da correção e pela
-saúde/commit de produção. Nenhuma aprovação de publicação é inferida do push
+Correção em `193588d4eebef7b6ec410be5edb11f1ec33ef853`, aprovada no
+[run 43345352059](https://github.com/avilaops/TMS/actions/runs/43345352059)
+na primeira tentativa: **59 jobs aprovados**, incluindo suíte, ambos
+typechecks, build, imagem (32 s) e deploy (34 s). A suíte preserva os 2.613
+casos distintos em 101 arquivos, com duas execuções adicionais dos testes de
+segredo de MDF-e. Todos os jobs declaram timeout de um minuto.
+
+Leitura pública de `/api/health`: `status=ok` e commit
+`193588d4eebef7b6ec410be5edb11f1ec33ef853`. Container
+`tms-avilaops-com-web`: running/healthy, usando
+`ghcr.io/avilaops/tms@sha256:9e546614a973efe61fe3d25dc4109bdee9e99e8cca9137b691f4ed0c57b5f6e1`.
+As rotas novas de importação, download e consulta responderam 401 sem sessão,
+com IDs vazios de teste e sem XML empresarial ou chave fiscal real.
+
+Esta é a evidência da primeira publicação funcional. O registro documental
+de encerramento também segue pelos gates normais da main; sua confirmação
+atual fica no workflow e no Linear. Nenhuma publicação foi inferida do push
 da imagem ou do merge.
 
 ## Inventário de branches
@@ -52,6 +67,9 @@ da imagem ou do merge.
 | `feat/frete-capacidade-veiculo` | Ancestral |
 | `feat/ux-empresa-proposta` | Ancestral |
 
-São 11 branches além da main, todas com conteúdo incorporado. A exclusão
-confere o SHA de cada referência e preserva a main. PRs antigas fechadas e
-superadas não são reabertas para reintroduzir funcionalidades removidas.
+As 11 branches acima foram excluídas após a publicação validada. Cada exclusão
+usou lease com o SHA previamente conferido; a main foi preservada. A branch
+local da entrega também foi removida com `git branch -d`; checkout main limpo
+e sincronizado. Conferência final: apenas main no remoto e zero PRs abertas.
+PRs antigas fechadas e superadas não foram reabertas para reintroduzir
+funcionalidades removidas. O túnel temporário de banco foi encerrado.

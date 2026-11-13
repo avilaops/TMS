@@ -80,3 +80,14 @@ duas vezes o SQL 043 no runner. A confirmação dessa revisão fica nos
 
 Revisão de código realizada pelo próprio agente com o checklist de revisão;
 não houve revisão independente nem autorização para agentes adicionais.
+
+## Publicação após autorização do usuário
+
+O pedido posterior para integrar todas as branches/PRs autorizou a sequência
+de banco, merge, publicação e limpeza já proposta. SQL 043 e RLS aplicados
+em produção antes do merge da PR #35. Correção do digest em 193588d; CI da
+main 43345352059 aprovada com 59 jobs, incluindo deploy. Produção e container
+conferidos saudáveis no mesmo commit; novas rotas privadas respondem 401
+sem sessão. Onze branches incorporadas excluídas; só main e nenhuma PR aberta.
+[Detalhes e limites](tms-merge-publicacao-2026-11-12.md). Nenhuma consulta ou
+emissão real na SEFAZ foi realizada.

@@ -111,3 +111,13 @@ evidência e contexto próprios.
 
 Abordagem e desenho aprovados pelo usuário em 12/11/2026, com execução neste
 checkout. Não criar agentes adicionais nem outro worktree.
+
+## Autorização posterior de integração e publicação
+
+Após a implementação e revisão, o usuário pediu integrar todas as branches
+e PRs do TMS. A sequência já apresentada foi executada: SQL 043 e RLS por
+túnel local antes do código, merge da PR #35, CI/deploy e conferência de saúde,
+seguidos da limpeza das branches incorporadas. Essa autorização posterior
+amplia o limite da implementação acima; não autoriza emissão ou consulta
+fiscal real. Evidências em
+[integração e publicação](../../../artifacts/tms-merge-publicacao-2026-11-12.md).
