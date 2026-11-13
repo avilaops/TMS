@@ -318,6 +318,35 @@
           "note": "PR #36 mergeada e produção saudável em c1cb0c2 após 60 jobs aprovados na primeira tentativa da main. Branch incorporada excluída com lease de SHA, local removida e nenhuma PR aberta. Encerramento desta melhoria; AVL-412 mensal permanece In Progress."
         }
       ]
+    },
+    {
+      "id": "T-0013",
+      "title": "AVL-412 — Implementar Clientes conforme as capacidades do Financeiro",
+      "objective": "Corrigir e verificar a implementação local da tela Clientes: Financeiro consulta o cadastro e altera somente condição de pagamento e limite de crédito. CI, integração e publicação acompanhadas separadamente na AVL-412.",
+      "assignee": "agent-code",
+      "priority": "medium",
+      "status": "concluida",
+      "acceptanceCriteria": [
+        "Financeiro não recebe cadastro novo, desativação, busca CNPJ ou edição dos demais campos",
+        "Cadastro e notificações continuam consultáveis; somente duas condições podem ser editadas e enviadas",
+        "Perfis com clientes preservam cadastro, edição completa e ativação",
+        "Regressão de mudança de perfil, payload mínimo, cancelamento e cadastro legado",
+        "Testes focados, typecheck, lint e navegador desktop/mobile aprovados; evidência local explícita"
+      ],
+      "evidence": "Implementação local concluída: tela usa clientes/clientesCondicoes e CAMPOS_DE_CONDICAO; Financeiro consulta cadastro/notificações e grava somente as duas condições, inclusive após mudança de perfil. Regressão inicial: 7 falhas esperadas/8 casos aprovados; após correção e na retomada, 32 testes aprovados em dois arquivos (19 novos em Clientes), typecheck e lint sem avisos. Chromium em 1440/390 px, sem rolagem horizontal, payload restrito e cadastro pelos quatro perfis completos conferidos. Capturas e limites em artifacts/clientes-financeiro-verificacao.md. Revisão pelo próprio agente, sem revisão independente. Este status conclui a implementação local prevista na tarefa; CI integral, integração, publicação, saúde e limpeza ainda serão comprovadas na AVL-412, sem presumir que estejam aprovadas.",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-11-13",
+          "status": "em-andamento",
+          "note": "Continuação solicitada pelo usuário. Workflow Debug com regressão antes da correção; sem agentes adicionais. Conclusão deste registro comprovará implementação local, sem presumir CI ou publicação."
+        },
+        {
+          "at": "2026-11-13",
+          "status": "concluida",
+          "note": "Critérios de implementação local verificados: testes, tipos, lint, payload e navegador desktop/mobile aprovados; API e banco inalterados. CI, publicação e limpeza seguem como etapas separadas da entrega na AVL-412."
+        }
+      ]
     }
   ],
   "decisions": [
