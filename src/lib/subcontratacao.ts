@@ -10,10 +10,10 @@ import { emissorDaChave } from "@/lib/redespacho";
  * para fazer o transporte no veículo dela. É o lado inverso de
  * src/lib/redespacho.ts (lá, outra transportadora contrata esta).
  *
- * O que este sistema faz aqui é GUARDAR as chaves dos documentos que a
+ * O que este sistema faz aqui é guardar as chaves e importar o XML dos documentos que a
  * subcontratada emitiu (o CT-e de subcontratação dela, por carga, e o MDF-e
- * dela, por UF de descarregamento) no contrato de frete da viagem. Nada é
- * emitido nem transmitido por este sistema em nome dela.
+ * dela, por UF de descarregamento) no contrato de frete da viagem. A consulta
+ * explícita usa o A1 da própria empresa; não emite documentos em nome dela.
  *
  * Quem emite o quê, e de onde saiu:
  * - O CT-e desta empresa (a contratante) continua sendo o de sempre, com o tipo
@@ -167,7 +167,16 @@ export function viagemSubcontratada(veiculo: { carrier: { id: string; type: stri
 /* ----------------------------------- Leituras --------------------------------- */
 
 /** O documento como as rotas o devolvem. */
-export type DocumentoDaSubcontratada = { id: string; kind: string; accessKey: string; collectionId: string | null; unloadState: string | null; issuedAt: string };
+export type DocumentoDaSubcontratada = {
+  id: string; kind: string; accessKey: string; collectionId: string | null; unloadState: string | null; issuedAt: string;
+  hasXml?: boolean;
+  environment?: string | null;
+  protocol?: string | null;
+  sefazCode?: number | null;
+  sefazReason?: string | null;
+  sefazProtocol?: string | null;
+  sefazCheckedAt?: string | null;
+};
 
 export type CargaDaSubcontratacao = {
   id: string;
@@ -201,8 +210,12 @@ export function cargasSemCte(cargas: readonly Pick<CargaDaSubcontratacao, "id" |
 }
 
 /** As UF de descarregamento que a subcontratada cobriu com MDF-e, sem repetir. */
-export function ufsComMdfeDaSubcontratada(documentos: readonly { kind: string; unloadState: string | null }[]): string[] {
-  return [...new Set(documentos.flatMap((documento) => (documento.kind === "MDFE" && documento.unloadState ? [documento.unloadState] : [])))].sort();
+export function documentoCobreViagem(documento: { environment?: string | null; sefazCode?: number | null }): boolean {
+  return documento.environment !== "HOMOLOGACAO" && ![101, 132, 217].includes(documento.sefazCode ?? 0);
+}
+
+export function ufsComMdfeDaSubcontratada(documentos: readonly { kind: string; unloadState: string | null; environment?: string | null; sefazCode?: number | null }[]): string[] {
+  return [...new Set(documentos.flatMap((documento) => (documento.kind === "MDFE" && documento.unloadState && documentoCobreViagem(documento) ? [documento.unloadState] : [])))].sort();
 }
 
 /** As UF em que há MDF-e desta empresa e da subcontratada ao mesmo tempo. */
@@ -233,7 +246,10 @@ export const QUEM_EMITE_O_MDFE =
 
 /* ------------------------------ O que as rotas leem ---------------------------- */
 
-export const DOCUMENT_SELECT = { id: true, kind: true, accessKey: true, collectionId: true, unloadState: true, issuedAt: true } as const;
+export const DOCUMENT_SELECT = {
+  id: true, kind: true, accessKey: true, collectionId: true, unloadState: true, issuedAt: true,
+  xmlImportedAt: true, environment: true, protocol: true, sefazCode: true, sefazReason: true, sefazProtocol: true, sefazCheckedAt: true,
+} as const;
 
 /** O que entra em `antes`/`depois` da auditoria. */
 export const CAMPOS_DO_DOCUMENTO = ["kind", "accessKey", "collectionId", "unloadState", "issuedAt"] as const;

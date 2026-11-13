@@ -576,7 +576,7 @@ async function mdfeDaSubcontratada(db: LeituraDb, manifestId: string, veiculo: L
   if (veiculo.carrier?.type !== TIPO_DA_SUBCONTRATADA) return { parceiro: null, ufs: [] };
   const contrato = await db.freightContract.findUnique({
     where: { manifestId },
-    select: { status: true, carrierId: true, carrier: { select: { type: true, name: true } }, subcontractDocuments: { where: { kind: "MDFE" }, select: { kind: true, unloadState: true } } },
+    select: { status: true, carrierId: true, carrier: { select: { type: true, name: true } }, subcontractDocuments: { where: { kind: "MDFE" }, select: { kind: true, unloadState: true, environment: true, sefazCode: true } } },
   });
   if (!contrato || !viagemSubcontratada(veiculo, contrato)) return { parceiro: null, ufs: [] };
   return { parceiro: contrato.carrier.name, ufs: ufsComMdfeDaSubcontratada(contrato.subcontractDocuments) };

@@ -118,7 +118,9 @@ function abrir(conteudo: string): { no: No; nomeCompleto: string; fechada: boole
     ATRIBUTO.lastIndex = pos;
     const achado = ATRIBUTO.exec(corpo);
     if (!achado) break;
-    atributos.set(nomeLocal(achado[1]), decodificar(achado[2] ?? achado[3] ?? ""));
+    const nomeDoAtributo = nomeLocal(achado[1]);
+    if (atributos.has(nomeDoAtributo)) throw new XmlInvalido("há um atributo repetido");
+    atributos.set(nomeDoAtributo, decodificar(achado[2] ?? achado[3] ?? ""));
     pos = ATRIBUTO.lastIndex;
   }
   if (corpo.slice(pos).trim() !== "") throw new XmlInvalido(`a tag <${nomeCompleto}> tem atributo malformado`);

@@ -1,0 +1,17 @@
+name: Restaurar dependencias validadas do TMS
+description: Restaura o cache exato com cliente Prisma gerado para o schema deste run.
+inputs:
+  modules-key:
+    description: Chave produzida pelo job dependencies.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: '>=22.22.2 <23'
+    - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: node_modules
+        key: ${{ inputs.modules-key }}
+        fail-on-cache-miss: true

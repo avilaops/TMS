@@ -23,6 +23,8 @@ import { z } from "zod";
 
 /** Toda ação que o sistema registra, com o rótulo que a tela mostra. O texto da chave é estável. */
 export const ACOES = {
+  "subcontratacao.importar": "XML da subcontratada importado",
+  "subcontratacao.consultar": "Documento da subcontratada consultado na SEFAZ",
   "cliente.criar": "Cliente criado",
   "cliente.alterar": "Cliente alterado",
   "cliente.desativar": "Cliente desativado",
