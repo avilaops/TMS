@@ -246,7 +246,10 @@ jobs:
           image_name="ghcr.io/${GITHUB_REPOSITORY,,}"
           docker tag "tms-ci:$GITHUB_SHA" "$image_name:sha-$GITHUB_SHA"
           docker push "$image_name:sha-$GITHUB_SHA"
-          published=$(docker image inspect "$image_name:sha-$GITHUB_SHA" --format '{{index .RepoDigests 0}}')
+          # O digest vem do registro publicado, sem depender da ordem dos nomes locais.
+          digest=$(docker buildx imagetools inspect "$image_name:sha-$GITHUB_SHA" --format '{{json .Manifest}}' |
+            node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8")).digest)')
+          published="$image_name@$digest"
           [[ "$published" =~ ^ghcr\.io/avilaops/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
           printf 'image=%s\n' "$published" >> "$GITHUB_OUTPUT"
       - name: Logs e limpeza do container de teste

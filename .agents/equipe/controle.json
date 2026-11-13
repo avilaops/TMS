@@ -220,20 +220,25 @@
       "objective": "Exibir peso e cubagem das cargas a entregar e saldo após cada descarga na ordem sugerida.",
       "assignee": "agent-code",
       "priority": "medium",
-      "status": "em_revisao",
+      "status": "concluida",
       "acceptanceCriteria": [
         "Excluir entregues e preservar avisos de medidas e capacidades ausentes",
         "Reutilizar arredondamento de ocupacao.ts sem gravar durante a sugestão",
         "Preservar autorização e isolamento por empresa",
         "Validar testes puros, API, tela, typecheck e build na CI"
       ],
-      "evidence": "PR https://github.com/avilaops/TMS/pull/33, código bb6f70d. CI https://github.com/avilaops/TMS/actions/runs/40648354236 aprovada: 2512 testes em 96 arquivos, typecheck e build Docker. Baseline 40647574350 confirmou as duas falhas esperadas. Revisão independente sem achados bloqueantes. Linear In Review; sem merge ou deploy.",
+      "evidence": "PR https://github.com/avilaops/TMS/pull/33 integrada em 88aa1c2dc02fa714b1f5044fe1c06c90a453b4ce em 01/11/2026. CI https://github.com/avilaops/TMS/actions/runs/40648354236 aprovada: 2512 testes em 96 arquivos, typecheck e build Docker. Revisão independente sem achados bloqueantes. Publicação anterior cd138c2754a1161b8490bb3af83e2fe0c34edd79 contém esse merge e foi confirmada saudável pela API de produção em 12/11. Linear Done; registro local reconciliado na integração geral.",
       "blocker": "",
       "history": [
         {
           "at": "2026-10-28",
           "status": "em_revisao",
           "note": "Implementação concluída em branch e validada no GitHub CI. Projeção de descargas, sem otimização com restrição de capacidade ou coletas intermediárias."
+        },
+        {
+          "at": "2026-11-12",
+          "status": "concluida",
+          "note": "Reconciliado com o GitHub e Linear: PR #33 já mergeada em 01/11, contida no commit saudável em produção cd138c2; issue AVL-371 Done. Branch incorporada incluída na limpeza autorizada."
         }
       ]
     },
@@ -243,7 +248,7 @@
       "objective": "Importar CT-e/MDF-e privados no contrato da viagem e consultar situação sem emitir em nome da parceira.",
       "assignee": "agent-code",
       "priority": "high",
-      "status": "em_revisao",
+      "status": "em-andamento",
       "acceptanceCriteria": [
         "Conferir XML, chave completa, CNPJ, emissão, ambiente e protocolo",
         "Download privado, auditoria sem XML, deduplicação e isolamento por tenant",
@@ -252,7 +257,7 @@
         "Testes PostgreSQL, parser, perfis e tela; prints desktop/mobile; typecheck, lint e CI"
       ],
       "evidence": "PR https://github.com/avilaops/TMS/pull/35. Código 64e4b41 aprovado na CI https://github.com/avilaops/TMS/actions/runs/43312304738 após reexecutar um grupo com timeout de preparação. 2613 casos distintos em 101 arquivos; 2615 execuções porque dois testes de segredo se repetem nas partes de MDF-e. Build, ambos typechecks e imagem aprovados; maior job bem-sucedido 56s, imagem 35s. Todos declaram timeout de um minuto. Resultados por job em artifacts/avl-412-ci-43312304738.md. Rodada local direcionada de 230 casos, lint, typecheck e capturas desktop/mobile do componente com API simulada. SQL 043 aditivo/reaplicável. Ajuste seguinte acrescenta tmpfs e reaplicação do SQL no runner; seu resultado fica nos checks da PR. Revisão pelo próprio agente; sem revisão independente, merge ou deploy.",
-      "blocker": "",
+      "blocker": "PR #35 integrada e SQL 043 aplicado em produção. Testes/tipos/build da main aprovados após reexecução pontual; publicação bloqueada na validação de RepoDigests[0]. Correção para digest do registro em validação. Detalhes em artifacts/tms-merge-publicacao-2026-11-12.md.",
       "history": [
         {
           "at": "2026-11-12",
@@ -268,6 +273,11 @@
           "at": "2026-11-12",
           "status": "em_revisao",
           "note": "Código 64e4b41 com suíte, tipos, build e imagem aprovados na tentativa 2 do run 43312304738. Timeout original preservado no histórico. Entrega segue para revisão pela PR #35; AVL-412 mensal continua In Progress."
+        },
+        {
+          "at": "2026-11-12",
+          "status": "em-andamento",
+          "note": "Usuário autorizou integrar todas as branches/PRs, publicar e limpar branches incorporadas. SQL 043 aplicado duas vezes e RLS reaplicado por túnel local; nove colunas verificadas. PR #35 mergeada em d7c1a45. CI 43343859324 passou testes/tipos/build, mas falhou na captura do endereço por digest após push; deploy bloqueado. Correção busca digest no registro."
         }
       ]
     }
