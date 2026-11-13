@@ -347,6 +347,35 @@
           "note": "Critérios de implementação local verificados: testes, tipos, lint, payload e navegador desktop/mobile aprovados; API e banco inalterados. CI, publicação e limpeza seguem como etapas separadas da entrega na AVL-412."
         }
       ]
+    },
+    {
+      "id": "T-0014",
+      "title": "AVL-412 — Implementar Faturamento conforme as capacidades",
+      "objective": "Corrigir e verificar a implementação local da lista e do detalhe de fatura conforme faturamento/faturamentoVer, preservando a capacidade independente coletasFrete. CI, integração e publicação acompanhadas na AVL-412.",
+      "assignee": "agent-code",
+      "priority": "medium",
+      "status": "concluida",
+      "acceptanceCriteria": [
+        "Diretoria consulta cargas/faturas sem emissão, baixa, reabertura, cancelamento ou geração/atualização de cobrança",
+        "Consulta, impressão, recibos, Pix e boleto existentes preservados",
+        "Diretoria continua informando fretes conforme coletasFrete",
+        "Administrador e Financeiro preservam ações autorizadas; mudança de perfil retira comandos e baixa aberta",
+        "Regressão, testes focados, tipos, lint e navegador desktop/mobile aprovados; evidência local explícita"
+      ],
+      "evidence": "Implementação local concluída: lista/detalhe respeitam faturamento/faturamentoVer e preservam coletasFrete da Diretoria, impressão, recibo, boleto e Pix existentes. Regressão inicial 7 falhas/7 casos aprovados; após corrigir, 54 testes aprovados em quatro arquivos, incluindo 14 novos cenários, typecheck e lint sem avisos. Chromium lista/detalhe 1440/390 px, sem erro ou rolagem horizontal do documento, com frete da Diretoria e emissão/Pix de Administrador/Financeiro verificados. Evidência e quatro capturas em artifacts/faturamento-perfis-verificacao.md. Revisão pelo próprio agente, sem revisão independente. API, matriz e banco inalterados. Este status comprova somente a implementação local; CI, publicação, saúde e limpeza serão comprovadas na AVL-412.",
+      "blocker": "",
+      "history": [
+        {
+          "at": "2026-11-13",
+          "status": "em-andamento",
+          "note": "Continuação solicitada via Linear. Workflow Debug e TDD, sem agentes adicionais. Tarefa com escopo de implementação local; publicação não será inferida deste registro."
+        },
+        {
+          "at": "2026-11-13",
+          "status": "concluida",
+          "note": "Critérios locais aprovados: 54 testes, tipos, lint e navegador desktop/mobile. Jornada de cadastro a logout solicitada durante o trabalho foi analisada sem mudar a política de acesso; dados necessários pendentes do usuário. Esta tarefa continua limitada ao Faturamento."
+        }
+      ]
     }
   ],
   "decisions": [

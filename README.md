@@ -221,7 +221,7 @@ Ainda não existe nas cotações: a cobrança automática da cotação parada, o
 
 ## Faturamento
 
-Em `/dashboard/faturamento` o administrador cobra de um cliente o frete das cargas entregues.
+Em `/dashboard/faturamento`, Administrador e Financeiro emitem e baixam faturas. A Diretoria consulta cargas e faturas, imprime, lê recibos e usa Pix/boleto já disponíveis, sem comandos de emissão, baixa, reabertura, cancelamento ou geração/atualização de cobrança. Informar frete tem a capacidade independente `coletasFrete`, que continua disponível à Diretoria. As duas telas seguem a matriz da sessão, e as rotas validam a autorização no servidor.
 
 - **Faturável** é a carga entregue, com frete definido e fora de fatura. Carga entregue "a cotar" aparece à parte, com o campo para informar o frete (`PATCH /api/coletas/[id]/frete`, que vale em qualquer status enquanto a carga não foi faturada).
 - **Emitir** (`POST /api/faturas`) soma os fretes, dá o próximo número da empresa, prende as cargas na fatura e cria o lançamento a receber no financeiro. É esse lançamento que o cliente vê em "Faturas" no portal. A numeração é por empresa e uma emissão por vez (trava do Postgres), então não repete nem pula.
@@ -229,11 +229,11 @@ Em `/dashboard/faturamento` o administrador cobra de um cliente o frete das carg
 - **Depois de faturada**, a carga não muda mais de frete: a fatura já saiu com ele.
 - `/dashboard/faturamento/[id]` é a fatura pronta para imprimir ou salvar em PDF.
 
-Ainda não há boleto nem envio automático do aviso de cobrança, e o Pix é estático: a baixa é manual, ou pela [conciliação do extrato bancário](#conciliação-bancária-por-extrato-ofx). A posição do que está em aberto, o aviso para copiar e o recibo ficam em [Cobrança](#cobrança).
+A cobrança pode usar Pix estático, com baixa manual ou pela [conciliação do extrato bancário](#conciliação-bancária-por-extrato-ofx), ou Pix dinâmico/boleto pelo [Mercado Pago](#cobrança-pelo-mercado-pago), com baixa automática. Ainda não há envio automático do aviso de cobrança. A posição do que está em aberto, o aviso para copiar e o recibo ficam em [Cobrança](#cobrança).
 
 ## Financeiro: contas a pagar, a receber e fluxo de caixa
 
-Em `/dashboard/financeiro`, só para o administrador. As regras e as contas ficam em [src/lib/financeiro.ts](src/lib/financeiro.ts).
+Em `/dashboard/financeiro`, Administrador e Financeiro registram e alteram lançamentos; a Diretoria consulta. As regras e as contas ficam em [src/lib/financeiro.ts](src/lib/financeiro.ts).
 
 - **Lançamento** (`FinancialTransaction`): receita ou despesa, valor, vencimento, cliente ou fornecedor, categoria, **centro de custo** e observação. Quando é pago guarda a data (`paidAt`) e a forma de pagamento.
 - **Baixa com juros, multa e desconto:** receber um título abre a baixa, com os três campos (valores em reais, maiores ou iguais a zero). O valor original (`amount`) não muda; o que entrou de fato fica em `paidAmount` (original + juros + multa − desconto, nunca negativo), junto de `interest`, `fine` e `discount`. Baixa sem encargo, ou com os três zerados, é a de sempre e não guarda nada; reabrir apaga os quatro. Vale só para título **a receber**: despesa é paga pelo valor. O fluxo de caixa **realizado**, o "recebido no mês", os relatórios, a receita do painel e o recibo usam o valor recebido quando ele existe; o **previsto** e o que está em aberto continuam no valor original.

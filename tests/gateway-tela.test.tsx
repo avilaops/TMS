@@ -11,6 +11,7 @@ import { GATEWAY_INDISPONIVEL } from "../src/lib/cobranca-gateway";
  * `tests/gateway.test.ts`; aqui se confere o que cada tela mostra e pede.
  */
 
+vi.mock("next-auth/react", () => ({ useSession: () => ({ data: { user: { role: "ADMIN" } } }) }));
 vi.mock("next/link", () => ({
   default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
     <a href={href} className={className}>
