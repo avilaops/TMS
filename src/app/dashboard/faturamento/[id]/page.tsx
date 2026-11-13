@@ -1,9 +1,11 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
 import { formatCalendarDate, formatCurrency, formatDate, formatDocument, formatWeight } from "@/lib/format";
+import { pode } from "@/lib/permissoes";
 import { PixCopiaECola } from "@/components/pix/copia-e-cola";
 import { Boleto, PixDinamico } from "@/components/pix/cobranca-do-gateway";
 import { ROTULO_DO_TIPO, rotuloDaSituacao, type CobrancaDaTela, type TipoDeCobranca } from "@/lib/cobranca-gateway";
@@ -44,6 +46,9 @@ const SITUACAO = { OPEN: "Em aberto", PAID: "Paga", CANCELLED: "Cancelada" } as 
 
 export default function FaturaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { data: session } = useSession();
+  const podeFaturar = pode(session?.user?.role, "faturamento");
+  const somenteConsulta = pode(session?.user?.role, "faturamentoVer") && !podeFaturar;
   const [fatura, setFatura] = useState<Fatura | null>(null);
   const [erro, setErro] = useState("");
   // Cobrança do Mercado Pago: o que está sendo feito e o recado da última ação.
@@ -66,6 +71,7 @@ export default function FaturaPage({ params }: { params: Promise<{ id: string }>
 
   /** Gera a cobrança (`tipo`) ou atualiza a situação de uma (`cobrancaId`), e lê a fatura de novo. */
   const cobrar = async (acao: { tipo: TipoDeCobranca } | { cobrancaId: string }) => {
+    if (!podeFaturar) return;
     setOcupado(true);
     setRecado(null);
     try {
@@ -133,6 +139,7 @@ export default function FaturaPage({ params }: { params: Promise<{ id: string }>
         <div className="flex flex-wrap justify-between gap-6">
           <div>
             <h1 className="text-2xl font-outfit font-bold">Fatura nº {fatura.number}</h1>
+            {somenteConsulta && <p className="text-sm text-gray-500 mt-1 print:hidden">Fatura em modo de consulta.</p>}
             <p className="text-sm text-gray-600 mt-1">
               {SITUACAO[fatura.status]}
               {fatura.paidAt ? ` em ${formatDate(fatura.paidAt)}` : ""}
@@ -196,7 +203,7 @@ export default function FaturaPage({ params }: { params: Promise<{ id: string }>
           <section data-cobrancas aria-label="Cobrança pelo Mercado Pago" className="mt-4 max-w-xl space-y-2 print:hidden">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-semibold mr-auto">Mercado Pago</h2>
-              {fatura.gateway &&
+              {podeFaturar && fatura.gateway &&
                 fatura.status === "OPEN" &&
                 (["PIX", "BOLETO"] as const)
                   .filter((tipo) => !emAberto(tipo))
@@ -227,7 +234,7 @@ export default function FaturaPage({ params }: { params: Promise<{ id: string }>
                     {cobranca.pagaEm ? ` em ${formatDate(cobranca.pagaEm)}` : ""}
                   </span>
                   <span className="text-xs text-gray-500">gerada em {formatDate(cobranca.criadaEm)}</span>
-                  {(cobranca.situacao === "PENDING" || cobranca.situacao === "REVIEW") && (
+                  {podeFaturar && (cobranca.situacao === "PENDING" || cobranca.situacao === "REVIEW") && (
                     <button type="button" data-atualizar={cobranca.id} disabled={ocupado} onClick={() => void cobrar({ cobrancaId: cobranca.id })} className="text-sm text-blue-600 hover:underline disabled:opacity-60">
                       Atualizar situação
                     </button>

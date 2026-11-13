@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Loader2, Receipt } from "lucide-react";
 import { formatCalendarDate, formatCurrency, formatDate, formatWeight } from "@/lib/format";
+import { pode } from "@/lib/permissoes";
 import { Baixa, useParametrosDeCobranca, type EncargosDigitados } from "@/components/financeiro/Baixa";
 
 /**
  * Faturamento: escolhe um cliente com cargas entregues, marca as que entram e
  * emite a fatura. Abaixo, as faturas emitidas, com pagar, reabrir e cancelar.
  * Pagar abre a baixa (juros, multa e desconto), a mesma do Financeiro.
- * Só o administrador chega aqui (a API recusa os demais).
+ * Quem tem faturamentoVer consulta; faturamento emite e baixa. Informar frete
+ * usa a capacidade independente coletasFrete, inclusive para a Diretoria.
  */
 
 type Resumo = { clientId: string; cliente: string; cargas: number; total: number };
@@ -52,6 +55,10 @@ const INPUT =
 const daquiA15Dias = () => new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 export default function Faturamento() {
+  const { data: session } = useSession();
+  const podeFaturar = pode(session?.user?.role, "faturamento");
+  const podeInformarFrete = pode(session?.user?.role, "coletasFrete");
+  const somenteConsulta = pode(session?.user?.role, "faturamentoVer") && !podeFaturar;
   const [negado, setNegado] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [resumo, setResumo] = useState<Resumo[]>([]);
@@ -70,16 +77,15 @@ export default function Faturamento() {
   const [baixa, setBaixa] = useState<Fatura | null>(null);
   const parametros = useParametrosDeCobranca();
 
-  const carregar = async () => {
-    try {
-      const [r, f] = await Promise.all([fetch("/api/faturas/faturaveis"), fetch("/api/faturas")]);
+  const carregar = () => Promise.all([fetch("/api/faturas/faturaveis"), fetch("/api/faturas")])
+    .then(async ([r, f]) => {
       if (r.status === 401 || r.status === 403) return setNegado(true);
       if (r.ok) setResumo(await r.json());
       if (f.ok) setFaturas(await f.json());
-    } finally {
+    })
+    .finally(() => {
       setCarregando(false);
-    }
-  };
+    });
 
   const abrirCliente = async (id: string) => {
     setClienteId(id);
@@ -116,6 +122,7 @@ export default function Faturamento() {
     });
 
   const emitir = async () => {
+    if (!podeFaturar) return;
     setOcupado(true);
     setMensagem(null);
     try {
@@ -141,6 +148,7 @@ export default function Faturamento() {
   };
 
   const informarFrete = async (id: string) => {
+    if (!podeInformarFrete) return;
     setOcupado(true);
     setMensagem(null);
     try {
@@ -162,6 +170,7 @@ export default function Faturamento() {
 
   /** `encargos` só vem da baixa (juros, multa e desconto): vão para o lançamento da fatura. */
   const agir = async (fatura: Fatura, action: "pagar" | "reabrir" | "cancelar", encargos?: EncargosDigitados) => {
+    if (!podeFaturar) return;
     if (
       action === "cancelar" &&
       !window.confirm(`Cancelar a fatura nº ${fatura.number}? As cargas voltam a ficar disponíveis para faturar e o número não é reaproveitado.`)
@@ -202,11 +211,14 @@ export default function Faturamento() {
     );
   }
 
+  const baixaAberta = podeFaturar && baixa !== null;
+
   return (
     <div className="space-y-3 md:space-y-6">
       <div>
         <h1 className="text-2xl font-bold font-outfit text-gray-900 dark:text-white">Faturamento</h1>
         <p className="text-gray-500 text-sm mt-1">Fature o frete das cargas entregues e acompanhe o recebimento</p>
+        {somenteConsulta && <p className="text-sm text-gray-500 mt-1">Faturas em modo de consulta.</p>}
       </div>
 
       {mensagem && (
@@ -215,7 +227,7 @@ export default function Faturamento() {
         </p>
       )}
 
-      {baixa && (
+      {podeFaturar && baixa && (
         <Baixa
           key={baixa.id}
           titulo={{ descricao: `Fatura nº ${baixa.number}`, valor: baixa.total, vencimento: baixa.dueDate }}
@@ -227,8 +239,8 @@ export default function Faturamento() {
       )}
 
       {/* Com a baixa aberta, o celular fica só com ela: é o que cabe numa tela. */}
-      <div className={`${baixa ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
-        <h2 className="font-semibold text-gray-900 dark:text-white">Nova fatura</h2>
+      <div className={`${baixaAberta ? "hidden md:block " : ""}${CARD} p-3 md:p-6 space-y-2 md:space-y-5`}>
+        <h2 className="font-semibold text-gray-900 dark:text-white">{podeFaturar ? "Nova fatura" : "Cargas para faturar"}</h2>
 
         {resumo.length === 0 && !clienteId ? (
           <p className="text-sm text-gray-500">
@@ -254,7 +266,7 @@ export default function Faturamento() {
               <table className="block md:table w-full text-sm">
                 <thead className="hidden md:table-header-group bg-gray-50 dark:bg-gray-950 text-gray-500 text-left">
                   <tr>
-                    <th className="px-4 py-3 w-10" />
+                    {podeFaturar && <th className="px-4 py-3 w-10" />}
                     <th className="px-4 py-3 font-medium">Data</th>
                     <th className="px-4 py-3 font-medium">Trajeto</th>
                     <th className="px-4 py-3 font-medium">Destinatário</th>
@@ -265,14 +277,14 @@ export default function Faturamento() {
                 <tbody className="block md:table-row-group divide-y divide-gray-100 dark:divide-gray-800">
                   {cargas.map((c) => (
                     <tr key={c.id} className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 md:table-row">
-                      <td className="min-w-0 md:table-cell md:px-4 md:py-2">
+                      {podeFaturar && <td className="min-w-0 md:table-cell md:px-4 md:py-2">
                         <input
                           type="checkbox"
                           aria-label={`Incluir a carga ${c.trackingCode ?? c.id}`}
                           checked={marcadas.has(c.id)}
                           onChange={() => alternar(c.id)}
                         />
-                      </td>
+                      </td>}
                       <td className="min-w-0 md:table-cell md:px-4 md:py-2 text-gray-600 dark:text-gray-300">{formatDate(c.createdAt)}</td>
                       <td className="col-span-2 min-w-0 md:table-cell md:px-4 md:py-2 text-gray-900 dark:text-white">
                         {c.origin} → {c.destination}
@@ -289,6 +301,7 @@ export default function Faturamento() {
             </div>
 
             <div className="flex flex-wrap items-end gap-4">
+              {podeFaturar && <>
               <label className="space-y-0.5 md:space-y-1.5 block min-w-0">
                 <span className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Vencimento</span>
                 <input type="date" required value={vencimento} onChange={(e) => setVencimento(e.target.value)} className={INPUT} />
@@ -297,18 +310,19 @@ export default function Faturamento() {
                 <span className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300">Observação (opcional)</span>
                 <input value={observacao} onChange={(e) => setObservacao(e.target.value)} className={`${INPUT} w-full`} />
               </label>
+              </>}
               <div className="text-right">
                 <p className="text-xs text-gray-500">{marcadas.size} carga(s)</p>
                 <p className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(total)}</p>
               </div>
-              <button
+              {podeFaturar && <button
                 onClick={() => void emitir()}
                 disabled={ocupado || marcadas.size === 0 || !vencimento}
                 className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium disabled:opacity-60 inline-flex items-center gap-2"
               >
                 {ocupado && <Loader2 className="w-4 h-4 animate-spin" />}
                 Emitir fatura
-              </button>
+              </button>}
             </div>
           </>
         )}
@@ -328,7 +342,7 @@ export default function Faturamento() {
                   <span className="flex-1 min-w-[12rem] text-gray-700 dark:text-gray-300">
                     {formatDate(c.createdAt)} · {c.origin} → {c.destination} · {formatWeight(c.weight)}
                   </span>
-                  <input
+                  {podeInformarFrete && <><input
                     aria-label={`Frete da carga para ${c.destination}`}
                     inputMode="decimal"
                     placeholder="R$"
@@ -343,6 +357,7 @@ export default function Faturamento() {
                   >
                     Gravar frete
                   </button>
+                  </>}
                 </li>
               ))}
             </ul>
@@ -389,7 +404,7 @@ export default function Faturamento() {
                       <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS[f.status].classe}`}>{STATUS[f.status].rotulo}</span>
                     </td>
                     <td className="col-span-2 min-w-0 md:table-cell md:px-6 md:py-4 md:text-right whitespace-nowrap space-x-4">
-                      {f.status === "OPEN" && (
+                      {podeFaturar && f.status === "OPEN" && (
                         <>
                           <button
                             disabled={ocupado}
@@ -407,7 +422,7 @@ export default function Faturamento() {
                           </button>
                         </>
                       )}
-                      {f.status === "PAID" && (
+                      {podeFaturar && f.status === "PAID" && (
                         <button disabled={ocupado} onClick={() => void agir(f, "reabrir")} className="text-blue-600 hover:underline">
                           Reabrir
                         </button>
