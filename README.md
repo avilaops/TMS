@@ -76,7 +76,9 @@ São nove perfis (enum `Role`): os sete da equipe interna, que entram em `/dashb
 
 Os valores novos do enum entram por [prisma/sql/022-perfis.sql](prisma/sql/022-perfis.sql) (só `ALTER TYPE ... ADD VALUE IF NOT EXISTS`; roda em transação única, `psql -1 -f`, e pode rodar de novo). Nenhum usuário troca de perfil sozinho.
 
-Ainda não existe: perfil sob medida por empresa (a matriz é do código, igual para todas), mais de um perfil por usuário, restrição por filial ou por cliente dentro de um perfil, e tela própria de leitura para quem só lê (a Diretoria no Financeiro e o Financeiro em Clientes veem os mesmos botões; quem recusa a gravação é a API, com 403).
+No Financeiro, a Diretoria vê a indicação "Somente leitura" e consulta resumos, lançamentos, filtros, fluxo de caixa e recibos. Criação, edição, baixa, reabertura, exclusão e acesso à conciliação aparecem somente para quem tem `financeiro` (Administrador e Financeiro). As rotas continuam validando as capacidades no servidor.
+
+Ainda não existe: perfil sob medida por empresa (a matriz é do código, igual para todas), mais de um perfil por usuário, restrição por filial ou por cliente dentro de um perfil, e tela própria de leitura em Clientes (o Financeiro ainda vê os mesmos botões; quem recusa a gravação é a API, com 403).
 
 ### Quem consome a API pública
 

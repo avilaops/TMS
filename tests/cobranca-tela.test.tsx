@@ -11,6 +11,7 @@ import { formatCurrency } from "../src/lib/format";
  * o que cada tela mostra com cada resposta.
  */
 
+vi.mock("next-auth/react", () => ({ useSession: () => ({ data: { user: { role: "ADMIN" } } }) }));
 vi.mock("next/link", () => ({
   default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
     <a href={href} className={className}>
