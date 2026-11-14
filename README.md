@@ -1217,6 +1217,14 @@ A separação tirou o site, não a marca. Para virar produto de mercado ainda fa
 
 ## Deploy
 
+Produção recuperada em 14/11/2026 • Render, serviço `srv-dbrvu9ifngtc73bb5q10`, PostgreSQL compartilhado em Oregon e domínio `https://tms.avilaops.com` por CNAME na Cloudflare. Builds e verificações continuam exclusivamente no GitHub CI; o workflow promove a imagem GHCR por digest usando o segredo `RENDER_API_KEY`.
+
+O CMS adiciona a tabela `CarrierSite` por SQL aditivo, após backup. As instruções atuais de publicação, banco, mensuração e sites de cortesia estão em [Site público e CMS](docs/SITE-PUBLICO-CMS.md). O banco gratuito tem expiração prevista para 13/12/2026.
+
+### Referência histórica • servidor anterior
+
+Os procedimentos abaixo registram a instalação anterior à recuperação. Para operar o ambiente atual, use o documento de Site público e CMS acima.
+
 O sistema roda no servidor `applications`, em `/opt/tms-avilaops-com`, atrás do Caddy, e segue a Norma de Plataforma da Ávila Ops (`avilaops/infra`, `NORMA-PLATAFORMA.md`): todo nome sai do domínio e nenhuma porta é publicada no host.
 
 | Recurso | Nome |

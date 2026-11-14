@@ -67,6 +67,8 @@ const DA_OPERACAO: Capacidade[] = [
 
 // O que era "só ADMIN" antes dos perfis novos.
 const SO_DO_ADMIN_ANTES: Capacidade[] = [
+  // Site de cortesia: novas capacidades, sem ampliar o acesso da operação.
+  'siteVer', 'site', 'sitePublicar',
   "tabelasFrete",
   "frotaCustos",
   "equipeValoresVer",
@@ -104,6 +106,7 @@ const ESPERADO: Record<Perfil, Capacidade[]> = {
     "auditoria",
     "mensageriaVer",
     "freteContratadoVer",
+    'siteVer',
   ],
   FINANCE: [
     "painel",
@@ -130,7 +133,7 @@ const ESPERADO: Record<Perfil, Capacidade[]> = {
     "freteContratadoVer",
     "freteContratado",
   ],
-  COMMERCIAL: ["painel", "clientesVer", "clientes", "clientesCondicoes", "crm", "tabelasFreteVer", "tabelasFrete", "coletasVer", "ocorrencias"],
+  COMMERCIAL: ["painel", "clientesVer", "clientes", "clientesCondicoes", "crm", "tabelasFreteVer", "tabelasFrete", "coletasVer", "ocorrencias", 'siteVer', 'site'],
   EXPEDITION: [
     "painel",
     "coletasVer",
@@ -152,6 +155,10 @@ const ESPERADO: Record<Perfil, Capacidade[]> = {
 
 // Toda rota interna e a capacidade que ela exige. Rota nova entra aqui.
 const ROTAS: Record<string, Capacidade> = {
+  'GET /api/site': 'siteVer',
+  'PUT /api/site': 'site',
+  'POST /api/site/publicacao': 'sitePublicar',
+  'DELETE /api/site/publicacao': 'sitePublicar',
   "GET /api/auditoria": "auditoria",
   "PATCH /api/clientes/[id]": "clientesCondicoes",
   "GET /api/clientes": "clientesVer",
@@ -616,6 +623,7 @@ describe("menu do painel por perfil", () => {
       "/auditoria",
       "/usuarios",
       "/empresa",
+      '/site',
     ]);
   });
 
@@ -642,6 +650,7 @@ describe("menu do painel por perfil", () => {
       "/relatorios",
       "/mensagens",
       "/auditoria",
+      '/site',
     ]);
     expect(links("FINANCE")).toEqual([
       "/",
@@ -660,7 +669,7 @@ describe("menu do painel por perfil", () => {
       "/frota",
       "/relatorios",
     ]);
-    expect(links("COMMERCIAL")).toEqual(["/", "/clientes", "/crm", "/tabelas-frete", "/coletas", "/ocorrencias"]);
+    expect(links("COMMERCIAL")).toEqual(["/", "/clientes", "/crm", "/tabelas-frete", "/coletas", "/ocorrencias", '/site']);
     expect(links("EXPEDITION")).toEqual(["/", "/coletas", "/manifestos", "/comprovantes", "/ocorrencias", "/fiscal", "/motoristas", "/veiculos", "/equipe", "/frota"]);
     expect(links("WAREHOUSE")).toEqual(["/", "/coletas", "/deposito", "/ocorrencias"]);
   });

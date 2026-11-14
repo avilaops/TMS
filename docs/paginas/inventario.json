@@ -1,0 +1,367 @@
+[
+  {
+    "route": "/blog/[slug]",
+    "source": "src/app/blog/[slug]/page.tsx",
+    "mdx": "src/content/public/o-que-e-cte.mdx"
+  },
+  {
+    "route": "/blog",
+    "source": "src/app/blog/page.tsx",
+    "mdx": "src/content/public/blog.mdx"
+  },
+  {
+    "route": "/cookies",
+    "source": "src/app/cookies/page.tsx",
+    "mdx": "src/content/public/cookies.mdx"
+  },
+  {
+    "route": "/dashboard/auditoria",
+    "source": "src/app/dashboard/auditoria/page.tsx",
+    "mdx": "docs/paginas/dashboard/auditoria/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/clientes",
+    "source": "src/app/dashboard/clientes/page.tsx",
+    "mdx": "docs/paginas/dashboard/clientes/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/cobranca",
+    "source": "src/app/dashboard/cobranca/page.tsx",
+    "mdx": "docs/paginas/dashboard/cobranca/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/coletas/[id]/minuta",
+    "source": "src/app/dashboard/coletas/[id]/minuta/page.tsx",
+    "mdx": "docs/paginas/dashboard/coletas/[id]/minuta/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/coletas",
+    "source": "src/app/dashboard/coletas/page.tsx",
+    "mdx": "docs/paginas/dashboard/coletas/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/coletas/pendentes",
+    "source": "src/app/dashboard/coletas/pendentes/page.tsx",
+    "mdx": "docs/paginas/dashboard/coletas/pendentes/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/comprovantes",
+    "source": "src/app/dashboard/comprovantes/page.tsx",
+    "mdx": "docs/paginas/dashboard/comprovantes/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/crm",
+    "source": "src/app/dashboard/crm/page.tsx",
+    "mdx": "docs/paginas/dashboard/crm/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/deposito/conferencia",
+    "source": "src/app/dashboard/deposito/conferencia/page.tsx",
+    "mdx": "docs/paginas/dashboard/deposito/conferencia/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/deposito/etiquetas/[coletaId]",
+    "source": "src/app/dashboard/deposito/etiquetas/[coletaId]/page.tsx",
+    "mdx": "docs/paginas/dashboard/deposito/etiquetas/[coletaId]/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/deposito",
+    "source": "src/app/dashboard/deposito/page.tsx",
+    "mdx": "docs/paginas/dashboard/deposito/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/deposito/posicoes",
+    "source": "src/app/dashboard/deposito/posicoes/page.tsx",
+    "mdx": "docs/paginas/dashboard/deposito/posicoes/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/empresa",
+    "source": "src/app/dashboard/empresa/page.tsx",
+    "mdx": "docs/paginas/dashboard/empresa/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/entregas/[id]/comprovante",
+    "source": "src/app/dashboard/entregas/[id]/comprovante/page.tsx",
+    "mdx": "docs/paginas/dashboard/entregas/[id]/comprovante/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/entregas/[id]/tentativas",
+    "source": "src/app/dashboard/entregas/[id]/tentativas/page.tsx",
+    "mdx": "docs/paginas/dashboard/entregas/[id]/tentativas/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/equipe/fechamento/[id]/recibo",
+    "source": "src/app/dashboard/equipe/fechamento/[id]/recibo/page.tsx",
+    "mdx": "docs/paginas/dashboard/equipe/fechamento/[id]/recibo/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/equipe",
+    "source": "src/app/dashboard/equipe/page.tsx",
+    "mdx": "docs/paginas/dashboard/equipe/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/faturamento/[id]",
+    "source": "src/app/dashboard/faturamento/[id]/page.tsx",
+    "mdx": "docs/paginas/dashboard/faturamento/[id]/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/faturamento",
+    "source": "src/app/dashboard/faturamento/page.tsx",
+    "mdx": "docs/paginas/dashboard/faturamento/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/financeiro/conciliacao",
+    "source": "src/app/dashboard/financeiro/conciliacao/page.tsx",
+    "mdx": "docs/paginas/dashboard/financeiro/conciliacao/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/financeiro",
+    "source": "src/app/dashboard/financeiro/page.tsx",
+    "mdx": "docs/paginas/dashboard/financeiro/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/financeiro/recibo/[id]",
+    "source": "src/app/dashboard/financeiro/recibo/[id]/page.tsx",
+    "mdx": "docs/paginas/dashboard/financeiro/recibo/[id]/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/fiscal/cte",
+    "source": "src/app/dashboard/fiscal/cte/page.tsx",
+    "mdx": "docs/paginas/dashboard/fiscal/cte/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/fiscal/mdfe",
+    "source": "src/app/dashboard/fiscal/mdfe/page.tsx",
+    "mdx": "docs/paginas/dashboard/fiscal/mdfe/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/fiscal",
+    "source": "src/app/dashboard/fiscal/page.tsx",
+    "mdx": "docs/paginas/dashboard/fiscal/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/frota",
+    "source": "src/app/dashboard/frota/page.tsx",
+    "mdx": "docs/paginas/dashboard/frota/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/manifestos/[id]/recibo-frete",
+    "source": "src/app/dashboard/manifestos/[id]/recibo-frete/page.tsx",
+    "mdx": "docs/paginas/dashboard/manifestos/[id]/recibo-frete/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/manifestos",
+    "source": "src/app/dashboard/manifestos/page.tsx",
+    "mdx": "docs/paginas/dashboard/manifestos/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/mensagens",
+    "source": "src/app/dashboard/mensagens/page.tsx",
+    "mdx": "docs/paginas/dashboard/mensagens/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/motoristas",
+    "source": "src/app/dashboard/motoristas/page.tsx",
+    "mdx": "docs/paginas/dashboard/motoristas/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/ocorrencias/[id]",
+    "source": "src/app/dashboard/ocorrencias/[id]/page.tsx",
+    "mdx": "docs/paginas/dashboard/ocorrencias/[id]/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/ocorrencias",
+    "source": "src/app/dashboard/ocorrencias/page.tsx",
+    "mdx": "docs/paginas/dashboard/ocorrencias/pagina.mdx"
+  },
+  {
+    "route": "/dashboard",
+    "source": "src/app/dashboard/page.tsx",
+    "mdx": "docs/paginas/dashboard/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/parceiros",
+    "source": "src/app/dashboard/parceiros/page.tsx",
+    "mdx": "docs/paginas/dashboard/parceiros/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/relatorios",
+    "source": "src/app/dashboard/relatorios/page.tsx",
+    "mdx": "docs/paginas/dashboard/relatorios/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/site",
+    "source": "src/app/dashboard/site/page.tsx",
+    "mdx": "docs/paginas/dashboard/site/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/tabelas-frete",
+    "source": "src/app/dashboard/tabelas-frete/page.tsx",
+    "mdx": "docs/paginas/dashboard/tabelas-frete/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/usuarios",
+    "source": "src/app/dashboard/usuarios/page.tsx",
+    "mdx": "docs/paginas/dashboard/usuarios/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/veiculos/[id]/manutencao",
+    "source": "src/app/dashboard/veiculos/[id]/manutencao/page.tsx",
+    "mdx": "docs/paginas/dashboard/veiculos/[id]/manutencao/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/veiculos/[id]",
+    "source": "src/app/dashboard/veiculos/[id]/page.tsx",
+    "mdx": "docs/paginas/dashboard/veiculos/[id]/pagina.mdx"
+  },
+  {
+    "route": "/dashboard/veiculos",
+    "source": "src/app/dashboard/veiculos/page.tsx",
+    "mdx": "docs/paginas/dashboard/veiculos/pagina.mdx"
+  },
+  {
+    "route": "/driver/entregas/[id]/baixa",
+    "source": "src/app/driver/entregas/[id]/baixa/page.tsx",
+    "mdx": "docs/paginas/driver/entregas/[id]/baixa/pagina.mdx"
+  },
+  {
+    "route": "/driver/entregas/[id]/insucesso",
+    "source": "src/app/driver/entregas/[id]/insucesso/page.tsx",
+    "mdx": "docs/paginas/driver/entregas/[id]/insucesso/pagina.mdx"
+  },
+  {
+    "route": "/driver/entregas/[id]/ocorrencia",
+    "source": "src/app/driver/entregas/[id]/ocorrencia/page.tsx",
+    "mdx": "docs/paginas/driver/entregas/[id]/ocorrencia/pagina.mdx"
+  },
+  {
+    "route": "/driver/entregas/[id]/refazer",
+    "source": "src/app/driver/entregas/[id]/refazer/page.tsx",
+    "mdx": "docs/paginas/driver/entregas/[id]/refazer/pagina.mdx"
+  },
+  {
+    "route": "/driver/mapa",
+    "source": "src/app/driver/mapa/page.tsx",
+    "mdx": "docs/paginas/driver/mapa/pagina.mdx"
+  },
+  {
+    "route": "/driver/offline",
+    "source": "src/app/driver/offline/page.tsx",
+    "mdx": "docs/paginas/driver/offline/pagina.mdx"
+  },
+  {
+    "route": "/driver",
+    "source": "src/app/driver/page.tsx",
+    "mdx": "docs/paginas/driver/pagina.mdx"
+  },
+  {
+    "route": "/driver/perfil",
+    "source": "src/app/driver/perfil/page.tsx",
+    "mdx": "docs/paginas/driver/perfil/pagina.mdx"
+  },
+  {
+    "route": "/driver/remuneracao",
+    "source": "src/app/driver/remuneracao/page.tsx",
+    "mdx": "docs/paginas/driver/remuneracao/pagina.mdx"
+  },
+  {
+    "route": "/driver/viagem/[id]/checklist",
+    "source": "src/app/driver/viagem/[id]/checklist/page.tsx",
+    "mdx": "docs/paginas/driver/viagem/[id]/checklist/pagina.mdx"
+  },
+  {
+    "route": "/driver/viagem/[id]/despesas",
+    "source": "src/app/driver/viagem/[id]/despesas/page.tsx",
+    "mdx": "docs/paginas/driver/viagem/[id]/despesas/pagina.mdx"
+  },
+  {
+    "route": "/driver/viagem/[id]",
+    "source": "src/app/driver/viagem/[id]/page.tsx",
+    "mdx": "docs/paginas/driver/viagem/[id]/pagina.mdx"
+  },
+  {
+    "route": "/empresa",
+    "source": "src/app/empresa/page.tsx",
+    "mdx": "docs/paginas/empresa/pagina.mdx"
+  },
+  {
+    "route": "/login",
+    "source": "src/app/login/page.tsx",
+    "mdx": "docs/paginas/login/pagina.mdx"
+  },
+  {
+    "route": "/",
+    "source": "src/app/page.tsx",
+    "mdx": "src/content/public/inicio.mdx"
+  },
+  {
+    "route": "/plataforma/empresas",
+    "source": "src/app/plataforma/empresas/page.tsx",
+    "mdx": "docs/paginas/plataforma/empresas/pagina.mdx"
+  },
+  {
+    "route": "/portal/atendimento/[id]",
+    "source": "src/app/portal/atendimento/[id]/page.tsx",
+    "mdx": "docs/paginas/portal/atendimento/[id]/pagina.mdx"
+  },
+  {
+    "route": "/portal/atendimento",
+    "source": "src/app/portal/atendimento/page.tsx",
+    "mdx": "docs/paginas/portal/atendimento/pagina.mdx"
+  },
+  {
+    "route": "/portal/coletas/[id]",
+    "source": "src/app/portal/coletas/[id]/page.tsx",
+    "mdx": "docs/paginas/portal/coletas/[id]/pagina.mdx"
+  },
+  {
+    "route": "/portal/coletas",
+    "source": "src/app/portal/coletas/page.tsx",
+    "mdx": "docs/paginas/portal/coletas/pagina.mdx"
+  },
+  {
+    "route": "/portal/cotacao",
+    "source": "src/app/portal/cotacao/page.tsx",
+    "mdx": "docs/paginas/portal/cotacao/pagina.mdx"
+  },
+  {
+    "route": "/portal/destinatarios",
+    "source": "src/app/portal/destinatarios/page.tsx",
+    "mdx": "docs/paginas/portal/destinatarios/pagina.mdx"
+  },
+  {
+    "route": "/portal/faturas",
+    "source": "src/app/portal/faturas/page.tsx",
+    "mdx": "docs/paginas/portal/faturas/pagina.mdx"
+  },
+  {
+    "route": "/portal",
+    "source": "src/app/portal/page.tsx",
+    "mdx": "docs/paginas/portal/pagina.mdx"
+  },
+  {
+    "route": "/portal/tabela-frete",
+    "source": "src/app/portal/tabela-frete/page.tsx",
+    "mdx": "docs/paginas/portal/tabela-frete/pagina.mdx"
+  },
+  {
+    "route": "/privacidade",
+    "source": "src/app/privacidade/page.tsx",
+    "mdx": "src/content/public/privacidade.mdx"
+  },
+  {
+    "route": "/rastreio",
+    "source": "src/app/rastreio/page.tsx",
+    "mdx": "docs/paginas/rastreio/pagina.mdx"
+  },
+  {
+    "route": "/sobre",
+    "source": "src/app/sobre/page.tsx",
+    "mdx": "src/content/public/sobre.mdx"
+  },
+  {
+    "route": "/transportadoras/[empresa]/[[...pagina]]",
+    "source": "src/app/transportadoras/[empresa]/[[...pagina]]/page.tsx",
+    "mdx": "docs/paginas/transportadoras/[empresa]/[[...pagina]]/pagina.mdx"
+  }
+]

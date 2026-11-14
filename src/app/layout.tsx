@@ -10,15 +10,15 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
 
 const previa = {
-  title: "TMS · Gestão de transporte",
+  title: "TMS • Gestão de transporte",
   description: "Planeje rotas, organize cargas e acompanhe as entregas do embarque ao destino.",
   image: "https://avilaops.com/og/brand-2026/tms.jpg",
 };
 
 export const metadata: Metadata = {
   title: {
-    default: "TMS",
-    template: "%s | TMS",
+    default: "TMS • Ávila Ops",
+    template: "%s • TMS",
   },
   description:
     "Sistema de gestão de transportes: coletas, manifestos, motoristas, veículos, financeiro e fiscal.",
@@ -38,11 +38,12 @@ export const metadata: Metadata = {
     description: previa.description,
     images: [{ url: previa.image, alt: previa.title }],
   },
-  // Sistema interno: nada aqui deve aparecer em busca.
+  // Areas operacionais ficam fechadas por padrao; documentos publicos sobrescrevem.
   robots: { index: false, follow: false },
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
       { url: "/favicon-96x96.png", type: "image/png", sizes: "96x96" },
     ],
     shortcut: "/favicon.ico",

@@ -1,6 +1,6 @@
 {
   "id": "/dashboard",
-  "name": "TMS",
+  "name": "TMS • Avila Ops",
   "short_name": "TMS",
   "description": "Painel da transportadora: coletas, viagens, financeiro e avisos.",
   "lang": "pt-BR",
@@ -27,12 +27,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "/maskable-icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
     },
     {
       "src": "/maskable-icon-512x512.png",

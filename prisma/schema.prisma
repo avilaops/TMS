@@ -30,6 +30,16 @@ enum Role {
 // preenche `tenantId` na mao: o valor padrao da coluna le essa mesma variavel,
 // e sem ela o INSERT falha. Ver src/lib/prisma.ts.
 // ---------------------------------------------------------------------------
+model CarrierSite {
+  tenantId    String    @id @default(dbgenerated("current_setting('app.tenant_id'::text)"))
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  draft       Json
+  published   Json?
+  publishedAt DateTime?
+  revision    Int       @default(1)
+  updatedAt   DateTime  @updatedAt
+}
+
 model Tenant {
   documentDeliveries DocumentDelivery[]
   id               String   @id @default(uuid())
@@ -40,6 +50,7 @@ model Tenant {
   // Símbolo da empresa: data URL de imagem pequena. Nulo = símbolo padrão. Ver src/lib/empresa.ts.
   logo             String?  @db.Text
   active           Boolean  @default(true)
+  site             CarrierSite?
   // Encargos sugeridos na baixa de um título vencido: multa (% do valor, uma
   // vez) e juros (% ao mês, proporcional aos dias de atraso). Ver src/lib/cobranca.ts.
   lateFinePct      Float    @default(2)
