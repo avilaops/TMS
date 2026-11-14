@@ -1,8 +1,8 @@
 {
   "id": "/driver",
-  "name": "Mello Motorista",
-  "short_name": "Mello Motorista",
-  "description": "Viagens, entregas e comprovantes para a equipe da Mello Transportes.",
+  "name": "Motorista • TMS",
+  "short_name": "Motorista",
+  "description": "Viagens, entregas e comprovantes para a equipe de transporte.",
   "lang": "pt-BR",
   "start_url": "/driver",
   "scope": "/driver",
@@ -28,12 +28,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "/maskable-icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
     },
     {
       "src": "/maskable-icon-512x512.png",

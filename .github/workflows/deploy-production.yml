@@ -79,6 +79,8 @@ jobs:
         run: |
           npx prisma db execute --file prisma/sql/043-subcontratacao-xml.sql
           npx prisma db execute --file prisma/sql/043-subcontratacao-xml.sql
+          npx prisma db execute --file prisma/sql/044-carrier-sites.sql
+          npx prisma db execute --file prisma/sql/044-carrier-sites.sql
       - run: npm run db:lojas-logistica
       - run: npm run db:rls
       # A selecao exata do config preserva a cobertura, sem filtro por substring.
@@ -275,35 +277,13 @@ jobs:
       group: deploy-production-tms.avilaops.com
       cancel-in-progress: false
     steps:
-      - name: Enviar imagem ao servidor
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Promover imagem aprovada no Render
         env:
-          APPLICATION: tms.avilaops.com
           IMAGE: ${{ needs.image.outputs.image }}
-          DEPLOY_PORT: 22
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$APPLICATION" =~ ^[a-z0-9][a-z0-9.-]*$ ]]
-          [[ "$IMAGE" =~ ^ghcr\.io/avilaops/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]]
-          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
-          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
-          [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]]
-          (( DEPLOY_PORT > 0 && DEPLOY_PORT < 65536 ))
-          temporary_ssh=$(mktemp -d)
-          trap 'rm -rf "$temporary_ssh"' EXIT
-          chmod 700 "$temporary_ssh"
-          printf '%s\n' "$SSH_KEY" > "$temporary_ssh/key"
-          printf '%s\n' "$KNOWN_HOSTS" > "$temporary_ssh/known_hosts"
-          chmod 600 "$temporary_ssh/key" "$temporary_ssh/known_hosts"
-          printf '%s\n' "$GHCR_TOKEN" | ssh -T -i "$temporary_ssh/key" -p "$DEPLOY_PORT" \
-            -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$temporary_ssh/known_hosts" \
-            -o ConnectTimeout=20 -o ServerAliveInterval=15 \
-            -o ServerAliveCountMax=3 \
-            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $APPLICATION $IMAGE"
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dbrvu9ifngtc73bb5q10
+          RENDER_OWNER_ID: tea-dbrkuj9srm7s73ectr70
+        run: node .github/scripts/deploy-render.mjs

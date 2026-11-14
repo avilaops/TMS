@@ -64,6 +64,10 @@ const TODOS = PERFIS_INTERNOS;
  *   própria (src/lib/driver.ts e src/lib/portal.ts).
  */
 export const CAPACIDADES = {
+  /** Site de cortesia: leitura, edição de rascunho e publicação deliberada. */
+  siteVer: ['ADMIN', 'DIRECTOR', 'COMMERCIAL'],
+  site: ['ADMIN', 'COMMERCIAL'],
+  sitePublicar: ['ADMIN'],
   /** Visão geral (/api/dashboard): contadores. A receita exige `financeiroVer`. */
   painel: TODOS,
 

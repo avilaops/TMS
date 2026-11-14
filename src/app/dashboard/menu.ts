@@ -22,6 +22,7 @@ import {
   History,
   HardHat,
   Handshake,
+  Globe,
 } from "lucide-react";
 import { pode, type Capacidade } from "@/lib/permissoes";
 
@@ -81,6 +82,7 @@ export const SECOES: SecaoDoMenu[] = [
       { href: "/dashboard/auditoria", icon: History, label: "Auditoria", pode: "auditoria" },
       { href: "/dashboard/usuarios", icon: UserCog, label: "Usuários", pode: "usuarios" },
       { href: "/dashboard/empresa", icon: Building2, label: "Empresa", pode: "empresa" },
+      { href: "/dashboard/site", icon: Globe, label: "Meu site • cortesia", pode: "siteVer" },
     ],
   },
 ];
