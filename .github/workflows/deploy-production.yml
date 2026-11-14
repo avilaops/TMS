@@ -79,10 +79,13 @@ jobs:
         run: |
           npx prisma db execute --file prisma/sql/043-subcontratacao-xml.sql
           npx prisma db execute --file prisma/sql/043-subcontratacao-xml.sql
-          npx prisma db execute --file prisma/sql/044-carrier-sites.sql
-          npx prisma db execute --file prisma/sql/044-carrier-sites.sql
       - run: npm run db:lojas-logistica
       - run: npm run db:rls
+      - name: Conferir SQL do CMS depois de criar o papel de isolamento
+        if: matrix.part == 'mdfe-emissao'
+        run: |
+          npx prisma db execute --file prisma/sql/044-carrier-sites.sql
+          npx prisma db execute --file prisma/sql/044-carrier-sites.sql
       # A selecao exata do config preserva a cobertura, sem filtro por substring.
       - run: npm test
 

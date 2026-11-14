@@ -104,6 +104,8 @@
 
 ## Ledger
 
+- 14/11/2026 • CI reproduziu dependência de ordem: a verificação do SQL 044 foi executada antes da criação de tms_app. A checagem de reaplicação passa para depois de db:rls, mantendo os mesmos testes e o limite existente de cada job; o SQL não foi aplicado em produção.
+
 - 14/11/2026 • Final review: revisor fresco `tms_final_review`, somente leitura; cinco achados importantes, zero menores e nenhum comportamento deixado sem julgamento.
 - 14/11/2026 • Final: fixed cookies padrão restantes — regressão de analyticsCookies RED→GREEN; defaults globais agora incluem prefixo/domínio antes do Google. Validação de navegador reforçada para cookies reais dessa propriedade.
 - 14/11/2026 • Final: fixed IDs de runtime em páginas estáticas — public-runtime exige connection() antes da leitura; RED→GREEN.
